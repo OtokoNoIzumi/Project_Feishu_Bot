@@ -14,10 +14,7 @@
 - schedule: 定时任务调度
 """
 
-import schedule
 import time
-import lark_oapi as lark
-from lark_oapi.api.im.v1 import *
 import os
 import sys
 import json
@@ -26,12 +23,16 @@ import random
 import subprocess
 import shutil
 from pathlib import Path
-from dotenv import load_dotenv
-from gradio_client import Client
 import datetime
 import base64
-import requests
+from typing import Optional
 import tempfile
+import requests
+from dotenv import load_dotenv
+import lark_oapi as lark
+from lark_oapi.api.im.v1 import *
+from gradio_client import Client
+import schedule
 
 # 初始化配置
 is_not_jupyter = "__file__" in globals()
@@ -70,6 +71,7 @@ COZE_ACCESS_TOKEN = os.getenv("COZE_API_KEY")
 COZE_API_BASE = "https://api.coze.cn"
 BOT_ID = config.get("bot_id", "")
 VOICE_ID = config.get("voice_id", "peach")  # 中文女声音色
+
 
 class CozeTTS:
     def __init__(self, api_base: str, workflow_id: str, access_token: str):
@@ -132,6 +134,7 @@ class CozeTTS:
             print(f"TTS流程失败: {e}")
             return None
 
+
 # 初始化（放在全局作用域）
 coze_tts = CozeTTS(
     api_base=config.get("coze_bot_url", "https://api.coze.cn/v1/workflow/run"),
@@ -154,13 +157,13 @@ def load_processed_events() -> dict:
 
             if isinstance(raw_data, list):
                 return {k: time.time() for k in raw_data}
-            else:
-                cutoff = time.time() - 32 * 3600
-                return {k: float(v) for k, v in raw_data.items() if float(v) > cutoff}
+            cutoff = time.time() - 32 * 3600
+            return {k: float(v) for k, v in raw_data.items() if float(v) > cutoff}
 
     except Exception as e:
         print(f"缓存加载失败: {str(e)}")
     return {}
+
 
 def save_processed_events():
     """原子化保存已处理事件ID到缓存文件"""
@@ -174,7 +177,9 @@ def save_processed_events():
     except Exception as e:
         print(f"保存缓存失败: {str(e)}")
 
+
 _processed_event_ids = load_processed_events()
+
 
 def verify_cookie(cookie_value: str) -> tuple[bool, str]:
     """
@@ -189,6 +194,7 @@ def verify_cookie(cookie_value: str) -> tuple[bool, str]:
     if not isinstance(cookie_value, str) or "__Secure-next-auth.session-token" not in cookie_value:
         return False, "Cookies 值无效，必须包含 __Secure-next-auth.session-token 字段。"
     return True, None
+
 
 def verify_auth_token(auth_token_value: str) -> tuple[bool, str]:
     """
@@ -206,10 +212,12 @@ def verify_auth_token(auth_token_value: str) -> tuple[bool, str]:
         return False, "Auth Token 值无效，必须以 'Bearer ' 开头 (注意 Bearer 后有一个空格)。"
     return True, None
 
+
 handle_error = {
     "cookies": verify_cookie,
     "auth_token": verify_auth_token,
 }
+
 
 def update_config_value(config_file_path, variable_name, new_value):
     """
@@ -276,7 +284,7 @@ def convert_to_opus(input_path: str, ffmpeg_path: str = None, output_dir: str = 
 
     if ffmpeg_path and not ffmpeg_path.exists():
         raise FileNotFoundError(f"ffmpeg未找到: {ffmpeg_path}")
-    elif not ffmpeg_path and not shutil.which("ffmpeg"):
+    if not ffmpeg_path and not shutil.which("ffmpeg"):
         raise RuntimeError("未找到系统ffmpeg，请安装或指定自定义路径")
 
     if not input_path.exists():
@@ -315,6 +323,7 @@ def convert_to_opus(input_path: str, ffmpeg_path: str = None, output_dir: str = 
     except subprocess.CalledProcessError as e:
         raise RuntimeError(f"转换失败: {e.stderr.strip()}") from e
 
+
 def send_message_to_feishu(message_text: str, receive_id: str = "ou_bb1ec32fbd4660b4d7ca36b3640f6fde") -> None:
     """
     发送文本消息到飞书。
@@ -342,22 +351,35 @@ def send_message_to_feishu(message_text: str, receive_id: str = "ou_bb1ec32fbd46
     else:
         print("消息已发送")
 
+
 def send_daily_schedule():
     #  **TODO:**  获取当日日程信息 (例如从日历 API 或本地文件读取)
-    schedule_text = "今日日程:\n- 上午 9:00  会议\n- 下午 2:00  代码 Review" #  替换为实际日程
+    schedule_text = "今日日程:\n- 上午 9:00  会议\n- 下午 2:00  代码 Review"
     send_message_to_feishu(schedule_text)
+
 
 def send_bilibili_updates():
     # **TODO:** 获取 B 站更新信息 (例如调用 B站 API)
-    update_text = "B站更新:\n- XXX up主发布了新视频：[视频标题](视频链接)" #  替换为实际更新信息
+    update_text = "B站更新:\n- XXX up主发布了新视频：[视频标题](视频链接)"
     send_message_to_feishu(update_text)
 
+
 def send_daily_summary():
-    # **TODO:**  生成每日总结内容 (例如分析日志、统计数据)
-    summary_text = "每日总结:\n- 今日完成 XX 任务\n- 发现 XX 问题" #  替换为实际总结内容
+    """
+    生成并发送每日工作总结到飞书。
+
+    TODO:
+    1. 从日志系统获取今日完成的任务数据
+    2. 从监控系统获取发现的问题和告警
+    3. 从代码仓库获取今日提交记录
+    4. 整合数据生成结构化总结
+    """
+    # 临时使用示例数据,后续替换为实际数据
+    summary_text = "每日总结:\n- 今日完成 XX 任务\n- 发现 XX 问题"
     send_message_to_feishu(summary_text)
 
-def do_p2_im_message_receive_v1(data: P2ImMessageReceiveV1) -> None:
+
+def do_p2_im_message_receive_v1(data) -> None:
     """
     处理飞书机器人接收到的消息事件。
 
@@ -459,7 +481,6 @@ def do_p2_im_message_receive_v1(data: P2ImMessageReceiveV1) -> None:
 
         elif prompt:
             predict_kwargs["additional_text"] = "/img " + prompt
-
 
         result = gradio_client.predict(**predict_kwargs)
 
@@ -699,13 +720,23 @@ def do_p2_im_message_receive_v1(data: P2ImMessageReceiveV1) -> None:
     if content:
         send_message(msg_type, content)
 
+
 # 注册事件处理
-event_handler = lark.EventDispatcherHandler.builder("", "").register_p2_im_message_receive_v1(do_p2_im_message_receive_v1).build()
+event_handler = (
+    lark.EventDispatcherHandler.builder("", "")
+    .register_p2_im_message_receive_v1(do_p2_im_message_receive_v1)
+    .build()
+)
 
 # 创建客户端
 log_level = lark.LogLevel[config.get('log_level', 'DEBUG')]
 client = lark.Client.builder().app_id(lark.APP_ID).app_secret(lark.APP_SECRET).build()
-wsClient = lark.ws.Client(lark.APP_ID, lark.APP_SECRET, event_handler=event_handler, log_level=log_level)
+wsClient = lark.ws.Client(
+    lark.APP_ID,
+    lark.APP_SECRET,
+    event_handler=event_handler,
+    log_level=log_level
+)
 
 
 async def main_jupyter():
@@ -718,9 +749,9 @@ async def main_jupyter():
     # test_time_bilibili = (now + datetime.timedelta(seconds=15)).strftime("%H:%M:%S") # 30秒后的时间
     # test_time_summary = (now + datetime.timedelta(seconds=25)).strftime("%H:%M:%S")  # 45秒后的时间
 
-    # schedule.every().day.at(test_time_schedule).do(send_daily_schedule) #  每天在 test_time_schedule 发送日程
-    # schedule.every().day.at(test_time_bilibili).do(send_bilibili_updates) #  每天在 test_time_bilibili 发送 B站更新
-    # schedule.every().day.at(test_time_summary).do(send_daily_summary)  #  每天在 test_time_summary 发送每日总结
+    # schedule.every().day.at(test_time_schedule).do(send_daily_schedule) # 每天
+    # schedule.every().day.at(test_time_bilibili).do(send_bilibili_updates) # 测试
+    # schedule.every().day.at(test_time_summary).do(send_daily_summary)  #
 
     # schedule.every().day.at("07:30").do(send_daily_schedule) #  每天 7:30 发送日程
     # schedule.every().day.at("15:00").do(send_bilibili_updates) #  每天 15:00 发送 B站更新
@@ -733,6 +764,7 @@ async def main_jupyter():
         print("程序已停止")
     finally:
         await wsClient._disconnect()
+
 
 def main():
     """主函数，建立WebSocket连接并保持运行"""
@@ -747,6 +779,7 @@ def main():
         print("程序已停止")
     finally:
         wsClient.close()
+
 
 if __name__ == "__main__":
     if is_not_jupyter:
