@@ -63,7 +63,7 @@ UPDATE_CONFIG_TRIGGER = "whisk令牌"
 SUPPORTED_VARIABLES = ["cookies", "auth_token"]
 CONFIG_FILE_PATH = os.path.join(current_dir, "auth_config.json")
 
-custom_ffmpeg = config.get('ffmpeg_path', '')
+custom_ffmpeg = os.getenv("FFMPEG_PATH", "")
 
 COZE_ACCESS_TOKEN = os.getenv("COZE_API_KEY")
 
@@ -627,7 +627,7 @@ def do_p2_im_message_receive_v1(data) -> None:
 
         elif "富文本" in user_msg:
             try:
-                msg_type, content = handle_image_upload(config.get('sample_pic_path'))
+                msg_type, content = handle_image_upload(os.getenv("SAMPLE_PIC_PATH", ""))
                 if msg_type == "image" and content:
                     image_key = json.loads(content)["image_key"]
                     msg_type = "post"
@@ -668,14 +668,14 @@ def do_p2_im_message_receive_v1(data) -> None:
         elif "图片" in user_msg or "壁纸" in user_msg:
             send_message("text", json.dumps({"text": "正在处理图片，请稍候..."}))
             try:
-                msg_type, content = handle_image_upload(config.get('sample_pic_path'))
+                msg_type, content = handle_image_upload(os.getenv("SAMPLE_PIC_PATH", ""))
             except Exception as e:
                 content = json.dumps({"text": f"图片处理错误: {str(e)}"})
 
         elif "音频" in user_msg:
             send_message("text", json.dumps({"text": "正在处理音频，请稍候..."}))
             try:
-                msg_type, content = handle_audio_upload(config.get('sample_audio_path'))
+                msg_type, content = handle_audio_upload(os.getenv("SAMPLE_AUDIO_PATH", ""))
             except Exception as e:
                 content = json.dumps({"text": f"音频处理错误: {str(e)}"})
 
