@@ -594,10 +594,8 @@ def do_p2_im_message_receive_v1(data) -> None:
 
     # 处理文本消息
     if not content and user_msg:
-        if "你好" in user_msg:
-            content = json.dumps({"text": "你好呀！有什么我可以帮你的吗？"})
 
-        elif user_msg.startswith(UPDATE_CONFIG_TRIGGER):
+        if user_msg.startswith(UPDATE_CONFIG_TRIGGER):
             if data.event.sender.sender_id.open_id != os.getenv("ADMIN_ID"):
                 content = json.dumps({"text": f"Received message:{user_msg}"})
             else:
@@ -629,7 +627,7 @@ def do_p2_im_message_receive_v1(data) -> None:
 
         elif "富文本" in user_msg:
             try:
-                msg_type, content = handle_image_upload(r"E:\Download\image (4).webp")
+                msg_type, content = handle_image_upload(config.get('sample_pic_path'))
                 if msg_type == "image" and content:
                     image_key = json.loads(content)["image_key"]
                     msg_type = "post"
@@ -659,13 +657,6 @@ def do_p2_im_message_receive_v1(data) -> None:
             video = random.choice(bili_videos)
             content = json.dumps({"text": f"为你推荐B站视频：\n{video['title']}\nhttps://www.bilibili.com/video/{video['bvid']}"})
 
-        elif "图片" in user_msg or "壁纸" in user_msg:
-            send_message("text", json.dumps({"text": "正在处理图片，请稍候..."}))
-            try:
-                msg_type, content = handle_image_upload(config.get('sample_pic_path'))
-            except Exception as e:
-                content = json.dumps({"text": f"图片处理错误: {str(e)}"})
-
         elif "生图" in user_msg or "AI画图" in user_msg:
             send_message("text", json.dumps({"text": "正在生成图片，请稍候..."}))
             try:
@@ -673,6 +664,13 @@ def do_p2_im_message_receive_v1(data) -> None:
                 msg_type, content = handle_ai_image_generation(prompt)
             except Exception as e:
                 content = json.dumps({"text": f"AI生图错误: {str(e)}"})
+
+        elif "图片" in user_msg or "壁纸" in user_msg:
+            send_message("text", json.dumps({"text": "正在处理图片，请稍候..."}))
+            try:
+                msg_type, content = handle_image_upload(config.get('sample_pic_path'))
+            except Exception as e:
+                content = json.dumps({"text": f"图片处理错误: {str(e)}"})
 
         elif "音频" in user_msg:
             send_message("text", json.dumps({"text": "正在处理音频，请稍候..."}))
@@ -699,7 +697,6 @@ def do_p2_im_message_receive_v1(data) -> None:
 
                 try:
                     msg_type, content = handle_audio_upload(tmp_path)
-                    send_message(msg_type, content)
                 except Exception as upload_err:
                     raise Exception(f"音频上传失败: {str(upload_err)}")
                 finally:
@@ -713,6 +710,8 @@ def do_p2_im_message_receive_v1(data) -> None:
                     error_msg = f"配音生成失败: {error_msg}"
                 send_message("text", json.dumps({"text": error_msg}))
 
+        elif "你好" in user_msg:
+            content = json.dumps({"text": "你好呀！有什么我可以帮你的吗？"})
         else:
             content = json.dumps({"text": f"收到你发送的消息：{user_msg}\nReceived message:{user_msg}"})
 
