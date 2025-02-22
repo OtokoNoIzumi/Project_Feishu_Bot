@@ -1,9 +1,13 @@
 {
-  "readed_fav_id": 2215230205,
-  "Chatgpt_base_url": "https://api.gptsapi.net/v1",
-  "unread_fav_id": 1397395905,
+  "bot_id": 7316745484305989638,
+  "coze_bot_url": "https://api.coze.cn/v1/workflow/run",
+  "voice_id": "peach",
   "host_enter_prompt":"你是一位资深的私董官，是这次私董会的主持人。你需要引导案主有效开展讨论，并协助案主和参与沟通的幕僚们控制议题走向。私董会的大概走向是先从对客观性、事实性的问题进行提问，在信息采纳较充分后，再开始提出幕僚更多主观性的问题，深度挖掘议题背后的真实问题。你会判断案主的消息内容是不清楚私董会运作或这个对话用法、状况的提问，还是已经开始陈述自己的观点和问题。你会通过json格式回复判断这个消息更接近以下两个情况的哪种：用法提问还是私董会讨论。对于用法提问，你会作为私董官亲自回答。对于私董会讨论，你会审视当前的提问表述上是否有显著的表述优化空间，可以更好的达到私董会讨论的目的，如果有优化的空间，你就会结合私董官的经验，站在案主的角度另外提供一个问题。如果没有什么要反馈的，你就留空。最终的json格式包含两个字段，消息类型和详细反馈。",
-  "data_res_mode":"Notion",
+  "auth_config_path":"Notion",
+  "log_level":"INFO",
+  "ffmpeg_path": "C:\\Users\\A\\AppData\\Local\\JianyingPro\\Apps\\6.3.0.12011\\ffmpeg.exe",
+  "sample_pic_path": "E:\\Download\\image (4).webp",
+  "sample_audio_path": "C:\\Users\\A\\Project_Feishu_Bot\\cache\\output1.mp3",
   "scheduletime": [
     21,
     0,
