@@ -30,7 +30,19 @@ import tempfile
 import requests
 from dotenv import load_dotenv
 import lark_oapi as lark
-from lark_oapi.api.im.v1 import *
+# from lark_oapi.api.im.v1 import *
+# 替换原来的通配符导入
+from lark_oapi.api.im.v1 import (
+    CreateMessageRequest,
+    CreateMessageRequestBody,
+    ReplyMessageRequest,
+    ReplyMessageRequestBody,
+    CreateImageRequest,
+    CreateImageRequestBody,
+    CreateFileRequest,
+    CreateFileRequestBody,
+    GetMessageResourceRequest
+)
 from gradio_client import Client
 import schedule
 
@@ -61,7 +73,7 @@ PROCESSED_EVENTS_FILE = os.path.join(CACHE_DIR, "processed_events.json")
 
 UPDATE_CONFIG_TRIGGER = "whisk令牌"
 SUPPORTED_VARIABLES = ["cookies", "auth_token"]
-CONFIG_FILE_PATH = os.path.join(current_dir, "auth_config.json")
+AUTH_CONFIG_FILE_PATH = os.getenv("AUTH_CONFIG_FILE_PATH", "")
 
 custom_ffmpeg = os.getenv("FFMPEG_PATH", "")
 
@@ -604,7 +616,7 @@ def do_p2_im_message_receive_v1(data) -> None:
                     variable_name = command_parts[0].strip()
                     new_value = command_parts[1].strip()
                     if variable_name in SUPPORTED_VARIABLES:
-                        success, reply_text_update = update_config_value(CONFIG_FILE_PATH, variable_name, new_value)
+                        success, reply_text_update = update_config_value(AUTH_CONFIG_FILE_PATH, variable_name, new_value)
                         content = json.dumps({"text": reply_text_update})
                     else:
                         content = json.dumps({"text": f"不支持更新变量 '{variable_name}'，只能更新: {', '.join(SUPPORTED_VARIABLES)}"})
