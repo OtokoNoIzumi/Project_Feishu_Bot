@@ -535,6 +535,12 @@ def do_p2_im_message_receive_v1(data) -> None:
     # 获取发送者信息
     sender_name = get_user_name(data.event.sender.sender_id.open_id)
 
+    # 检查事件是否已处理过
+    # 修改后的事件处理检查
+    if cache.check_event(event_id):
+        log_and_print(f"重复事件，发送者: {sender_name} ，跳过处理。ID: {event_id}", log_level="INFO")
+        return
+
     # 记录事件信息
     log_and_print(
         f"收到消息事件 - ID: {event_id}",
@@ -543,12 +549,6 @@ def do_p2_im_message_receive_v1(data) -> None:
         f"消息类型: {data.event.message.message_type}",
         log_level="INFO"
     )
-    # 检查事件是否已处理过
-    # 修改后的事件处理检查
-    if cache.check_event(event_id):
-        log_and_print(f"重复事件，跳过处理: {event_id}", log_level="INFO")
-        return
-
     # 记录新事件
     cache.add_event(event_id)
     cache.save_event_cache()
@@ -720,9 +720,8 @@ def do_p2_im_message_receive_v1(data) -> None:
     # 解析消息内容
     if data.event.message.message_type == "text":
         user_msg = json.loads(data.event.message.content)["text"]
-        log_and_print(f"收到文本消息: {user_msg}", log_level="INFO")
     elif data.event.message.message_type == "image":
-        log_and_print("收到图片消息", log_level="INFO")
+        log_and_print("收到图片消息，调用whisk图片处理API", log_level="INFO")
         image_content = json.loads(data.event.message.content)
         if "image_key" in image_content:
             file_content, file_name, meta = handle_message_resource(
@@ -775,6 +774,7 @@ def do_p2_im_message_receive_v1(data) -> None:
     if not content and user_msg:
 
         if user_msg.startswith(UPDATE_CONFIG_TRIGGER):
+            log_and_print(f"收到 [令牌更新指令] 文本消息: {user_msg}", log_level="INFO")
             if data.event.sender.sender_id.open_id != os.getenv("ADMIN_ID"):
                 content = json.dumps({"text": f"Received message:{user_msg}"})
             else:
@@ -803,6 +803,8 @@ def do_p2_im_message_receive_v1(data) -> None:
                     content = json.dumps({"text": error_msg})
 
         elif "帮助" in user_msg:
+            log_and_print(f"收到 [帮助demo指令] 文本消息: {user_msg}", log_level="INFO")
+
             content = json.dumps({
                 "text": "<b>我可以帮你做这些事情：</b>\n\n"
                         "1. <b>图片风格转换</b>\n"
@@ -817,6 +819,7 @@ def do_p2_im_message_receive_v1(data) -> None:
             })
 
         elif "富文本" in user_msg:
+            log_and_print(f"收到 [富文本demo指令] 消息: {user_msg}", log_level="INFO")
             try:
                 msg_type, content = handle_image_upload(os.getenv("SAMPLE_PIC_PATH", ""))
                 if msg_type == "image" and content:
@@ -845,6 +848,7 @@ def do_p2_im_message_receive_v1(data) -> None:
                 content = json.dumps({"text": f"富文本处理错误: {str(e)}"})
 
         elif "B站" in user_msg or "视频" in user_msg:
+            log_and_print(f"收到 [视频推荐demo指令] 文本消息: {user_msg}", log_level="INFO")
             video = random.choice(bili_videos)
             content = json.dumps({
                 "text": (
@@ -855,6 +859,7 @@ def do_p2_im_message_receive_v1(data) -> None:
             })
 
         elif "生图" in user_msg or "AI画图" in user_msg:
+            log_and_print(f"收到 [AI生图指令] 文本消息: {user_msg}", log_level="INFO")
             send_message("text", json.dumps({"text": "正在生成图片，请稍候..."}))
             try:
                 prompt = user_msg.replace("生图", "").replace("AI画图", "").strip()
@@ -863,6 +868,7 @@ def do_p2_im_message_receive_v1(data) -> None:
                 content = json.dumps({"text": f"AI生图错误: {str(e)}"})
 
         elif "图片" in user_msg or "壁纸" in user_msg:
+            log_and_print(f"收到 [图片demo指令] 文本消息: {user_msg}", log_level="INFO")
             send_message("text", json.dumps({"text": "正在处理图片，请稍候..."}))
             try:
                 msg_type, content = handle_image_upload(os.getenv("SAMPLE_PIC_PATH", ""))
@@ -870,6 +876,7 @@ def do_p2_im_message_receive_v1(data) -> None:
                 content = json.dumps({"text": f"图片处理错误: {str(e)}"})
 
         elif "音频" in user_msg:
+            log_and_print(f"收到 [音频demo指令] 文本消息: {user_msg}", log_level="INFO")
             send_message("text", json.dumps({"text": "正在处理音频，请稍候..."}))
             try:
                 msg_type, content = handle_audio_upload(os.getenv("SAMPLE_AUDIO_PATH", ""))
@@ -877,6 +884,7 @@ def do_p2_im_message_receive_v1(data) -> None:
                 content = json.dumps({"text": f"音频处理错误: {str(e)}"})
 
         elif "配音" in user_msg:
+            log_and_print(f"收到 [配音指令] 文本消息: {user_msg}", log_level="INFO")
             send_message("text", json.dumps({"text": "正在生成配音，请稍候..."}))
             try:
                 tts_text = user_msg.split("配音", 1)[1].strip()
@@ -908,9 +916,11 @@ def do_p2_im_message_receive_v1(data) -> None:
                 send_message("text", json.dumps({"text": error_msg}))
 
         elif "你好" in user_msg:
+            log_and_print(f"收到 [问候demo指令] 文本消息: {user_msg}", log_level="INFO")
             content = json.dumps({"text": "你好呀！有什么我可以帮你的吗？"})
         else:
-            content = json.dumps({"text": f"收到你发送的消息：{user_msg}\nReceived message:{user_msg}"})
+            log_and_print(f"收到 [文本消息] ，启用默认回复: {user_msg}", log_level="INFO")
+            content = json.dumps({"text": f"收到你发送的消息：{user_msg}"})
 
     # 发送最终消息
     if content:
