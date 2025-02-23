@@ -537,6 +537,7 @@ def do_p2_im_message_receive_v1(data) -> None:
 
     # 检查事件是否已处理过
     # 修改后的事件处理检查
+    print('--------------------------------')
     if cache.check_event(event_id):
         log_and_print(f"重复事件，发送者: {sender_name} ，跳过处理。ID: {event_id}", log_level="INFO")
         return
