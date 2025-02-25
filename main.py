@@ -417,7 +417,7 @@ def convert_to_opus(
 
 def send_message_to_feishu(
     message_text: str,
-    receive_id: str = "ou_bb1ec32fbd4660b4d7ca36b3640f6fde"
+    receive_id: str = os.getenv("ADMIN_ID", 'ou_08158e2f511912a18063fc6072ce42da')
 ) -> None:
     """
     发送文本消息到飞书。
@@ -539,7 +539,12 @@ def do_p2_im_message_receive_v1(data) -> None:
     # 修改后的事件处理检查
     print('--------------------------------')
     if cache.check_event(event_id):
-        log_and_print(f"重复事件，发送者: {sender_name} ，跳过处理。ID: {event_id}", log_level="INFO")
+        log_and_print(
+            f"重复事件，发送者: {sender_name}，",
+            f"消息类型: {data.event.message.message_type}，",
+            f"跳过处理。ID: {event_id}",
+            log_level="INFO"
+        )
         return
 
     # 记录事件信息
@@ -653,7 +658,7 @@ def do_p2_im_message_receive_v1(data) -> None:
         result = gradio_client.predict(**predict_kwargs)
 
         if not isinstance(result, tuple) or len(result) == 0:
-            return "text", json.dumps({"text": "图片失败，已经通知管理员修复咯！"})
+            return "text", json.dumps({"text": "图片生成故障，已经通知管理员修复咯！"})
 
         if all(x is None for x in result):
             return "text", json.dumps({"text": "图片生成失败了，建议您换个提示词再试试"})
@@ -960,7 +965,7 @@ async def main_jupyter():
     # schedule.every().day.at(test_time_bilibili).do(send_bilibili_updates) # 测试
     # schedule.every().day.at(test_time_summary).do(send_daily_summary)  #
 
-    # schedule.every().day.at("07:30").do(send_daily_schedule) #  每天 7:30 发送日程
+    schedule.every().day.at("10:30").do(send_daily_schedule) #  每天 7:30 发送日程
     # schedule.every().day.at("15:00").do(send_bilibili_updates) #  每天 15:00 发送 B站更新
     # schedule.every().day.at("22:00").do(send_daily_summary)  #  每天 22:00 发送每日总结
     try:
