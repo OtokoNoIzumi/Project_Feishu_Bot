@@ -562,10 +562,10 @@ def do_p2_im_message_receive_v1(data) -> None:
     def send_message(msg_type: str, content: str) -> None:
         """发送消息的通用函数"""
 
-        print(f"[DEBUG] 发送消息 - ID类型: {'chat_id' if data.event.message.chat_type == 'p2p' else 'message_id'}, "
-              f"ID: {data.event.message.chat_id if data.event.message.chat_type == 'p2p' else data.event.message.message_id}, "
-              f"类型: {msg_type}")
-        print(f"[DEBUG] 消息内容: {content}")
+        # print(f"[DEBUG] 发送消息 - ID类型: {'chat_id' if data.event.message.chat_type == 'p2p' else 'message_id'}, "
+        #       f"ID: {data.event.message.chat_id if data.event.message.chat_type == 'p2p' else data.event.message.message_id}, "
+        #       f"类型: {msg_type}")
+        # print(f"[DEBUG] 消息内容: {content}")
 
         if data.event.message.chat_type == "p2p":
             request = CreateMessageRequest.builder().receive_id_type("chat_id").request_body(
@@ -591,18 +591,18 @@ def do_p2_im_message_receive_v1(data) -> None:
             response = client.im.v1.message.reply(request)
 
         # 打印响应信息
-        print(f"[DEBUG] 响应类型: {type(response).__name__}")
-        print(f"[DEBUG] 响应成功: {response.success()}")
+        # print(f"[DEBUG] 响应类型: {type(response).__name__}")
+        # print(f"[DEBUG] 响应成功: {response.success()}")
 
-        if not response.success():
-            print(f"[ERROR] 错误码: {response.code}")
-            print(f"[ERROR] 错误信息: {response.msg}")
-            if hasattr(response, 'request_id'):
-                print(f"[ERROR] 请求ID: {response.request_id}")
+        # if not response.success():
+        #     print(f"[ERROR] 错误码: {response.code}")
+        #     print(f"[ERROR] 错误信息: {response.msg}")
+        #     if hasattr(response, 'request_id'):
+        #         print(f"[ERROR] 请求ID: {response.request_id}")
 
-        if hasattr(response, 'data') and response.data:
-            print(f"[DEBUG] 响应数据: {response.data}")
-            print(f"[DEBUG] 数据属性: {dir(response.data)}")
+        # if hasattr(response, 'data') and response.data:
+        #     print(f"[DEBUG] 响应数据: {response.data}")
+        #     print(f"[DEBUG] 数据属性: {dir(response.data)}")
 
         if not response.success():
             log_and_print(f"消息发送失败: {response.code} - {response.msg}", log_level="ERROR")

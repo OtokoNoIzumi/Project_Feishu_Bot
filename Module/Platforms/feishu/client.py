@@ -214,7 +214,7 @@ class FeishuPlatform(Platform):
         sender_name = self.get_user_name(message.sender_id)
 
         # 记录详细日志
-        print('\n\ntest_data', message.__dict__)
+        print('--------------------------------')
         debug_utils.log_and_print(
             f"收到消息事件 - ID: {event_id}",
             f"发送者: {sender_name} ({message.sender_id})",
@@ -229,8 +229,8 @@ class FeishuPlatform(Platform):
                 self.message_handler.reply_message(message, response)
         elif self.bot_service:
             # 直接使用BotService处理
-            print(f"[DEBUG] 收到消息，开始处理: {message}")
-            print(f"[DEBUG] 收到消息，开始处理: {message.__dict__}")
+            # print(f"[DEBUG] 收到消息，开始处理: {message}")
+            # print(f"[DEBUG] 收到消息，开始处理: {message.__dict__}")
             response = self.bot_service.handle_message(message)
             if response:
                 # 回复消息

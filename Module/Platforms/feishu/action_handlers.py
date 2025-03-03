@@ -54,8 +54,8 @@ class FeishuActionHandler:
         Returns:
             bool: 是否成功
         """
-        print(f"[DEBUG] 发送消息 - 类型: {msg_type}")
-        print(f"[DEBUG] 消息内容: {content}")
+        # print(f"[DEBUG] 发送消息 - 类型: {msg_type}")
+        # print(f"[DEBUG] 消息内容: {content}")
 
         # 检查是否有原始消息数据
         message_data = kwargs.get("data")
@@ -64,9 +64,9 @@ class FeishuActionHandler:
             if message_data and hasattr(message_data, "extra_data"):
                 # 获取聊天类型
                 chat_type = message_data.extra_data.get("chat_type", "")
-                print(f"[DEBUG] 聊天类型: {chat_type}")
-                print(f"[DEBUG] 原始消息数据: {message_data}")
-                print(f"[DEBUG] 原始消息数据: {message_data.__dict__}")
+                # print(f"[DEBUG] 聊天类型: {chat_type}")
+                # print(f"[DEBUG] 原始消息数据: {message_data}")
+                # print(f"[DEBUG] 原始消息数据: {message_data.__dict__}")
 
                 # 按照main.py的逻辑实现，使用chat_type决定发送方式
                 if chat_type == "p2p":
@@ -81,7 +81,7 @@ class FeishuActionHandler:
                         .build()
                     ).build()
 
-                    print(f"[DEBUG] 使用chat.create API发送p2p消息到chat_id: {message_data.chat_id}")
+                    # print(f"[DEBUG] 使用chat.create API发送p2p消息到chat_id: {message_data.chat_id}")
                     response = self.client.im.v1.chat.create(request)
                 else:
                     # 对于群聊，使用消息回复
@@ -99,11 +99,11 @@ class FeishuActionHandler:
                         .build()
                     )
 
-                    print(f"[DEBUG] 使用message.reply API回复消息message_id: {message_data.message_id}")
+                    # print(f"[DEBUG] 使用message.reply API回复消息message_id: {message_data.message_id}")
                     response = self.client.im.v1.message.reply(request)
             else:
                 # 兼容旧逻辑，根据receive_id_type决定发送方式
-                print(f"[DEBUG] 无原始消息数据，使用receive_id_type: {receive_id_type}")
+                # print(f"[DEBUG] 无原始消息数据，使用receive_id_type: {receive_id_type}")
                 if receive_id_type == "chat_id":
                     # 对于chat_id使用chat.create API
                     from lark_oapi.api.im.v1 import CreateChatRequest, CreateChatRequestBody
@@ -130,18 +130,18 @@ class FeishuActionHandler:
                     response = self.client.im.v1.message.create(request)
 
             # 打印响应信息
-            print(f"[DEBUG] 响应类型: {type(response).__name__}")
-            print(f"[DEBUG] 响应成功: {response.success()}")
+            # print(f"[DEBUG] 响应类型: {type(response).__name__}")
+            # print(f"[DEBUG] 响应成功: {response.success()}")
 
-            if not response.success():
-                print(f"[ERROR] 错误码: {response.code}")
-                print(f"[ERROR] 错误信息: {response.msg}")
-                if hasattr(response, 'request_id'):
-                    print(f"[ERROR] 请求ID: {response.request_id}")
+            # if not response.success():
+            #     print(f"[ERROR] 错误码: {response.code}")
+            #     print(f"[ERROR] 错误信息: {response.msg}")
+            #     if hasattr(response, 'request_id'):
+            #         print(f"[ERROR] 请求ID: {response.request_id}")
 
-            if hasattr(response, 'data') and response.data:
-                print(f"[DEBUG] 响应数据: {response.data}")
-                print(f"[DEBUG] 数据属性: {dir(response.data)}")
+            # if hasattr(response, 'data') and response.data:
+            #     print(f"[DEBUG] 响应数据: {response.data}")
+            #     print(f"[DEBUG] 数据属性: {dir(response.data)}")
 
             return response.success()
 
@@ -175,7 +175,7 @@ class RichTextHandler(FeishuActionHandler):
         """处理富文本生成请求"""
         # 获取原始消息数据
         message_data = kwargs.get("data")
-        print(f"[DEBUG] 富文本处理器收到原始消息数据: {message_data is not None}")
+        # print(f"[DEBUG] 富文本处理器收到原始消息数据: {message_data is not None}")
 
         # 获取示例图片
         sample_pic_path = os.getenv("SAMPLE_PIC_PATH", "")
@@ -231,28 +231,33 @@ class ImageGenerationHandler(FeishuActionHandler):
         """处理AI图像生成请求"""
         prompt = kwargs.get("prompt", "")
         message_data = kwargs.get("data")
-        print(f"[DEBUG] AI图像生成处理器收到原始消息数据: {message_data is not None}")
+        # print(f"[DEBUG] AI图像生成处理器收到原始消息数据: {message_data is not None}")
 
         if not self.bot_service or not self.bot_service.media_service:
             return self.send_notification(receive_id, receive_id_type, "系统未配置图像生成服务", data=message_data)
 
-        # 发送处理中的提示
-        self.send_notification(receive_id, receive_id_type, f"正在生成图片: {prompt}，请稍候...", data=message_data)
+        # 先发送处理中的提示
+        self.send_notification(receive_id, receive_id_type, "正在生成图片，请稍候...", data=message_data)
 
         try:
             # 使用BotService的媒体服务生成图像
             image_paths = self.bot_service.process_ai_image(prompt=prompt)
-            print('test_image_path', image_paths)
 
             if not image_paths or len(image_paths) == 0:
-                return self.send_notification(receive_id, receive_id_type, "图像生成失败，可能提示词不合适或服务出现问题", data=message_data)
+                # 区分不同的错误情况
+                if image_paths is None:
+                    # 结果是None，对应main.py中的图片生成故障情况
+                    return self.send_notification(receive_id, receive_id_type, "图片生成故障，已经通知管理员修复咯！", data=message_data)
+                else:
+                    # 结果是空列表，对应main.py中的全部为None的情况
+                    return self.send_notification(receive_id, receive_id_type, "图片生成失败了，建议您换个提示词再试试", data=message_data)
 
             # 跟踪是否至少有一个图片成功处理
             success_count = 0
 
             # 处理所有生成的图片
             for image_path in image_paths:
-                print(f"[DEBUG] 准备上传图片: {image_path}")
+                # print(f"[DEBUG] 准备上传图片: {image_path}")
                 if not image_path or not os.path.exists(image_path):
                     continue
 
@@ -269,14 +274,14 @@ class ImageGenerationHandler(FeishuActionHandler):
                         .build()
                     )
 
-                    print(f"[DEBUG] 上传响应成功: {upload_response.success()}")
-                    print(f"[DEBUG] 上传响应代码: {upload_response.code}")
-                    print(f"[DEBUG] 上传响应消息: {upload_response.msg}")
-                    if hasattr(upload_response, 'data'):
-                        print(f"[DEBUG] 上传响应数据: {upload_response.data}")
-                        if hasattr(upload_response.data, 'image_key'):
-                            print(f"【DEBUG】图片键值: {upload_response.data.image_key}")
-                    print(f"【DEBUG】TRIGGERED: {upload_response.success() and upload_response.data and upload_response.data.image_key}")
+                    # print(f"[DEBUG] 上传响应成功: {upload_response.success()}")
+                    # print(f"[DEBUG] 上传响应代码: {upload_response.code}")
+                    # print(f"[DEBUG] 上传响应消息: {upload_response.msg}")
+                    # if hasattr(upload_response, 'data'):
+                    #     print(f"[DEBUG] 上传响应数据: {upload_response.data}")
+                    #     if hasattr(upload_response.data, 'image_key'):
+                    #         print(f"【DEBUG】图片键值: {upload_response.data.image_key}")
+                    # print(f"【DEBUG】TRIGGERED: {upload_response.success() and upload_response.data and upload_response.data.image_key}")
                     if (
                         upload_response.success() and
                         upload_response.data and
@@ -284,7 +289,7 @@ class ImageGenerationHandler(FeishuActionHandler):
                     ):
                         # 发送图片消息
                         content = json.dumps({"image_key": upload_response.data.image_key})
-                        print(f"[DEBUG] 发送图片消息: {content}")
+                        # print(f"[DEBUG] 发送图片消息: {content}")
                         self._create_message(receive_id, receive_id_type, "image", content, data=message_data)
                         success_count += 1
                     else:
@@ -310,11 +315,11 @@ class ImageProcessHandler(FeishuActionHandler):
 
     def handle(self, receive_id: str, receive_id_type: str, **kwargs) -> bool:
         """处理图片"""
-        print(f"[DEBUG] 图片处理器收到原始消息数据: {kwargs}")
+        # print(f"[DEBUG] 图片处理器收到原始消息数据: {kwargs}")
         message_data = kwargs.get("data")
         image_key = message_data.extra_data.get("image_key", {})
         message_id = kwargs.get("message_id", "")
-        print(f"[DEBUG] 图片处理器收到原始消息数据: {message_data is not None}")
+        # print(f"[DEBUG] 图片处理器收到原始消息数据: {message_data is not None}")
 
         if not image_key or not message_id:
             return self.send_notification(receive_id, receive_id_type, "图片信息不完整，无法处理", data=message_data)
@@ -323,7 +328,7 @@ class ImageProcessHandler(FeishuActionHandler):
             return self.send_notification(receive_id, receive_id_type, "系统未配置图像处理服务", data=message_data)
 
         # 先发送处理中的提示
-        self.send_notification(receive_id, receive_id_type, "图片处理中，请稍候...", data=message_data)
+        self.send_notification(receive_id, receive_id_type, "正在转换图片风格，请稍候...", data=message_data)
 
         # 获取图片内容
         from lark_oapi.api.im.v1 import GetMessageResourceRequest
@@ -335,8 +340,8 @@ class ImageProcessHandler(FeishuActionHandler):
             .build()
 
         response = self.client.im.v1.message_resource.get(request)
-        print(f"[DEBUG] 获取图片资源响应: {response}")
-        print(f"[DEBUG] 获取图片资源响应: {response.__dict__}")
+        # print(f"[DEBUG] 获取图片资源响应: {response}")
+        # print(f"[DEBUG] 获取图片资源响应: {response.__dict__}")
 
         if not response.success():
             return self.send_notification(
@@ -353,24 +358,24 @@ class ImageProcessHandler(FeishuActionHandler):
 
         # 准备图片输入
         file_name = response.file_name
-        print(f"[DEBUG] 图片文件名: {file_name}")
-        print(f"[DEBUG] response.file属性: {dir(response.file)}")
+        # print(f"[DEBUG] 图片文件名: {file_name}")
+        # print(f"[DEBUG] response.file属性: {dir(response.file)}")
 
         has_content_type = hasattr(response.file, "content_type")
-        print(f"[DEBUG] 是否有content_type属性: {has_content_type}")
+        # print(f"[DEBUG] 是否有content_type属性: {has_content_type}")
 
         if has_content_type:
-            print(f"[DEBUG] 原始content_type值: {response.file.content_type}")
+            # print(f"[DEBUG] 原始content_type值: {response.file.content_type}")
             mime_type = response.file.content_type
         else:
-            print(f"[DEBUG] 未找到content_type，使用默认值: image/jpeg")
+            # print(f"[DEBUG] 未找到content_type，使用默认值: image/jpeg")
             mime_type = "image/jpeg"
 
         meta = {
             "size": len(file_content),
             "mime_type": mime_type
         }
-        print(f"[DEBUG] 最终meta数据: {meta}")
+        # print(f"[DEBUG] 最终meta数据: {meta}")
 
         base64_image = base64.b64encode(file_content).decode('utf-8')
         image_url = f"data:{meta['mime_type']};base64,{base64_image}"
@@ -389,9 +394,14 @@ class ImageProcessHandler(FeishuActionHandler):
         try:
             # 处理图片
             image_paths = self.bot_service.process_ai_image(image_input=image_input)
-            print(f"[DEBUG] 图片处理结果: {image_paths}")
             if not image_paths or len(image_paths) == 0:
-                return self.send_notification(receive_id, receive_id_type, "图片处理失败", data=message_data)
+                # 区分不同的错误情况
+                if image_paths is None:
+                    # 结果是None，对应main.py中的图片处理故障情况
+                    return self.send_notification(receive_id, receive_id_type, "图片处理故障，已经通知管理员修复咯！", data=message_data)
+                else:
+                    # 结果是空列表，对应main.py中的处理失败情况
+                    return self.send_notification(receive_id, receive_id_type, "图片处理失败了，请尝试使用其他图片", data=message_data)
 
             # 跟踪是否至少有一个图片成功处理
             success_count = 0
@@ -447,7 +457,7 @@ class SampleImageHandler(FeishuActionHandler):
     def handle(self, receive_id: str, receive_id_type: str, **kwargs) -> bool:
         """分享示例图片"""
         message_data = kwargs.get("data")
-        print(f"[DEBUG] 示例图片处理器收到原始消息数据: {message_data is not None}")
+        # print(f"[DEBUG] 示例图片处理器收到原始消息数据: {message_data is not None}")
 
         sample_pic_path = os.getenv("SAMPLE_PIC_PATH", "")
         if not sample_pic_path or not os.path.exists(sample_pic_path):
@@ -488,7 +498,7 @@ class SampleAudioHandler(FeishuActionHandler):
     def handle(self, receive_id: str, receive_id_type: str, **kwargs) -> bool:
         """分享示例音频"""
         message_data = kwargs.get("data")
-        print(f"[DEBUG] 示例音频处理器收到原始消息数据: {message_data is not None}")
+        # print(f"[DEBUG] 示例音频处理器收到原始消息数据: {message_data is not None}")
 
         sample_audio_path = os.getenv("SAMPLE_AUDIO_PATH", "")
         if not sample_audio_path or not os.path.exists(sample_audio_path):
@@ -574,7 +584,7 @@ class TTSGenerationHandler(FeishuActionHandler):
         """处理TTS生成请求"""
         text = kwargs.get("text", "")
         message_data = kwargs.get("data")
-        print(f"[DEBUG] TTS处理器收到原始消息数据: {message_data is not None}")
+        # print(f"[DEBUG] TTS处理器收到原始消息数据: {message_data is not None}")
 
         if not text:
             return self.send_notification(receive_id, receive_id_type, "TTS文本内容为空", data=message_data)
@@ -583,7 +593,7 @@ class TTSGenerationHandler(FeishuActionHandler):
             return self.send_notification(receive_id, receive_id_type, "系统未配置TTS服务", data=message_data)
 
         # 先发送处理中的提示
-        self.send_notification(receive_id, receive_id_type, f"正在处理音频：{text}，请稍候...", data=message_data)
+        self.send_notification(receive_id, receive_id_type, "正在生成配音，请稍候...", data=message_data)
 
         # 生成TTS音频
         audio_data = self.bot_service.generate_tts(text)
@@ -596,16 +606,16 @@ class TTSGenerationHandler(FeishuActionHandler):
         with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as temp_file:
             temp_mp3_path = temp_file.name
             temp_file.write(audio_data)
-        print('test_temp_mp3_path', temp_mp3_path)
+        # print('test_temp_mp3_path', temp_mp3_path)
         try:
             # 转换为opus格式
             opus_path, duration = self.bot_service.media_service.convert_to_opus(
                 temp_mp3_path,
                 overwrite=True
             )
-            print('test_opus_path', opus_path)
-            print('test_duration', duration)
-            print('test_opus_path_exists', os.path.exists(opus_path))
+            # print('test_opus_path', opus_path)
+            # print('test_duration', duration)
+            # print('test_opus_path_exists', os.path.exists(opus_path))
 
             if not opus_path or not os.path.exists(opus_path):
                 os.unlink(temp_mp3_path)
@@ -614,7 +624,7 @@ class TTSGenerationHandler(FeishuActionHandler):
             # 上传并发送音频
             with open(opus_path, "rb") as audio_file:
                 opus_filename = os.path.basename(opus_path)
-                print('test_opus_filename', opus_filename)
+                # print('test_opus_filename', opus_filename)
                 upload_response = self.client.im.v1.file.create(
                     CreateFileRequest.builder()
                     .request_body(
@@ -628,10 +638,10 @@ class TTSGenerationHandler(FeishuActionHandler):
                 )
 
                 # 临时文件的删除应该在检查上传成功后进行
-                print('test_upload_response.data', upload_response.data)
-                print('test_upload_response.success()', upload_response.success())
-                print('test_upload_response.data.file_key', upload_response.data.file_key)
-                print('test_triggered', upload_response.success() and upload_response.data and upload_response.data.file_key)
+                # print('test_upload_response.data', upload_response.data)
+                # print('test_upload_response.success()', upload_response.success())
+                # print('test_upload_response.data.file_key', upload_response.data.file_key)
+                # print('test_triggered', upload_response.success() and upload_response.data and upload_response.data.file_key)
 
                 if upload_response.success() and upload_response.data and upload_response.data.file_key:
                     content = json.dumps({"file_key": upload_response.data.file_key})

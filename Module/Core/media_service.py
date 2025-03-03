@@ -114,7 +114,7 @@ class MediaService:
         except subprocess.CalledProcessError as e:
             raise RuntimeError(f"转换失败: {e.stderr.strip()}") from e
 
-    def generate_ai_image(self, prompt: str = None, image_input: Dict = None) -> Optional[str]:
+    def generate_ai_image(self, prompt: str = None, image_input: Dict = None) -> list:
         """
         使用AI生成图片或处理图片
 
@@ -123,7 +123,9 @@ class MediaService:
             image_input: 图片输入参数,用于图片处理
 
         Returns:
-            Optional[str]: 生成的图片文件路径，若生成失败则返回None
+            list: 生成的图片文件路径列表
+            - 返回None表示系统故障，需要管理员修复
+            - 返回空列表表示提示词不合适或处理失败
         """
         if self.gradio_client is None:
             return None
@@ -144,19 +146,31 @@ class MediaService:
         try:
             result = self.gradio_client.predict(**predict_kwargs)
 
+            # 系统级错误：结果无效或为空元组
             if not isinstance(result, tuple) or len(result) == 0:
                 return None
+
+            # 检查特殊情况：close_auth.png 表示需要管理员修复——这里其实是有问题的，因为写死了逻辑，回头再解耦吧——待处理
+            for path in result:
+                if path and "close_auth.png" in str(path):
+                    return None
+
+            # 检查特殊情况：close_filter.png 表示处理失败
+            for path in result:
+                if path and "close_filter.png" in str(path):
+                    return []
 
             # 返回所有非None的图片路径
             valid_paths = []
             for image_path in result:
                 if image_path is not None:
                     valid_paths.append(image_path)
-            return valid_paths if valid_paths else None
+
+            return valid_paths
 
         except Exception as e:
             print(f"AI图像生成失败: {e}")
-            return None
+            return None  # 系统错误返回None，表示需要管理员修复
 
     def generate_tts(self, text: str) -> Optional[bytes]:
         """
@@ -222,37 +236,43 @@ class CozeTTS:
                 "voice_type": "zh_female_gufengshaoyu_mars_bigtts"
             }
         }
-        print('test_payload', payload)
+        # print('test_payload', payload)
         try:
             # 获取音频URL
             response = requests.post(self.api_base, headers=headers, json=payload, timeout=60)
             response.raise_for_status()
+            result = response.json()
+            if result.get("code") != 0:
+                print(f"TTS生成失败: {response.status_code} - {response.text}")
+                return None
 
-            if response.status_code == 200:
-                result = response.json()
-                if result.get("code") == 0:
-                    data = json.loads(result.get("data", "{}"))
-                    url_mappings = {
-                        "gaoleng": "url",
-                        "speech": "link",
-                        "ruomei": "url"
-                    }
-                    print('test_data', data)
-                    # 查找第一个有效的音频URL
-                    audio_url = None
-                    for source, url_key in url_mappings.items():
-                        if data.get(source):
-                            audio_url = data[source].get(url_key)
-                            if audio_url:
-                                break
+            data = json.loads(result.get("data", "{}"))
+            url_mappings = {
+                "gaoleng": "url",
+                "speech": "link",
+                "ruomei": "url"
+            }
+            # print('test_data', data)
+            # 查找第一个有效的音频URL
+            audio_url = next(
+                (data[source].get(url_key) for source, url_key in url_mappings.items() if data.get(source)),
+                None
+            )
+            # audio_url = None
+            # for source, url_key in url_mappings.items():
+            #     if data.get(source):
+            #         audio_url = data[source].get(url_key)
+            #         if audio_url:
+            #             break
 
-                    if audio_url:
-                        # 下载音频
-                        audio_response = requests.get(audio_url, timeout=60)
-                        audio_response.raise_for_status()
-                        return audio_response.content
+            if audio_url:
+                # 下载音频
+                audio_response = requests.get(audio_url, timeout=60)
+                audio_response.raise_for_status()
+                return audio_response.content
+            else:
+                return None
 
-            return None
         except Exception as e:
             print(f"TTS流程失败: {e}")
             return None

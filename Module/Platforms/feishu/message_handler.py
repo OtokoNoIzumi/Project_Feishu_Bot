@@ -154,8 +154,8 @@ class FeishuMessageHandler(MessageHandler):
         action = response.extra_data.get("action", "")
         if action:
             # 如果是处理特殊操作，则使用chat_id作为receive_id
-            print(f"[DEBUG] 回复消息 - 原始消息: {original_message}")
-            print(f"[DEBUG] 回复消息 - 原始消息: {original_message.__dict__}")
+            # print(f"[DEBUG] 回复消息 - 原始消息: {original_message}")
+            # print(f"[DEBUG] 回复消息 - 原始消息: {original_message.__dict__}")
             return self._handle_action(action, response, original_message.chat_id, original_message)
 
         # 如果是p2p对话，使用chat_id发送
@@ -312,9 +312,9 @@ class FeishuMessageHandler(MessageHandler):
         if original_message:
             kwargs["message_id"] = original_message.message_id
             kwargs["data"] = original_message # 向后兼容之前的全量数据
-        print('test_kwargs', kwargs)
-        print('test_receive_id', receive_id)
-        print('test_receive_id_type', receive_id_type)
+        # print('test_kwargs', kwargs)
+        # print('test_receive_id', receive_id)
+        # print('test_receive_id_type', receive_id_type)
 
         # 调用处理器处理请求
         return handler.handle(receive_id, receive_id_type, **kwargs)
