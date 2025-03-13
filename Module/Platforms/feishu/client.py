@@ -5,11 +5,14 @@
 """
 
 import os
-import time
-from typing import Any, Dict, Callable, Optional, List
+from typing import Any, Dict, Callable, Optional
 
 import lark_oapi as lark
 from lark_oapi.api.contact.v3 import GetUserRequest
+from lark_oapi.api.im.v1 import (
+    CreateMessageRequest,
+    CreateMessageRequestBody,
+)
 
 from Module.Interface.platform import Platform
 from Module.Interface.message import Message, MessageResponse, MessageHandler
@@ -64,6 +67,7 @@ class FeishuPlatform(Platform):
             event_dispatcher = (
                 lark.EventDispatcherHandler.builder("", "")
                 .register_p2_im_message_receive_v1(self._handle_p2_im_message_receive_v1)
+                .register_p2_application_bot_menu_v6(self._handle_application_bot_menu_v6)  # 注册处理器
                 .build()
             )
             self.ws_client = lark.ws.Client(
@@ -117,7 +121,7 @@ class FeishuPlatform(Platform):
         debug_utils.log_and_print("飞书平台WebSocket连接已建立，等待接收消息...", log_level="INFO")
 
     def stop(self) -> None:
-        """停止平台服务"""
+        """停止平台服务，很可能有问题"""
         if self.ws_client:
             self.ws_client.stop()
             debug_utils.log_and_print("飞书平台WebSocket连接已关闭", log_level="INFO")
@@ -181,11 +185,6 @@ class FeishuPlatform(Platform):
         Returns:
             bool: 是否发送成功
         """
-        from lark_oapi.api.im.v1 import (
-            CreateMessageRequest,
-            CreateMessageRequestBody,
-        )
-
         request = CreateMessageRequest.builder().receive_id_type("open_id").request_body(
             CreateMessageRequestBody.builder()
             .receive_id(receive_id)
@@ -209,7 +208,7 @@ class FeishuPlatform(Platform):
         message = self.message_handler.parse_message(data)
 
         # 记录基本信息
-        event_time = data.header.create_time or time.time()
+        # event_time = data.header.create_time or time.time()
         event_id = data.header.event_id
         sender_name = self.get_user_name(message.sender_id)
 
@@ -235,3 +234,37 @@ class FeishuPlatform(Platform):
             if response:
                 # 回复消息
                 self.message_handler.reply_message(message, response)
+
+    def _handle_application_bot_menu_v6(self, data) -> None:
+        """
+        处理飞书消息接收事件
+
+        Args:
+            data: 飞书事件数据
+        """
+        # 解析消息
+        message = self.message_handler.parse_bot_menu_click(data)
+        # event_time = data.header.create_time or time.time()
+        event_id = data.header.event_id
+        sender_name = self.get_user_name(message.sender_id)
+
+        # 记录详细日志
+        print('--------------------------------')
+        debug_utils.log_and_print(
+            f"收到消息事件 - ID: {event_id}",
+            f"发送者: {sender_name} ({message.sender_id})",
+            f"消息类型: {message.msg_type}",
+            log_level="INFO"
+        )
+
+        app_id = data.header.app_id
+        user_open_id = data.event.operator.operator_id.open_id
+        event_key = data.event.event_key
+        print(f"[DEBUG] 收到[{app_id}]消息，开始处理: [{event_key}]，来自[{user_open_id}]")
+
+        response = self.bot_service.handle_message(message)
+        # response.extra_data['receive_id'] = user_open_id
+        print(f"[DEBUG] 处理结果: {response.__dict__}")
+        if response:
+            # 回复消息
+            self.message_handler.send_message(response)

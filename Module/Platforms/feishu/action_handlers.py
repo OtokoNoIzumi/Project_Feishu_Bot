@@ -7,23 +7,26 @@
 import os
 import json
 import base64
+import tempfile
 import subprocess
 import shutil
+import traceback
 from pathlib import Path
-from typing import Dict, Any, Optional, Tuple
-from io import BytesIO
 
 from lark_oapi.api.im.v1 import (
     CreateMessageRequest,
     CreateMessageRequestBody,
+    CreateChatRequest,
+    CreateChatRequestBody,
     CreateImageRequest,
     CreateImageRequestBody,
     CreateFileRequest,
     CreateFileRequestBody,
+    GetMessageResourceRequest,
 )
 
-from Module.Common.scripts.common import debug_utils
-from Module.Interface.message import MessageType
+# from Module.Common.scripts.common import debug_utils
+# from Module.Interface.message import MessageType
 
 
 class FeishuActionHandler:
@@ -71,7 +74,6 @@ class FeishuActionHandler:
                 # 按照main.py的逻辑实现，使用chat_type决定发送方式
                 if chat_type == "p2p":
                     # 对于p2p对话，使用chat_id发送
-                    from lark_oapi.api.im.v1 import CreateMessageRequest, CreateMessageRequestBody
 
                     request = CreateMessageRequest.builder().receive_id_type("chat_id").request_body(
                         CreateMessageRequestBody.builder()
@@ -104,13 +106,13 @@ class FeishuActionHandler:
             else:
                 # 兼容旧逻辑，根据receive_id_type决定发送方式
                 # print(f"[DEBUG] 无原始消息数据，使用receive_id_type: {receive_id_type}")
+                print(f"[DEBUG 旧版本调用排查] 无原始消息数据，使用receive_id_type: {receive_id_type}")
                 if receive_id_type == "chat_id":
                     # 对于chat_id使用chat.create API
-                    from lark_oapi.api.im.v1 import CreateChatRequest, CreateChatRequestBody
 
                     request = CreateChatRequest.builder().request_body(
                         CreateChatRequestBody.builder()
-                        .chat_id(receive_id)
+                        .chat_id(receive_id)  # 这里可能有问题？
                         .msg_type(msg_type)
                         .content(content)
                         .build()
@@ -147,7 +149,6 @@ class FeishuActionHandler:
 
         except Exception as e:
             print(f"[ERROR] 发送消息异常: {str(e)}")
-            import traceback
             print(f"[ERROR] 异常堆栈: {traceback.format_exc()}")
             return False
 
@@ -248,9 +249,9 @@ class ImageGenerationHandler(FeishuActionHandler):
                 if image_paths is None:
                     # 结果是None，对应main.py中的图片生成故障情况
                     return self.send_notification(receive_id, receive_id_type, "图片生成故障，已经通知管理员修复咯！", data=message_data)
-                else:
-                    # 结果是空列表，对应main.py中的全部为None的情况
-                    return self.send_notification(receive_id, receive_id_type, "图片生成失败了，建议您换个提示词再试试", data=message_data)
+                # else:
+                # 结果是空列表，对应main.py中的全部为None的情况
+                return self.send_notification(receive_id, receive_id_type, "图片生成失败了，建议您换个提示词再试试", data=message_data)
 
             # 跟踪是否至少有一个图片成功处理
             success_count = 0
@@ -298,8 +299,8 @@ class ImageGenerationHandler(FeishuActionHandler):
             # 所有图片处理完成后检查结果
             if success_count > 0:
                 return True
-            else:
-                return self.send_notification(receive_id, receive_id_type, "没有成功处理任何图片", data=message_data)
+            # else:
+            return self.send_notification(receive_id, receive_id_type, "没有成功处理任何图片", data=message_data)
 
         except Exception as e:
             return self.send_notification(
@@ -331,7 +332,6 @@ class ImageProcessHandler(FeishuActionHandler):
         self.send_notification(receive_id, receive_id_type, "正在转换图片风格，请稍候...", data=message_data)
 
         # 获取图片内容
-        from lark_oapi.api.im.v1 import GetMessageResourceRequest
 
         request = GetMessageResourceRequest.builder() \
             .message_id(message_id) \
@@ -399,9 +399,9 @@ class ImageProcessHandler(FeishuActionHandler):
                 if image_paths is None:
                     # 结果是None，对应main.py中的图片处理故障情况
                     return self.send_notification(receive_id, receive_id_type, "图片处理故障，已经通知管理员修复咯！", data=message_data)
-                else:
+                # else:
                     # 结果是空列表，对应main.py中的处理失败情况
-                    return self.send_notification(receive_id, receive_id_type, "图片处理失败了，请尝试使用其他图片", data=message_data)
+                return self.send_notification(receive_id, receive_id_type, "图片处理失败了，请尝试使用其他图片", data=message_data)
 
             # 跟踪是否至少有一个图片成功处理
             success_count = 0
@@ -439,8 +439,8 @@ class ImageProcessHandler(FeishuActionHandler):
             # 所有图片处理完成后检查结果
             if success_count > 0:
                 return True
-            else:
-                return self.send_notification(receive_id, receive_id_type, "没有成功处理任何图片", data=message_data)
+            # else:
+            return self.send_notification(receive_id, receive_id_type, "没有成功处理任何图片", data=message_data)
 
         except Exception as e:
             return self.send_notification(
@@ -483,13 +483,13 @@ class SampleImageHandler(FeishuActionHandler):
             ):
                 content = json.dumps({"image_key": upload_response.data.image_key})
                 return self._create_message(receive_id, receive_id_type, "image", content, data=message_data)
-            else:
-                return self.send_notification(
-                    receive_id,
-                    receive_id_type,
-                    f"图片上传失败: {upload_response.code} - {upload_response.msg}",
-                    data=message_data
-                )
+            # else:
+            return self.send_notification(
+                receive_id,
+                receive_id_type,
+                f"图片上传失败: {upload_response.code} - {upload_response.msg}",
+                data=message_data
+            )
 
 
 class SampleAudioHandler(FeishuActionHandler):
@@ -565,13 +565,13 @@ class SampleAudioHandler(FeishuActionHandler):
                 if upload_response.success() and upload_response.data and upload_response.data.file_key:
                     content = json.dumps({"file_key": upload_response.data.file_key})
                     return self._create_message(receive_id, receive_id_type, "audio", content, data=message_data)
-                else:
-                    return self.send_notification(
-                        receive_id,
-                        receive_id_type,
-                        f"音频上传失败: {upload_response.code} - {upload_response.msg}",
-                        data=message_data
-                    )
+                # else:
+                return self.send_notification(
+                    receive_id,
+                    receive_id_type,
+                    f"音频上传失败: {upload_response.code} - {upload_response.msg}",
+                    data=message_data
+                )
 
         except Exception as e:
             return self.send_notification(receive_id, receive_id_type, f"音频处理错误: {str(e)}", data=message_data)
@@ -602,7 +602,6 @@ class TTSGenerationHandler(FeishuActionHandler):
             return self.send_notification(receive_id, receive_id_type, "TTS生成失败", data=message_data)
 
         # 保存为临时MP3文件
-        import tempfile
         with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as temp_file:
             temp_mp3_path = temp_file.name
             temp_file.write(audio_data)
@@ -622,6 +621,7 @@ class TTSGenerationHandler(FeishuActionHandler):
                 return self.send_notification(receive_id, receive_id_type, "音频格式转换失败", data=message_data)
 
             # 上传并发送音频
+            file_key = None
             with open(opus_path, "rb") as audio_file:
                 opus_filename = os.path.basename(opus_path)
                 # print('test_opus_filename', opus_filename)
@@ -637,36 +637,34 @@ class TTSGenerationHandler(FeishuActionHandler):
                     ).build()
                 )
 
-                # 临时文件的删除应该在检查上传成功后进行
-                # print('test_upload_response.data', upload_response.data)
-                # print('test_upload_response.success()', upload_response.success())
-                # print('test_upload_response.data.file_key', upload_response.data.file_key)
-                # print('test_triggered', upload_response.success() and upload_response.data and upload_response.data.file_key)
-
+                # 保存file_key以便在with块外使用
                 if upload_response.success() and upload_response.data and upload_response.data.file_key:
-                    content = json.dumps({"file_key": upload_response.data.file_key})
-                    # 删除临时文件
-                    try:
-                        os.unlink(temp_mp3_path)
-                        os.unlink(opus_path)
-                    except Exception as e:
-                        print(f"[WARNING] 清理临时文件失败: {e}")
+                    file_key = upload_response.data.file_key
 
-                    return self._create_message(receive_id, receive_id_type, "audio", content, data=message_data)
-                else:
-                    # 清理临时文件
-                    try:
-                        os.unlink(temp_mp3_path)
-                        os.unlink(opus_path)
-                    except Exception as e:
-                        print(f"[WARNING] 清理临时文件失败: {e}")
+            # 在with块外处理响应和清理文件
+            if file_key:
+                content = json.dumps({"file_key": file_key})
+                # 删除临时文件
+                try:
+                    os.unlink(temp_mp3_path)
+                    os.unlink(opus_path)
+                except Exception as e:
+                    print(f"[WARNING] 清理临时文件失败: {e}")
 
-                    return self.send_notification(
-                        receive_id,
-                        receive_id_type,
-                        f"TTS音频上传失败: {upload_response.code} - {upload_response.msg}",
-                        data=message_data
-                    )
+                return self._create_message(receive_id, receive_id_type, "audio", content, data=message_data)
+            # 清理临时文件
+            try:
+                os.unlink(temp_mp3_path)
+                os.unlink(opus_path)
+            except Exception as e:
+                print(f"[WARNING] 清理临时文件失败: {e}")
+
+            return self.send_notification(
+                receive_id,
+                receive_id_type,
+                f"TTS音频上传失败: {upload_response.code if hasattr(upload_response, 'code') else 'Unknown'} - {upload_response.msg if hasattr(upload_response, 'msg') else 'Unknown error'}",
+                data=message_data
+            )
         except Exception as e:
             # 清理临时文件
             if os.path.exists(temp_mp3_path):

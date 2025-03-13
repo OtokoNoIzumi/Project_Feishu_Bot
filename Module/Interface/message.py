@@ -6,7 +6,7 @@
 
 from abc import ABC, abstractmethod
 from enum import Enum
-from typing import Dict, Any, Optional, Union, List, Callable
+from typing import Dict, Any, Optional
 
 
 class MessageType(Enum):
@@ -16,6 +16,7 @@ class MessageType(Enum):
     AUDIO = "audio"
     FILE = "file"
     POST = "post"  # 富文本
+    MENU_CLICK = "menu_click"  # 菜单点击
     UNKNOWN = "unknown"
 
 
@@ -96,7 +97,6 @@ class MessageHandler(ABC):
         Returns:
             Message: 统一消息结构
         """
-        pass
 
     @abstractmethod
     def send_message(self, response: MessageResponse) -> bool:
@@ -109,7 +109,6 @@ class MessageHandler(ABC):
         Returns:
             bool: 是否发送成功
         """
-        pass
 
     @abstractmethod
     def reply_message(self, original_message: Message, response: MessageResponse) -> bool:
@@ -123,7 +122,6 @@ class MessageHandler(ABC):
         Returns:
             bool: 是否回复成功
         """
-        pass
 
     @abstractmethod
     def get_resource(self, message: Message, resource_key: str) -> Optional[bytes]:
@@ -137,7 +135,6 @@ class MessageHandler(ABC):
         Returns:
             Optional[bytes]: 资源二进制数据，若获取失败则返回None
         """
-        pass
 
     @abstractmethod
     def upload_resource(self, resource_type: MessageType, resource_data: bytes,
@@ -154,4 +151,3 @@ class MessageHandler(ABC):
         Returns:
             Optional[str]: 资源标识键，若上传失败则返回None
         """
-        pass

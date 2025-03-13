@@ -4,13 +4,11 @@
 该模块实现了飞书平台的消息处理
 """
 
+from io import BytesIO
 import json
 import os
-import base64
-from typing import Any, Dict, Optional, Tuple
-from pathlib import Path
+from typing import Any, Optional
 
-import lark_oapi as lark
 from lark_oapi.api.im.v1 import (
     CreateMessageRequest,
     CreateMessageRequestBody,
@@ -41,6 +39,28 @@ class FeishuMessageHandler(MessageHandler):
         """
         self.client = client
         self.bot_service = bot_service
+
+    def parse_bot_menu_click(self, platform_message: Any) -> Message:
+        """
+        解析飞书应用消息
+        """
+        event_id = ""
+        if hasattr(platform_message, "header") and hasattr(platform_message.header, "event_id"):
+            event_id = platform_message.header.event_id
+
+        app_id = platform_message.header.app_id
+        event_key = platform_message.event.event_key
+        user_open_id = platform_message.event.operator.operator_id.open_id
+        content = ""
+        msg_type = MessageType.MENU_CLICK
+
+        return Message(
+            msg_type=msg_type,
+            content=content,
+            sender_id=user_open_id,
+            message_id=event_id,
+            extra_data={"app_id": app_id, "event_key": event_key}
+        )
 
     def parse_message(self, platform_message: Any) -> Message:
         """
@@ -74,22 +94,19 @@ class FeishuMessageHandler(MessageHandler):
             content = msg_data.content
             msg_type = MessageType.IMAGE
             # 记录image_key方便后续处理
-            try:
-                image_content = json.loads(content)
-                if "image_key" in image_content:
-                    extra_data["image_key"] = image_content["image_key"]
-            except:
-                pass
+
+            image_content = json.loads(content)
+            image_key = image_content.get("image_key")
+            if image_key:
+                extra_data["image_key"] = image_key
         elif msg_data.message_type == "audio":
             content = msg_data.content
             msg_type = MessageType.AUDIO
             # 记录file_key方便后续处理
-            try:
-                audio_content = json.loads(content)
-                if "file_key" in audio_content:
-                    extra_data["file_key"] = audio_content["file_key"]
-            except:
-                pass
+            audio_content = json.loads(content)
+            file_key = audio_content.get("file_key")
+            if file_key:
+                extra_data["file_key"] = file_key
         elif msg_data.message_type == "file":
             content = msg_data.content
             msg_type = MessageType.FILE
@@ -214,8 +231,9 @@ class FeishuMessageHandler(MessageHandler):
 
         return response.file.read()
 
-    def upload_resource(self, resource_type: MessageType, resource_data: bytes,
-                      file_name: str = "", **kwargs) -> Optional[str]:
+    def upload_resource(
+            self, resource_type: MessageType, resource_data: bytes,
+            file_name: str = "", **kwargs) -> Optional[str]:
         """
         上传资源（图片、音频等）
 
@@ -230,7 +248,6 @@ class FeishuMessageHandler(MessageHandler):
         """
         if resource_type == MessageType.IMAGE:
             # 上传图片
-            from io import BytesIO
             image_file = BytesIO(resource_data)
             upload_response = self.client.im.v1.image.create(
                 CreateImageRequest.builder()
@@ -252,7 +269,6 @@ class FeishuMessageHandler(MessageHandler):
 
         elif resource_type == MessageType.AUDIO:
             # 上传音频文件
-            from io import BytesIO
             audio_file = BytesIO(resource_data)
             duration = kwargs.get("duration", "0")
 
@@ -274,8 +290,9 @@ class FeishuMessageHandler(MessageHandler):
         # 其他文件类型暂不支持
         return None
 
-    def _handle_action(self, action: str, response: MessageResponse,
-                     receive_id: str, original_message: Message = None) -> bool:
+    def _handle_action(
+            self, action: str, response: MessageResponse,
+            receive_id: str, original_message: Message = None) -> bool:
         """
         处理特殊操作
 
@@ -311,7 +328,7 @@ class FeishuMessageHandler(MessageHandler):
         # 如果存在原始消息，添加message_id
         if original_message:
             kwargs["message_id"] = original_message.message_id
-            kwargs["data"] = original_message # 向后兼容之前的全量数据
+            kwargs["data"] = original_message  # 向后兼容之前的全量数据
         # print('test_kwargs', kwargs)
         # print('test_receive_id', receive_id)
         # print('test_receive_id_type', receive_id_type)

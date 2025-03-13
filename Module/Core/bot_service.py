@@ -5,13 +5,9 @@
 """
 
 import os
-import time
 import json
-import tempfile
 import random
-import datetime
-import base64
-from typing import List, Dict, Any, Optional, Tuple, Union
+from typing import List, Dict, Optional, Tuple
 
 from Module.Interface.message import Message, MessageType, MessageResponse
 from Module.Core.cache_service import CacheService
@@ -125,16 +121,47 @@ class BotService:
         # 根据消息类型处理
         if message.msg_type == MessageType.TEXT:
             return self._handle_text_message(message)
-        elif message.msg_type == MessageType.IMAGE:
+
+        if message.msg_type == MessageType.IMAGE:
             return self._handle_image_message(message)
-        elif message.msg_type == MessageType.AUDIO:
+
+        if message.msg_type == MessageType.AUDIO:
             return self._handle_audio_message(message)
+
+        if message.msg_type == MessageType.MENU_CLICK:
+            return self._handle_menu_click_message(message)
+
+        return MessageResponse(
+            MessageType.TEXT,
+            json.dumps({"text": "无法处理该类型的消息"}),
+            success=True
+        )
+
+    def _handle_menu_click_message(self, message: Message) -> MessageResponse:
+        """
+        处理菜单点击消息
+        """
+        event_key = message.extra_data.get("event_key", "")
+        if event_key == "get_bili_url":
+            # 获取B站视频URL
+            # 检查本地缓存的有效期（2小时）
+            # 如果缓存失效，就从Notion更新最新数据，并更新缓存时间戳
+            # 从最新的缓存中按照优先级，过滤条件（不是已读、场合不能包括避免手机）按照优先级和时长分组随机选择一个视频URL
+            # 分组的优先级的顺序是10分钟内，High、Midium，10分钟外 High 10分钟内 Low 10分钟外 Midium Low
+            # 要考虑一下到底是从Notion原生做一点过滤，还是直接在缓存里操作
+            # 考虑到卡片还不熟悉，组装一下TEXT和URL一起发给用户
+            # 如果能获得消息点击记录就最好了，如果不能就默认立刻点击了
+            # 点击之后回调设置Notion的记录为已读，也设置缓存的记录为已读
+            content = "你的B站视频来啦~"
         else:
-            return MessageResponse(
-                MessageType.TEXT,
-                json.dumps({"text": "无法处理该类型的消息"}),
-                success=True
-            )
+            content = "收到菜单点击消息"
+        response_message = MessageResponse(
+            MessageType.TEXT,
+            json.dumps({"text": content}),
+            success=True
+        )
+        response_message.extra_data['receive_id'] = message.sender_id
+        return response_message
 
     def _handle_text_message(self, message: Message) -> MessageResponse:
         """
@@ -157,45 +184,45 @@ class BotService:
                     json.dumps({"text": f"收到消息: {user_msg}"}),
                     success=True
                 )
-            else:
-                command_parts = user_msg[len(self.update_config_trigger):].strip().split(maxsplit=1)
-                if len(command_parts) == 2:
-                    variable_name = command_parts[0].strip()
-                    new_value = command_parts[1].strip()
-                    if variable_name in self.supported_variables:
-                        success, reply_text = self.config_service.update_config(
-                            variable_name,
-                            new_value,
-                            self.validators
-                        )
-                        return MessageResponse(
-                            MessageType.TEXT,
-                            json.dumps({"text": reply_text}),
-                            success=success
-                        )
-                    else:
-                        error_msg = (
-                            f"不支持更新变量 '{variable_name}'，"
-                            f"只能更新: {', '.join(self.supported_variables)}"
-                        )
-                        return MessageResponse(
-                            MessageType.TEXT,
-                            json.dumps({"text": error_msg}),
-                            success=False
-                        )
-                else:
-                    error_msg = (
-                        f"格式错误，请使用 '{self.update_config_trigger} 变量名 新值' 格式，"
-                        f"例如：{self.update_config_trigger} cookies xxxx"
+            # 不需要else了，直接返回错误信息
+            command_parts = user_msg[len(self.update_config_trigger):].strip().split(maxsplit=1)
+            if len(command_parts) == 2:
+                variable_name = command_parts[0].strip()
+                new_value = command_parts[1].strip()
+                if variable_name in self.supported_variables:
+                    success, reply_text = self.config_service.update_config(
+                        variable_name,
+                        new_value,
+                        self.validators
                     )
                     return MessageResponse(
                         MessageType.TEXT,
-                        json.dumps({"text": error_msg}),
-                        success=False
+                        json.dumps({"text": reply_text}),
+                        success=success
                     )
+                # 不需要else了，直接返回错误信息
+                error_msg = (
+                    f"不支持更新变量 '{variable_name}'，"
+                    f"只能更新: {', '.join(self.supported_variables)}"
+                )
+                return MessageResponse(
+                    MessageType.TEXT,
+                    json.dumps({"text": error_msg}),
+                    success=False
+                )
+            # 不需要else了，直接返回错误信息
+            error_msg = (
+                f"格式错误，请使用 '{self.update_config_trigger} 变量名 新值' 格式，"
+                f"例如：{self.update_config_trigger} cookies xxxx"
+            )
+            return MessageResponse(
+                MessageType.TEXT,
+                json.dumps({"text": error_msg}),
+                success=False
+            )
 
         # 帮助指令
-        elif "帮助" in user_msg:
+        if "帮助" in user_msg:
             self.log_and_print(f"收到 [帮助demo指令] 文本消息: {user_msg}", log_level="INFO")
             help_text = (
                 "<b>我可以帮你做这些事情：</b>\n\n"
@@ -216,7 +243,7 @@ class BotService:
             )
 
         # 富文本指令
-        elif "富文本" in user_msg:
+        if "富文本" in user_msg:
             self.log_and_print(f"收到 [富文本demo指令] 消息: {user_msg}", log_level="INFO")
             # 富文本示例在具体平台实现中处理，这里返回一个标记
             return MessageResponse(
@@ -227,7 +254,7 @@ class BotService:
             )
 
         # B站视频推荐
-        elif "B站" in user_msg or "视频" in user_msg:
+        if "B站" in user_msg or "视频" in user_msg:
             self.log_and_print(f"收到 [视频推荐demo指令] 文本消息: {user_msg}", log_level="INFO")
             video = random.choice(self.bili_videos)
             response_text = (
@@ -242,7 +269,7 @@ class BotService:
             )
 
         # AI生图指令
-        elif "生图" in user_msg or "AI画图" in user_msg:
+        if "生图" in user_msg or "AI画图" in user_msg:
             self.log_and_print(f"收到 [AI生图指令] 文本消息: {user_msg}", log_level="INFO")
 
             # 发送等待消息
@@ -256,7 +283,7 @@ class BotService:
             )
 
         # 图片分享
-        elif "图片" in user_msg or "壁纸" in user_msg:
+        if "图片" in user_msg or "壁纸" in user_msg:
             self.log_and_print(f"收到 [图片demo指令] 文本消息: {user_msg}", log_level="INFO")
             return MessageResponse(
                 MessageType.TEXT,
@@ -266,7 +293,7 @@ class BotService:
             )
 
         # 音频分享
-        elif "音频" in user_msg:
+        if "音频" in user_msg:
             self.log_and_print(f"收到 [音频demo指令] 文本消息: {user_msg}", log_level="INFO")
             return MessageResponse(
                 MessageType.TEXT,
@@ -276,7 +303,7 @@ class BotService:
             )
 
         # 配音生成
-        elif "配音" in user_msg:
+        if "配音" in user_msg:
             self.log_and_print(f"收到 [配音指令] 文本消息: {user_msg}", log_level="INFO")
             tts_text = user_msg.split("配音", 1)[1].strip()
 
@@ -288,7 +315,7 @@ class BotService:
             )
 
         # 问候
-        elif "你好" in user_msg:
+        if "你好" in user_msg:
             self.log_and_print(f"收到 [问候demo指令] 文本消息: {user_msg}", log_level="INFO")
             return MessageResponse(
                 MessageType.TEXT,
@@ -297,13 +324,12 @@ class BotService:
             )
 
         # 默认回复
-        else:
-            self.log_and_print(f"收到 [文本消息] ，启用默认回复: {user_msg}", log_level="INFO")
-            return MessageResponse(
-                MessageType.TEXT,
-                json.dumps({"text": f"收到你发送的消息：{user_msg}"}),
-                success=True
-            )
+        self.log_and_print(f"收到 [文本消息] ，启用默认回复: {user_msg}", log_level="INFO")
+        return MessageResponse(
+            MessageType.TEXT,
+            json.dumps({"text": f"收到你发送的消息：{user_msg}"}),
+            success=True
+        )
 
     def _handle_image_message(self, message: Message) -> MessageResponse:
         """
@@ -327,7 +353,7 @@ class BotService:
 
     def _handle_audio_message(self, message: Message) -> MessageResponse:
         """
-        处理音频消息
+        处理音频消息（临时）
 
         Args:
             message: 音频消息
@@ -345,19 +371,19 @@ class BotService:
         )
 
     def send_daily_schedule(self) -> None:
-        """发送每日日程信息"""
+        """发送每日日程信息（临时）"""
         schedule_text = "今日日程:\n- 上午 9:00  会议\n- 下午 2:00  代码 Review"
         self.log_and_print("发送每日日程", log_level="INFO")
         # 返回结果由调用者处理
 
     def send_bilibili_updates(self) -> None:
-        """发送B站更新信息"""
+        """发送B站更新信息（临时）"""
         update_text = "B站更新:\n- XXX up主发布了新视频：[视频标题](视频链接)"
         self.log_and_print("发送B站更新", log_level="INFO")
         # 返回结果由调用者处理
 
     def send_daily_summary(self) -> None:
-        """发送每日工作总结"""
+        """发送每日工作总结（临时）"""
         summary_text = "每日总结:\n- 今日完成 XX 任务\n- 发现 XX 问题"
         self.log_and_print("发送每日总结", log_level="INFO")
         # 返回结果由调用者处理
