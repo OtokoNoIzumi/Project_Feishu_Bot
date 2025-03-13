@@ -303,7 +303,6 @@ class FeishuPlatform(Platform):
         except Exception as e:
             debug_utils.log_and_print(f"处理菜单点击事件失败: {e}", log_level="ERROR")
             debug_utils.log_and_print(traceback.format_exc(), log_level="DEBUG")
-
     def _handle_im_message_action_v1(self, data) -> None:
         """
         处理飞书卡片交互事件
@@ -321,16 +320,12 @@ class FeishuPlatform(Platform):
                 debug_utils.log_and_print(f"重复的卡片交互事件，跳过处理", log_level="INFO")
                 return
 
-            print(f"[DEBUG] 收到卡片交互事件: {event_id}, action类型: {type(action)}")
-            print(f"[DEBUG] 卡片交互action内容: {action}")
-
             # 记录事件
             if self.bot_service:
                 self.bot_service.cache_service.add_event(event_id)
 
-            # 提取必要的信息
+            # 直接从action中提取value
             value = action.value
-            open_id = data.event.operator.operator_id.open_id
 
             # 提取action类型
             action_type = ""
@@ -343,8 +338,6 @@ class FeishuPlatform(Platform):
                 except:
                     pass
 
-            print(f"[DEBUG] 卡片交互动作类型: {action_type}, 用户ID: {open_id}")
-
             # 调用对应的处理器
             if action_type and self.bot_service:
                 # 创建异步任务处理函数
@@ -352,12 +345,11 @@ class FeishuPlatform(Platform):
                     try:
                         handler = self.message_handler._create_handler(action_type, self.client, self.bot_service)
                         if handler:
-                            await handler.handle(open_id, "open_id", value=value)
-                        else:
-                            print(f"[ERROR] 未找到处理器: {action_type}")
+                            # 使用空字符串作为接收者ID，因为处理器会从value中获取pageid
+                            await handler.handle("", "open_id", value=value)
                     except Exception as e:
-                        print(f"[ERROR] 处理卡片交互失败: {e}")
-                        print(traceback.format_exc())
+                        debug_utils.log_and_print(f"处理卡片交互失败: {e}", log_level="ERROR")
+                        debug_utils.log_and_print(traceback.format_exc(), log_level="DEBUG")
 
                 # 在事件循环中运行
                 if asyncio.get_event_loop().is_running():

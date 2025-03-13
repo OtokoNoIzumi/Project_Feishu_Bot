@@ -106,7 +106,7 @@ class FeishuActionHandler:
             else:
                 # 兼容旧逻辑，根据receive_id_type决定发送方式
                 # print(f"[DEBUG] 无原始消息数据，使用receive_id_type: {receive_id_type}")
-                print(f"[DEBUG 旧版本调用排查] 无原始消息数据，使用receive_id_type: {receive_id_type}")
+                # print(f"[DEBUG 旧版本调用排查] 无原始消息数据，使用receive_id_type: {receive_id_type}")
                 if receive_id_type == "chat_id":
                     # 对于chat_id使用chat.create API
 
@@ -715,7 +715,7 @@ class BiliVideoHandler(FeishuActionHandler):
                     json.dumps({"text": "暂时没有找到适合你的B站视频，请稍后再试"})
                 )
 
-            # 构建卡片消息
+            # 构建卡片消息，优化布局使排版更加统一
             card = {
                 "config": {
                     "wide_screen_mode": True
@@ -729,7 +729,7 @@ class BiliVideoHandler(FeishuActionHandler):
                             "content": f"**📽️ {video['title']}**"
                         }
                     },
-                    # 视频描述和URL
+                    # 视频基本信息 - 作者、优先级
                     {
                         "tag": "div",
                         "fields": [
@@ -746,17 +746,10 @@ class BiliVideoHandler(FeishuActionHandler):
                                     "tag": "lark_md",
                                     "content": f"**优先级:** {video.get('chinese_priority', '未知')}"
                                 }
-                            },
-                            {
-                                "is_short": True,
-                                "text": {
-                                    "tag": "lark_md",
-                                    "content": f"**时长:** {video.get('duration_str', '未知')}"
-                                }
                             }
                         ]
                     },
-                    # 来源和日期信息
+                    # 视频基本信息 - 时长、来源
                     {
                         "tag": "div",
                         "fields": [
@@ -764,17 +757,29 @@ class BiliVideoHandler(FeishuActionHandler):
                                 "is_short": True,
                                 "text": {
                                     "tag": "lark_md",
-                                    "content": f"**来源:** {video.get('chinese_source', '未知')}"
+                                    "content": f"**时长:** {video.get('duration_str', '未知')}"
                                 }
                             },
                             {
                                 "is_short": True,
                                 "text": {
                                     "tag": "lark_md",
-                                    "content": f"**投稿日期:** {video.get('upload_date', '未知')}"
+                                    "content": f"**来源:** {video.get('chinese_source', '未知')}"
                                 }
                             }
                         ]
+                    },
+                    # 投稿日期
+                    {
+                        "tag": "div",
+                        "text": {
+                            "tag": "lark_md",
+                            "content": f"**投稿日期:** {video.get('upload_date', '未知')}"
+                        }
+                    },
+                    # 分隔线
+                    {
+                        "tag": "hr"
                     },
                     # 推荐概要
                     {
@@ -883,7 +888,6 @@ class MarkBiliReadHandler(FeishuActionHandler):
                     value = {}
 
             pageid = value.get("pageid", "")
-            print(f"[DEBUG] MarkBiliReadHandler - 获取到pageid: {pageid}, value类型: {type(value)}")
 
             if not pageid:
                 print("[ERROR] MarkBiliReadHandler - 未找到pageid")
@@ -895,9 +899,7 @@ class MarkBiliReadHandler(FeishuActionHandler):
                 )
 
             # 标记为已读
-            print(f"[DEBUG] MarkBiliReadHandler - 开始标记为已读, pageid: {pageid}")
             success = await self.bot_service.notion_service.mark_video_as_read(pageid)
-            print(f"[DEBUG] MarkBiliReadHandler - 标记结果: {success}")
 
             if success:
                 return self._create_message(

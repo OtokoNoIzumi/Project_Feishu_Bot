@@ -1,48 +1,6 @@
 {
   "bili_videos_cache": [
     {
-      "pageid": "1b536d82-1893-81f9-9e72-ddf14616eef0",
-      "title": "试用期离职，面试时如何解释？",
-      "url": "https://www.bilibili.com/video/BV1PnQNYxEeZ",
-      "author": "产品老曾",
-      "priority": "Medium",
-      "chinese_priority": "中",
-      "duration": 3.5999999999999996,
-      "duration_str": "3分35秒",
-      "summary": "本视频提供了三种面试中解释试用期离职的实用技巧，帮助求职者有效应对面试难题。",
-      "upload_date": "2025-03-13",
-      "source": "dynamic",
-      "chinese_source": "关注动态"
-    },
-    {
-      "pageid": "1b536d82-1893-8195-a160-d5128f2a1059",
-      "title": "AI直接操作电脑建模！MCP这个词今年一定要知道！【blender-mcp手把手安装教程】",
-      "url": "https://www.bilibili.com/video/BV1pHQNYREAX",
-      "author": "AI研究室-帆哥",
-      "priority": "Medium",
-      "chinese_priority": "中",
-      "duration": 6.0,
-      "duration_str": "6分钟",
-      "summary": "了解MCP框架如何赋能AI自主建模，探索AI Agent在Blender软件中的应用，展望AI与行业结合的未来潜力。",
-      "upload_date": "2025-03-13",
-      "source": "dynamic",
-      "chinese_source": "关注动态"
-    },
-    {
-      "pageid": "1b536d82-1893-81fc-bf2b-c08459b3e447",
-      "title": "「AppAgentX」西湖大学AI新成果❗️聪明+高效+自我进化🧬",
-      "url": "https://www.bilibili.com/video/BV13vDfYQEMP",
-      "author": "鱼C-小甲鱼",
-      "priority": "Medium",
-      "chinese_priority": "中",
-      "duration": 0.6,
-      "duration_str": "0分36秒",
-      "summary": "了解西湖大学在AI智能体AppAgentX的最新研究成果，探索其在应用推荐和优化方面的潜力。",
-      "upload_date": "2025-03-13",
-      "source": "dynamic",
-      "chinese_source": "关注动态"
-    },
-    {
       "pageid": "1b536d82-1893-8180-926f-cb5acedd7e49",
       "title": "我 再 也 不 当 二 次 元 了 （",
       "url": "https://www.bilibili.com/video/BV1tC9oYEEJ9",
@@ -640,20 +598,6 @@
       "duration": 3.5999999999999996,
       "duration_str": "3分35秒",
       "summary": "想知道《炉石传说》迷你包削弱后，如何用金币或现金购买最划算？这个视频给你答案，帮你最大化收益。",
-      "upload_date": "2025-03-13",
-      "source": "homepage",
-      "chinese_source": "主页推送"
-    },
-    {
-      "pageid": "1b536d82-1893-81f2-a476-e0c260869ce7",
-      "title": "【闲聊文明7】只追求近代极限飞天的2T飞天打法",
-      "url": "https://www.bilibili.com/video/BV1ccQwYkECC",
-      "author": "苏雨欣晨",
-      "priority": "Low",
-      "chinese_priority": "低",
-      "duration": 6.6,
-      "duration_str": "6分35秒",
-      "summary": "想了解《文明7》近代极限飞天打法？这个视频通过公式化的解析，助你轻松掌握2T飞天技巧，修正了其他视频的错漏。",
       "upload_date": "2025-03-13",
       "source": "homepage",
       "chinese_source": "主页推送"
