@@ -6,6 +6,9 @@
 
 import os
 from typing import Any, Dict, Callable, Optional
+import asyncio
+import traceback
+import json
 
 import lark_oapi as lark
 from lark_oapi.api.contact.v3 import GetUserRequest
@@ -15,7 +18,7 @@ from lark_oapi.api.im.v1 import (
 )
 
 from Module.Interface.platform import Platform
-from Module.Interface.message import Message, MessageResponse, MessageHandler
+from Module.Interface.message import Message, MessageResponse, MessageType, MessageHandler
 from Module.Platforms.feishu.message_handler import FeishuMessageHandler
 from Module.Core.bot_service import BotService
 from Module.Common.scripts.common import debug_utils
@@ -67,7 +70,8 @@ class FeishuPlatform(Platform):
             event_dispatcher = (
                 lark.EventDispatcherHandler.builder("", "")
                 .register_p2_im_message_receive_v1(self._handle_p2_im_message_receive_v1)
-                .register_p2_application_bot_menu_v6(self._handle_application_bot_menu_v6)  # 注册处理器
+                .register_p2_application_bot_menu_v6(self._handle_application_bot_menu_v6)  # 注册菜单处理器
+                .register_p2_card_action_trigger(self._handle_im_message_action_v1)  # 注册卡片交互处理器
                 .build()
             )
             self.ws_client = lark.ws.Client(
@@ -237,34 +241,132 @@ class FeishuPlatform(Platform):
 
     def _handle_application_bot_menu_v6(self, data) -> None:
         """
-        处理飞书消息接收事件
+        处理机器人菜单点击事件
 
         Args:
-            data: 飞书事件数据
+            data: 事件数据
         """
-        # 解析消息
-        message = self.message_handler.parse_bot_menu_click(data)
-        # event_time = data.header.create_time or time.time()
-        event_id = data.header.event_id
-        sender_name = self.get_user_name(message.sender_id)
+        if not self.event_handler and not self.bot_service:
+            return
 
-        # 记录详细日志
-        print('--------------------------------')
-        debug_utils.log_and_print(
-            f"收到消息事件 - ID: {event_id}",
-            f"发送者: {sender_name} ({message.sender_id})",
-            f"消息类型: {message.msg_type}",
-            log_level="INFO"
-        )
+        try:
+            # 解析事件数据
+            event_data = data.event
+            open_id = event_data.operator.operator_id.open_id
+            event_key = event_data.event_key
 
-        app_id = data.header.app_id
-        user_open_id = data.event.operator.operator_id.open_id
-        event_key = data.event.event_key
-        print(f"[DEBUG] 收到[{app_id}]消息，开始处理: [{event_key}]，来自[{user_open_id}]")
+            # 创建Message对象
+            message = self.message_handler.parse_bot_menu_click(data)
 
-        response = self.bot_service.handle_message(message)
-        # response.extra_data['receive_id'] = user_open_id
-        print(f"[DEBUG] 处理结果: {response.__dict__}")
-        if response:
-            # 回复消息
-            self.message_handler.send_message(response)
+            # 如果事件已被处理，跳过
+            if message.extra_data.get("event_id") and \
+                self.bot_service.cache_service.check_event(message.extra_data.get("event_id")):
+                debug_utils.log_and_print(f"重复的菜单点击事件，跳过处理", log_level="INFO")
+                return
+
+            if self.bot_service:
+                # 处理消息
+                response = self.bot_service.handle_message(message)
+
+                # 如果有响应，创建任务处理
+                if response:
+                    # 记录事件处理
+                    event_id = message.extra_data.get("event_id")
+                    if event_id:
+                        self.bot_service.cache_service.add_event(event_id)
+
+                    # 创建异步任务处理器函数
+                    async def process_async_action():
+                        try:
+                            await self.message_handler.send_message(response)
+                        except Exception as e:
+                            debug_utils.log_and_print(f"异步处理消息失败: {e}", log_level="ERROR")
+
+                    # 在新线程中运行异步任务
+                    asyncio.run_coroutine_threadsafe(
+                        process_async_action(),
+                        asyncio.get_event_loop()
+                    )
+
+            elif self.event_handler:
+                response = self.event_handler(message)
+                if response:
+                    # 在新线程中运行异步发送
+                    async def send_async():
+                        await self.message_handler.send_message(response)
+
+                    asyncio.run_coroutine_threadsafe(
+                        send_async(),
+                        asyncio.get_event_loop()
+                    )
+
+        except Exception as e:
+            debug_utils.log_and_print(f"处理菜单点击事件失败: {e}", log_level="ERROR")
+            debug_utils.log_and_print(traceback.format_exc(), log_level="DEBUG")
+
+    def _handle_im_message_action_v1(self, data) -> None:
+        """
+        处理飞书卡片交互事件
+
+        Args:
+            data: 卡片交互事件数据
+        """
+        try:
+            # 提取事件信息
+            event_id = data.header.event_id
+            action = data.event.action
+
+            # 如果事件已被处理，跳过
+            if self.bot_service and self.bot_service.cache_service.check_event(event_id):
+                debug_utils.log_and_print(f"重复的卡片交互事件，跳过处理", log_level="INFO")
+                return
+
+            print(f"[DEBUG] 收到卡片交互事件: {event_id}, action类型: {type(action)}")
+            print(f"[DEBUG] 卡片交互action内容: {action}")
+
+            # 记录事件
+            if self.bot_service:
+                self.bot_service.cache_service.add_event(event_id)
+
+            # 提取必要的信息
+            value = action.value
+            open_id = data.event.operator.operator_id.open_id
+
+            # 提取action类型
+            action_type = ""
+            if isinstance(value, dict):
+                action_type = value.get("action", "")
+            elif isinstance(value, str):
+                try:
+                    value_dict = json.loads(value)
+                    action_type = value_dict.get("action", "")
+                except:
+                    pass
+
+            print(f"[DEBUG] 卡片交互动作类型: {action_type}, 用户ID: {open_id}")
+
+            # 调用对应的处理器
+            if action_type and self.bot_service:
+                # 创建异步任务处理函数
+                async def process_action():
+                    try:
+                        handler = self.message_handler._create_handler(action_type, self.client, self.bot_service)
+                        if handler:
+                            await handler.handle(open_id, "open_id", value=value)
+                        else:
+                            print(f"[ERROR] 未找到处理器: {action_type}")
+                    except Exception as e:
+                        print(f"[ERROR] 处理卡片交互失败: {e}")
+                        print(traceback.format_exc())
+
+                # 在事件循环中运行
+                if asyncio.get_event_loop().is_running():
+                    asyncio.run_coroutine_threadsafe(process_action(), asyncio.get_event_loop())
+                else:
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    loop.run_until_complete(process_action())
+
+        except Exception as e:
+            debug_utils.log_and_print(f"处理卡片交互事件失败: {e}", log_level="ERROR")
+            debug_utils.log_and_print(traceback.format_exc(), log_level="DEBUG")

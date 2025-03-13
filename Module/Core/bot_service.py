@@ -13,6 +13,7 @@ from Module.Interface.message import Message, MessageType, MessageResponse
 from Module.Core.cache_service import CacheService
 from Module.Core.config_service import ConfigService
 from Module.Core.media_service import MediaService
+from Module.Core.notion_service import NotionService
 from Module.Common.scripts.common import debug_utils
 
 
@@ -24,6 +25,7 @@ class BotService:
         cache_service: CacheService,
         config_service: ConfigService,
         media_service: MediaService,
+        notion_service: Optional[NotionService] = None,
         admin_id: str = ""
     ):
         """
@@ -33,11 +35,13 @@ class BotService:
             cache_service: 缓存服务
             config_service: 配置服务
             media_service: 媒体服务
+            notion_service: Notion服务
             admin_id: 管理员ID
         """
         self.cache_service = cache_service
         self.config_service = config_service
         self.media_service = media_service
+        self.notion_service = notion_service
         self.admin_id = admin_id
 
         # 令牌更新相关配置
@@ -140,21 +144,38 @@ class BotService:
     def _handle_menu_click_message(self, message: Message) -> MessageResponse:
         """
         处理菜单点击消息
+
+        Args:
+            message: 菜单点击消息
+
+        Returns:
+            MessageResponse: 响应消息
         """
         event_key = message.extra_data.get("event_key", "")
         if event_key == "get_bili_url":
-            # 获取B站视频URL
-            # 检查本地缓存的有效期（2小时）
-            # 如果缓存失效，就从Notion更新最新数据，并更新缓存时间戳
-            # 从最新的缓存中按照优先级，过滤条件（不是已读、场合不能包括避免手机）按照优先级和时长分组随机选择一个视频URL
-            # 分组的优先级的顺序是10分钟内，High、Midium，10分钟外 High 10分钟内 Low 10分钟外 Midium Low
-            # 要考虑一下到底是从Notion原生做一点过滤，还是直接在缓存里操作
-            # 考虑到卡片还不熟悉，组装一下TEXT和URL一起发给用户
-            # 如果能获得消息点击记录就最好了，如果不能就默认立刻点击了
-            # 点击之后回调设置Notion的记录为已读，也设置缓存的记录为已读
-            content = "你的B站视频来啦~"
+            self.log_and_print(f"收到 [B站视频推荐] 菜单点击消息", log_level="INFO")
+
+            # 如果没有Notion服务，返回错误信息
+            if not self.notion_service:
+                return MessageResponse(
+                    MessageType.TEXT,
+                    json.dumps({"text": "抱歉，B站视频推荐服务暂时不可用"}),
+                    success=False
+                )
+
+            # 异步获取B站视频，这里使用事件标记以便后续处理
+            return MessageResponse(
+                MessageType.TEXT,
+                json.dumps({"text": "__GET_BILI_VIDEO__"}),
+                success=True,
+                extra_data={
+                    "action": "get_bili_video",
+                    "receive_id": message.sender_id
+                }
+            )
         else:
             content = "收到菜单点击消息"
+
         response_message = MessageResponse(
             MessageType.TEXT,
             json.dumps({"text": content}),

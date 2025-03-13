@@ -680,13 +680,260 @@ class TTSGenerationHandler(FeishuActionHandler):
             )
 
 
+class BiliVideoHandler(FeishuActionHandler):
+    """B站视频推荐处理器"""
+
+    async def handle(self, receive_id: str, receive_id_type: str, **kwargs) -> bool:
+        """
+        处理B站视频推荐请求
+
+        Args:
+            receive_id: 接收者ID
+            receive_id_type: 接收者ID类型
+            **kwargs: 其他参数
+
+        Returns:
+            bool: 是否成功
+        """
+        if not self.bot_service or not self.bot_service.notion_service:
+            return self._create_message(
+                receive_id,
+                receive_id_type,
+                "text",
+                json.dumps({"text": "抱歉，B站视频推荐服务暂时不可用"})
+            )
+
+        try:
+            # 获取B站视频推荐
+            video = await self.bot_service.notion_service.get_bili_video()
+
+            if not video["success"]:
+                return self._create_message(
+                    receive_id,
+                    receive_id_type,
+                    "text",
+                    json.dumps({"text": "暂时没有找到适合你的B站视频，请稍后再试"})
+                )
+
+            # 构建卡片消息
+            card = {
+                "config": {
+                    "wide_screen_mode": True
+                },
+                "elements": [
+                    # 视频标题
+                    {
+                        "tag": "div",
+                        "text": {
+                            "tag": "lark_md",
+                            "content": f"**📽️ {video['title']}**"
+                        }
+                    },
+                    # 视频描述和URL
+                    {
+                        "tag": "div",
+                        "fields": [
+                            {
+                                "is_short": True,
+                                "text": {
+                                    "tag": "lark_md",
+                                    "content": f"**作者:** {video.get('author', '未知')}"
+                                }
+                            },
+                            {
+                                "is_short": True,
+                                "text": {
+                                    "tag": "lark_md",
+                                    "content": f"**优先级:** {video.get('chinese_priority', '未知')}"
+                                }
+                            },
+                            {
+                                "is_short": True,
+                                "text": {
+                                    "tag": "lark_md",
+                                    "content": f"**时长:** {video.get('duration_str', '未知')}"
+                                }
+                            }
+                        ]
+                    },
+                    # 来源和日期信息
+                    {
+                        "tag": "div",
+                        "fields": [
+                            {
+                                "is_short": True,
+                                "text": {
+                                    "tag": "lark_md",
+                                    "content": f"**来源:** {video.get('chinese_source', '未知')}"
+                                }
+                            },
+                            {
+                                "is_short": True,
+                                "text": {
+                                    "tag": "lark_md",
+                                    "content": f"**投稿日期:** {video.get('upload_date', '未知')}"
+                                }
+                            }
+                        ]
+                    },
+                    # 推荐概要
+                    {
+                        "tag": "div",
+                        "text": {
+                            "tag": "lark_md",
+                            "content": f"**推荐理由:**\n{video.get('summary', '无')}"
+                        }
+                    },
+                    # 分隔线
+                    {
+                        "tag": "hr"
+                    },
+                    # 视频链接
+                    {
+                        "tag": "div",
+                        "text": {
+                            "tag": "lark_md",
+                            "content": f"[🔗 点击观看视频]({video['url']})"
+                        }
+                    },
+                    # 按钮区域
+                    {
+                        "tag": "action",
+                        "actions": [
+                            {
+                                "tag": "button",
+                                "text": {
+                                    "tag": "plain_text",
+                                    "content": "👍 标记为已读"
+                                },
+                                "type": "primary",
+                                "value": {
+                                    "action": "mark_bili_read",
+                                    "pageid": video["pageid"]
+                                }
+                            }
+                        ]
+                    }
+                ],
+                "header": {
+                    "template": "blue",
+                    "title": {
+                        "tag": "plain_text",
+                        "content": "📺 B站视频推荐"
+                    }
+                }
+            }
+
+            # 发送卡片消息
+            return self._create_message(
+                receive_id,
+                receive_id_type,
+                "interactive",
+                json.dumps(card)
+            )
+
+        except Exception as e:
+            error_msg = f"处理B站视频推荐失败: {str(e)}"
+            print(error_msg)
+            print(traceback.format_exc())
+
+            return self._create_message(
+                receive_id,
+                receive_id_type,
+                "text",
+                json.dumps({"text": "抱歉，获取B站视频推荐时出现错误，请稍后再试"})
+            )
+
+
+class MarkBiliReadHandler(FeishuActionHandler):
+    """标记B站视频为已读处理器"""
+
+    async def handle(self, receive_id: str, receive_id_type: str, **kwargs) -> bool:
+        """
+        处理标记B站视频为已读请求
+
+        Args:
+            receive_id: 接收者ID
+            receive_id_type: 接收者ID类型
+            **kwargs: 其他参数，包含pageid
+
+        Returns:
+            bool: 是否成功
+        """
+        # 调试信息
+        print(f"[DEBUG] MarkBiliReadHandler.handle - 接收到请求，参数: {kwargs}")
+
+        if not self.bot_service or not self.bot_service.notion_service:
+            print("[ERROR] MarkBiliReadHandler - Bot服务或Notion服务未初始化")
+            return self._create_message(
+                receive_id,
+                receive_id_type,
+                "text",
+                json.dumps({"text": "抱歉，标记服务暂时不可用"})
+            )
+
+        try:
+            # 获取页面ID
+            value = kwargs.get("value", {})
+            if isinstance(value, str):
+                try:
+                    value = json.loads(value)
+                except Exception as e:
+                    print(f"[ERROR] MarkBiliReadHandler - 无法解析value字符串: {value}, 错误: {e}")
+                    value = {}
+
+            pageid = value.get("pageid", "")
+            print(f"[DEBUG] MarkBiliReadHandler - 获取到pageid: {pageid}, value类型: {type(value)}")
+
+            if not pageid:
+                print("[ERROR] MarkBiliReadHandler - 未找到pageid")
+                return self._create_message(
+                    receive_id,
+                    receive_id_type,
+                    "text",
+                    json.dumps({"text": "缺少页面ID，无法标记为已读"})
+                )
+
+            # 标记为已读
+            print(f"[DEBUG] MarkBiliReadHandler - 开始标记为已读, pageid: {pageid}")
+            success = await self.bot_service.notion_service.mark_video_as_read(pageid)
+            print(f"[DEBUG] MarkBiliReadHandler - 标记结果: {success}")
+
+            if success:
+                return self._create_message(
+                    receive_id,
+                    receive_id_type,
+                    "text",
+                    json.dumps({"text": "👍 已将视频标记为已读"})
+                )
+            else:
+                return self._create_message(
+                    receive_id,
+                    receive_id_type,
+                    "text",
+                    json.dumps({"text": "标记失败，请稍后再试"})
+                )
+
+        except Exception as e:
+            error_msg = f"标记B站视频为已读失败: {str(e)}"
+            print(f"[ERROR] {error_msg}")
+            print(traceback.format_exc())
+
+            return self._create_message(
+                receive_id,
+                receive_id_type,
+                "text",
+                json.dumps({"text": f"抱歉，标记为已读时出现错误: {str(e)}"})
+            )
+
+
 class ActionHandlerFactory:
     """操作处理器工厂"""
 
     @staticmethod
     def create_handler(action: str, client, bot_service=None):
         """
-        创建操作处理器
+        创建对应的操作处理器
 
         Args:
             action: 操作类型
@@ -694,7 +941,7 @@ class ActionHandlerFactory:
             bot_service: 机器人服务实例
 
         Returns:
-            FeishuActionHandler: 对应的处理器实例
+            FeishuActionHandler: 操作处理器实例
         """
         handlers = {
             "rich_text_demo": RichTextHandler,
@@ -703,11 +950,11 @@ class ActionHandlerFactory:
             "share_sample_image": SampleImageHandler,
             "share_sample_audio": SampleAudioHandler,
             "generate_tts": TTSGenerationHandler,
+            "get_bili_video": BiliVideoHandler,
+            "mark_bili_read": MarkBiliReadHandler,
         }
 
         handler_class = handlers.get(action)
         if handler_class:
             return handler_class(client, bot_service)
-
-        # 默认处理器
-        return FeishuActionHandler(client, bot_service)
+        return None

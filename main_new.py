@@ -32,6 +32,7 @@ from Module.Core.config_service import ConfigService
 from Module.Core.media_service import MediaService
 from Module.Core.bot_service import BotService
 from Module.Core.scheduler import SchedulerService
+from Module.Core.notion_service import NotionService
 from Module.Platforms.feishu import FeishuPlatform
 from Module.Common.scripts.common import debug_utils
 
@@ -68,11 +69,21 @@ def setup_services():
         coze_api_settings=coze_api_settings
     )
 
+    # 创建Notion服务 (如果环境变量存在)
+    notion_service = None
+    if os.getenv("NOTION_TOKEN") and os.getenv("DATABASE_PATH"):
+        try:
+            notion_service = NotionService(cache_service)
+            debug_utils.log_and_print("Notion服务初始化成功", log_level="INFO")
+        except Exception as e:
+            debug_utils.log_and_print(f"Notion服务初始化失败: {e}", log_level="ERROR")
+
     # 创建机器人服务
     bot_service = BotService(
         cache_service=cache_service,
         config_service=config_service,
         media_service=media_service,
+        notion_service=notion_service,
         admin_id=os.getenv("ADMIN_ID", "")
     )
 

@@ -8,6 +8,7 @@ from io import BytesIO
 import json
 import os
 from typing import Any, Optional
+import asyncio
 
 from lark_oapi.api.im.v1 import (
     CreateMessageRequest,
@@ -125,35 +126,47 @@ class FeishuMessageHandler(MessageHandler):
             extra_data=extra_data
         )
 
-    def send_message(self, response: MessageResponse) -> bool:
+    async def send_message(self, response: MessageResponse) -> bool:
         """
         发送消息
 
         Args:
-            response: 消息响应对象
+            response: 响应消息
 
         Returns:
-            bool: 是否发送成功
+            bool: 是否成功
         """
-        # 从extra_data中获取接收者ID
-        receive_id = response.extra_data.get("receive_id", os.getenv("ADMIN_ID", ""))
+        receive_id = response.extra_data.get('receive_id', '')
+        if not receive_id:
+            print("[FeishuMessageHandler] 发送消息失败：缺少接收者ID")
+            return False
 
-        # 根据action执行特殊操作
-        action = response.extra_data.get("action", "")
-        if action:
-            return self._handle_action(action, response, receive_id)
+        if 'action' in response.extra_data:
+            # 处理特殊操作
+            action = response.extra_data.get('action', '')
+            return await self._handle_action(action, response, receive_id)
 
-        # 普通消息发送
-        request = CreateMessageRequest.builder().receive_id_type("open_id").request_body(
-            CreateMessageRequestBody.builder()
-            .receive_id(receive_id)
-            .msg_type(response.msg_type.value)
-            .content(response.content)
-            .build()
-        ).build()
+        # 普通消息处理
+        content = response.content
+        if response.msg_type == MessageType.TEXT:
+            req = CreateMessageRequest()
+            req.payload = CreateMessageRequestBody(
+                receive_id=receive_id,
+                msg_type="text",
+                content=content
+            )
+        else:
+            # 其他类型消息处理
+            print(f"[FeishuMessageHandler] 不支持的消息类型: {response.msg_type}")
+            return False
 
-        feishu_response = self.client.im.v1.message.create(request)
-        return feishu_response.success()
+        try:
+            # 发送消息
+            response = self.client.im.v1.message.create(req)
+            return response.code == 0
+        except Exception as e:
+            print(f"[FeishuMessageHandler] 发送消息失败: {e}")
+            return False
 
     def reply_message(self, original_message: Message, response: MessageResponse) -> bool:
         """
@@ -162,7 +175,6 @@ class FeishuMessageHandler(MessageHandler):
         Args:
             original_message: 原始消息
             response: 消息响应对象
-            platform_data: 平台数据（从_handle_p2_im_message_receive_v1获取）
 
         Returns:
             bool: 是否回复成功
@@ -170,10 +182,21 @@ class FeishuMessageHandler(MessageHandler):
         # 根据action执行特殊操作
         action = response.extra_data.get("action", "")
         if action:
-            # 如果是处理特殊操作，则使用chat_id作为receive_id
-            # print(f"[DEBUG] 回复消息 - 原始消息: {original_message}")
-            # print(f"[DEBUG] 回复消息 - 原始消息: {original_message.__dict__}")
-            return self._handle_action(action, response, original_message.chat_id, original_message)
+            # 如果是处理特殊操作，需要通过异步方式处理
+            # 创建异步任务处理函数
+            async def process_action():
+                return await self._handle_action(action, response, original_message.chat_id, original_message)
+
+            # 创建一个Future对象来获取异步操作的结果
+            loop = asyncio.get_event_loop()
+            future = asyncio.run_coroutine_threadsafe(process_action(), loop)
+
+            try:
+                # 等待操作完成并获取结果 (设置10秒超时)
+                return future.result(10)
+            except Exception as e:
+                print(f"[FeishuMessageHandler] 异步处理操作失败: {e}")
+                return False
 
         # 如果是p2p对话，使用chat_id发送
         if original_message.extra_data.get("chat_type", "") == "p2p":
@@ -290,7 +313,7 @@ class FeishuMessageHandler(MessageHandler):
         # 其他文件类型暂不支持
         return None
 
-    def _handle_action(
+    async def _handle_action(
             self, action: str, response: MessageResponse,
             receive_id: str, original_message: Message = None) -> bool:
         """
@@ -298,40 +321,51 @@ class FeishuMessageHandler(MessageHandler):
 
         Args:
             action: 操作类型
-            response: 消息响应对象
+            response: 响应消息
             receive_id: 接收者ID
-            original_message: 原始消息对象
+            original_message: 原始消息
 
         Returns:
-            bool: 是否处理成功
+            bool: 是否成功
         """
-        # 默认使用open_id类型
-        # 如果从reply_message调用，传入的是chat_id，应该使用chat_id类型
-        receive_id_type = "chat_id" if original_message else "open_id"
-        # receive_id_type = "open_id"
+        # 根据action类型创建对应的处理器
+        handler = self._create_handler(action, self.client, self.bot_service)
+        if handler:
+            # 准备参数
+            receive_id_type = 'open_id'
+            kwargs = {
+                'original_message': original_message,
+                'response': response,
+                'value': response.extra_data.get('value', {}),
+            }
 
-        # 如果是回复消息且原始消息是群聊，则使用chat_id
-        # if original_message and original_message.extra_data.get("chat_type", "") != "p2p":
-        #     receive_id_type = "chat_id"
+            # 对于特定操作，提取额外参数
+            if action == 'generate_image':
+                kwargs['prompt'] = response.extra_data.get('prompt', '')
+            elif action == 'generate_tts':
+                kwargs['text'] = response.extra_data.get('text', '')
+            elif action == 'process_image':
+                kwargs['image_key'] = response.extra_data.get('image_key', '')
 
-        # 使用工厂创建对应的处理器
-        handler = ActionHandlerFactory.create_handler(action, self.client, self.bot_service)
+            # 处理操作
+            return await handler.handle(receive_id, receive_id_type, **kwargs)
+        else:
+            # 默认处理
+            if self.bot_service:
+                print(f"[FeishuMessageHandler] 未知操作类型: {action}")
+                return False
+            return False
 
-        # 准备处理参数
-        kwargs = {}
+    def _create_handler(self, action: str, client, bot_service):
+        """
+        创建处理器
 
-        # 从response中提取参数
-        for key, value in response.extra_data.items():
-            if key != "action":
-                kwargs[key] = value
+        Args:
+            action: 动作名称
+            client: 客户端
+            bot_service: 机器人服务
 
-        # 如果存在原始消息，添加message_id
-        if original_message:
-            kwargs["message_id"] = original_message.message_id
-            kwargs["data"] = original_message  # 向后兼容之前的全量数据
-        # print('test_kwargs', kwargs)
-        # print('test_receive_id', receive_id)
-        # print('test_receive_id_type', receive_id_type)
-
-        # 调用处理器处理请求
-        return handler.handle(receive_id, receive_id_type, **kwargs)
+        Returns:
+            FeishuActionHandler: 处理器对象
+        """
+        return ActionHandlerFactory.create_handler(action, client, bot_service)

@@ -9,3 +9,4 @@ from Module.Core.media_service import MediaService
 from Module.Core.cache_service import CacheService
 from Module.Core.config_service import ConfigService
 from Module.Core.scheduler import SchedulerService
+from Module.Core.notion_service import NotionService
