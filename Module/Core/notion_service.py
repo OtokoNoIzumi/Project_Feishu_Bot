@@ -277,9 +277,9 @@ class NotionService:
 
         # 优先级映射
         priority_mapping = {
-            "High": "高",
-            "Medium": "中",
-            "Low": "低"
+            "High": "💖高",
+            "Medium": "😜中",
+            "Low": "👾低"
         }
 
         # 转换为字典列表
