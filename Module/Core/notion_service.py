@@ -165,16 +165,8 @@ class NotionService:
         通过异步转同步的方式获取Notion数据
         """
         try:
-            import asyncio
-            # 创建一个新的事件循环
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-
-            # 同步运行异步函数
-            videos = loop.run_until_complete(self._fetch_bili_videos_from_notion())
-
-            # 关闭事件循环
-            loop.close()
+            # 使用更可靠的同步执行异步代码的方式
+            videos = self._sync_run_coroutine(self._fetch_bili_videos_from_notion())
 
             # 更新缓存
             self.cache_data[self.bili_cache_key] = videos
@@ -184,6 +176,60 @@ class NotionService:
             debug_utils.log_and_print(f"[NotionService] 成功更新B站视频缓存，获取到 {len(videos)} 条记录", log_level="INFO")
         except Exception as e:
             debug_utils.log_and_print(f"[NotionService] 更新B站视频缓存失败: {e}", log_level="ERROR")
+            import traceback
+            traceback.print_exc()
+
+    def _sync_run_coroutine(self, coroutine):
+        """
+        安全地同步执行异步协程
+
+        Args:
+            coroutine: 要执行的异步协程
+
+        Returns:
+            协程的执行结果
+        """
+        import asyncio
+        from concurrent.futures import ThreadPoolExecutor
+
+        try:
+            # 尝试获取当前运行的事件循环
+            asyncio.get_running_loop()
+            # 如果没有抛出异常，说明当前已有事件循环在运行
+            # 使用线程池在新线程中运行事件循环
+            with ThreadPoolExecutor() as pool:
+                # 在线程池中创建新的事件循环并运行协程
+                return pool.submit(lambda: self._run_in_new_loop(coroutine)).result()
+        except RuntimeError:
+            # 如果获取不到事件循环，说明不在事件循环中
+            # 直接创建新的事件循环运行
+            return self._run_in_new_loop(coroutine)
+
+    def _run_in_new_loop(self, coroutine):
+        """
+        在新的事件循环中运行协程
+
+        Args:
+            coroutine: 要执行的异步协程
+
+        Returns:
+            协程的执行结果
+        """
+        import asyncio
+
+        # 确保有一个事件循环
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
+        # 运行协程并获取结果
+        try:
+            return loop.run_until_complete(coroutine)
+        finally:
+            # 不关闭事件循环，避免影响其他可能的异步操作
+            pass
 
     async def _fetch_bili_videos_from_notion(self) -> List[Dict]:
         """
@@ -248,7 +294,10 @@ class NotionService:
             chinese_priority = priority_mapping.get(priority, "低")
 
             # 将时间汇总转换为分钟:秒格式
-            duration_minutes = row.get("时间汇总", 0)
+            duration_minutes = row.get("预估量", 0)
+            hour_switch = row.get("预估单位", "分钟")
+            if hour_switch == "小时":
+                duration_minutes = duration_minutes * 60
             # 如果是小数，转为分钟:秒格式
             minutes = int(duration_minutes)
             seconds = int((duration_minutes - minutes) * 60)
@@ -355,35 +404,37 @@ class NotionService:
 
     def _update_notion_property_async(self, page_id: str, page_properties: Dict) -> None:
         """
-        异步更新Notion页面属性 (实际上是在独立线程中执行异步操作)
+        异步更新Notion页面属性 (在后台线程中执行)
 
         Args:
             page_id: Notion页面ID
             page_properties: 要更新的属性
         """
         import threading
-        import asyncio
 
+        # 创建后台任务函数
         def run_async_update():
-            # 创建一个新的事件循环
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-
-            async def update_property():
-                try:
-                    await self.notion_manager.update_page_properties(page_id, page_properties)
-                    debug_utils.log_and_print(f"[NotionService] 成功更新页面属性: {page_id}", log_level="INFO")
-                except Exception as e:
-                    debug_utils.log_and_print(f"[NotionService] 更新页面属性失败: {e}", log_level="ERROR")
-
-            # 运行异步函数
-            loop.run_until_complete(update_property())
-
-            # 关闭事件循环
-            loop.close()
+            try:
+                # 使用安全的同步执行方式
+                self._sync_run_coroutine(self._update_page_properties_async(page_id, page_properties))
+                debug_utils.log_and_print(f"[NotionService] 成功更新页面属性: {page_id}", log_level="INFO")
+            except Exception as e:
+                debug_utils.log_and_print(f"[NotionService] 更新页面属性失败: {e}", log_level="ERROR")
+                import traceback
+                traceback.print_exc()
 
         # 启动一个新线程执行异步操作
         thread = threading.Thread(target=run_async_update)
         thread.daemon = True  # 设为守护线程，避免阻塞主程序退出
         thread.start()
         # 不等待线程完成，继续执行主线程
+
+    async def _update_page_properties_async(self, page_id: str, page_properties: Dict) -> None:
+        """
+        更新Notion页面属性的异步实现
+
+        Args:
+            page_id: Notion页面ID
+            page_properties: 要更新的属性
+        """
+        await self.notion_manager.update_page_properties(page_id, page_properties)
