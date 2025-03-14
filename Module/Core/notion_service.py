@@ -8,13 +8,13 @@ import os
 import time
 import json
 import random
-import asyncio
-from typing import Dict, List, Any, Optional, Tuple
-from datetime import datetime, timedelta
+from typing import Dict, List, Any, Optional
+from datetime import datetime
 
 import pandas as pd
 from Module.Common.scripts import DataSource_Notion as dsn
 from Module.Core.cache_service import CacheService
+from Module.Common.scripts.common import debug_utils
 
 
 class NotionService:
@@ -62,7 +62,7 @@ class NotionService:
                     self.bili_cache_time_key: 0
                 }
         except Exception as e:
-            print(f"[NotionService] 加载缓存失败: {e}")
+            debug_utils.log_and_print(f"[NotionService] 加载缓存失败: {e}", log_level="ERROR")
             self.cache_data = {
                 self.bili_cache_key: [],
                 self.bili_cache_time_key: 0
@@ -75,7 +75,115 @@ class NotionService:
             with open(self.cache_file, "w", encoding="utf-8") as f:
                 json.dump(self.cache_data, f, ensure_ascii=False, indent=2)
         except Exception as e:
-            print(f"[NotionService] 保存缓存失败: {e}")
+            debug_utils.log_and_print(f"[NotionService] 保存缓存失败: {e}", log_level="ERROR")
+
+    def _is_cache_valid(self) -> bool:
+        """
+        检查缓存是否有效
+
+        Returns:
+            bool: 缓存是否有效
+        """
+        cache_time = self.cache_data.get(self.bili_cache_time_key, 0)
+        return (time.time() - cache_time) < self.cache_expiry
+
+    def _select_video_by_priority(self, videos: List[Dict]) -> Dict:
+        """
+        根据优先级和时长选择视频
+
+        Args:
+            videos: 视频列表
+
+        Returns:
+            Dict: 选中的视频
+        """
+        # 创建分组
+        # 1. 10分钟内、优先级High
+        # 2. 10分钟内、优先级Medium
+        # 3. 10分钟外、优先级High
+        # 4. 10分钟内、优先级Low
+        # 5. 10分钟外、优先级Medium
+        # 6. 10分钟外、优先级Low
+        videos = [v for v in videos if v.get("unread", True)]
+        groups = [
+            [v for v in videos if v.get("duration", 0) <= 10 and v.get("priority") == "High"],
+            [v for v in videos if v.get("duration", 0) <= 10 and v.get("priority") == "Medium"],
+            [v for v in videos if v.get("duration", 0) > 10 and v.get("priority") == "High"],
+            [v for v in videos if v.get("duration", 0) <= 10 and v.get("priority") == "Low"],
+            [v for v in videos if v.get("duration", 0) > 10 and v.get("priority") == "Medium"],
+            [v for v in videos if v.get("duration", 0) > 10 and v.get("priority") == "Low"],
+        ]
+
+        # 从非空分组中选择
+        for group in groups:
+            if group:
+                return random.choice(group)
+
+        # 如果所有分组都为空，则从所有视频中随机选择
+        return random.choice(videos) if videos else {}
+
+    def get_bili_video(self) -> Dict:
+        """
+        获取一个B站视频推荐
+
+        Returns:
+            Dict: B站视频信息
+        """
+        # 检查缓存是否有效
+        if not self._is_cache_valid() or not self.cache_data.get(self.bili_cache_key):
+            # 更新缓存是异步的，这里同步执行一次
+            self._update_bili_cache_sync()
+
+        videos = self.cache_data.get(self.bili_cache_key, [])
+        if not videos:
+            return {
+                "title": "暂无推荐视频",
+                "url": "",
+                "pageid": "",
+                "success": False
+            }
+
+        # 按优先级和时长分组选择视频
+        video = self._select_video_by_priority(videos)
+        return {
+            "title": video.get("title", "无标题视频"),
+            "url": video.get("url", ""),
+            "pageid": video.get("pageid", ""),
+            "success": True,
+            "author": video.get("author", ""),
+            "duration_str": video.get("duration_str", ""),
+            "chinese_priority": video.get("chinese_priority", ""),
+            "chinese_source": video.get("chinese_source", ""),
+            "summary": video.get("summary", ""),
+            "upload_date": video.get("upload_date", ""),
+        }
+
+    def _update_bili_cache_sync(self) -> None:
+        """
+        同步更新B站视频缓存
+
+        通过异步转同步的方式获取Notion数据
+        """
+        try:
+            import asyncio
+            # 创建一个新的事件循环
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
+            # 同步运行异步函数
+            videos = loop.run_until_complete(self._fetch_bili_videos_from_notion())
+
+            # 关闭事件循环
+            loop.close()
+
+            # 更新缓存
+            self.cache_data[self.bili_cache_key] = videos
+            self.cache_data[self.bili_cache_time_key] = time.time()
+            self._save_cache()
+
+            debug_utils.log_and_print(f"[NotionService] 成功更新B站视频缓存，获取到 {len(videos)} 条记录", log_level="INFO")
+        except Exception as e:
+            debug_utils.log_and_print(f"[NotionService] 更新B站视频缓存失败: {e}", log_level="ERROR")
 
     async def _fetch_bili_videos_from_notion(self) -> List[Dict]:
         """
@@ -140,7 +248,8 @@ class NotionService:
             chinese_priority = priority_mapping.get(priority, "低")
 
             # 将时间汇总转换为分钟:秒格式
-            duration_minutes = row.get("时间汇总", 0)*60
+            duration_minutes = row.get("时间汇总", 0)
+            # 如果是小数，转为分钟:秒格式
             minutes = int(duration_minutes)
             seconds = int((duration_minutes - minutes) * 60)
             duration_str = f"{minutes}分{seconds}秒" if seconds else f"{minutes}分钟"
@@ -152,102 +261,19 @@ class NotionService:
                 "author": row.get("作者", ""),
                 "priority": priority,
                 "chinese_priority": chinese_priority,
-                "duration": duration_minutes,  # 转换为秒
+                "duration": duration_minutes,  # 时长（分钟）
                 "duration_str": duration_str,
                 "summary": row.get("推荐概要", ""),
-                "upload_date": row.get("投稿日期", "").split(" ")[0],
+                "upload_date": str(row.get("投稿日期", "")).split(" ")[0],
                 "source": source,
-                "chinese_source": chinese_source
+                "chinese_source": chinese_source,
+                "unread": True
             }
             videos.append(video)
 
         return videos
 
-    def _is_cache_valid(self) -> bool:
-        """
-        检查缓存是否有效
-
-        Returns:
-            bool: 缓存是否有效
-        """
-        cache_time = self.cache_data.get(self.bili_cache_time_key, 0)
-        return (time.time() - cache_time) < self.cache_expiry
-
-    async def get_bili_video(self) -> Dict:
-        """
-        获取一个B站视频推荐
-
-        Returns:
-            Dict: B站视频信息
-        """
-        # 检查缓存是否有效
-        if not self._is_cache_valid() or not self.cache_data.get(self.bili_cache_key):
-            # 更新缓存
-            videos = await self._fetch_bili_videos_from_notion()
-            self.cache_data[self.bili_cache_key] = videos
-            self.cache_data[self.bili_cache_time_key] = time.time()
-            self._save_cache()
-
-        videos = self.cache_data.get(self.bili_cache_key, [])
-        if not videos:
-            return {
-                "title": "暂无推荐视频",
-                "url": "",
-                "pageid": "",
-                "success": False
-            }
-
-        # 按优先级和时长分组选择视频
-        video = self._select_video_by_priority(videos)
-        return {
-            "title": video.get("title", "无标题视频"),
-            "url": video.get("url", ""),
-            "pageid": video.get("pageid", ""),
-            "success": True,
-            "author": video.get("author", ""),
-            "duration_str": video.get("duration_str", ""),
-            "chinese_priority": video.get("chinese_priority", ""),
-            "chinese_source": video.get("chinese_source", ""),
-            "summary": video.get("summary", ""),
-            "upload_date": video.get("upload_date", ""),
-        }
-
-    def _select_video_by_priority(self, videos: List[Dict]) -> Dict:
-        """
-        根据优先级和时长选择视频
-
-        Args:
-            videos: 视频列表
-
-        Returns:
-            Dict: 选中的视频
-        """
-        # 创建分组
-        # 1. 10分钟内、优先级High
-        # 2. 10分钟内、优先级Medium
-        # 3. 10分钟外、优先级High
-        # 4. 10分钟内、优先级Low
-        # 5. 10分钟外、优先级Medium
-        # 6. 10分钟外、优先级Low
-
-        groups = [
-            [v for v in videos if v.get("duration", 0) <= 10 and v.get("priority") == "High"],
-            [v for v in videos if v.get("duration", 0) <= 10 and v.get("priority") == "Medium"],
-            [v for v in videos if v.get("duration", 0) > 10 and v.get("priority") == "High"],
-            [v for v in videos if v.get("duration", 0) <= 10 and v.get("priority") == "Low"],
-            [v for v in videos if v.get("duration", 0) > 10 and v.get("priority") == "Medium"],
-            [v for v in videos if v.get("duration", 0) > 10 and v.get("priority") == "Low"],
-        ]
-
-        # 从非空分组中选择
-        for group in groups:
-            if group:
-                return random.choice(group)
-
-        # 如果所有分组都为空，则从所有视频中随机选择
-        return random.choice(videos)
-
-    async def mark_video_as_read(self, pageid: str) -> bool:
+    def mark_video_as_read(self, pageid: str) -> bool:
         """
         将视频标记为已读
 
@@ -261,23 +287,103 @@ class NotionService:
             return False
 
         try:
-            # 更新Notion页面属性
+            # 更新Notion页面属性 (同步方式)
             today_date = datetime.now().strftime("%Y-%m-%d")
             page_properties = {
                 "完成日期": {"date": {"start": today_date, "end": None}}
             }
 
-            await self.notion_manager.update_page_properties(pageid, page_properties)
+            # 启动一个异步任务更新Notion，但不等待完成
+            self._update_notion_property_async(pageid, page_properties)
 
-            # 更新缓存
+            # 更新本地缓存 (这部分是同步的)
             if self.bili_cache_key in self.cache_data:
-                self.cache_data[self.bili_cache_key] = [
-                    v for v in self.cache_data[self.bili_cache_key]
-                    if v.get("pageid") != pageid
-                ]
+                for v in self.cache_data[self.bili_cache_key]:
+                    if v.get("pageid") == pageid:
+                        v["unread"] = False
                 self._save_cache()
 
             return True
         except Exception as e:
-            print(f"[NotionService] 标记视频已读失败: {e}")
+            debug_utils.log_and_print(f"[NotionService] 标记视频已读失败: {e}", log_level="ERROR")
             return False
+
+    def get_video_by_id(self, pageid: str) -> Dict:
+        """
+        根据页面ID获取视频信息
+
+        Args:
+            pageid: Notion页面ID
+
+        Returns:
+            Dict: 视频信息
+        """
+        if not pageid:
+            return None
+
+        try:
+            # 获取页面信息
+            page_info = self.cache_data.get(self.bili_cache_key, [])
+            # 查找匹配的视频信息
+            matching_videos = [v for v in page_info if v.get("pageid") == pageid]
+            if not matching_videos:
+                return None
+            page_info = matching_videos[0]
+            if not page_info:
+                return None
+            # 构建视频信息
+            video = {
+                "pageid": pageid,
+                "title": page_info.get("title", "无标题视频"),
+                "url": page_info.get("url", ""),
+                "author": page_info.get("author", ""),
+                "priority": page_info.get("priority", ""),
+                "chinese_priority": page_info.get("chinese_priority", ""),
+                "duration": page_info.get("duration", 0),
+                "duration_str": page_info.get("duration_str", ""),
+                "summary": page_info.get("summary", ""),
+                "upload_date": page_info.get("upload_date", ""),
+                "source": page_info.get("source", ""),
+                "chinese_source": page_info.get("chinese_source", ""),
+                "success": True
+            }
+
+            return video
+        except Exception as e:
+            debug_utils.log_and_print(f"[NotionService] 获取视频信息失败: {e}", log_level="ERROR")
+            return None
+
+    def _update_notion_property_async(self, page_id: str, page_properties: Dict) -> None:
+        """
+        异步更新Notion页面属性 (实际上是在独立线程中执行异步操作)
+
+        Args:
+            page_id: Notion页面ID
+            page_properties: 要更新的属性
+        """
+        import threading
+        import asyncio
+
+        def run_async_update():
+            # 创建一个新的事件循环
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
+            async def update_property():
+                try:
+                    await self.notion_manager.update_page_properties(page_id, page_properties)
+                    debug_utils.log_and_print(f"[NotionService] 成功更新页面属性: {page_id}", log_level="INFO")
+                except Exception as e:
+                    debug_utils.log_and_print(f"[NotionService] 更新页面属性失败: {e}", log_level="ERROR")
+
+            # 运行异步函数
+            loop.run_until_complete(update_property())
+
+            # 关闭事件循环
+            loop.close()
+
+        # 启动一个新线程执行异步操作
+        thread = threading.Thread(target=run_async_update)
+        thread.daemon = True  # 设为守护线程，避免阻塞主程序退出
+        thread.start()
+        # 不等待线程完成，继续执行主线程

@@ -8,7 +8,6 @@ from io import BytesIO
 import json
 import os
 from typing import Any, Optional
-import asyncio
 
 from lark_oapi.api.im.v1 import (
     CreateMessageRequest,
@@ -126,47 +125,35 @@ class FeishuMessageHandler(MessageHandler):
             extra_data=extra_data
         )
 
-    async def send_message(self, response: MessageResponse) -> bool:
+    def send_message(self, response: MessageResponse) -> bool:
         """
         发送消息
 
         Args:
-            response: 响应消息
+            response: 消息响应对象
 
         Returns:
-            bool: 是否成功
+            bool: 是否发送成功
         """
-        receive_id = response.extra_data.get('receive_id', '')
-        if not receive_id:
-            print("[FeishuMessageHandler] 发送消息失败：缺少接收者ID")
-            return False
+        # 从extra_data中获取接收者ID
+        receive_id = response.extra_data.get("receive_id", os.getenv("ADMIN_ID", ""))
 
-        if 'action' in response.extra_data:
-            # 处理特殊操作
-            action = response.extra_data.get('action', '')
-            return await self._handle_action(action, response, receive_id)
+        # 根据action执行特殊操作
+        action = response.extra_data.get("action", "")
+        if action:
+            return self._handle_action(action, response, receive_id)
 
-        # 普通消息处理
-        content = response.content
-        if response.msg_type == MessageType.TEXT:
-            req = CreateMessageRequest()
-            req.payload = CreateMessageRequestBody(
-                receive_id=receive_id,
-                msg_type="text",
-                content=content
-            )
-        else:
-            # 其他类型消息处理
-            print(f"[FeishuMessageHandler] 不支持的消息类型: {response.msg_type}")
-            return False
+        # 普通消息发送
+        request = CreateMessageRequest.builder().receive_id_type("open_id").request_body(
+            CreateMessageRequestBody.builder()
+            .receive_id(receive_id)
+            .msg_type(response.msg_type.value)
+            .content(response.content)
+            .build()
+        ).build()
 
-        try:
-            # 发送消息
-            response = self.client.im.v1.message.create(req)
-            return response.code == 0
-        except Exception as e:
-            print(f"[FeishuMessageHandler] 发送消息失败: {e}")
-            return False
+        feishu_response = self.client.im.v1.message.create(request)
+        return feishu_response.success()
 
     def reply_message(self, original_message: Message, response: MessageResponse) -> bool:
         """
@@ -182,21 +169,25 @@ class FeishuMessageHandler(MessageHandler):
         # 根据action执行特殊操作
         action = response.extra_data.get("action", "")
         if action:
-            # 如果是处理特殊操作，需要通过异步方式处理
-            # 创建异步任务处理函数
-            async def process_action():
-                return await self._handle_action(action, response, original_message.chat_id, original_message)
+            # 获取原始消息数据
+            message_data = original_message
+            # 处理特殊操作
+            handler = ActionHandlerFactory.create_handler(action, self.client, self.bot_service)
+            if handler:
+                receive_id = message_data.sender_id
+                receive_id_type = "open_id"
 
-            # 创建一个Future对象来获取异步操作的结果
-            loop = asyncio.get_event_loop()
-            future = asyncio.run_coroutine_threadsafe(process_action(), loop)
-
-            try:
-                # 等待操作完成并获取结果 (设置10秒超时)
-                return future.result(10)
-            except Exception as e:
-                print(f"[FeishuMessageHandler] 异步处理操作失败: {e}")
-                return False
+                # 传递所有必要参数
+                handler_result = handler.handle(
+                    receive_id,
+                    receive_id_type,
+                    data=message_data,
+                    message_id=message_data.message_id,
+                    **response.extra_data
+                )
+                return handler_result is not False
+            # 如果没有对应的处理器，尝试通过常规方法回复
+            debug_utils.log_and_print(f"未找到操作处理器: {action}", log_level="WARNING")
 
         # 如果是p2p对话，使用chat_id发送
         if original_message.extra_data.get("chat_type", "") == "p2p":
@@ -313,7 +304,7 @@ class FeishuMessageHandler(MessageHandler):
         # 其他文件类型暂不支持
         return None
 
-    async def _handle_action(
+    def _handle_action(
             self, action: str, response: MessageResponse,
             receive_id: str, original_message: Message = None) -> bool:
         """
@@ -321,51 +312,111 @@ class FeishuMessageHandler(MessageHandler):
 
         Args:
             action: 操作类型
-            response: 响应消息
+            response: 消息响应对象
             receive_id: 接收者ID
-            original_message: 原始消息
+            original_message: 原始消息对象
 
         Returns:
-            bool: 是否成功
+            bool: 是否处理成功
         """
-        # 根据action类型创建对应的处理器
-        handler = self._create_handler(action, self.client, self.bot_service)
-        if handler:
-            # 准备参数
-            receive_id_type = 'open_id'
-            kwargs = {
-                'original_message': original_message,
-                'response': response,
-                'value': response.extra_data.get('value', {}),
-            }
+        # 默认使用open_id类型
+        # 如果从reply_message调用，传入的是chat_id，应该使用chat_id类型
+        receive_id_type = "chat_id" if original_message else "open_id"
+        # receive_id_type = "open_id"
 
-            # 对于特定操作，提取额外参数
-            if action == 'generate_image':
-                kwargs['prompt'] = response.extra_data.get('prompt', '')
-            elif action == 'generate_tts':
-                kwargs['text'] = response.extra_data.get('text', '')
-            elif action == 'process_image':
-                kwargs['image_key'] = response.extra_data.get('image_key', '')
+        # 如果是回复消息且原始消息是群聊，则使用chat_id
+        # if original_message and original_message.extra_data.get("chat_type", "") != "p2p":
+        #     receive_id_type = "chat_id"
 
-            # 处理操作
-            return await handler.handle(receive_id, receive_id_type, **kwargs)
+        # 使用工厂创建对应的处理器
+        handler = ActionHandlerFactory.create_handler(action, self.client, self.bot_service)
+
+        # 准备处理参数
+        kwargs = {}
+
+        # 从response中提取参数
+        for key, value in response.extra_data.items():
+            if key != "action":
+                kwargs[key] = value
+
+        # 如果存在原始消息，添加message_id
+        if original_message:
+            kwargs["message_id"] = original_message.message_id
+            kwargs["data"] = original_message  # 向后兼容之前的全量数据
+
+        # 检查kwargs中是否已经包含receive_id，避免重复传参
+        if "receive_id" in kwargs:
+            # 如果kwargs中已有receive_id，则使用kwargs中的值
+            return handler.handle(receive_id_type=receive_id_type, **kwargs)
         else:
-            # 默认处理
-            if self.bot_service:
-                print(f"[FeishuMessageHandler] 未知操作类型: {action}")
-                return False
-            return False
+            # 否则正常传递receive_id参数
+            return handler.handle(receive_id=receive_id, receive_id_type=receive_id_type, **kwargs)
 
-    def _create_handler(self, action: str, client, bot_service):
+    def handle_card_action(self, action_data) -> dict:
         """
-        创建处理器
+        处理卡片按钮点击事件
 
         Args:
-            action: 动作名称
-            client: 客户端
-            bot_service: 机器人服务
+            action_data: 卡片事件数据
 
         Returns:
-            FeishuActionHandler: 处理器对象
+            dict: 卡片回调响应
         """
-        return ActionHandlerFactory.create_handler(action, client, bot_service)
+        if not action_data or not hasattr(action_data, "event") or not hasattr(action_data.event, "action"):
+            return {"text": "无效的卡片点击事件"}
+
+        try:
+            # 解析事件数据
+            event = action_data.event
+            action = event.action
+            action_value = action.value
+
+            # 获取触发动作
+            if not isinstance(action_value, dict) or "action" not in action_value:
+                return {"text": "未找到有效的卡片动作"}
+
+            action_type = action_value["action"]
+
+            # 创建处理器
+            handler = ActionHandlerFactory.create_handler(action_type, self.client, self.bot_service)
+            if not handler:
+                return {
+                    "toast": {
+                        "type": "error",
+                        "content": f"未找到处理器: {action_type}"
+                    }
+                }
+
+            # 执行处理
+            receive_id = event.operator.open_id
+            receive_id_type = "open_id"
+            result = handler.handle(
+                receive_id=receive_id,
+                receive_id_type=receive_id_type,
+                value=action_value,
+                is_card_action=True
+            )
+
+            # 如果处理器返回了卡片回调格式的结果，直接返回
+            if isinstance(result, dict):
+                return result
+
+            # 否则返回简单的成功提示
+            return {
+                "toast": {
+                    "type": "success",
+                    "content": "操作成功"
+                }
+            }
+
+        except Exception as e:
+            debug_utils.log_and_print(f"处理卡片点击事件失败: {e}", log_level="ERROR")
+            import traceback
+            traceback.print_exc()
+
+            return {
+                "toast": {
+                    "type": "error",
+                    "content": "处理操作失败，请稍后重试"
+                }
+            }

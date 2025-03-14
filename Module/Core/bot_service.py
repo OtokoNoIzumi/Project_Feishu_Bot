@@ -8,6 +8,7 @@ import os
 import json
 import random
 from typing import List, Dict, Optional, Tuple
+from datetime import datetime
 
 from Module.Interface.message import Message, MessageType, MessageResponse
 from Module.Core.cache_service import CacheService
@@ -25,7 +26,6 @@ class BotService:
         cache_service: CacheService,
         config_service: ConfigService,
         media_service: MediaService,
-        notion_service: Optional[NotionService] = None,
         admin_id: str = ""
     ):
         """
@@ -35,14 +35,19 @@ class BotService:
             cache_service: 缓存服务
             config_service: 配置服务
             media_service: 媒体服务
-            notion_service: Notion服务
             admin_id: 管理员ID
         """
         self.cache_service = cache_service
         self.config_service = config_service
         self.media_service = media_service
-        self.notion_service = notion_service
-        self.admin_id = admin_id
+        self.admin_id = admin_id or os.getenv("ADMIN_ID", "")
+
+        # 初始化Notion服务
+        self.notion_service = NotionService(cache_service)
+
+        # 日志记录变量
+        self.last_log_time = 0
+        self.log_cooldown = 60  # 秒
 
         # 令牌更新相关配置
         self.update_config_trigger = "whisk令牌"
@@ -144,43 +149,23 @@ class BotService:
     def _handle_menu_click_message(self, message: Message) -> MessageResponse:
         """
         处理菜单点击消息
-
-        Args:
-            message: 菜单点击消息
-
-        Returns:
-            MessageResponse: 响应消息
         """
         event_key = message.extra_data.get("event_key", "")
         if event_key == "get_bili_url":
-            self.log_and_print(f"收到 [B站视频推荐] 菜单点击消息", log_level="INFO")
-
-            # 如果没有Notion服务，返回错误信息
-            if not self.notion_service:
-                return MessageResponse(
-                    MessageType.TEXT,
-                    json.dumps({"text": "抱歉，B站视频推荐服务暂时不可用"}),
-                    success=False
-                )
-
-            # 异步获取B站视频，这里使用事件标记以便后续处理
-            return MessageResponse(
+            # 调用Notion服务获取B站视频推荐
+            response_message = MessageResponse(
                 MessageType.TEXT,
                 json.dumps({"text": "__GET_BILI_VIDEO__"}),
                 success=True,
-                extra_data={
-                    "action": "get_bili_video",
-                    "receive_id": message.sender_id
-                }
+                extra_data={"action": "get_bili_video"}
             )
         else:
             content = "收到菜单点击消息"
-
-        response_message = MessageResponse(
-            MessageType.TEXT,
-            json.dumps({"text": content}),
-            success=True
-        )
+            response_message = MessageResponse(
+                MessageType.TEXT,
+                json.dumps({"text": content}),
+                success=True
+            )
         response_message.extra_data['receive_id'] = message.sender_id
         return response_message
 
