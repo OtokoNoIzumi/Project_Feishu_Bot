@@ -9,10 +9,11 @@ import sys
 import json
 import time
 import asyncio
+import threading
 from pathlib import Path
 from dotenv import load_dotenv
 from gradio_client import Client
-
+import datetime
 # 添加当前目录到系统路径
 is_not_jupyter = "__file__" in globals()
 if is_not_jupyter:
@@ -80,10 +81,26 @@ def setup_services():
     scheduler_service = SchedulerService()
 
     # 配置定时任务
+    # 示例：每天10:30发送日程 (你可以保留或按需修改/删除)
     scheduler_service.add_daily_task(
-        "daily_schedule",
-        "10:30",
-        bot_service.send_daily_schedule
+        task_name="daily_schedule_main", # 给一个唯一的任务名
+        time_str="07:08",
+        task_func=bot_service.send_daily_schedule
+    )
+
+    # 任务1: 每天下午15:30，不指定source (send_bilibili_updates将不传sources参数)
+    scheduler_service.add_daily_task(
+        task_name="bili_updates_afternoon",
+        time_str="15:30",
+        task_func=bot_service.send_bilibili_updates
+    )
+
+    # 任务2: 每天的23:55，source包括favorites和dynamic
+    scheduler_service.add_daily_task(
+        task_name="bili_updates_night",
+        time_str="23:55",
+        task_func=bot_service.send_bilibili_updates,
+        sources=["favorites", "dynamic"]  # 作为关键字参数传递
     )
 
     # 创建平台实现
@@ -104,20 +121,25 @@ def main():
     """程序入口函数"""
     platform, scheduler_service = setup_services()
 
-    # 启动平台服务
-    debug_utils.log_and_print("启动飞书机器人服务...", log_level="INFO")
-    platform.start()  # 同步方式启动平台
+    # 启动平台服务（在后台线程中）
+    debug_utils.log_and_print("准备启动飞书机器人服务...", log_level="INFO")
+    platform_thread = threading.Thread(target=platform.start, daemon=True)
+    platform_thread.start()
+    debug_utils.log_and_print("飞书机器人服务已在后台线程启动。", log_level="INFO")
 
-    # 主循环
+    # 主循环，运行调度器
+    debug_utils.log_and_print("启动调度器主循环...", log_level="INFO")
     try:
         while True:
             scheduler_service.run_pending()
-            time.sleep(10)
+            time.sleep(1) # 降低CPU占用，可以根据调度任务的精度调整
     except KeyboardInterrupt:
         debug_utils.log_and_print("程序被用户中断", log_level="INFO")
     finally:
-        platform.stop()
-        debug_utils.log_and_print("飞书机器人服务已停止", log_level="INFO")
+        debug_utils.log_and_print("正在停止飞书机器人服务...", log_level="INFO")
+        platform.stop() # 尝试停止平台服务
+        # platform_thread.join() # 等待平台线程结束（可选，如果stop是阻塞的或者你想确保它完全关闭）
+        debug_utils.log_and_print("飞书机器人服务已停止。", log_level="INFO")
 
 
 async def main_jupyter():

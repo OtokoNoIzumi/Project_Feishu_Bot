@@ -382,11 +382,45 @@ class BotService:
         self.log_and_print("发送每日日程", log_level="INFO")
         # 返回结果由调用者处理
 
-    def send_bilibili_updates(self) -> None:
-        """发送B站更新信息（临时）"""
-        update_text = "B站更新:\n- XXX up主发布了新视频：[视频标题](视频链接)"
-        self.log_and_print("发送B站更新", log_level="INFO")
-        # 返回结果由调用者处理
+    def send_bilibili_updates(self, sources: Optional[List[str]] = None) -> None:
+        """
+        发送B站更新信息，调用本地API获取B站收藏夹/动态等内容
+        Args:
+            sources: 可选的源列表，如 ["favorites", "dynamic"]
+        """
+        import requests
+        import json
+        url = os.getenv("BILI_API_BASE", "http://localhost:3000") + "/api/admin/process_sources"
+        headers = {
+            "Content-Type": "application/json"
+        }
+        data = {
+            "admin_secret_key": "izumi_the_beauty",
+            "debug_mode": True,
+            "skip_deduplication": False,
+            "fav_list_id": 1397395905,
+            "delete_after_process": True,
+            "dynamic_hours_ago": 24,
+            "dynamic_max_videos": 50,
+            "homepage_max_videos": 20,
+            "blocked_up_list": None,
+            # "sources": ["favorites", "dynamic"] # 旧的硬编码或注释掉的行
+            # "sources": ["favorites"]             # 旧的硬编码或注释掉的行
+        }
+
+        if sources is not None:
+            data["sources"] = sources
+
+        try:
+            response = requests.post(url, headers=headers, data=json.dumps(data))
+            self.log_and_print(f"B站更新API状态码: {response.status_code}", log_level="INFO")
+            try:
+                resp_json = response.json()
+                self.log_and_print(f"B站更新API响应内容: {json.dumps(resp_json, ensure_ascii=False)}", log_level="DEBUG")
+            except Exception as e:
+                self.log_and_print(f"B站更新API响应内容解析失败: {e}", log_level="ERROR")
+        except Exception as e:
+            self.log_and_print(f"发送B站更新请求失败: {e}", log_level="ERROR")
 
     def send_daily_summary(self) -> None:
         """发送每日工作总结（临时）"""
