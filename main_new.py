@@ -43,7 +43,9 @@ def setup_services():
     load_dotenv(os.path.join(current_dir, ".env"))
 
     # 创建配置服务
-    config_service = ConfigService(os.path.join(current_dir, "config.json"))
+    config_service = ConfigService(os.getenv("AUTH_CONFIG_FILE_PATH", ""))
+
+    # config_service = ConfigService(os.path.join(current_dir, "config.json"))
 
     # 创建缓存服务
     cache_dir = os.path.join(current_dir, "cache")
