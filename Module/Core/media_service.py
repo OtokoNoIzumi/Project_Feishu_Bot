@@ -240,6 +240,7 @@ class CozeTTS:
         try:
             # 获取音频URL
             response = requests.post(self.api_base, headers=headers, json=payload, timeout=60)
+
             response.raise_for_status()
             result = response.json()
             if result.get("code") != 0:

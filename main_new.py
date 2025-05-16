@@ -53,7 +53,7 @@ def setup_services():
     cache_service = CacheService(cache_dir)
 
     # 创建Gradio客户端
-    gradio_url = f"http://{os.getenv('SERVER_ID', '')}"
+    gradio_url = f"https://{os.getenv('SERVER_ID', '')}"
     gradio_client = Client(gradio_url)
 
     # 创建Coze API设置
@@ -86,7 +86,8 @@ def setup_services():
     # 示例：每天10:30发送日程 (你可以保留或按需修改/删除)
     scheduler_service.add_daily_task(
         task_name="daily_schedule_main", # 给一个唯一的任务名
-        time_str="07:08",
+        time_str="07:30",
+        # time_str="13:54",
         task_func=bot_service.send_daily_schedule
     )
 
