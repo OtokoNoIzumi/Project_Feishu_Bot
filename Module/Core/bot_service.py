@@ -7,11 +7,8 @@
 import os
 import json
 import random
-from typing import List, Dict, Optional, Tuple, Any
+from typing import List, Dict, Optional, Tuple
 from datetime import datetime
-import threading
-import requests
-import asyncio
 
 from Module.Interface.message import Message, MessageType, MessageResponse
 from Module.Core.cache_service import CacheService
@@ -382,19 +379,18 @@ class BotService:
     def send_daily_schedule(self) -> None:
         """发送每日日程信息（临时）"""
         schedule_text = "今日日程:\n- 上午 9:00  会议\n- 下午 2:00  代码 Review"
-        self.send_message(
-                    receive_id=self.admin_id,
-                    content={"text": "Whisk的Cookie已过期，请及时续签"},
-                    msg_type="text"
-                )
         self.log_and_print("发送每日日程", log_level="INFO")
         # 返回结果由调用者处理
 
-    def _actual_send_bilibili_updates(self, chat_id_to_notify: Optional[str], sources: Optional[List[str]] = None) -> None:
+    def send_bilibili_updates(self, sources: Optional[List[str]] = None) -> None:
         """
-        实际执行B站API调用并发送结果的函数。
-        这将在一个单独的线程中运行。
+        发送B站更新信息，调用本地API获取B站收藏夹/动态等内容
+        Args:
+            sources: 可选的源列表，如 ["favorites", "dynamic"]
         """
+        import requests
+        import json
+
         # 从环境变量获取API基础URL，默认使用localhost
         api_base = os.getenv("BILI_API_BASE", "http://localhost:3000")
         # 从环境变量获取是否验证SSL证书，默认为True
@@ -404,169 +400,38 @@ class BotService:
         headers = {
             "Content-Type": "application/json"
         }
-
-        # 优先从配置服务获取参数，若无则使用环境变量或默认值
-        admin_secret_key = "izumi_the_beauty" # 默认值
-        fav_list_id = 1397395905 # 默认值
-
-        if hasattr(self, 'config_service') and self.config_service:
-            admin_secret_key = self.config_service.get("bili_admin_secret_key", admin_secret_key)
-            fav_list_id = self.config_service.get("bili_fav_list_id", fav_list_id)
-        else: # 尝试从环境变量获取（如果配置服务不可用）
-            admin_secret_key = os.getenv("BILI_ADMIN_SECRET_KEY", admin_secret_key)
-            fav_list_id = int(os.getenv("BILI_FAV_LIST_ID", str(fav_list_id)))
-
-
         data = {
-            "admin_secret_key": admin_secret_key,
+            "admin_secret_key": "izumi_the_beauty",
             "debug_mode": True,
             "skip_deduplication": False,
-            "fav_list_id": fav_list_id,
+            "fav_list_id": 1397395905,
             "delete_after_process": True,
             "dynamic_hours_ago": 24,
             "dynamic_max_videos": 50,
             "homepage_max_videos": 20,
             "blocked_up_list": None,
+            # "sources": ["favorites", "dynamic"] # 旧的硬编码或注释掉的行
+            # "sources": ["favorites"]             # 旧的硬编码或注释掉的行
         }
 
         if sources is not None:
             data["sources"] = sources
 
-        result_message = ""
         try:
-            # 添加verify参数控制是否验证SSL证书, 增加timeout
-            proxies_to_use = None
-            if os.getenv("BILI_API_NO_PROXY", "false").lower() in ("true", "1"):
-                proxies_to_use = {} # 空字典告诉requests不要使用任何系统代理
-                self.log_and_print("BILI_API_NO_PROXY已设置，B站API调用将绕过系统代理。", log_level="INFO")
-
-            response = requests.post(url, headers=headers, data=json.dumps(data), verify=verify_ssl, timeout=180, proxies=proxies_to_use) # 3分钟超时
-
+            # 添加verify参数控制是否验证SSL证书
+            response = requests.post(url, headers=headers, data=json.dumps(data), verify=verify_ssl)
+            # 如果禁用SSL验证，添加警告日志
             if not verify_ssl:
-                self.log_and_print("警告：B站API调用时SSL证书验证已禁用。", log_level="WARNING")
+                self.log_and_print("警告：SSL证书验证已禁用", log_level="WARNING")
 
-            self.log_and_print(f"B站更新API状态码: {response.status_code} (URL: {url})", log_level="INFO")
-
-            if response.status_code == 200:
-                try:
-                    resp_json = response.json()
-                    self.log_and_print(f"B站更新API响应内容: {json.dumps(resp_json, ensure_ascii=False)}", log_level="DEBUG")
-                    summary = resp_json.get("message", "操作成功完成")
-                    if isinstance(summary, (dict, list)):
-                        summary = json.dumps(summary, ensure_ascii=False, indent=2)
-                    result_message = f"✅ B站更新任务完成。\n源: {sources or '默认'}\n结果: {summary}"
-                except json.JSONDecodeError as e:
-                    self.log_and_print(f"B站更新API响应内容JSON解析失败: {e}.响应体: {response.text[:500]}", log_level="ERROR")
-                    result_message = f"⚠️ B站更新任务执行完毕，但响应内容非标准JSON格式: {response.text[:200]}"
-                except Exception as e:
-                    self.log_and_print(f"B站更新API响应内容处理失败: {e}", log_level="ERROR")
-                    result_message = f"⚠️ B站更新任务执行完毕，但响应处理失败: {e}"
-            else:
-                error_details = response.text[:500]
-                self.log_and_print(f"B站更新API返回错误，状态码: {response.status_code}。响应: {error_details}", log_level="ERROR")
-                result_message = f"❌ B站更新任务执行失败。\nAPI状态码: {response.status_code}\n错误详情: {error_details}"
-
-        except requests.exceptions.Timeout:
-            self.log_and_print(f"发送B站更新请求超时 (URL: {url})", log_level="ERROR")
-            result_message = f"⌛ B站更新任务执行超时 (URL: {url})。"
-        except requests.exceptions.ProxyError as e:
-            self.log_and_print(f"发送B站更新请求时发生代理错误: {e} (URL: {url})", log_level="ERROR")
-            result_message = f"❌ B站更新任务执行时发生代理连接错误: {e}"
-        except requests.exceptions.ConnectionError as e:
-            self.log_and_print(f"发送B站更新请求时发生连接错误: {e} (URL: {url})", log_level="ERROR")
-            result_message = f"❌ B站更新任务执行时发生网络连接错误: {e}"
-        except requests.exceptions.RequestException as e:
-            self.log_and_print(f"发送B站更新请求失败 (RequestException): {e} (URL: {url})", log_level="ERROR")
-            result_message = f"❌ B站更新任务执行时发生请求错误: {e}"
+            self.log_and_print(f"B站更新API状态码: {response.status_code}", log_level="INFO")
+            try:
+                resp_json = response.json()
+                self.log_and_print(f"B站更新API响应内容: {json.dumps(resp_json, ensure_ascii=False)}", log_level="DEBUG")
+            except Exception as e:
+                self.log_and_print(f"B站更新API响应内容解析失败: {e}", log_level="ERROR")
         except Exception as e:
-            self.log_and_print(f"处理B站更新时发生未知错误: {e}", log_level="CRITICAL")
-            result_message = f"❌ B站更新任务执行时发生未知严重错误: {e}"
-
-        if chat_id_to_notify and hasattr(self, 'platform') and self.platform and hasattr(self.platform, 'send_message_to_chat_async'):
-            try:
-                loop = None
-                if hasattr(self.platform, 'get_event_loop') and callable(self.platform.get_event_loop):
-                    loop = self.platform.get_event_loop()
-
-                if loop and loop.is_running():
-                    future = asyncio.run_coroutine_threadsafe(
-                        self.platform.send_message_to_chat_async(chat_id=chat_id_to_notify, message_content=result_message, msg_type="text"),
-                        loop
-                    )
-                    future.result(timeout=30)
-                    self.log_and_print(f"B站更新结果已发送至 chat_id: {chat_id_to_notify}", log_level="INFO")
-                elif hasattr(self.platform, 'send_message_sync') and callable(self.platform.send_message_sync): # 备用同步发送
-                     self.platform.send_message_sync(chat_id=chat_id_to_notify, message_content=result_message, msg_type="text")
-                     self.log_and_print(f"B站更新结果已通过同步方法发送至 chat_id: {chat_id_to_notify}", log_level="INFO")
-                else:
-                     self.log_and_print(f"无法发送B站更新结果：事件循环未运行或未找到合适的发送方法。", log_level="WARNING")
-            except Exception as e:
-                self.log_and_print(f"发送B站更新结果通知失败: {e}", log_level="ERROR")
-        elif not chat_id_to_notify:
-            self.log_and_print(f"未提供chat_id，B站更新结果未发送通知: {result_message}", log_level="INFO")
-        else:
-            self.log_and_print(f"Platform或其发送方法不可用，无法发送B站更新结果。结果: {result_message}", log_level="WARNING")
-
-
-    def send_bilibili_updates(self, sources: Optional[List[str]] = None, event: Optional[Dict[str, Any]] = None) -> None:
-        """
-        异步发送B站更新信息。
-        立即回复一个处理中消息，然后在后台线程中调用本地API获取B站内容并回复结果。
-        Args:
-            sources: 可选的源列表，如 ["favorites", "dynamic"]
-            event: 可选的飞书事件对象，用于回复消息上下文。如果为None，则尝试发送到默认通知频道。
-        """
-        chat_id_to_notify = None
-
-        if event and isinstance(event, dict):
-            header = event.get("header", {})
-            event_payload = event.get("event", {})
-            chat_id_to_notify = header.get("chat_id")
-            if not chat_id_to_notify:
-                message_details = event_payload.get("message")
-                if message_details and isinstance(message_details, dict):
-                    chat_id_to_notify = message_details.get("chat_id")
-
-        if not chat_id_to_notify:
-            if hasattr(self, 'config_service') and self.config_service:
-                chat_id_to_notify = self.config_service.get("default_notification_chat_id")
-            if not chat_id_to_notify:
-                chat_id_to_notify = os.getenv("DEFAULT_FEISHU_CHAT_ID_FOR_BILI_UPDATES")
-                if chat_id_to_notify:
-                    self.log_and_print(f"使用环境变量 DEFAULT_FEISHU_CHAT_ID_FOR_BILI_UPDATES: {chat_id_to_notify}", log_level="INFO")
-
-        if not chat_id_to_notify:
-            self.log_and_print("未找到可用的chat_id。B站更新任务将在后台执行，但无法发送即时反馈和结果通知。", log_level="ERROR")
-
-        initial_message_content = f"⏳ B站更新任务已启动 (处理源: {sources or '默认'}). 请稍候..."
-        if chat_id_to_notify and hasattr(self, 'platform') and self.platform and hasattr(self.platform, 'send_message_to_chat_async'):
-            try:
-                loop = None
-                if hasattr(self.platform, 'get_event_loop') and callable(self.platform.get_event_loop):
-                    loop = self.platform.get_event_loop()
-
-                if loop and loop.is_running():
-                    future = asyncio.run_coroutine_threadsafe(
-                        self.platform.send_message_to_chat_async(chat_id=chat_id_to_notify, message_content=initial_message_content, msg_type="text"),
-                        loop
-                    )
-                    future.result(timeout=30)
-                    self.log_and_print(f"初始通知已发送至 chat_id: {chat_id_to_notify}", log_level="INFO")
-                elif hasattr(self.platform, 'send_message_sync') and callable(self.platform.send_message_sync): # 备用同步发送
-                     self.platform.send_message_sync(chat_id=chat_id_to_notify, message_content=initial_message_content, msg_type="text")
-                     self.log_and_print(f"初始通知已通过同步方法发送至 chat_id: {chat_id_to_notify}", log_level="INFO")
-                else:
-                    self.log_and_print(f"无法发送初始通知：事件循环未运行或未找到合适的发送方法。", log_level="WARNING")
-            except Exception as e:
-                self.log_and_print(f"发送初始B站更新通知失败: {e}", log_level="ERROR")
-        elif chat_id_to_notify:
-             self.log_and_print(f"无法发送初始通知至 {chat_id_to_notify}：Platform或其发送方法不可用。", log_level="WARNING")
-
-        self.log_and_print(f"准备在后台线程启动B站更新任务 (源: {sources or '默认'}, 通知至: {chat_id_to_notify or '无'})", log_level="DEBUG")
-        thread = threading.Thread(target=self._actual_send_bilibili_updates, args=(chat_id_to_notify, sources))
-        thread.daemon = True
-        thread.start()
-        self.log_and_print(f"B站更新任务已在后台线程中启动 (源: {sources or '默认'}, 通知至: {chat_id_to_notify or '无'})。", log_level="INFO")
+            self.log_and_print(f"发送B站更新请求失败: {e}", log_level="ERROR")
 
     def send_daily_summary(self) -> None:
         """发送每日工作总结（临时）"""
