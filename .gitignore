@@ -8,3 +8,5 @@ debug_info.log
 localhost+1*.pem
 local_settings/
 cache/notion_bili_cache.json
+cache/processed_events.json
+cache/user_cache.json

@@ -42,19 +42,31 @@ def setup_services():
     # 加载环境变量
     load_dotenv(os.path.join(current_dir, ".env"))
 
-    # 创建配置服务
-    config_service = ConfigService(os.getenv("AUTH_CONFIG_FILE_PATH", ""))
-
-    # config_service = ConfigService(os.path.join(current_dir, "config.json"))
+    # 创建配置服务 - 支持双配置源
+    config_service = ConfigService(
+        auth_config_file_path=os.getenv("AUTH_CONFIG_FILE_PATH", ""),
+        static_config_file_path=os.path.join(current_dir, "config.json")
+    )
 
     # 创建缓存服务
     cache_dir = os.path.join(current_dir, "cache")
     os.makedirs(cache_dir, exist_ok=True)
     cache_service = CacheService(cache_dir)
 
-    # 创建Gradio客户端
+    # 创建Gradio客户端（可选，支持降级）
+    gradio_client = None
     gradio_url = f"https://{os.getenv('SERVER_ID', '')}"
-    gradio_client = Client(gradio_url)
+
+    if gradio_url and gradio_url != "https://":  # 确保SERVER_ID不为空
+        try:
+            debug_utils.log_and_print(f"尝试连接Gradio服务: {gradio_url}", log_level="INFO")
+            gradio_client = Client(gradio_url)
+            debug_utils.log_and_print("Gradio客户端连接成功", log_level="INFO")
+        except Exception as e:
+            debug_utils.log_and_print(f"Gradio客户端连接失败，将以降级模式运行: {e}", log_level="WARNING")
+            gradio_client = None
+    else:
+        debug_utils.log_and_print("未配置SERVER_ID，Gradio服务将不可用", log_level="WARNING")
 
     # 创建Coze API设置
     coze_api_settings = {
@@ -63,7 +75,7 @@ def setup_services():
         "access_token": os.getenv("COZE_API_KEY", ""),
         "voice_id": config_service.get("voice_id", "peach")
     }
-
+    print('test_coze_api_settings', coze_api_settings)
     # 创建媒体服务
     media_service = MediaService(
         ffmpeg_path=os.getenv("FFMPEG_PATH", ""),
