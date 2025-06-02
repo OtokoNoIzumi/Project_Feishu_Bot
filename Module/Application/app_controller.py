@@ -111,6 +111,9 @@ class AppController:
                 cache_dir = config.get('cache_dir', os.path.join(self.project_root_path, "cache"))
                 os.makedirs(cache_dir, exist_ok=True)
                 instance = service_class(cache_dir)
+            elif service_name == 'audio':
+                # 音频服务需要传入应用控制器引用
+                instance = service_class(app_controller=self)
             else:
                 # 通用初始化
                 instance = service_class(**config)

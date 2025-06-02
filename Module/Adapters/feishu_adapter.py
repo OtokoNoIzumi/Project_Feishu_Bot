@@ -1,31 +1,31 @@
 """
-飞书适配器 (Feishu Adapter)
+飞书适配器 - 处理飞书平台特定的协议转换
 
-职责：
-1. 处理飞书WebSocket连接
-2. 飞书消息格式与标准格式的转换
-3. 调用核心业务处理器
-4. 将处理结果转换为飞书消息格式发送
+该模块职责：
+1. 飞书WebSocket连接管理
+2. 飞书消息格式与标准格式的双向转换
+3. 飞书特定的API调用
 """
 
-import os
 import json
 import time
 import datetime
+import tempfile
+import os
 from typing import Optional, Dict, Any
+from pathlib import Path
 
 import lark_oapi as lark
-from lark_oapi.api.im.v1 import (
-    CreateMessageRequest,
-    CreateMessageRequestBody,
-    ReplyMessageRequest,
-    ReplyMessageRequestBody,
-)
 from lark_oapi.api.contact.v3 import GetUserRequest
+from lark_oapi.api.im.v1 import (
+    CreateMessageRequest, CreateMessageRequestBody,
+    ReplyMessageRequest, ReplyMessageRequestBody,
+    CreateFileRequest, CreateFileRequestBody
+)
 from lark_oapi.event.callback.model.p2_card_action_trigger import P2CardActionTriggerResponse
 
-from Module.Business.message_processor import MessageContext, ProcessResult
 from Module.Common.scripts.common import debug_utils
+from Module.Business.message_processor import MessageContext, ProcessResult
 
 
 class FeishuAdapter:
@@ -113,30 +113,39 @@ class FeishuAdapter:
         try:
             # 转换为标准消息上下文
             context = self._convert_message_to_context(data)
-            if not context:
+            if context is None:
+                debug_utils.log_and_print("消息上下文转换失败", log_level="ERROR")
                 return
 
             debug_utils.log_and_print(
-                f"收到消息 - 用户: {context.user_name}({context.user_id})",
-                f"类型: {context.message_type}, 内容: {context.content}",
+                f"📱 处理消息: {context.user_name}, 类型={context.message_type}, 内容={str(context.content)[:20]}...",
                 log_level="INFO"
             )
 
             # 调用业务处理器
             result = self.message_processor.process_message(context)
 
-            # 发送回复
-            if result.should_reply:
+            if not result.should_reply:
+                return
+
+            # 检查是否需要异步处理TTS
+            if (result.success and
+                result.response_content and
+                result.response_content.get("next_action") == "process_tts"):
+
+                # 先发送处理中提示
                 self._send_feishu_reply(data, result)
 
+                # 异步处理TTS
+                tts_text = result.response_content.get("tts_text", "")
+                self._handle_tts_async(data, tts_text)
+                return
+
+            # 发送结果
+            self._send_feishu_reply(data, result)
+
         except Exception as e:
-            debug_utils.log_and_print(f"飞书消息处理失败: {e}", log_level="ERROR")
-            # 发送错误回复
-            try:
-                error_result = ProcessResult.error_result("消息处理出现错误")
-                self._send_feishu_reply(data, error_result)
-            except:
-                pass  # 避免二次错误
+            debug_utils.log_and_print(f"处理飞书消息失败: {e}", log_level="ERROR")
 
     def _handle_feishu_menu(self, data) -> None:
         """
@@ -435,6 +444,121 @@ class FeishuAdapter:
         except Exception as e:
             debug_utils.log_and_print(f"发送飞书直接消息失败: {e}", log_level="ERROR")
             return False
+
+    def _handle_tts_async(self, original_data, tts_text: str):
+        """异步处理TTS生成和发送"""
+        try:
+            # 调用MessageProcessor进行TTS生成
+            result = self.message_processor.process_tts_async(tts_text)
+
+            if not result.success:
+                # TTS失败，发送错误消息
+                self._send_feishu_reply(original_data, result)
+                return
+
+            # TTS成功，处理音频上传和发送
+            if result.response_type == "audio":
+                audio_data = result.response_content.get("audio_data")
+                if audio_data:
+                    audio_result = self._upload_and_send_audio(original_data, audio_data)
+                    if not audio_result:
+                        # 音频上传失败，发送错误消息
+                        error_result = ProcessResult.error_result("音频上传失败")
+                        self._send_feishu_reply(original_data, error_result)
+                else:
+                    error_result = ProcessResult.error_result("音频数据为空")
+                    self._send_feishu_reply(original_data, error_result)
+            else:
+                # 非音频响应，直接发送
+                self._send_feishu_reply(original_data, result)
+
+        except Exception as e:
+            debug_utils.log_and_print(f"TTS异步处理失败: {e}", log_level="ERROR")
+            error_result = ProcessResult.error_result(f"TTS处理出错: {str(e)}")
+            self._send_feishu_reply(original_data, error_result)
+
+    def _upload_and_send_audio(self, original_data, audio_data: bytes) -> bool:
+        """上传音频并发送消息"""
+        temp_mp3_path = None
+        temp_opus_path = None
+
+        try:
+            # 获取音频服务
+            if not self.app_controller:
+                debug_utils.log_and_print("应用控制器不可用", log_level="ERROR")
+                return False
+
+            audio_service = self.app_controller.get_service('audio')
+            if not audio_service:
+                debug_utils.log_and_print("音频服务不可用", log_level="ERROR")
+                return False
+
+            # 创建临时MP3文件
+            temp_mp3_path = audio_service.create_temp_audio_file(audio_data, ".mp3")
+
+            # 转换为opus格式
+            temp_opus_path, duration_ms = audio_service.convert_to_opus(temp_mp3_path)
+
+            if not temp_opus_path or not os.path.exists(temp_opus_path):
+                debug_utils.log_and_print("音频转换失败", log_level="ERROR")
+                return False
+
+            # 上传到飞书
+            file_key = self._upload_opus_to_feishu(temp_opus_path, duration_ms)
+
+            if file_key:
+                # 发送音频消息
+                content_json = json.dumps({"file_key": file_key})
+                result = ProcessResult.success_result("audio", json.loads(content_json))
+                return self._send_feishu_reply(original_data, result)
+            else:
+                debug_utils.log_and_print("音频上传到飞书失败", log_level="ERROR")
+                return False
+
+        except Exception as e:
+            debug_utils.log_and_print(f"音频上传处理失败: {e}", log_level="ERROR")
+            return False
+        finally:
+            # 清理临时文件
+            if temp_mp3_path and audio_service:
+                audio_service.cleanup_temp_file(temp_mp3_path)
+            if temp_opus_path and audio_service:
+                audio_service.cleanup_temp_file(temp_opus_path)
+
+    def _upload_opus_to_feishu(self, opus_path: str, duration_ms: int) -> Optional[str]:
+        """上传opus音频文件到飞书"""
+        try:
+            with open(opus_path, "rb") as audio_file:
+                opus_filename = Path(opus_path).name
+
+                upload_response = self.client.im.v1.file.create(
+                    CreateFileRequest.builder()
+                    .request_body(
+                        CreateFileRequestBody.builder()
+                        .file_type("opus")
+                        .file_name(opus_filename)
+                        .duration(str(int(duration_ms)))
+                        .file(audio_file)
+                        .build()
+                    ).build()
+                )
+
+                if upload_response.success() and upload_response.data and upload_response.data.file_key:
+                    # debug_utils.log_and_print(
+                    #     f"音频上传成功: {opus_filename}, file_key={upload_response.data.file_key}",
+                    #     log_level="INFO"
+                    # )
+                    return upload_response.data.file_key
+                else:
+                    debug_utils.log_and_print(
+                        f"音频上传失败: {upload_response.code} - {upload_response.msg}",
+                        log_level="ERROR"
+                    )
+                    return None
+
+        except Exception as e:
+            debug_utils.log_and_print(f"音频上传异常: {e}", log_level="ERROR")
+            return None
 
     def start(self):
         """启动飞书WebSocket连接（同步方式）"""

@@ -120,21 +120,49 @@ class MessageProcessor:
 
     def _is_duplicate_event(self, event_id: str) -> bool:
         """检查事件是否重复"""
-        if self.app_controller:
-            success, result = self.app_controller.call_service('cache', 'get', f"event:{event_id}")
-            return success and result is not None
-        return False
+        from Module.Common.scripts.common import debug_utils
+
+        if not self.app_controller:
+            debug_utils.log_and_print("app_controller为空，无法检查重复事件", log_level="WARNING")
+            return False
+
+        cache_service = self.app_controller.get_service('cache')
+        if not cache_service:
+            debug_utils.log_and_print("缓存服务不可用，无法检查重复事件", log_level="WARNING")
+            return False
+
+        # 直接调用缓存服务的check_event方法
+        is_duplicate = cache_service.check_event(event_id)
+        # debug_utils.log_and_print(f"🔍 事件检查 - ID: {event_id[:16]}..., 重复: {is_duplicate}", log_level="INFO")
+
+        if is_duplicate:
+            debug_utils.log_and_print(
+                f"🔄 重复消息已跳过 - ID: {event_id[:16]}...",
+                log_level="INFO"
+            )
+
+        return is_duplicate
 
     def _record_event(self, context: MessageContext):
         """记录新事件"""
-        if self.app_controller:
-            # 记录事件ID
-            self.app_controller.call_service('cache', 'set', f"event:{context.event_id}",
-                                           context.timestamp.isoformat(), 86400)  # 24小时过期
+        from Module.Common.scripts.common import debug_utils
 
-            # 更新用户缓存
-            self.app_controller.call_service('cache', 'set', f"user:{context.user_id}",
-                                           context.user_name, 604800)  # 7天过期
+        if not self.app_controller:
+            debug_utils.log_and_print("app_controller为空，无法记录事件", log_level="WARNING")
+            return
+
+        cache_service = self.app_controller.get_service('cache')
+        if not cache_service:
+            debug_utils.log_and_print("缓存服务不可用，无法记录事件", log_level="WARNING")
+            return
+
+        # 直接调用缓存服务的方法
+        cache_service.add_event(context.event_id)
+        cache_service.save_event_cache()
+        # debug_utils.log_and_print(f"✅ 事件已记录 - ID: {context.event_id}...", log_level="INFO")
+
+        # 更新用户缓存
+        cache_service.update_user(context.user_id, context.user_name)
 
     def _process_text_message(self, context: MessageContext) -> ProcessResult:
         """处理文本消息"""
@@ -143,6 +171,10 @@ class MessageProcessor:
         # 管理员配置更新指令
         if user_msg.startswith(self.update_config_trigger):
             return self._handle_config_update(context, user_msg)
+
+        # TTS配音指令
+        if "配音" in user_msg:
+            return self._handle_tts_command(context, user_msg)
 
         # 基础指令处理
         if "帮助" in user_msg:
@@ -225,9 +257,69 @@ class MessageProcessor:
             "text": f"配置更新功能将在后续版本实现：{variable_name} = {new_value}"
         })
 
+    def _handle_tts_command(self, context: MessageContext, user_msg: str) -> ProcessResult:
+        """处理TTS配音指令"""
+        try:
+            # 提取配音文本
+            tts_text = user_msg.split("配音", 1)[1].strip()
+            if not tts_text:
+                return ProcessResult.error_result("配音文本不能为空，请使用格式：配音 文本内容")
+
+            # 检查音频服务是否可用
+            if not self.app_controller:
+                return ProcessResult.error_result("系统服务不可用")
+
+            audio_service = self.app_controller.get_service('audio')
+            if not audio_service:
+                return ProcessResult.error_result("音频服务未启动")
+
+            # 先发送处理中提示
+            return ProcessResult.success_result("text", {
+                "text": "正在生成配音，请稍候...",
+                "next_action": "process_tts",
+                "tts_text": tts_text
+            })
+
+        except Exception as e:
+            return ProcessResult.error_result(f"配音指令处理失败: {str(e)}")
+
+    def process_tts_async(self, tts_text: str) -> ProcessResult:
+        """
+        异步处理TTS生成（由FeishuAdapter调用）
+
+        Args:
+            tts_text: 要转换的文本
+
+        Returns:
+            ProcessResult: 处理结果
+        """
+        try:
+            if not self.app_controller:
+                return ProcessResult.error_result("系统服务不可用")
+
+            # 获取音频服务
+            audio_service = self.app_controller.get_service('audio')
+            if not audio_service:
+                return ProcessResult.error_result("音频服务未启动")
+
+            # 生成TTS音频
+            success, audio_data, error_msg = audio_service.process_tts_request(tts_text)
+
+            if not success:
+                return ProcessResult.error_result(f"TTS生成失败: {error_msg}")
+
+            # 返回音频数据，由适配器处理上传
+            return ProcessResult.success_result("audio", {
+                "audio_data": audio_data,
+                "text": tts_text[:50] + ("..." if len(tts_text) > 50 else "")
+            })
+
+        except Exception as e:
+            return ProcessResult.error_result(f"TTS异步处理失败: {str(e)}")
+
     def _handle_help_command(self, context: MessageContext) -> ProcessResult:
         """处理帮助指令"""
-        help_text = """<b>阶段1 MVP - 基础功能</b>
+        help_text = """<b>阶段2A MVP - 音频处理功能</b>
 
 当前支持的功能：
 1. <b>基础对话</b> - 发送任意文本消息
@@ -235,8 +327,13 @@ class MessageProcessor:
 3. <b>帮助菜单</b> - 输入"帮助"查看此菜单
 4. <b>菜单交互</b> - 支持机器人菜单点击
 5. <b>卡片交互</b> - 支持卡片按钮点击
+6. <b>🎤 TTS配音</b> - 输入"配音 文本内容"生成语音
 
-<i>架构优势：统一的交互处理，易于扩展</i>"""
+<i>使用示例：</i>
+• 配音 你好，这是一段测试语音
+• 配音 欢迎使用飞书机器人
+
+<i>架构优势：统一的交互处理，独立的音频服务</i>"""
 
         return ProcessResult.success_result("text", {"text": help_text})
 
