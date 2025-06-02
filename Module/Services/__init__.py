@@ -11,3 +11,9 @@ __all__ = [
     'CacheService',
     'ConfigService'
 ]
+
+# 服务注册表（用于应用控制器）
+AVAILABLE_SERVICES = {
+    'cache': CacheService,
+    'config': ConfigService
+}

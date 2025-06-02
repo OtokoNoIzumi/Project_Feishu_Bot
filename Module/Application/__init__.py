@@ -1,11 +1,11 @@
 """
-业务应用层模块
+应用层模块
 
-该模块负责业务流程编排和指令分发
+该模块包含应用控制器和业务流程编排组件
 """
 
-from .command import Command, CommandResult
-from .controller import AppController
-from .dispatcher import CommandDispatcher
+from .app_controller import AppController
 
-__all__ = ['Command', 'CommandResult', 'AppController', 'CommandDispatcher']
+__all__ = [
+    'AppController'
+]

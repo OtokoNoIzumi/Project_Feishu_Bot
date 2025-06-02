@@ -1,9 +1,12 @@
 """
-前端适配器层模块
+适配器层模块 (Adapters Layer)
 
-该模块包含不同前端的适配器实现
+该模块包含各种前端平台的适配器
+设计原则：协议转换、平台隔离、标准接口
 """
 
-from .base import Adapter
+from .feishu_adapter import FeishuAdapter
 
-__all__ = ['Adapter']
+__all__ = [
+    'FeishuAdapter'
+]
