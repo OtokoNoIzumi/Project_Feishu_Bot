@@ -156,6 +156,15 @@ class FeishuAdapter:
                 self._handle_image_conversion_async(data, context)
                 return
 
+            # 检查是否需要异步处理B站视频推荐
+            if (result.success and
+                result.response_content and
+                result.response_content.get("next_action") == "process_bili_video"):
+
+                user_id = result.response_content.get("user_id", "")
+                self._handle_bili_video_async(data, user_id)
+                return
+
             # 发送结果
             self._send_feishu_reply(data, result)
 
@@ -172,6 +181,7 @@ class FeishuAdapter:
             # 转换为标准消息上下文
             context = self._convert_menu_to_context(data)
             if not context:
+                debug_utils.log_and_print("❌ 菜单上下文转换失败", log_level="ERROR")
                 return
 
             debug_utils.log_and_print(
@@ -180,12 +190,39 @@ class FeishuAdapter:
                 log_level="INFO"
             )
 
+            debug_utils.log_and_print("🔄 调用MessageProcessor处理菜单点击", log_level="INFO")
+
             # 调用业务处理器
             result = self.message_processor.process_message(context)
 
+            debug_utils.log_and_print(
+                f"📋 MessageProcessor处理结果 - 成功: {result.success}, 需要回复: {result.should_reply}",
+                log_level="INFO"
+            )
+
+            if result.response_content:
+                debug_utils.log_and_print(
+                    f"📄 响应内容 - 类型: {result.response_type}, next_action: {result.response_content.get('next_action', '无')}",
+                    log_level="INFO"
+                )
+
+            # 检查是否需要异步处理B站视频推荐
+            if (result.success and
+                result.response_content and
+                result.response_content.get("next_action") == "process_bili_video"):
+
+                user_id = result.response_content.get("user_id", "")
+                debug_utils.log_and_print(f"🎬 启动B站视频异步处理，用户ID: {user_id}", log_level="INFO")
+                self._handle_bili_video_async(data, user_id)
+                return
+
             # 发送回复（菜单点击通常需要主动发送消息）
             if result.should_reply:
-                self._send_direct_message(context.user_id, result)
+                debug_utils.log_and_print("📤 发送菜单点击回复", log_level="INFO")
+                success = self._send_direct_message(context.user_id, result)
+                debug_utils.log_and_print(f"📬 消息发送结果: {success}", log_level="INFO")
+            else:
+                debug_utils.log_and_print("📭 无需回复", log_level="INFO")
 
         except Exception as e:
             debug_utils.log_and_print(f"飞书菜单处理失败: {e}", log_level="ERROR")
@@ -211,14 +248,22 @@ class FeishuAdapter:
             # 调用业务处理器
             result = self.message_processor.process_message(context)
 
-            # 卡片回调可以返回提示信息
+            # 处理不同类型的响应
             if result.success:
-                return P2CardActionTriggerResponse({
-                    "toast": {
-                        "type": "success",
-                        "content": "操作成功"
-                    }
-                })
+                # 检查是否是卡片动作响应（包含卡片更新）
+                if result.response_type == "card_action_response":
+                    # 返回原有格式的卡片更新响应
+                    response_data = result.response_content
+                    debug_utils.log_and_print(f"📋 返回卡片更新响应: {response_data.keys()}", log_level="INFO")
+                    return P2CardActionTriggerResponse(response_data)
+                else:
+                    # 普通成功响应
+                    return P2CardActionTriggerResponse({
+                        "toast": {
+                            "type": "success",
+                            "content": "操作成功"
+                        }
+                    })
             else:
                 return P2CardActionTriggerResponse({
                     "toast": {
@@ -570,6 +615,42 @@ class FeishuAdapter:
         import threading
         thread = threading.Thread(target=process_in_background)
         thread.daemon = True
+        thread.start()
+
+    def _handle_bili_video_async(self, original_data, user_id: str):
+        """异步处理B站视频推荐请求"""
+        debug_utils.log_and_print(f"🚀 开始异步处理B站视频推荐，用户ID: {user_id}", log_level="INFO")
+
+        def process_in_background():
+            try:
+                debug_utils.log_and_print("🔄 后台线程开始处理B站视频", log_level="INFO")
+
+                # 调用业务处理器的异步B站视频方法
+                result = self.message_processor.process_bili_video_async(user_id)
+
+                debug_utils.log_and_print(f"📋 B站视频处理结果: 成功={result.success}", log_level="INFO")
+
+                if result.success:
+                    debug_utils.log_and_print("📤 发送B站视频卡片", log_level="INFO")
+                    # 菜单点击应该使用直接发送消息，而不是回复
+                    success = self._send_direct_message(user_id, result)
+                    debug_utils.log_and_print(f"📬 B站视频卡片发送结果: {success}", log_level="INFO")
+                else:
+                    debug_utils.log_and_print(f"❌ B站视频获取失败: {result.error_message}", log_level="ERROR")
+                    # B站视频获取失败，发送错误信息
+                    success = self._send_direct_message(user_id, result)
+                    debug_utils.log_and_print(f"📬 错误消息发送结果: {success}", log_level="INFO")
+
+            except Exception as e:
+                debug_utils.log_and_print(f"B站视频推荐异步处理失败: {e}", log_level="ERROR")
+                error_result = ProcessResult.error_result(f"B站视频推荐处理出错: {str(e)}")
+                self._send_direct_message(user_id, error_result)
+
+        # 在新线程中处理
+        import threading
+        thread = threading.Thread(target=process_in_background)
+        thread.daemon = True
+        debug_utils.log_and_print("🧵 启动后台处理线程", log_level="INFO")
         thread.start()
 
     def _get_image_resource(self, original_data) -> Optional[Tuple[str, str, str, int]]:

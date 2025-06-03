@@ -114,6 +114,15 @@ class AppController:
             elif service_name == 'audio':
                 # 音频服务需要传入应用控制器引用
                 instance = service_class(app_controller=self)
+            elif service_name == 'scheduler':
+                # 调度器服务需要传入应用控制器引用
+                instance = service_class(app_controller=self)
+            elif service_name == 'notion':
+                # notion服务需要cache服务作为依赖
+                cache_service = self.get_service('cache')
+                if not cache_service:
+                    raise Exception("notion服务需要cache服务，但cache服务初始化失败")
+                instance = service_class(cache_service)
             else:
                 # 通用初始化
                 instance = service_class(**config)
@@ -340,3 +349,229 @@ class AppController:
             health_status["overall_status"] = "initializing"
 
         return health_status
+
+    # ================ 独立API接口方法 ================
+
+    def api_get_schedule_data(self) -> Dict[str, Any]:
+        """
+        API: 获取日程数据
+        独立接口，可被任何前端调用
+
+        Returns:
+            Dict[str, Any]: 日程数据或错误信息
+        """
+        try:
+            scheduler_service = self.get_service('scheduler')
+            if not scheduler_service:
+                return {"success": False, "error": "调度器服务不可用"}
+
+            return {
+                "success": True,
+                "data": scheduler_service.get_schedule_data()
+            }
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    def api_trigger_bilibili_update(self, sources=None) -> Dict[str, Any]:
+        """
+        API: 触发B站更新检查
+        独立接口，可被任何前端调用
+
+        Args:
+            sources: 可选的数据源列表
+
+        Returns:
+            Dict[str, Any]: 处理结果
+        """
+        try:
+            scheduler_service = self.get_service('scheduler')
+            if not scheduler_service:
+                return {"success": False, "error": "调度器服务不可用"}
+
+            return scheduler_service.trigger_bilibili_update_check(sources)
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    def api_generate_tts(self, text: str) -> Dict[str, Any]:
+        """
+        API: 生成TTS音频
+        独立接口，可被任何前端调用
+
+        Args:
+            text: 要转换的文本
+
+        Returns:
+            Dict[str, Any]: 音频数据或错误信息
+        """
+        try:
+            audio_service = self.get_service('audio')
+            if not audio_service:
+                return {"success": False, "error": "音频服务不可用"}
+
+            success, audio_data, error_msg = audio_service.process_tts_request(text)
+
+            if success:
+                return {
+                    "success": True,
+                    "audio_data": audio_data,
+                    "text": text
+                }
+            else:
+                return {"success": False, "error": error_msg}
+
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    def api_generate_image(self, prompt: str) -> Dict[str, Any]:
+        """
+        API: 生成AI图像
+        独立接口，可被任何前端调用
+
+        Args:
+            prompt: 图像生成提示词
+
+        Returns:
+            Dict[str, Any]: 图像路径列表或错误信息
+        """
+        try:
+            image_service = self.get_service('image')
+            if not image_service or not image_service.is_available():
+                return {"success": False, "error": "图像服务不可用"}
+
+            image_paths = image_service.process_text_to_image(prompt)
+
+            if image_paths is None:
+                return {"success": False, "error": "图像生成故障"}
+            elif len(image_paths) == 0:
+                return {"success": False, "error": "图像生成失败"}
+            else:
+                return {
+                    "success": True,
+                    "image_paths": image_paths,
+                    "prompt": prompt
+                }
+
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    def api_process_image(self, image_base64: str, mime_type: str = "image/jpeg",
+                         file_name: str = "image.jpg", file_size: int = 0) -> Dict[str, Any]:
+        """
+        API: 处理图像转换
+        独立接口，可被任何前端调用
+
+        Args:
+            image_base64: base64编码的图像数据
+            mime_type: 图像MIME类型
+            file_name: 文件名
+            file_size: 文件大小
+
+        Returns:
+            Dict[str, Any]: 处理后的图像路径列表或错误信息
+        """
+        try:
+            image_service = self.get_service('image')
+            if not image_service or not image_service.is_available():
+                return {"success": False, "error": "图像服务不可用"}
+
+            image_paths = image_service.process_image_to_image(
+                image_base64, mime_type, file_name, file_size
+            )
+
+            if image_paths is None:
+                return {"success": False, "error": "图像处理故障"}
+            elif len(image_paths) == 0:
+                return {"success": False, "error": "图像处理失败"}
+            else:
+                return {
+                    "success": True,
+                    "image_paths": image_paths,
+                    "original_file": file_name
+                }
+
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    def api_get_scheduled_tasks(self) -> Dict[str, Any]:
+        """
+        API: 获取定时任务列表
+        独立接口，可被任何前端调用
+
+        Returns:
+            Dict[str, Any]: 任务列表或错误信息
+        """
+        try:
+            scheduler_service = self.get_service('scheduler')
+            if not scheduler_service:
+                return {"success": False, "error": "调度器服务不可用"}
+
+            return {
+                "success": True,
+                "tasks": scheduler_service.list_tasks(),
+                "status": scheduler_service.get_status()
+            }
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    def api_add_scheduled_task(self, task_name: str, time_str: str, task_type: str, **kwargs) -> Dict[str, Any]:
+        """
+        API: 添加定时任务
+        独立接口，可被任何前端调用
+
+        Args:
+            task_name: 任务名称
+            time_str: 时间字符串
+            task_type: 任务类型 ('daily_schedule', 'bilibili_updates')
+            **kwargs: 其他参数
+
+        Returns:
+            Dict[str, Any]: 添加结果
+        """
+        try:
+            scheduler_service = self.get_service('scheduler')
+            if not scheduler_service:
+                return {"success": False, "error": "调度器服务不可用"}
+
+            # 根据任务类型选择对应的处理函数
+            if task_type == "daily_schedule":
+                task_func = scheduler_service.trigger_daily_schedule_reminder
+                success = scheduler_service.add_daily_task(task_name, time_str, task_func)
+            elif task_type == "bilibili_updates":
+                task_func = scheduler_service.trigger_bilibili_updates_reminder
+                sources = kwargs.get('sources')
+                success = scheduler_service.add_daily_task(
+                    task_name, time_str, task_func, sources=sources
+                )
+            else:
+                return {"success": False, "error": f"不支持的任务类型: {task_type}"}
+
+            return {
+                "success": success,
+                "message": f"任务 '{task_name}' {'添加成功' if success else '添加失败'}"
+            }
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    def api_remove_scheduled_task(self, task_name: str) -> Dict[str, Any]:
+        """
+        API: 移除定时任务
+        独立接口，可被任何前端调用
+
+        Args:
+            task_name: 任务名称
+
+        Returns:
+            Dict[str, Any]: 移除结果
+        """
+        try:
+            scheduler_service = self.get_service('scheduler')
+            if not scheduler_service:
+                return {"success": False, "error": "调度器服务不可用"}
+
+            success = scheduler_service.remove_task(task_name)
+            return {
+                "success": success,
+                "message": f"任务 '{task_name}' {'移除成功' if success else '移除失败或不存在'}"
+            }
+        except Exception as e:
+            return {"success": False, "error": str(e)}
