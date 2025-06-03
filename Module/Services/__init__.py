@@ -7,16 +7,19 @@ API服务层模块
 from .cache_service import CacheService
 from .config_service import ConfigService
 from .audio import AudioService
+from .image import ImageService
 
 __all__ = [
     'CacheService',
     'ConfigService',
-    'AudioService'
+    'AudioService',
+    'ImageService'
 ]
 
 # 服务注册表（用于应用控制器）
 AVAILABLE_SERVICES = {
     'cache': CacheService,
     'config': ConfigService,
-    'audio': AudioService
+    'audio': AudioService,
+    'image': ImageService
 }

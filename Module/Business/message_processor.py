@@ -176,6 +176,10 @@ class MessageProcessor:
         if "配音" in user_msg:
             return self._handle_tts_command(context, user_msg)
 
+        # 图像生成指令
+        if "生图" in user_msg or "AI画图" in user_msg:
+            return self._handle_image_generation_command(context, user_msg)
+
         # 基础指令处理
         if "帮助" in user_msg:
             return self._handle_help_command(context)
@@ -188,10 +192,25 @@ class MessageProcessor:
             })
 
     def _process_image_message(self, context: MessageContext) -> ProcessResult:
-        """处理图片消息"""
-        return ProcessResult.success_result("text", {
-            "text": "收到图片消息，图片处理功能将在后续版本实现"
-        })
+        """处理图片消息 - 图像风格转换"""
+        try:
+            # 检查图像服务是否可用
+            if not self.app_controller:
+                return ProcessResult.error_result("系统服务不可用")
+
+            image_service = self.app_controller.get_service('image')
+            if not image_service or not image_service.is_available():
+                return ProcessResult.error_result("图像处理服务未启动或不可用")
+
+            # 先发送处理中提示
+            return ProcessResult.success_result("text", {
+                "text": "正在转换图片风格，请稍候...",
+                "next_action": "process_image_conversion",
+                "image_data": context.content  # 图像数据将由适配器传递
+            })
+
+        except Exception as e:
+            return ProcessResult.error_result(f"图像消息处理失败: {str(e)}")
 
     def _process_audio_message(self, context: MessageContext) -> ProcessResult:
         """处理音频消息"""
@@ -317,9 +336,119 @@ class MessageProcessor:
         except Exception as e:
             return ProcessResult.error_result(f"TTS异步处理失败: {str(e)}")
 
+    def _handle_image_generation_command(self, context: MessageContext, user_msg: str) -> ProcessResult:
+        """处理图像生成指令"""
+        try:
+            # 提取生图文本
+            if "生图" in user_msg:
+                prompt = user_msg.split("生图", 1)[1].strip()
+            elif "AI画图" in user_msg:
+                prompt = user_msg.split("AI画图", 1)[1].strip()
+            else:
+                prompt = ""
+
+            if not prompt:
+                return ProcessResult.error_result("图像生成文本不能为空，请使用格式：生图 描述内容 或 AI画图 描述内容")
+
+            # 检查图像服务是否可用
+            if not self.app_controller:
+                return ProcessResult.error_result("系统服务不可用")
+
+            image_service = self.app_controller.get_service('image')
+            if not image_service or not image_service.is_available():
+                return ProcessResult.error_result("图像生成服务未启动或不可用")
+
+            # 先发送处理中提示
+            return ProcessResult.success_result("text", {
+                "text": "正在生成图片，请稍候...",
+                "next_action": "process_image_generation",
+                "generation_prompt": prompt
+            })
+
+        except Exception as e:
+            return ProcessResult.error_result(f"图像生成指令处理失败: {str(e)}")
+
+    def process_image_generation_async(self, prompt: str) -> ProcessResult:
+        """
+        异步处理图像生成（由FeishuAdapter调用）
+
+        Args:
+            prompt: 图像生成提示词
+
+        Returns:
+            ProcessResult: 处理结果
+        """
+        try:
+            if not self.app_controller:
+                return ProcessResult.error_result("系统服务不可用")
+
+            # 获取图像服务
+            image_service = self.app_controller.get_service('image')
+            if not image_service or not image_service.is_available():
+                return ProcessResult.error_result("图像生成服务未启动或不可用")
+
+            # 生成图像
+            image_paths = image_service.process_text_to_image(prompt)
+
+            if image_paths is None:
+                return ProcessResult.error_result("图片生成故障，已经通知管理员修复咯！")
+            elif len(image_paths) == 0:
+                return ProcessResult.error_result("图片生成失败了，建议您换个提示词再试试")
+
+            # 返回图像路径列表，由适配器处理上传
+            return ProcessResult.success_result("image_list", {
+                "image_paths": image_paths,
+                "prompt": prompt[:50] + ("..." if len(prompt) > 50 else "")
+            })
+
+        except Exception as e:
+            return ProcessResult.error_result(f"图像生成异步处理失败: {str(e)}")
+
+    def process_image_conversion_async(self, image_base64: str, mime_type: str,
+                                     file_name: str, file_size: int) -> ProcessResult:
+        """
+        异步处理图像风格转换（由FeishuAdapter调用）
+
+        Args:
+            image_base64: base64编码的图像数据
+            mime_type: 图像MIME类型
+            file_name: 文件名
+            file_size: 文件大小
+
+        Returns:
+            ProcessResult: 处理结果
+        """
+        try:
+            if not self.app_controller:
+                return ProcessResult.error_result("系统服务不可用")
+
+            # 获取图像服务
+            image_service = self.app_controller.get_service('image')
+            if not image_service or not image_service.is_available():
+                return ProcessResult.error_result("图像转换服务未启动或不可用")
+
+            # 处理图像转换
+            image_paths = image_service.process_image_to_image(
+                image_base64, mime_type, file_name, file_size
+            )
+
+            if image_paths is None:
+                return ProcessResult.error_result("图片处理故障，已经通知管理员修复咯！")
+            elif len(image_paths) == 0:
+                return ProcessResult.error_result("图片处理失败了，请尝试使用其他图片")
+
+            # 返回处理后的图像路径列表
+            return ProcessResult.success_result("image_list", {
+                "image_paths": image_paths,
+                "original_file": file_name
+            })
+
+        except Exception as e:
+            return ProcessResult.error_result(f"图像转换异步处理失败: {str(e)}")
+
     def _handle_help_command(self, context: MessageContext) -> ProcessResult:
         """处理帮助指令"""
-        help_text = """<b>阶段2A MVP - 音频处理功能</b>
+        help_text = """<b>阶段2B MVP - 音频与图像处理功能</b>
 
 当前支持的功能：
 1. <b>基础对话</b> - 发送任意文本消息
@@ -328,12 +457,16 @@ class MessageProcessor:
 4. <b>菜单交互</b> - 支持机器人菜单点击
 5. <b>卡片交互</b> - 支持卡片按钮点击
 6. <b>🎤 TTS配音</b> - 输入"配音 文本内容"生成语音
+7. <b>🎨 AI图像生成</b> - 输入"生图 描述内容"或"AI画图 描述内容"
+8. <b>🖼️ 图像风格转换</b> - 直接发送图片进行风格转换
 
 <i>使用示例：</i>
 • 配音 你好，这是一段测试语音
-• 配音 欢迎使用飞书机器人
+• 生图 一只可爱的小猫在花园里玩耍
+• AI画图 未来城市的科幻景观
+• 直接发送图片 → 自动转换为贺卡风格
 
-<i>架构优势：统一的交互处理，独立的音频服务</i>"""
+<i>架构优势：统一的服务管理，模块化的媒体处理</i>"""
 
         return ProcessResult.success_result("text", {"text": help_text})
 

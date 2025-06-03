@@ -12,7 +12,7 @@ import time
 import datetime
 import tempfile
 import os
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Tuple, List
 from pathlib import Path
 
 import lark_oapi as lark
@@ -20,7 +20,9 @@ from lark_oapi.api.contact.v3 import GetUserRequest
 from lark_oapi.api.im.v1 import (
     CreateMessageRequest, CreateMessageRequestBody,
     ReplyMessageRequest, ReplyMessageRequestBody,
-    CreateFileRequest, CreateFileRequestBody
+    CreateFileRequest, CreateFileRequestBody,
+    GetMessageResourceRequest,
+    CreateImageRequest, CreateImageRequestBody
 )
 from lark_oapi.event.callback.model.p2_card_action_trigger import P2CardActionTriggerResponse
 
@@ -133,12 +135,25 @@ class FeishuAdapter:
                 result.response_content and
                 result.response_content.get("next_action") == "process_tts"):
 
-                # 先发送处理中提示
-                self._send_feishu_reply(data, result)
-
-                # 异步处理TTS
                 tts_text = result.response_content.get("tts_text", "")
                 self._handle_tts_async(data, tts_text)
+                return
+
+            # 检查是否需要异步处理图像生成
+            if (result.success and
+                result.response_content and
+                result.response_content.get("next_action") == "process_image_generation"):
+
+                prompt = result.response_content.get("generation_prompt", "")
+                self._handle_image_generation_async(data, prompt)
+                return
+
+            # 检查是否需要异步处理图像转换
+            if (result.success and
+                result.response_content and
+                result.response_content.get("next_action") == "process_image_conversion"):
+
+                self._handle_image_conversion_async(data, context)
                 return
 
             # 发送结果
@@ -446,36 +461,224 @@ class FeishuAdapter:
             return False
 
     def _handle_tts_async(self, original_data, tts_text: str):
-        """异步处理TTS生成和发送"""
-        try:
-            # 调用MessageProcessor进行TTS生成
-            result = self.message_processor.process_tts_async(tts_text)
+        """异步处理TTS请求"""
+        def process_in_background():
+            try:
+                # 调用业务处理器的异步TTS方法
+                result = self.message_processor.process_tts_async(tts_text)
 
-            if not result.success:
-                # TTS失败，发送错误消息
-                self._send_feishu_reply(original_data, result)
-                return
-
-            # TTS成功，处理音频上传和发送
-            if result.response_type == "audio":
-                audio_data = result.response_content.get("audio_data")
-                if audio_data:
-                    audio_result = self._upload_and_send_audio(original_data, audio_data)
-                    if not audio_result:
-                        # 音频上传失败，发送错误消息
-                        error_result = ProcessResult.error_result("音频上传失败")
+                if result.success and result.response_type == "audio":
+                    # 上传并发送音频
+                    audio_data = result.response_content.get("audio_data")
+                    if audio_data:
+                        self._upload_and_send_audio(original_data, audio_data)
+                    else:
+                        # 音频数据为空，发送错误提示
+                        error_result = ProcessResult.error_result("音频生成失败，数据为空")
                         self._send_feishu_reply(original_data, error_result)
                 else:
-                    error_result = ProcessResult.error_result("音频数据为空")
+                    # TTS处理失败，发送错误信息
+                    self._send_feishu_reply(original_data, result)
+
+            except Exception as e:
+                debug_utils.log_and_print(f"TTS异步处理失败: {e}", log_level="ERROR")
+                error_result = ProcessResult.error_result(f"TTS处理出错: {str(e)}")
+                self._send_feishu_reply(original_data, error_result)
+
+        # 在新线程中处理
+        import threading
+        thread = threading.Thread(target=process_in_background)
+        thread.daemon = True
+        thread.start()
+
+    def _handle_image_generation_async(self, original_data, prompt: str):
+        """异步处理图像生成请求"""
+        def process_in_background():
+            try:
+                # 先发送处理中提示
+                processing_result = ProcessResult.success_result("text", {"text": "正在生成图片，请稍候..."})
+                self._send_feishu_reply(original_data, processing_result)
+
+                # 调用业务处理器的异步图像生成方法
+                result = self.message_processor.process_image_generation_async(prompt)
+
+                if result.success and result.response_type == "image_list":
+                    # 上传并发送图像
+                    image_paths = result.response_content.get("image_paths", [])
+                    if image_paths:
+                        self._upload_and_send_images(original_data, image_paths)
+                    else:
+                        # 图像列表为空，发送错误提示
+                        error_result = ProcessResult.error_result("图像生成失败，结果为空")
+                        self._send_feishu_reply(original_data, error_result)
+                else:
+                    # 图像生成失败，发送错误信息
+                    self._send_feishu_reply(original_data, result)
+
+            except Exception as e:
+                debug_utils.log_and_print(f"图像生成异步处理失败: {e}", log_level="ERROR")
+                error_result = ProcessResult.error_result(f"图像生成处理出错: {str(e)}")
+                self._send_feishu_reply(original_data, error_result)
+
+        # 在新线程中处理
+        import threading
+        thread = threading.Thread(target=process_in_background)
+        thread.daemon = True
+        thread.start()
+
+    def _handle_image_conversion_async(self, original_data, context):
+        """异步处理图像转换请求"""
+        def process_in_background():
+            try:
+                # 先发送处理中提示
+                processing_result = ProcessResult.success_result("text", {"text": "正在转换图片风格，请稍候..."})
+                self._send_feishu_reply(original_data, processing_result)
+
+                # 获取图像资源
+                image_data = self._get_image_resource(original_data)
+                if not image_data:
+                    error_result = ProcessResult.error_result("获取图片资源失败")
                     self._send_feishu_reply(original_data, error_result)
-            else:
-                # 非音频响应，直接发送
-                self._send_feishu_reply(original_data, result)
+                    return
+
+                image_base64, mime_type, file_name, file_size = image_data
+
+                # 调用业务处理器的异步图像转换方法
+                result = self.message_processor.process_image_conversion_async(
+                    image_base64, mime_type, file_name, file_size
+                )
+
+                if result.success and result.response_type == "image_list":
+                    # 上传并发送图像
+                    image_paths = result.response_content.get("image_paths", [])
+                    if image_paths:
+                        self._upload_and_send_images(original_data, image_paths)
+                    else:
+                        # 图像列表为空，发送错误提示
+                        error_result = ProcessResult.error_result("图像转换失败，结果为空")
+                        self._send_feishu_reply(original_data, error_result)
+                else:
+                    # 图像转换失败，发送错误信息
+                    self._send_feishu_reply(original_data, result)
+
+            except Exception as e:
+                debug_utils.log_and_print(f"图像转换异步处理失败: {e}", log_level="ERROR")
+                error_result = ProcessResult.error_result(f"图像转换处理出错: {str(e)}")
+                self._send_feishu_reply(original_data, error_result)
+
+        # 在新线程中处理
+        import threading
+        thread = threading.Thread(target=process_in_background)
+        thread.daemon = True
+        thread.start()
+
+    def _get_image_resource(self, original_data) -> Optional[Tuple[str, str, str, int]]:
+        """
+        获取图像资源
+
+        Returns:
+            Optional[Tuple[str, str, str, int]]: (base64图像数据, MIME类型, 文件名, 文件大小)
+        """
+        try:
+            message = original_data.event.message
+            image_content = json.loads(message.content)
+
+            if "image_key" not in image_content:
+                debug_utils.log_and_print("图片消息格式错误，缺少image_key", log_level="ERROR")
+                return None
+
+            image_key = image_content["image_key"]
+            message_id = message.message_id
+
+            # 获取图片资源
+            request = GetMessageResourceRequest.builder() \
+                .message_id(message_id) \
+                .file_key(image_key) \
+                .type("image") \
+                .build()
+
+            response = self.client.im.v1.message_resource.get(request)
+
+            if not response.success():
+                debug_utils.log_and_print(f"获取图片资源失败: {response.code} - {response.msg}", log_level="ERROR")
+                return None
+
+            # 读取图片数据
+            file_content = response.file.read()
+            if not file_content:
+                debug_utils.log_and_print("图片数据为空", log_level="ERROR")
+                return None
+
+            # 获取文件信息
+            file_name = getattr(response.file, "file_name", "image.jpg")
+            mime_type = getattr(response.file, "content_type", "image/jpeg")
+            file_size = len(file_content)
+
+            # 转换为base64
+            import base64
+            image_base64 = base64.b64encode(file_content).decode('utf-8')
+
+            debug_utils.log_and_print(f"成功获取图片资源: {file_name}, 大小: {file_size} bytes", log_level="INFO")
+            return image_base64, mime_type, file_name, file_size
 
         except Exception as e:
-            debug_utils.log_and_print(f"TTS异步处理失败: {e}", log_level="ERROR")
-            error_result = ProcessResult.error_result(f"TTS处理出错: {str(e)}")
-            self._send_feishu_reply(original_data, error_result)
+            debug_utils.log_and_print(f"获取图像资源失败: {e}", log_level="ERROR")
+            return None
+
+    def _upload_and_send_images(self, original_data, image_paths: List[str]) -> bool:
+        """上传并发送多张图片"""
+        try:
+            success_count = 0
+
+            for image_path in image_paths:
+                if not image_path or not os.path.exists(image_path):
+                    continue
+
+                # 上传单张图片
+                if self._upload_and_send_single_image(original_data, image_path):
+                    success_count += 1
+
+            if success_count > 0:
+                debug_utils.log_and_print(f"成功发送 {success_count}/{len(image_paths)} 张图片", log_level="INFO")
+                return True
+            else:
+                debug_utils.log_and_print("没有成功发送任何图片", log_level="ERROR")
+                return False
+
+        except Exception as e:
+            debug_utils.log_and_print(f"批量上传图片失败: {e}", log_level="ERROR")
+            return False
+
+    def _upload_and_send_single_image(self, original_data, image_path: str) -> bool:
+        """上传并发送单张图片"""
+        try:
+            with open(image_path, "rb") as image_file:
+                upload_response = self.client.im.v1.image.create(
+                    CreateImageRequest.builder()
+                    .request_body(
+                        CreateImageRequestBody.builder()
+                        .image_type("message")
+                        .image(image_file)
+                        .build()
+                    )
+                    .build()
+                )
+
+                if (upload_response.success() and
+                    upload_response.data and
+                    upload_response.data.image_key):
+
+                    # 发送图片消息
+                    image_content = json.dumps({"image_key": upload_response.data.image_key})
+                    image_result = ProcessResult.success_result("image", {"image_key": upload_response.data.image_key})
+                    return self._send_feishu_reply(original_data, image_result)
+                else:
+                    debug_utils.log_and_print(f"图片上传失败: {upload_response.code} - {upload_response.msg}", log_level="ERROR")
+                    return False
+
+        except Exception as e:
+            debug_utils.log_and_print(f"上传单张图片失败: {e}", log_level="ERROR")
+            return False
 
     def _upload_and_send_audio(self, original_data, audio_data: bytes) -> bool:
         """上传音频并发送消息"""
