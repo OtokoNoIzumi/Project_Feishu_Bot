@@ -156,15 +156,6 @@ class FeishuAdapter:
                 self._handle_image_conversion_async(data, context)
                 return
 
-            # 检查是否需要异步处理B站视频推荐
-            if (result.success and
-                result.response_content and
-                result.response_content.get("next_action") == "process_bili_video"):
-
-                user_id = result.response_content.get("user_id", "")
-                self._handle_bili_video_async(data, user_id)
-                return
-
             # 发送结果
             self._send_feishu_reply(data, result)
 
@@ -213,6 +204,12 @@ class FeishuAdapter:
 
                 user_id = result.response_content.get("user_id", "")
                 debug_utils.log_and_print(f"🎬 启动B站视频异步处理，用户ID: {user_id}", log_level="INFO")
+
+                # 先发送提前提示消息
+                debug_utils.log_and_print("📤 先发送B站视频处理提示消息", log_level="INFO")
+                success = self._send_direct_message(context.user_id, result)
+                debug_utils.log_and_print(f"📬 提示消息发送结果: {success}", log_level="INFO")
+
                 self._handle_bili_video_async(data, user_id)
                 return
 

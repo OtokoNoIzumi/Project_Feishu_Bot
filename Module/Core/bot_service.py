@@ -418,8 +418,25 @@ class BotService:
             data["sources"] = sources
 
         try:
-            # 添加verify参数控制是否验证SSL证书
-            response = requests.post(url, headers=headers, data=json.dumps(data), verify=verify_ssl)
+            # 添加verify参数控制是否验证SSL证书，同时设置合适的超时时间
+            # 连接超时10秒，读取超时300秒（5分钟），适应B站数据处理的时间需求
+            timeout_settings = (10, 300)  # (connect_timeout, read_timeout)
+
+            # 禁用代理，避免代理服务器的超时限制
+            proxies = {
+                'http': None,
+                'https': None
+            }
+
+            response = requests.post(
+                url,
+                headers=headers,
+                data=json.dumps(data),
+                verify=verify_ssl,
+                timeout=timeout_settings,
+                proxies=proxies
+            )
+
             # 如果禁用SSL验证，添加警告日志
             if not verify_ssl:
                 self.log_and_print("警告：SSL证书验证已禁用", log_level="WARNING")

@@ -374,8 +374,26 @@ class SchedulerService:
             if sources is not None:
                 data["sources"] = sources
 
-            # 发送API请求
-            response = requests.post(url, headers=headers, data=json.dumps(data), verify=verify_ssl)
+            # 发送API请求（增加超时设置，适应B站API的长时间处理）
+            # 连接超时10秒，读取超时300秒（5分钟），适应B站数据处理的时间需求
+            # timeout_settings = (10, 300)  # (connect_timeout, read_timeout)
+
+            # 禁用代理，避免代理服务器的超时限制
+            proxies = {
+                'http': None,
+                'https': None
+            }
+
+            debug_utils.log_and_print("B站API调用：已禁用代理，直连服务器", log_level="DEBUG")
+
+            response = requests.post(
+                url,
+                headers=headers,
+                data=json.dumps(data),
+                verify=verify_ssl,
+                # timeout=timeout_settings,
+                # proxies=proxies
+            )
 
             if not verify_ssl:
                 debug_utils.log_and_print("警告：SSL证书验证已禁用", log_level="WARNING")

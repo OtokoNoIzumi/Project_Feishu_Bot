@@ -254,9 +254,20 @@ class MessageProcessor:
         try:
             debug_utils.log_and_print("🎬 开始处理B站视频推荐请求", log_level="INFO")
 
-            # 先发送处理中提示
+            # 检查缓存状态，决定提示消息内容
+            cache_status_msg = "正在获取B站视频推荐，请稍候..."
+
+            if self.app_controller:
+                notion_service = self.app_controller.get_service('notion')
+                if notion_service:
+                    # 检查缓存是否需要更新
+                    if not notion_service._is_cache_valid() or not notion_service.cache_data.get(notion_service.bili_cache_key):
+                        cache_status_msg = "正在从Notion同步最新数据，首次获取可能需要较长时间，请稍候..."
+                        debug_utils.log_and_print("📋 检测到缓存过期，将执行数据同步", log_level="INFO")
+
+            # 发送相应的处理中提示
             result = ProcessResult.success_result("text", {
-                "text": "正在获取B站视频推荐，请稍候...",
+                "text": cache_status_msg,
                 "next_action": "process_bili_video",
                 "user_id": context.user_id
             })
@@ -271,7 +282,7 @@ class MessageProcessor:
     def process_bili_video_async(self, user_id: str) -> ProcessResult:
         """
         异步处理B站视频推荐（由FeishuAdapter调用）
-        重构原有的notion服务调用逻辑
+        重构原有的notion服务调用逻辑，现在支持1+3模式
         """
         from Module.Common.scripts.common import debug_utils
 
@@ -290,22 +301,29 @@ class MessageProcessor:
                 debug_utils.log_and_print("❌ notion服务获取失败", log_level="ERROR")
                 return ProcessResult.error_result("抱歉，B站视频推荐服务暂时不可用")
 
-            debug_utils.log_and_print("✅ notion服务获取成功，准备调用get_bili_video", log_level="INFO")
+            debug_utils.log_and_print("✅ notion服务获取成功，准备调用get_bili_videos_multiple", log_level="INFO")
 
-            # 调用notion服务获取B站视频推荐（保持原有逻辑）
-            debug_utils.log_and_print("🌐 开始调用notion_service.get_bili_video()...", log_level="INFO")
-            video = notion_service.get_bili_video()
-            debug_utils.log_and_print(f"📺 notion服务调用完成，结果: {video.get('success', False) if video else 'None'}", log_level="INFO")
+            # 调用notion服务获取多个B站视频推荐（1+3模式）
+            debug_utils.log_and_print("🌐 开始调用notion_service.get_bili_videos_multiple()...", log_level="INFO")
+            videos_data = notion_service.get_bili_videos_multiple()
+            debug_utils.log_and_print(f"📺 notion服务调用完成，结果: {videos_data.get('success', False) if videos_data else 'None'}", log_level="INFO")
 
-            if not video.get("success", False):
+            if not videos_data.get("success", False):
                 debug_utils.log_and_print("⚠️ 未获取到有效的B站视频", log_level="WARNING")
                 return ProcessResult.error_result("暂时没有找到适合的B站视频，请稍后再试")
 
-            debug_utils.log_and_print(f"🎬 获取到视频: {video.get('title', '无标题')}", log_level="INFO")
+            main_video = videos_data.get("main_video", {})
+            additional_videos = videos_data.get("additional_videos", [])
 
-            # 生成B站视频推荐卡片（重构原有卡片逻辑）
-            debug_utils.log_and_print("🎨 开始生成B站视频卡片", log_level="INFO")
-            card_content = self._create_bili_video_card(video)
+            debug_utils.log_and_print(
+                f"🎬 获取到主视频: {main_video.get('title', '无标题')}, " +
+                f"额外视频: {len(additional_videos)}个",
+                log_level="INFO"
+            )
+
+            # 生成B站视频推荐卡片（1+3模式）
+            debug_utils.log_and_print("🎨 开始生成B站视频卡片（1+3模式）", log_level="INFO")
+            card_content = self._create_bili_video_card_multiple(main_video, additional_videos)
             debug_utils.log_and_print("✅ B站视频卡片生成完成", log_level="INFO")
 
             return ProcessResult.success_result("interactive", card_content)
@@ -316,8 +334,20 @@ class MessageProcessor:
             debug_utils.log_and_print(f"异常堆栈: {traceback.format_exc()}", log_level="ERROR")
             return ProcessResult.error_result(f"获取B站视频推荐时出现错误，请稍后再试")
 
-    def _create_bili_video_card(self, video: Dict[str, Any], is_read: bool = False) -> Dict[str, Any]:
-        """创建B站视频推荐卡片（重构原有BiliVideoHandler._build_bili_card逻辑）"""
+    def _create_bili_video_card_multiple(self, main_video: Dict[str, Any], additional_videos: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """创建B站视频推荐卡片（1+3模式）"""
+
+        # 获取notion服务以检查已读状态
+        notion_service = None
+        if self.app_controller:
+            notion_service = self.app_controller.get_service('notion')
+
+        # 检查主视频是否已读
+        main_video_pageid = main_video.get("pageid", "")
+        main_video_read = notion_service.is_video_read(main_video_pageid) if notion_service and main_video_pageid else False
+        main_video_title = main_video.get('title', '无标题视频')
+        if main_video_read:
+            main_video_title += " | 已读"
 
         # 构建基础卡片
         card = {
@@ -325,120 +355,309 @@ class MessageProcessor:
                 "wide_screen_mode": True
             },
             "elements": [
-                # 视频标题
+                # 主视频标题（包含已读状态）
                 {
                     "tag": "div",
                     "text": {
                         "tag": "lark_md",
-                        "content": f"**📽️ {video.get('title', '无标题视频')}**"
+                        "content": f"**📽️ {main_video_title}**"
                     }
                 },
-                # 视频基本信息 - 作者、优先级
+                # 主视频基本信息 - 优先级、时长、来源（紧凑显示）
                 {
                     "tag": "div",
-                    "fields": [
+                    "text": {
+                        "tag": "lark_md",
+                        "content": f"**优先级:** {main_video.get('chinese_priority', '未知')} | **时长:** {main_video.get('duration_str', '未知')} | **作者:** {main_video.get('author', '未知')} | **来源:** {main_video.get('chinese_source', '未知')} | **投稿日期:** {main_video.get('upload_date', '未知')}"
+                    }
+                },
+                # 主视频推荐概要（简化版）
+                {
+                    "tag": "div",
+                    "text": {
+                        "tag": "lark_md",
+                        "content": f"**推荐理由:** {main_video.get('summary', '无')[:50]}{'...' if len(main_video.get('summary', '')) > 50 else ''}"
+                    }
+                },
+                # 主视频链接和已读按钮
+                {
+                    "tag": "action",
+                    "layout": "flow",
+                    "actions": [
                         {
-                            "is_short": True,
+                            "tag": "button",
                             "text": {
-                                "tag": "lark_md",
-                                "content": f"**作者:** {video.get('author', '未知')}"
-                            }
+                                "tag": "plain_text",
+                                "content": "📱 手机"
+                            },
+                            "type": "default",
+                            "size": "tiny",
+                            "url": self._convert_to_bili_app_link(main_video.get('url', ''))
                         },
                         {
-                            "is_short": True,
+                            "tag": "button",
                             "text": {
-                                "tag": "lark_md",
-                                "content": f"**优先级:** {video.get('chinese_priority', '未知')}"
-                            }
+                                "tag": "plain_text",
+                                "content": "💻 电脑"
+                            },
+                            "type": "default",
+                            "size": "tiny",
+                            "url": main_video.get('url', '')
                         }
-                    ]
-                },
-                # 视频基本信息 - 时长、来源
-                {
-                    "tag": "div",
-                    "fields": [
-                        {
-                            "is_short": True,
-                            "text": {
-                                "tag": "lark_md",
-                                "content": f"**时长:** {video.get('duration_str', '未知')}"
-                            }
+                    ] + ([] if main_video_read else [{
+                        "tag": "button",
+                        "text": {
+                            "tag": "plain_text",
+                            "content": "✅ 已读"
                         },
-                        {
-                            "is_short": True,
-                            "text": {
-                                "tag": "lark_md",
-                                "content": f"**来源:** {video.get('chinese_source', '未知')}"
-                            }
+                        "type": "primary",
+                        "size": "tiny",
+                        "value": {
+                            "action": "mark_bili_read",
+                            "pageid": main_video.get("pageid", ""),
+                            "card_type": "menu",  # 菜单推送卡片
+                            "video_index": 0,  # 主视频序号
+                            # 保存原视频数据用于卡片重构
+                            "original_main_video": main_video,
+                            "original_additional_videos": additional_videos
                         }
-                    ]
-                },
-                # 投稿日期
-                {
-                    "tag": "div",
-                    "text": {
-                        "tag": "lark_md",
-                        "content": f"**投稿日期:** {video.get('upload_date', '未知')}"
-                    }
-                },
-                # 分隔线
-                {
-                    "tag": "hr"
-                },
-                # 推荐概要
-                {
-                    "tag": "div",
-                    "text": {
-                        "tag": "lark_md",
-                        "content": f"**推荐理由:**\n{video.get('summary', '无')}"
-                    }
-                },
-                # 分隔线
-                {
-                    "tag": "hr"
-                },
-                # 视频链接 - 创建两个链接，一个用于移动端，一个用于桌面端
-                {
-                    "tag": "div",
-                    "text": {
-                        "tag": "lark_md",
-                        "content": (
-                            f"[🔗 点击观看视频 (移动端)]({self._convert_to_bili_app_link(video.get('url', ''))})\n\n"
-                            f"[🔗 点击观看视频 (桌面端)]({video.get('url', '')})"
-                        )
-                    }
+                    }])
                 }
             ],
             "header": {
                 "template": "blue",
                 "title": {
                     "tag": "plain_text",
-                    "content": "📺 B站视频推荐" + (" (已读)" if is_read else "")
+                    "content": "📺 B站视频推荐"
                 }
             }
         }
 
-        # 只有未读状态才添加"标记为已读"按钮
-        if not is_read:
-            card["elements"].append({
-                "tag": "action",
-                "actions": [
-                    {
+        # 如果有额外视频，添加额外推荐部分（简化版）
+        if additional_videos:
+            # 添加额外推荐标题
+            card["elements"].extend([
+                {
+                    "tag": "hr"
+                },
+                {
+                    "tag": "div",
+                    "text": {
+                        "tag": "lark_md",
+                        "content": "**📋 更多推荐**"
+                    }
+                }
+            ])
+
+            # 添加每个额外视频的简化展示
+            for i, video in enumerate(additional_videos, 1):
+                # 检查该视频是否已读
+                video_pageid = video.get('pageid', '')
+                video_read = notion_service.is_video_read(video_pageid) if notion_service and video_pageid else False
+
+                # 视频标题（兼容新旧字段）
+                title = video.get('标题', video.get('title', '无标题视频'))
+                if len(title) > 30:
+                    title = title[:30] + "..."
+
+                # 兼容新旧字段格式
+                priority = video.get('优先级', video.get('chinese_priority', '未知'))
+                duration = video.get('时长', video.get('duration_str', '未知'))
+
+                card["elements"].append({
+                    "tag": "div",
+                    "text": {
+                        "tag": "lark_md",
+                        "content": f"**{title}** | 优先级: {priority} • 时长: {duration}{' | 已读' if video_read else ''}"
+                    }
+                })
+
+                # 额外视频的操作按钮（一行显示）
+                mobile_url = video.get('mobile_url', video.get('url', ''))
+                desktop_url = video.get('url', '')
+                pageid = video.get('pageid', '')
+
+                # 使用action_layout实现按钮一行显示
+                card["elements"].append({
+                    "tag": "action",
+                    "layout": "flow",  # 使用flow布局让按钮在一行显示
+                    "actions": [
+                        {
+                            "tag": "button",
+                            "text": {
+                                "tag": "plain_text",
+                                "content": "📱 手机"
+                            },
+                            "type": "default",
+                            "size": "tiny",
+                            "url": mobile_url
+                        } if mobile_url else {},
+                        {
+                            "tag": "button",
+                            "text": {
+                                "tag": "plain_text",
+                                "content": "💻 电脑"
+                            },
+                            "type": "default",
+                            "size": "tiny",
+                            "url": desktop_url
+                        } if desktop_url else {}
+                    ] + ([] if video_read else [{
                         "tag": "button",
                         "text": {
                             "tag": "plain_text",
-                            "content": "👍 标记为已读"
+                            "content": "✅ 已读"
                         },
                         "type": "primary",
+                        "size": "tiny",
                         "value": {
                             "action": "mark_bili_read",
-                            "pageid": video.get("pageid", "")
+                            "pageid": pageid,
+                            "card_type": "menu",  # 菜单推送卡片
+                            "video_index": i + 1,  # 额外视频序号 (1,2,3)
+                            # 保存原视频数据用于卡片重构
+                            "original_main_video": main_video,
+                            "original_additional_videos": additional_videos
                         }
-                    }
-                ]
-            })
+                    }] if pageid else [])
+                })
+
+                # 添加分隔线（最后一个视频除外）
+                if i < len(additional_videos) - 1:
+                    card["elements"].append({
+                        "tag": "hr"
+                    })
 
         return card
+
+    # def _create_bili_video_card(self, video: Dict[str, Any], is_read: bool = False) -> Dict[str, Any]:
+    #     """创建单个B站视频推荐卡片（用于标记已读后的更新）"""
+
+    #     # 构建基础卡片
+    #     card = {
+    #         "config": {
+    #             "wide_screen_mode": True
+    #         },
+    #         "elements": [
+    #             # 视频标题
+    #             {
+    #                 "tag": "div",
+    #                 "text": {
+    #                     "tag": "lark_md",
+    #                     "content": f"**📽️ {video.get('title', '无标题视频')}**"
+    #                 }
+    #             },
+    #             # 视频基本信息 - 作者、优先级
+    #             {
+    #                 "tag": "div",
+    #                 "fields": [
+    #                     {
+    #                         "is_short": True,
+    #                         "text": {
+    #                             "tag": "lark_md",
+    #                             "content": f"**作者:** {video.get('author', '未知')}"
+    #                         }
+    #                     },
+    #                     {
+    #                         "is_short": True,
+    #                         "text": {
+    #                             "tag": "lark_md",
+    #                             "content": f"**优先级:** {video.get('chinese_priority', '未知')}"
+    #                         }
+    #                     }
+    #                 ]
+    #             },
+    #             # 视频基本信息 - 时长、来源
+    #             {
+    #                 "tag": "div",
+    #                 "fields": [
+    #                     {
+    #                         "is_short": True,
+    #                         "text": {
+    #                             "tag": "lark_md",
+    #                             "content": f"**时长:** {video.get('duration_str', '未知')}"
+    #                         }
+    #                     },
+    #                     {
+    #                         "is_short": True,
+    #                         "text": {
+    #                             "tag": "lark_md",
+    #                             "content": f"**来源:** {video.get('chinese_source', '未知')}"
+    #                         }
+    #                     }
+    #                 ]
+    #             },
+    #             # 投稿日期
+    #             {
+    #                 "tag": "div",
+    #                 "text": {
+    #                     "tag": "lark_md",
+    #                     "content": f"**投稿日期:** {video.get('upload_date', '未知')}"
+    #                 }
+    #             },
+    #             # 分隔线
+    #             {
+    #                 "tag": "hr"
+    #             },
+    #             # 推荐概要
+    #             {
+    #                 "tag": "div",
+    #                 "text": {
+    #                     "tag": "lark_md",
+    #                     "content": f"**推荐理由:**\n{video.get('summary', '无')}"
+    #                 }
+    #             },
+    #             # 分隔线
+    #             {
+    #                 "tag": "hr"
+    #             },
+    #             # 视频链接 - 创建两个链接，一个用于移动端，一个用于桌面端
+    #             {
+    #                 "tag": "div",
+    #                 "text": {
+    #                     "tag": "lark_md",
+    #                     "content": (
+    #                         f"[🔗 点击观看视频 (移动端)]({self._convert_to_bili_app_link(video.get('url', ''))})\n\n"
+    #                         f"[🔗 点击观看视频 (桌面端)]({video.get('url', '')})"
+    #                     )
+    #                 }
+    #             }
+    #         ],
+    #         "header": {
+    #             "template": "blue",
+    #             "title": {
+    #                 "tag": "plain_text",
+    #                 "content": "📺 B站视频推荐" + (" (已读)" if is_read else "")
+    #             }
+    #         }
+    #     }
+
+    #     # 只有未读状态才添加"标记为已读"按钮
+    #     if not is_read:
+    #         card["elements"].append({
+    #             "tag": "action",
+    #             "actions": [
+    #                 {
+    #                     "tag": "button",
+    #                     "text": {
+    #                         "tag": "plain_text",
+    #                         "content": "👍 标记为已读"
+    #                     },
+    #                     "type": "primary",
+    #                     "value": {
+    #                         "action": "mark_bili_read",
+    #                         "pageid": video.get("pageid", ""),
+    #                         "card_type": "menu",  # 菜单推送卡片
+    #                         "video_index": 0,  # 主视频序号
+    #                         # 保存原视频数据用于卡片重构
+    #                         "original_main_video": video,
+    #                         "original_additional_videos": []
+    #                     }
+    #                 }
+    #             ]
+    #         })
+
+    #     return card
 
     def _convert_to_bili_app_link(self, web_url: str) -> str:
         """
@@ -491,11 +710,13 @@ class MessageProcessor:
 
     def _handle_mark_bili_read(self, context: MessageContext, action_value: Dict[str, Any]) -> ProcessResult:
         """
-        处理标记B站视频为已读（重构原有MarkBiliReadHandler逻辑）
+        处理标记B站视频为已读（基于原数据精确重构）
+
+        使用按钮中保存的原视频数据重构卡片，只更新已读状态，避免重新获取数据导致内容替换
 
         Args:
             context: 消息上下文
-            action_value: 按钮值，包含pageid
+            action_value: 按钮值，包含原视频数据和标记信息
 
         Returns:
             ProcessResult: 处理结果
@@ -509,44 +730,109 @@ class MessageProcessor:
             if not notion_service:
                 return ProcessResult.error_result("标记服务暂时不可用")
 
-            # 获取页面ID
+            # 获取参数
             pageid = action_value.get("pageid", "")
+            card_type = action_value.get("card_type", "menu")
+            video_index = action_value.get("video_index", 0)
+
+            # 获取原始视频数据
+            original_main_video = action_value.get("original_main_video", {})
+            original_additional_videos = action_value.get("original_additional_videos", [])
+
             if not pageid:
                 return ProcessResult.error_result("缺少页面ID，无法标记为已读")
 
             # 执行标记为已读操作
             success = notion_service.mark_video_as_read(pageid)
             if not success:
-                return ProcessResult.error_result("标记失败，请稍后重试")
+                return ProcessResult.error_result("标记为已读失败")
 
-            # 获取更新后的视频信息
-            video = notion_service.get_video_by_id(pageid)
-            if not video:
-                # 如果无法获取视频信息，只返回成功提示
+            # 根据卡片类型处理
+            if card_type == "daily":
+                # 定时卡片：基于原始数据重构，只更新已读状态，不重新获取统计数据
+                try:
+                    original_analysis_data = action_value.get("original_analysis_data")
+                    if original_analysis_data:
+                        # 使用原始数据重新生成卡片，已读状态会自动更新
+                        updated_card = self._create_daily_summary_card(original_analysis_data)
+                    else:
+                        # 如果没有原始数据，降级处理
+                        return ProcessResult.success_result("card_action_response", {
+                            "toast": {
+                                "type": "success",
+                                "content": f"已标记第{video_index + 1}个推荐为已读"
+                            }
+                        })
+
+                    return ProcessResult.success_result("card_action_response", {
+                        "toast": {
+                            "type": "success",
+                            "content": f"已标记第{video_index + 1}个推荐为已读"
+                        },
+                        "card": {
+                            "type": "raw",
+                            "data": updated_card
+                        }
+                    })
+                except Exception as e:
+                    # 如果重新生成失败，只返回toast
+                    return ProcessResult.success_result("card_action_response", {
+                        "toast": {
+                            "type": "success",
+                            "content": f"已标记第{video_index + 1}个推荐为已读"
+                        }
+                    })
+            else:
+                # 菜单卡片：基于原数据重构卡片
+                if not original_main_video:
+                    # 如果没有原数据，只返回toast
+                    return ProcessResult.success_result("card_action_response", {
+                        "toast": {
+                            "type": "success",
+                            "content": f"已标记第{video_index + 1}个视频为已读"
+                        }
+                    })
+
+                # 重新生成卡片，此时已读状态会自动更新（因为notion_service.is_video_read会返回True）
+                updated_card = self._create_bili_video_card_multiple(
+                    original_main_video,
+                    original_additional_videos
+                )
+
                 return ProcessResult.success_result("card_action_response", {
                     "toast": {
                         "type": "success",
-                        "content": "已标记为已读"
+                        "content": f"已标记第{video_index + 1}个视频为已读"
+                    },
+                    "card": {
+                        "type": "raw",
+                        "data": updated_card
                     }
                 })
 
-            # 构建更新后的卡片（显示已读状态）
-            updated_card = self._create_bili_video_card(video, is_read=True)
-
-            # 返回飞书卡片更新响应格式（按照原有MarkBiliReadHandler格式）
-            return ProcessResult.success_result("card_action_response", {
-                "toast": {
-                    "type": "success",
-                    "content": "已标记为已读"
-                },
-                "card": {
-                    "type": "raw",
-                    "data": updated_card
-                }
-            })
-
         except Exception as e:
-            return ProcessResult.error_result(f"标记已读失败: {str(e)}")
+            from Module.Common.scripts.common import debug_utils
+            debug_utils.log_and_print(f"❌ 标记B站视频为已读失败: {str(e)}", log_level="ERROR")
+            return ProcessResult.error_result(f"处理失败：{str(e)}")
+
+    def _update_menu_card_video_status(self, pageid: str, video_index: int) -> ProcessResult:
+        """
+        更新菜单卡片中特定视频的状态（已废弃，避免内容替换问题）
+
+        Args:
+            pageid: 页面ID
+            video_index: 视频序号
+
+        Returns:
+            ProcessResult: 更新结果
+        """
+        # 这个方法已经不使用了，保留只是为了兼容性
+        return ProcessResult.success_result("card_action_response", {
+            "toast": {
+                "type": "success",
+                "content": "已标记为已读"
+            }
+        })
 
     def _handle_config_update(self, context: MessageContext, user_msg: str) -> ProcessResult:
         """处理配置更新指令"""
@@ -801,34 +1087,41 @@ class MessageProcessor:
 
     def _build_bilibili_cache_analysis(self) -> Dict[str, Any]:
         """
-        构建B站信息cache分析数据（整合get_bili_url的数据）
+        构建B站信息cache分析数据（获取统计信息用于7:30定时任务）
         """
         now = datetime.now()
 
-        # 尝试从notion服务获取B站视频数据
+        # 尝试从notion服务获取B站视频统计数据
         if self.app_controller:
             notion_service = self.app_controller.get_service('notion')
             if notion_service:
                 try:
-                    # 调用和get_bili_url相同的notion服务获取数据
-                    video = notion_service.get_bili_video()
-                    if video and video.get("success", False):
+                    # 调用统计方法获取B站数据分析
+                    stats = notion_service.get_bili_videos_statistics()
+                    # 兼容新版返回格式
+                    if stats and stats.get("success", False):
+                        # 兼容字段映射
+                        total_count = stats.get("总未读数", 0)
+                        priority_stats = stats.get("优先级统计", {})
+                        duration_stats = stats.get("时长分布", {})
+                        source_stats = stats.get("来源统计", {})
+                        top_recommendations = stats.get("今日精选推荐", [])
                         return {
                             "date": now.strftime("%Y年%m月%d日"),
                             "weekday": ["周一", "周二", "周三", "周四", "周五", "周六", "周日"][now.weekday()],
-                            "recommended_video": {
-                                "title": video.get("title", "")[:30] + "..." if len(video.get("title", "")) > 30 else video.get("title", ""),
-                                "author": video.get("author", ""),
-                                "chinese_source": video.get("chinese_source", ""),
-                                "chinese_priority": video.get("chinese_priority", ""),
-                                "available": True
+                            "statistics": {
+                                "total_count": total_count,
+                                "priority_stats": priority_stats,
+                                "duration_stats": duration_stats,
+                                "source_stats": source_stats,
+                                "top_recommendations": top_recommendations
                             },
-                            "source": "notion_analysis",
+                            "source": "notion_statistics",
                             "timestamp": now.isoformat()
                         }
                 except Exception as e:
                     from Module.Common.scripts.common import debug_utils
-                    debug_utils.log_and_print(f"获取notion B站数据失败: {e}", log_level="WARNING")
+                    debug_utils.log_and_print(f"获取notion B站统计数据失败: {e}", log_level="WARNING")
 
         # 基础状态信息作为fallback
         return {
@@ -843,14 +1136,14 @@ class MessageProcessor:
         """创建每日信息汇总卡片"""
         source = analysis_data.get('source', 'unknown')
 
-        if source == 'notion_analysis':
+        if source == 'notion_statistics':
             # notion服务提供的B站分析数据
             content = self._format_notion_bili_analysis(analysis_data)
         else:
             # 占位信息
-            content = f"📊 **{analysis_data['date']} {analysis_data['weekday']}** \\n\\n🔄 **系统状态**\\n\\n{analysis_data.get('status', '服务准备中...')}"
+            content = f"📊 **{analysis_data['date']} {analysis_data['weekday']}** \n\n🔄 **系统状态**\n\n{analysis_data.get('status', '服务准备中...')}"
 
-        return {
+        card = {
             "config": {
                 "wide_screen_mode": True
             },
@@ -865,13 +1158,13 @@ class MessageProcessor:
                 {
                     "tag": "hr"
                 },
-                {
-                    "tag": "div",
-                    "text": {
-                        "content": "📋 **每日信息汇总**\\n\\n数据来源：B站信息cache分析系统",
-                        "tag": "lark_md"
-                    }
-                }
+                # {
+                #     "tag": "div",
+                #     "text": {
+                #         "content": "📋 **每日信息汇总**\n\n数据来源：B站信息cache分析系统",
+                #         "tag": "lark_md"
+                #     }
+                # }
             ],
             "header": {
                 "template": "blue",
@@ -882,22 +1175,168 @@ class MessageProcessor:
             }
         }
 
+        # 如果有推荐视频，添加推荐链接部分
+        if source == 'notion_statistics':
+            statistics = analysis_data.get('statistics', {})
+
+            # 兼容新版字段名
+            top_recommendations = statistics.get('top_recommendations', None)
+            if top_recommendations is None:
+                top_recommendations = statistics.get('今日精选推荐', [])
+
+            if top_recommendations:
+                # 获取notion服务以检查已读状态
+                notion_service = None
+                if hasattr(self, 'app_controller') and self.app_controller:
+                    notion_service = self.app_controller.get_service('notion')
+
+                # 添加推荐视频标题
+                card["elements"].extend([
+                    # {
+                    #     "tag": "hr"
+                    # },
+                    {
+                        "tag": "div",
+                        "text": {
+                            "content": "🎬 **今日精选推荐**",
+                            "tag": "lark_md"
+                        }
+                    }
+                ])
+
+                # 添加每个推荐视频的简化展示
+                for i, video in enumerate(top_recommendations, 1):
+                    # 检查该视频是否已读（兼容新旧字段）
+                    video_pageid = video.get('页面ID', video.get('pageid', ''))
+                    video_read = notion_service.is_video_read(video_pageid) if notion_service and video_pageid else False
+
+                    # 视频标题（兼容新旧字段）
+                    title = video.get('标题', video.get('title', '无标题视频'))
+                    if len(title) > 30:
+                        title = title[:30] + "..."
+
+                    # 兼容新旧字段格式
+                    priority = video.get('优先级', video.get('chinese_priority', '未知'))
+                    duration = video.get('时长', video.get('duration_str', '未知'))
+
+                    card["elements"].append({
+                        "tag": "div",
+                        "text": {
+                            "tag": "lark_md",
+                            "content": f"**{title}** | 优先级: {priority} • 时长: {duration}{' | 已读' if video_read else ''}"
+                        }
+                    })
+
+                    # 视频基本信息和链接按钮
+                    video_url = video.get('链接', video.get('url', ''))
+                    card["elements"].append({
+                        "tag": "action",
+                        "layout": "flow",  # 使用flow布局让按钮在一行显示
+                        "actions": [
+                            {
+                                "tag": "button",
+                                "text": {
+                                    "tag": "plain_text",
+                                    "content": "📱 手机"
+                                },
+                                "type": "default",
+                                "size": "tiny",
+                                "url": self._convert_to_bili_app_link(video_url)
+                            },
+                            {
+                                "tag": "button",
+                                "text": {
+                                    "tag": "plain_text",
+                                    "content": "💻 电脑"
+                                },
+                                "type": "default",
+                                "size": "tiny",
+                                "url": video_url
+                            }
+                        ] + ([] if video_read else [{
+                            "tag": "button",
+                            "text": {
+                                "tag": "plain_text",
+                                "content": "✅ 已读"
+                            },
+                            "type": "primary",
+                            "size": "tiny",
+                            "value": {
+                                "action": "mark_bili_read",
+                                "pageid": video_pageid,
+                                "card_type": "daily",  # 定时卡片
+                                "video_index": i - 1,  # 推荐视频序号 (0,1,2)
+                                # 保存原始完整数据用于卡片重构（不重新获取统计数据）
+                                "original_analysis_data": analysis_data
+                            }
+                        }] if video_pageid else [])
+                    })
+
+        return card
+
     def _format_notion_bili_analysis(self, data: Dict[str, Any]) -> str:
-        """格式化notion B站分析数据"""
-        content = f"📊 **{data['date']} {data['weekday']}** \\n\\n🎯 **B站信息分析汇总**\\n\\n"
+        """格式化notion B站统计数据"""
+        content = f"📊 **{data['date']} {data['weekday']}**"
+        content += "\n\n🎯 **B站信息分析汇总**"
 
-        # 推荐视频信息部分
-        recommended_video = data.get('recommended_video')
-        if recommended_video and recommended_video.get('available'):
-            content += "🎬 **今日推荐视频:**\\n"
-            content += f"• 标题: {recommended_video.get('title', '未知')}\\n"
-            content += f"• 作者: {recommended_video.get('author', '未知')}\\n"
-            content += f"• 来源: {recommended_video.get('chinese_source', '未知')}\\n"
-            content += f"• 优先级: {recommended_video.get('chinese_priority', '未知')}\\n\\n"
-        else:
-            content += "🎬 **今日推荐视频:** 暂无可用推荐\\n\\n"
+        statistics = data.get('statistics', {})
 
-        content += "💡 **使用提示:** 点击菜单中的\"B站推荐\"获取详细视频信息"
+        # 总体统计
+        total_count = statistics.get('total_count', None)
+        # 兼容新版字段
+        if total_count is None:
+            total_count = statistics.get('总未读数', 0)
+        content += f"\n\n📈 **总计:** {total_count} 个未读视频"
+
+        if total_count > 0:
+            # 优先级统计（增加时长总计）
+            priority_stats = statistics.get('priority_stats', None)
+            if priority_stats is None:
+                priority_stats = statistics.get('优先级统计', {})
+            if priority_stats:
+                content += "\n\n🎯 **优先级分布:**"
+                for priority, info in priority_stats.items():
+                    # 新版格式：{'😜中': {'数量': 1, '总时长分钟': 51}}
+                    count = info.get('数量', info.get('count', 0))
+                    total_minutes = info.get('总时长分钟', info.get('total_minutes', 0))
+                    hours = total_minutes // 60
+                    minutes = total_minutes % 60
+                    time_str = f"{hours}小时{minutes}分钟" if hours > 0 else f"{minutes}分钟"
+                    content += f"\n• {priority}: {count} 个 ({time_str})"
+
+            # 时长分布
+            duration_stats = statistics.get('duration_stats', None)
+            if duration_stats is None:
+                duration_stats = statistics.get('时长分布', {})
+            if duration_stats:
+                content += "\n\n⏱️ **时长分布:**"
+                for duration_type, count in duration_stats.items():
+                    content += f"\n• {duration_type}: {count} 个"
+
+            # 来源统计
+            source_stats = statistics.get('source_stats', None)
+            if source_stats is None:
+                source_stats = statistics.get('来源统计', {})
+            if source_stats:
+                content += "\n\n📺 **来源分布:**"
+                for source, count in source_stats.items():
+                    content += f"\n• {source}: {count} 个"
+
+        # 推荐视频链接（如果有）
+        # recommendations = statistics.get('top_recommendations', None)
+        # if recommendations is None:
+        #     recommendations = statistics.get('今日精选推荐', [])
+        # if recommendations:
+        #     content += "\n\n🔥 **今日精选推荐:**"
+        #     for i, video in enumerate(recommendations[:3], 1):
+        #         # 新版字段
+        #         title = video.get('标题', video.get('title', '无标题'))
+        #         if len(title) > 20:
+        #             title = title[:20] + "..."
+        #         priority = video.get('优先级', video.get('priority', '未知'))
+        #         content += f"\n{i}. **{title}** ({priority})"
+
+        # content += "\n\n💡 **使用提示:** 点击菜单中的\"B站推荐\"获取详细视频信息"
 
         return content
 
@@ -952,7 +1391,7 @@ class MessageProcessor:
                 {
                     "tag": "div",
                     "text": {
-                        "content": f"📺 **B站内容更新通知**\\n\\n🔄 数据源：{source_text}\\n⏰ 处理时间：{now.strftime('%H:%M')}\\n\\n✅ 服务端已完成内容处理和更新",
+                        "content": f"📺 **B站内容更新通知**\n\n🔄 数据源：{source_text}\n⏰ 处理时间：{now.strftime('%H:%M')}\n\n✅ 服务端已完成内容处理和更新",
                         "tag": "lark_md"
                     }
                 },
@@ -962,7 +1401,7 @@ class MessageProcessor:
                 {
                     "tag": "div",
                     "text": {
-                        "content": "**📋 处理完成**\\n\\n系统已自动处理B站数据源，新内容已添加到数据库。\\n可通过B站服务端API或相关应用查看具体更新内容。",
+                        "content": "**📋 处理完成**\n\n系统已自动处理B站数据源，新内容已添加到数据库。\n可通过B站服务端API或相关应用查看具体更新内容。",
                         "tag": "lark_md"
                     }
                 }

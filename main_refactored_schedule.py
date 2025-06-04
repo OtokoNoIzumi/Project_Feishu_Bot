@@ -133,9 +133,17 @@ def setup_scheduled_tasks(app_controller):
     tasks_configured = 0
 
     # 任务1: 每天07:30发送日程提醒
+
+    now = time.localtime()
+    now_seconds = time.mktime(now)
+    test_time_seconds = now_seconds + 5  # 5秒后的时间戳
+    test_time_struct = time.localtime(test_time_seconds)
+    test_time_schedule = time.strftime("%H:%M:%S", test_time_struct)
+
     success = scheduler_service.add_daily_task(
         task_name="daily_schedule_reminder",
-        time_str="06:26",
+        time_str="07:30",
+        # time_str=test_time_schedule,
         task_func=scheduler_service.trigger_daily_schedule_reminder
     )
     if success:
@@ -146,6 +154,7 @@ def setup_scheduled_tasks(app_controller):
     success = scheduler_service.add_daily_task(
         task_name="bili_updates_afternoon",
         time_str="15:30",
+        # time_str=test_time_schedule,
         task_func=scheduler_service.trigger_bilibili_updates_reminder
     )
     if success:
@@ -156,6 +165,7 @@ def setup_scheduled_tasks(app_controller):
     success = scheduler_service.add_daily_task(
         task_name="bili_updates_night",
         time_str="23:55",
+        # time_str=test_time_schedule,
         task_func=scheduler_service.trigger_bilibili_updates_reminder,
         sources=["favorites", "dynamic"]
     )

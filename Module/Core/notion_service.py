@@ -46,6 +46,10 @@ class NotionService:
         # 缓存有效期（秒）
         self.cache_expiry = 7200  # 2小时
 
+        # 本地已读状态跟踪（用于卡片显示）
+        self._local_read_status = set()  # 存储已读的pageid
+        self._read_status_cache_key = "local_read_status"
+
         # 初始化数据
         self.cache_file = os.path.join(self.cache_service.cache_dir, "notion_bili_cache.json")
         self._load_cache()
@@ -59,18 +63,29 @@ class NotionService:
             else:
                 self.cache_data = {
                     self.bili_cache_key: [],
-                    self.bili_cache_time_key: 0
+                    self.bili_cache_time_key: 0,
+                    self._read_status_cache_key: []
                 }
+
+            # 加载本地已读状态
+            read_status_list = self.cache_data.get(self._read_status_cache_key, [])
+            self._local_read_status = set(read_status_list)
+
         except Exception as e:
             debug_utils.log_and_print(f"[NotionService] 加载缓存失败: {e}", log_level="ERROR")
             self.cache_data = {
                 self.bili_cache_key: [],
-                self.bili_cache_time_key: 0
+                self.bili_cache_time_key: 0,
+                self._read_status_cache_key: []
             }
+            self._local_read_status = set()
 
     def _save_cache(self) -> None:
         """保存缓存到本地"""
         try:
+            # 更新已读状态到缓存数据
+            self.cache_data[self._read_status_cache_key] = list(self._local_read_status)
+
             os.makedirs(self.cache_service.cache_dir, exist_ok=True)
             with open(self.cache_file, "w", encoding="utf-8") as f:
                 json.dump(self.cache_data, f, ensure_ascii=False, indent=2)
@@ -350,12 +365,27 @@ class NotionService:
                 for v in self.cache_data[self.bili_cache_key]:
                     if v.get("pageid") == pageid:
                         v["unread"] = False
-                self._save_cache()
+
+            # 添加到本地已读状态跟踪
+            self._local_read_status.add(pageid)
+            self._save_cache()
 
             return True
         except Exception as e:
             debug_utils.log_and_print(f"[NotionService] 标记视频已读失败: {e}", log_level="ERROR")
             return False
+
+    def is_video_read(self, pageid: str) -> bool:
+        """
+        检查视频是否已读
+
+        Args:
+            pageid: Notion页面ID
+
+        Returns:
+            bool: 是否已读
+        """
+        return pageid in self._local_read_status
 
     def get_video_by_id(self, pageid: str) -> Dict:
         """
@@ -438,3 +468,199 @@ class NotionService:
             page_properties: 要更新的属性
         """
         await self.notion_manager.update_page_properties(page_id, page_properties)
+
+    def get_bili_videos_multiple(self) -> Dict:
+        """
+        获取多个B站视频推荐（1个主推荐 + 最多3个额外推荐）
+
+        Returns:
+            Dict: 包含主视频和额外视频列表的结果
+        """
+        # 检查缓存是否有效
+        if not self._is_cache_valid() or not self.cache_data.get(self.bili_cache_key):
+            # 更新缓存是异步的，这里同步执行一次
+            self._update_bili_cache_sync()
+
+        videos = self.cache_data.get(self.bili_cache_key, [])
+        if not videos:
+            return {
+                "main_video": {
+                    "title": "暂无推荐视频",
+                    "url": "",
+                    "pageid": "",
+                    "success": False
+                },
+                "additional_videos": [],
+                "success": False
+            }
+
+        # 按优先级和时长分组选择主视频
+        main_video = self._select_video_by_priority(videos)
+
+        # 获取额外的3个不同视频（排除主视频）
+        additional_videos = []
+        remaining_videos = [v for v in videos if v.get("pageid") != main_video.get("pageid") and v.get("unread", True)]
+
+        # 从剩余视频中选择最多3个，优先选择不同优先级和来源的视频
+        if remaining_videos:
+            # 按优先级和来源分组，确保多样性
+            priority_groups = {
+                "High": [v for v in remaining_videos if v.get("priority") == "High"],
+                "Medium": [v for v in remaining_videos if v.get("priority") == "Medium"],
+                "Low": [v for v in remaining_videos if v.get("priority") == "Low"]
+            }
+
+            # 从每个优先级组中选择1个，最多3个
+            for priority in ["High", "Medium", "Low"]:
+                if len(additional_videos) >= 3:
+                    break
+                group = priority_groups.get(priority, [])
+                if group:
+                    selected = random.choice(group)
+                    additional_videos.append(selected)
+                    # 从其他组中移除这个视频，避免重复
+                    for p in priority_groups:
+                        priority_groups[p] = [v for v in priority_groups[p] if v.get("pageid") != selected.get("pageid")]
+
+        # 格式化主视频
+        main_video_formatted = {
+            "title": main_video.get("title", "无标题视频"),
+            "url": main_video.get("url", ""),
+            "pageid": main_video.get("pageid", ""),
+            "success": True,
+            "author": main_video.get("author", ""),
+            "duration_str": main_video.get("duration_str", ""),
+            "chinese_priority": main_video.get("chinese_priority", ""),
+            "chinese_source": main_video.get("chinese_source", ""),
+            "summary": main_video.get("summary", ""),
+            "upload_date": main_video.get("upload_date", ""),
+        }
+
+        # 格式化额外视频（简化信息）
+        additional_videos_formatted = []
+        for video in additional_videos:
+            additional_videos_formatted.append({
+                "title": video.get("title", "无标题视频"),
+                "url": video.get("url", ""),
+                "pageid": video.get("pageid", ""),
+                "duration_str": video.get("duration_str", ""),
+                "author": video.get("author", ""),
+                "chinese_priority": video.get("chinese_priority", ""),
+                "chinese_source": video.get("chinese_source", "")
+            })
+
+        return {
+            "main_video": main_video_formatted,
+            "additional_videos": additional_videos_formatted,
+            "success": True
+        }
+
+    def get_bili_videos_statistics(self) -> Dict:
+        """
+        获取B站视频统计信息（用于7:30定时任务）
+
+        Returns:
+            Dict: 统计信息（字段内容全部为中文）
+        """
+        # 检查缓存是否有效
+        if not self._is_cache_valid() or not self.cache_data.get(self.bili_cache_key):
+            # 更新缓存是异步的，这里同步执行一次
+            self._update_bili_cache_sync()
+
+        videos = self.cache_data.get(self.bili_cache_key, [])
+        unread_videos = [v for v in videos if v.get("unread", True)]
+
+        if not unread_videos:
+            return {
+                "total_count": 0,
+                "priority_stats": {},
+                "duration_stats": {},
+                "source_stats": {},
+                "top_recommendations": [],
+                "success": False
+            }
+
+        # 统计各维度数据
+        priority_stats = {}
+        # 用中文key替换
+        duration_stats = {"短视频": 0, "中视频": 0, "长视频": 0}  # ≤10分钟, 10-30分钟, >30分钟
+        source_stats = {}
+
+        # # 优先级中文映射
+        # priority_map = {
+        #     "High": "💖高",
+        #     "Medium": "😜中",
+        #     "Low": "👾低",
+        #     "Unknown": "未知优先级"
+        # }
+
+        for video in unread_videos:
+            # 优先级统计
+            priority = video.get("chinese_priority", "Unknown")
+            # priority = priority_map.get(priority_en, priority_en)
+            if priority not in priority_stats:
+                priority_stats[priority] = {"数量": 0, "总时长分钟": 0}
+
+            priority_stats[priority]["数量"] += 1
+
+            # 获取时长（分钟） - duration字段已经是数字类型
+            duration_minutes = video.get("duration", 0)
+            try:
+                total_minutes = float(duration_minutes) if duration_minutes else 0
+                priority_stats[priority]["总时长分钟"] += int(total_minutes)
+            except (ValueError, TypeError):
+                # 如果转换失败，跳过时长计算
+                total_minutes = 0
+
+            # 时长统计
+            if total_minutes <= 10:
+                duration_stats["短视频"] += 1
+            elif total_minutes <= 30:
+                duration_stats["中视频"] += 1
+            else:
+                duration_stats["长视频"] += 1
+
+            # 来源统计
+            source = video.get("chinese_source", "未知来源")
+            source_stats[source] = source_stats.get(source, 0) + 1
+
+        # 获取前3个推荐视频（按优先级排序：高>中>低）
+        top_recommendations = []
+
+        # 按优先级分组
+        high_priority = [v for v in unread_videos if v.get("chinese_priority") == "💖高"]
+        medium_priority = [v for v in unread_videos if v.get("chinese_priority") == "😜中"]
+        low_priority = [v for v in unread_videos if v.get("chinese_priority") == "👾低"]
+
+        # 按优先级依次选择，每个优先级内随机选择
+        selected_videos = []
+        for priority_group in [high_priority, medium_priority, low_priority]:
+            if len(selected_videos) >= 3:
+                break
+
+            # 从当前优先级组中随机选择，直到达到3个或该组用完
+            available = [v for v in priority_group if v not in selected_videos]
+            while available and len(selected_videos) < 3:
+                selected = random.choice(available)
+                selected_videos.append(selected)
+                available.remove(selected)
+
+        # 格式化推荐视频（字段内容中文）
+        for video in selected_videos:
+            top_recommendations.append({
+                "标题": video.get("title", "无标题视频"),
+                "链接": video.get("url", ""),
+                "页面ID": video.get("pageid", ""),
+                "时长": video.get("duration_str", ""),
+                "优先级": video.get("chinese_priority", ""),
+                "来源": video.get("chinese_source", "")
+            })
+
+        return {
+            "总未读数": len([v for v in videos if v.get("unread", True)]),
+            "优先级统计": priority_stats,
+            "时长分布": duration_stats,
+            "来源统计": source_stats,
+            "今日精选推荐": top_recommendations,
+            "success": True
+        }
