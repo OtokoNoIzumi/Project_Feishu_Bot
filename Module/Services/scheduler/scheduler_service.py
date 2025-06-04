@@ -262,6 +262,20 @@ class SchedulerService:
         try:
             debug_utils.log_and_print(f"开始执行B站更新提醒任务，源: {sources or '默认'}", log_level="INFO")
 
+            # 检查是否为夜间静默时间（22:00-08:00）
+            current_hour = datetime.datetime.now().hour
+            is_night_silent = current_hour >= 23 or current_hour < 7
+
+            # 获取夜间静默配置（默认开启）
+            night_silent_enabled = True
+            if self.app_controller:
+                config_service = self.app_controller.get_service('config')
+                if config_service:
+                    try:
+                        night_silent_enabled = config_service.get_env("BILI_NIGHT_SILENT", "true").lower() == "true"
+                    except:
+                        night_silent_enabled = True
+
             # 获取管理员ID
             admin_id = self._get_admin_id()
             if not admin_id:
@@ -273,7 +287,13 @@ class SchedulerService:
                 debug_utils.log_and_print("B站API调用失败，跳过本次更新提醒", log_level="WARNING")
                 return
 
-            # 发布事件
+            # 判断是否需要静默处理
+            if is_night_silent and night_silent_enabled:
+                debug_utils.log_and_print(f"🌙 夜间静默模式：仅处理数据，不发送通知卡片", log_level="INFO")
+                debug_utils.log_and_print(f"✅ B站数据处理完成（静默模式）", log_level="INFO")
+                return  # 静默模式：只处理API，不发送事件
+
+            # 发布事件（非静默时间）
             event = ScheduledEvent("bilibili_updates_reminder", {
                 "admin_id": admin_id,
                 "sources": sources,

@@ -554,24 +554,159 @@ class AppController:
 
     def api_remove_scheduled_task(self, task_name: str) -> Dict[str, Any]:
         """
-        API: 移除定时任务
-        独立接口，可被任何前端调用
+        移除定时任务的API接口
 
         Args:
             task_name: 任务名称
 
         Returns:
-            Dict[str, Any]: 移除结果
+            Dict[str, Any]: API响应
         """
         try:
-            scheduler_service = self.get_service('scheduler')
-            if not scheduler_service:
-                return {"success": False, "error": "调度器服务不可用"}
+            success, result = self.call_service('scheduler', 'remove_task', task_name)
 
-            success = scheduler_service.remove_task(task_name)
-            return {
-                "success": success,
-                "message": f"任务 '{task_name}' {'移除成功' if success else '移除失败或不存在'}"
-            }
+            if success and result:
+                return {
+                    "success": True,
+                    "message": f"任务 '{task_name}' 已移除",
+                    "data": {"task_name": task_name}
+                }
+            else:
+                return {
+                    "success": False,
+                    "error": f"移除任务失败: {result}",
+                    "data": None
+                }
         except Exception as e:
-            return {"success": False, "error": str(e)}
+            debug_utils.log_and_print(f"API移除定时任务失败: {e}", log_level="ERROR")
+            return {
+                "success": False,
+                "error": f"移除任务出错: {str(e)}",
+                "data": None
+            }
+
+    # ================ B站视频API方法 ================
+
+    def api_get_bili_video_single(self) -> Dict[str, Any]:
+        """
+        获取单个B站视频推荐的API接口
+
+        Returns:
+            Dict[str, Any]: API响应
+        """
+        try:
+            success, result = self.call_service('notion', 'get_bili_video')
+
+            if success and result and result.get("success", False):
+                return {
+                    "success": True,
+                    "message": "成功获取B站视频推荐",
+                    "data": result
+                }
+            else:
+                return {
+                    "success": False,
+                    "error": "获取B站视频推荐失败",
+                    "data": None
+                }
+        except Exception as e:
+            debug_utils.log_and_print(f"API获取B站视频失败: {e}", log_level="ERROR")
+            return {
+                "success": False,
+                "error": f"获取B站视频出错: {str(e)}",
+                "data": None
+            }
+
+    def api_get_bili_videos_multiple(self) -> Dict[str, Any]:
+        """
+        获取多个B站视频推荐（1+3模式）的API接口
+
+        Returns:
+            Dict[str, Any]: API响应
+        """
+        try:
+            success, result = self.call_service('notion', 'get_bili_videos_multiple')
+
+            if success and result and result.get("success", False):
+                return {
+                    "success": True,
+                    "message": f"成功获取B站视频推荐：1个主推荐+{len(result.get('additional_videos', []))}个额外推荐",
+                    "data": result
+                }
+            else:
+                return {
+                    "success": False,
+                    "error": "获取B站视频推荐失败",
+                    "data": None
+                }
+        except Exception as e:
+            debug_utils.log_and_print(f"API获取B站视频列表失败: {e}", log_level="ERROR")
+            return {
+                "success": False,
+                "error": f"获取B站视频列表出错: {str(e)}",
+                "data": None
+            }
+
+    def api_get_bili_videos_statistics(self) -> Dict[str, Any]:
+        """
+        获取B站视频统计信息的API接口
+
+        Returns:
+            Dict[str, Any]: API响应
+        """
+        try:
+            success, result = self.call_service('notion', 'get_bili_videos_statistics')
+
+            if success and result and result.get("success", False):
+                total_count = result.get("总未读数", 0)
+                return {
+                    "success": True,
+                    "message": f"成功获取B站视频统计：共{total_count}个未读视频",
+                    "data": result
+                }
+            else:
+                return {
+                    "success": False,
+                    "error": "获取B站视频统计失败",
+                    "data": None
+                }
+        except Exception as e:
+            debug_utils.log_and_print(f"API获取B站视频统计失败: {e}", log_level="ERROR")
+            return {
+                "success": False,
+                "error": f"获取B站视频统计出错: {str(e)}",
+                "data": None
+            }
+
+    def api_mark_bili_video_read(self, pageid: str) -> Dict[str, Any]:
+        """
+        标记B站视频为已读的API接口
+
+        Args:
+            pageid: 视频页面ID
+
+        Returns:
+            Dict[str, Any]: API响应
+        """
+        try:
+            success, result = self.call_service('notion', 'mark_video_read', pageid)
+
+            if success and result:
+                return {
+                    "success": True,
+                    "message": f"视频已标记为已读",
+                    "data": {"pageid": pageid, "read_status": True}
+                }
+            else:
+                return {
+                    "success": False,
+                    "error": f"标记视频已读失败: {result}",
+                    "data": None
+                }
+        except Exception as e:
+            debug_utils.log_and_print(f"API标记视频已读失败: {e}", log_level="ERROR")
+            return {
+                "success": False,
+                "error": f"标记视频已读出错: {str(e)}",
+                "data": None
+            }

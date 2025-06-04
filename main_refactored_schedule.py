@@ -95,7 +95,12 @@ def setup_application():
                     result = message_processor.create_scheduled_message("daily_schedule")
                 elif message_type == "bilibili_updates":
                     sources = event.data.get('sources')
-                    result = message_processor.create_scheduled_message("bilibili_updates", sources=sources)
+                    api_result = event.data.get('api_result')  # 获取API处理结果
+                    result = message_processor.create_scheduled_message(
+                        "bilibili_updates",
+                        sources=sources,
+                        api_result=api_result
+                    )
                 else:
                     debug_utils.log_and_print(f"未知的消息类型: {message_type}", log_level="WARNING")
                     return
