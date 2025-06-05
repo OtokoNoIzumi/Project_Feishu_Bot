@@ -26,16 +26,21 @@ Project_Feishu_Bot/
 │   │   ├── audio/                         # 音频服务模块
 │   │   │   ├── __init__.py
 │   │   │   └── audio_service.py
-│   │   └── image/                         # 图像服务模块
+│   │   ├── image/                         # 图像服务模块
+│   │   │   ├── __init__.py
+│   │   │   └── image_service.py
+│   │   └── scheduler/                     # 定时任务服务模块
 │   │       ├── __init__.py
-│   │       └── image_service.py
+│   │       └── scheduler_service.py
 │   └── Common/
 │       └── scripts/
 │           └── common/
 │               └── debug_utils.py          # 调试工具
 ├── main_refactored_audio.py               # 音频版本启动文件
 ├── main_refactored_audio_image.py         # 音频+图像版本启动文件
-└── test_image_service.py                  # 图像服务测试脚本
+├── main_refactored_schedule.py            # 定时任务版本启动文件
+├── test_image_service.py                  # 图像服务测试脚本
+└── test_scheduler_service.py              # 定时任务服务测试脚本
 ```
 
 ---
@@ -220,9 +225,42 @@ class MessageProcessor:
     def _handle_help_command(self, context: MessageContext) -> ProcessResult
     def _handle_greeting_command(self, context: MessageContext) -> ProcessResult
 
+    # 定时任务相关（与SchedulerService集成）
+    def process_scheduled_message(self, message_type: str, context: MessageContext) -> ProcessResult
+
     # 状态
     def get_status() -> Dict[str, Any]
     def _load_config()
+```
+
+### 6. SchedulerService (Module/Services/scheduler/scheduler_service.py)
+
+#### ✅ 实际存在的方法：
+```python
+class SchedulerService:
+    def __init__(self, app_controller=None)
+
+    # 服务管理
+    def get_status() -> Dict[str, Any]
+
+    # 定时任务管理
+    def add_cron_job(self, job_id: str, func: callable, trigger: str, **kwargs) -> bool
+    def remove_job(self, job_id: str) -> bool
+    def get_jobs() -> List[Dict[str, Any]]
+
+    # 内置任务（从旧版迁移）
+    def send_daily_schedule(self)                           # 每日日程提醒
+    def send_bilibili_updates(self)                         # B站更新推送
+
+    # 私有方法
+    def _setup_default_jobs()
+    def _load_config()
+```
+
+#### ❌ 不存在的方法（禁止使用）：
+```python
+# ❌ SchedulerService 没有 initialize 方法！
+def initialize()                     # 错误！SchedulerService不需要手动初始化
 ```
 
 ### 7. FeishuAdapter (Module/Adapters/feishu_adapter.py)
@@ -428,6 +466,7 @@ success, value = app_controller.call_service('config', 'get', 'key_name', defaul
    - ✅ AudioService 没有 `initialize()` 方法
    - ✅ ImageService 有 `initialize()` 方法
    - ✅ CacheService 没有 `initialize()` 方法
+   - ✅ SchedulerService 没有 `initialize()` 方法
 
 3. **数据结构检查**：
    - ✅ health_check返回的是嵌套结构，不是平面结构
@@ -446,6 +485,8 @@ success, value = app_controller.call_service('config', 'get', 'key_name', defaul
 
 参考已验证可用的代码：
 - `main_refactored_audio.py` - 完整的启动流程
+- `main_refactored_audio_image.py` - 多媒体功能版本
+- `main_refactored_schedule.py` - 定时任务版本
 - `Module/Services/` - 各服务的实际实现
 - `Module/Business/message_processor.py` - 业务逻辑处理
 
@@ -458,4 +499,4 @@ success, value = app_controller.call_service('config', 'get', 'key_name', defaul
 每当添加新服务或修改现有接口时，必须同步更新本文档的相应部分。
 
 **版本：** 2025-06-03
-**最后更新：** 图像服务集成完成后
+**最后更新：** schedule服务集成完成后
