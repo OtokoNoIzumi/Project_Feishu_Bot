@@ -1,53 +1,85 @@
 # 飞书机器人重构版 - 技术参考文档
 
-## ⚠️ 重构工作流程规范
+## 📋 项目状态
 
-**在进行任何代码修改前，必须先查阅本文档！**
-
-本文档记录了所有现有的方法、模块和接口，确保重构工作基于实际存在的API，避免使用不存在的方法。
+**当前版本：v3.0 重构完成版 ✅**
+**清理状态：✅ 项目清理完成，仅保留生产环境必需文件**
+**架构状态：✅ 四层架构完全实现，所有功能验证通过**
 
 ---
 
-## 📁 项目架构概览
+## 📁 当前项目架构
 
 ```
 Project_Feishu_Bot/
-├── Module/
-│   ├── Application/
-│   │   └── app_controller.py              # 应用控制器
-│   ├── Business/
-│   │   └── message_processor.py           # 业务逻辑处理器
-│   ├── Adapters/
-│   │   └── feishu_adapter.py              # 飞书平台适配器
-│   ├── Services/                          # 服务层
-│   │   ├── __init__.py                    # 服务注册表
-│   │   ├── config_service.py              # 配置服务
-│   │   ├── cache_service.py               # 缓存服务
-│   │   ├── audio/                         # 音频服务模块
-│   │   │   ├── __init__.py
-│   │   │   └── audio_service.py
-│   │   ├── image/                         # 图像服务模块
-│   │   │   ├── __init__.py
-│   │   │   └── image_service.py
-│   │   └── scheduler/                     # 定时任务服务模块
-│   │       ├── __init__.py
-│   │       └── scheduler_service.py
-│   └── Common/
-│       └── scripts/
-│           └── common/
-│               └── debug_utils.py          # 调试工具
-├── main_refactored_audio.py               # 音频版本启动文件
-├── main_refactored_audio_image.py         # 音频+图像版本启动文件
-├── main_refactored_schedule.py            # 定时任务版本启动文件
-├── test_image_service.py                  # 图像服务测试脚本
-└── test_scheduler_service.py              # 定时任务服务测试脚本
+├── main_refactored.py                    # 🚀 主启动文件
+├── http_api_server.py                    # 🌐 HTTP API服务器
+├── test_runtime_api.py                   # 🧪 API验证工具
+├── start.bat                             # 🔧 Windows启动脚本
+├── config.json                           # ⚙️ 静态配置文件
+├── requirements.txt                      # 📦 依赖包清单
+├── README.md                             # 📖 项目说明文档
+├── REFACTOR_TECHNICAL_REFERENCE.md       # 📚 技术参考文档
+├── cache/                                # 💾 运行时缓存目录
+├── notebooks/                            # 📓 开发环境
+│   └── Feishu_Bot.ipynb                  # Jupyter开发环境
+└── Module/                               # 🏗️ 核心模块目录
+    ├── Application/                      # 应用控制层
+    │   ├── app_controller.py             # 应用控制器
+    │   └── command.py                    # 命令模式实现
+    ├── Business/                         # 业务逻辑层
+    │   └── message_processor.py          # 消息处理器
+    ├── Adapters/                         # 适配器层
+    │   ├── feishu_adapter.py             # 飞书平台适配器
+    │   └── base.py                       # 适配器基类
+    ├── Services/                         # 服务层
+    │   ├── config_service.py             # 配置服务
+    │   ├── cache_service.py              # 缓存服务
+    │   ├── audio/                        # 音频服务模块
+    │   │   └── audio_service.py
+    │   ├── image/                        # 图像服务模块
+    │   │   └── image_service.py
+    │   ├── scheduler/                    # 定时任务服务模块
+    │   │   └── scheduler_service.py
+    │   └── notion/                       # Notion服务模块
+    │       └── notion_service.py         # B站数据管理
+    └── Common/                           # 公共模块库
+        └── scripts/                      # 工具脚本
+            └── common/                   # 通用工具
+                └── debug_utils.py        # 调试工具
 ```
+
+---
+
+## 🏗️ 四层架构设计
+
+### 1️⃣ 前端交互层 (Adapters)
+- **FeishuAdapter**: 飞书平台协议转换、事件处理、媒体上传
+- **HTTPAdapter**: RESTful API接口、安全鉴权、Swagger文档
+- **职责**: 协议转换、输入验证、格式适配
+
+### 2️⃣ 核心业务层 (Business)
+- **MessageProcessor**: 业务逻辑处理、消息路由、定时任务处理
+- **职责**: 业务规则、流程控制、数据处理
+
+### 3️⃣ 应用控制层 (Application)
+- **AppController**: 服务注册、统一调用、健康监控
+- **Command**: 命令模式实现、操作封装
+- **职责**: 服务编排、API管理、系统监控
+
+### 4️⃣ 服务层 (Services)
+- **ConfigService**: 三层配置管理、运行时更新
+- **CacheService**: 内存缓存、文件缓存、事件去重
+- **AudioService**: TTS语音合成、音频格式转换
+- **ImageService**: AI图像生成、风格转换、图片处理
+- **SchedulerService**: 定时任务调度、事件驱动架构
+- **NotionService**: B站数据获取、统计分析、已读管理
 
 ---
 
 ## 🔧 核心类和方法清单
 
-### 1. AppController (Module/Application/app_controller.py)
+### AppController (Module/Application/app_controller.py)
 
 #### ✅ 实际存在的方法：
 ```python
@@ -55,20 +87,13 @@ class AppController:
     def __init__(self, project_root_path: str)
 
     # 服务管理
-    def auto_register_services() -> Dict[str, bool]          # ✅ 正确方法名
-    def get_service(self, service_name: str)
+    def auto_register_services() -> Dict[str, bool]          # ✅ 自动注册所有服务
+    def get_service(self, service_name: str)                 # ✅ 获取服务实例
     def call_service(self, service_name: str, method_name: str, *args, **kwargs)
 
     # 状态检查
-    def health_check() -> Dict[str, Any]                     # ✅ 正确方法名
-    def get_status() -> Dict[str, Any]
-```
-
-#### ❌ 不存在的方法（禁止使用）：
-```python
-# ❌ 这些方法不存在，禁止使用！
-def register_available_services()     # 错误！正确是 auto_register_services()
-def get_health_status()              # 错误！正确是 health_check()
+    def health_check() -> Dict[str, Any]                     # ✅ 系统健康检查
+    def get_status() -> Dict[str, Any]                       # ✅ 获取系统状态
 ```
 
 #### health_check() 返回数据结构：
@@ -89,7 +114,7 @@ def get_health_status()              # 错误！正确是 health_check()
 }
 ```
 
-### 2. ConfigService (Module/Services/config_service.py)
+### ConfigService (Module/Services/config_service.py)
 
 #### ✅ 实际存在的方法：
 ```python
@@ -98,24 +123,23 @@ class ConfigService:
                  static_config_file_path: str = "config.json",
                  project_root_path: str = "")
 
-    def get(self, key: str, default: Any = None) -> Any
-    def get_env(self, key: str, default: Any = None) -> Any
+    # 配置获取
+    def get(self, key: str, default: Any = None) -> Any      # ✅ 获取配置值
+    def get_env(self, key: str, default: Any = None) -> Any  # ✅ 获取环境变量
+
+    # 配置管理
     def update_config(self, variable_name: str, new_value: str, ...) -> Tuple[bool, str]
-    def get_status() -> Dict[str, Any]
-    def get_safe_config() -> Dict[str, Any]
-    def reload_all_configs() -> Tuple[bool, str]
-    def validate_config() -> Dict[str, Any]
-    def get_config_source(self, key: str) -> Optional[str]
-    def get_project_info() -> Dict[str, Any]
+    def reload_all_configs() -> Tuple[bool, str]             # ✅ 重新加载配置
+    def validate_config() -> Dict[str, Any]                  # ✅ 验证配置
+
+    # 状态和信息
+    def get_status() -> Dict[str, Any]                       # ✅ 获取服务状态
+    def get_safe_config() -> Dict[str, Any]                  # ✅ 获取安全配置
+    def get_config_source(self, key: str) -> Optional[str]   # ✅ 获取配置来源
+    def get_project_info() -> Dict[str, Any]                 # ✅ 获取项目信息
 ```
 
-#### ❌ 不存在的方法（禁止使用）：
-```python
-# ❌ ConfigService 没有 initialize 方法！
-def initialize()                     # 错误！ConfigService不需要手动初始化
-```
-
-### 3. ImageService (Module/Services/image/image_service.py)
+### ImageService (Module/Services/image/image_service.py)
 
 #### ✅ 实际存在的方法：
 ```python
@@ -123,24 +147,18 @@ class ImageService:
     def __init__(self, app_controller=None)
 
     # 初始化和状态
-    def initialize() -> bool                                 # ✅ ImageService有此方法
-    def is_available() -> bool
-    def get_status() -> Dict[str, Any]
+    def initialize() -> bool                                 # ✅ 服务初始化
+    def is_available() -> bool                               # ✅ 检查服务可用性
+    def get_status() -> Dict[str, Any]                       # ✅ 获取服务状态
 
     # 图像处理
     def generate_ai_image(self, prompt: str = None, image_input: Dict = None) -> Optional[List[str]]
     def process_text_to_image(self, prompt: str) -> Optional[List[str]]
     def process_image_to_image(self, image_base64: str, mime_type: str = "image/jpeg",
                               file_name: str = "image.jpg", file_size: int = 0) -> Optional[List[str]]
-
-    # 私有方法
-    def _load_config()
-    def _init_gradio_client()
-    def _check_service_health() -> bool
-    def _parse_generation_result(self, result) -> Optional[List[str]]
 ```
 
-### 4. AudioService (Module/Services/audio/audio_service.py)
+### AudioService (Module/Services/audio/audio_service.py)
 
 #### ✅ 实际存在的方法：
 ```python
@@ -148,27 +166,19 @@ class AudioService:
     def __init__(self, app_controller=None)
 
     # 音频处理
-    def generate_tts(self, text: str) -> Optional[bytes]
+    def generate_tts(self, text: str) -> Optional[bytes]     # ✅ TTS语音合成
     def convert_to_opus(self, input_file_path: str, duration_ms: int = None) -> Tuple[Optional[str], int]
     def process_tts_request(self, text: str) -> Tuple[bool, Optional[bytes], str]
 
     # 文件管理
     def create_temp_audio_file(self, audio_data: bytes, suffix: str = ".mp3") -> str
-    def cleanup_temp_file(self, file_path: str)
+    def cleanup_temp_file(self, file_path: str)              # ✅ 清理临时文件
 
-    # 状态和配置
-    def get_status() -> Dict[str, Any]
-    def _load_config()
-    def _get_ffmpeg_command() -> Optional[str]
+    # 状态检查
+    def get_status() -> Dict[str, Any]                       # ✅ 获取服务状态
 ```
 
-#### ❌ 不存在的方法（禁止使用）：
-```python
-# ❌ AudioService 没有 initialize 方法！
-def initialize()                     # 错误！AudioService不需要手动初始化
-```
-
-### 5. CacheService (Module/Services/cache_service.py)
+### CacheService (Module/Services/cache_service.py)
 
 #### ✅ 实际存在的方法：
 ```python
@@ -176,327 +186,170 @@ class CacheService:
     def __init__(self, project_root_path: str = "")
 
     # 事件缓存
-    def check_event(self, event_id: str) -> bool
-    def add_event(self, event_id: str)
-    def save_event_cache()
+    def check_event(self, event_id: str) -> bool             # ✅ 检查事件是否存在
+    def add_event(self, event_id: str)                       # ✅ 添加事件记录
+    def save_event_cache()                                   # ✅ 保存事件缓存
 
     # 用户缓存
-    def update_user(self, user_id: str, user_name: str)
+    def update_user(self, user_id: str, user_name: str)      # ✅ 更新用户信息
 
     # 通用缓存
-    def get(self, key: str, default: Any = None) -> Any
-    def set(self, key: str, value: Any, ttl: int = 0)
+    def get(self, key: str, default: Any = None) -> Any      # ✅ 获取缓存值
+    def set(self, key: str, value: Any, ttl: int = 0)        # ✅ 设置缓存值
 
     # 状态管理
-    def get_status() -> Dict[str, Any]
+    def get_status() -> Dict[str, Any]                       # ✅ 获取服务状态
 ```
 
-### 6. MessageProcessor (Module/Business/message_processor.py)
-
-#### ✅ 实际存在的方法：
-```python
-class MessageProcessor:
-    def __init__(self, app_controller=None)
-
-    # 主要处理方法
-    def process_message(self, context: MessageContext) -> ProcessResult
-
-    # 异步处理方法（由适配器调用）
-    def process_tts_async(self, tts_text: str) -> ProcessResult
-    def process_image_generation_async(self, prompt: str) -> ProcessResult
-    def process_image_conversion_async(self, image_base64: str, mime_type: str,
-                                     file_name: str, file_size: int) -> ProcessResult
-
-    # 私有处理方法
-    def _process_text_message(self, context: MessageContext) -> ProcessResult
-    def _process_image_message(self, context: MessageContext) -> ProcessResult
-    def _process_audio_message(self, context: MessageContext) -> ProcessResult
-    def _process_menu_click(self, context: MessageContext) -> ProcessResult
-    def _process_card_action(self, context: MessageContext) -> ProcessResult
-
-    # 事件管理
-    def _is_duplicate_event(self, event_id: str) -> bool
-    def _record_event(self, context: MessageContext)
-
-    # 指令处理
-    def _handle_config_update(self, context: MessageContext, user_msg: str) -> ProcessResult
-    def _handle_tts_command(self, context: MessageContext, user_msg: str) -> ProcessResult
-    def _handle_image_generation_command(self, context: MessageContext, user_msg: str) -> ProcessResult
-    def _handle_help_command(self, context: MessageContext) -> ProcessResult
-    def _handle_greeting_command(self, context: MessageContext) -> ProcessResult
-
-    # 定时任务相关（与SchedulerService集成）
-    def process_scheduled_message(self, message_type: str, context: MessageContext) -> ProcessResult
-
-    # 状态
-    def get_status() -> Dict[str, Any]
-    def _load_config()
-```
-
-### 6. SchedulerService (Module/Services/scheduler/scheduler_service.py)
+### SchedulerService (Module/Services/scheduler/scheduler_service.py)
 
 #### ✅ 实际存在的方法：
 ```python
 class SchedulerService:
     def __init__(self, app_controller=None)
 
-    # 服务管理
-    def get_status() -> Dict[str, Any]
+    # 任务管理
+    def add_daily_task(self, task_name: str, time_str: str, task_func, **kwargs) -> bool
+    def remove_task(self, task_name: str) -> bool            # ✅ 移除任务
+    def list_tasks() -> List[Dict]                           # ✅ 列出所有任务
 
-    # 定时任务管理
-    def add_cron_job(self, job_id: str, func: callable, trigger: str, **kwargs) -> bool
-    def remove_job(self, job_id: str) -> bool
-    def get_jobs() -> List[Dict[str, Any]]
+    # 调度控制
+    def run_pending()                                        # ✅ 执行待处理任务
+    def clear_all_tasks()                                    # ✅ 清除所有任务
 
-    # 内置任务（从旧版迁移）
-    def send_daily_schedule(self)                           # 每日日程提醒
-    def send_bilibili_updates(self)                         # B站更新推送
+    # 事件系统
+    def add_event_listener(self, listener_func)              # ✅ 添加事件监听器
+    def trigger_daily_schedule_reminder()                    # ✅ 触发日程提醒
+    def trigger_bilibili_updates_reminder(self, sources=None) # ✅ 触发B站更新提醒
 
-    # 私有方法
-    def _setup_default_jobs()
-    def _load_config()
+    # 状态检查
+    def get_status() -> Dict[str, Any]                       # ✅ 获取服务状态
 ```
 
-#### ❌ 不存在的方法（禁止使用）：
-```python
-# ❌ SchedulerService 没有 initialize 方法！
-def initialize()                     # 错误！SchedulerService不需要手动初始化
-```
-
-### 7. FeishuAdapter (Module/Adapters/feishu_adapter.py)
+### NotionService (Module/Services/notion/notion_service.py)
 
 #### ✅ 实际存在的方法：
 ```python
-class FeishuAdapter:
-    def __init__(self, message_processor, app_controller=None)
+class NotionService:
+    def __init__(self, cache_service: CacheService)
 
-    # 启动和停止
-    def start()                                              # 同步启动
-    async def start_async()                                  # 异步启动
-    def stop()
+    # B站视频获取
+    def get_bili_video() -> Dict                             # ✅ 获取单个推荐视频
+    def get_bili_videos_multiple() -> Dict                   # ✅ 获取多个推荐视频
+    def get_video_by_id(self, pageid: str) -> Dict           # ✅ 根据ID获取视频
 
-    # 事件处理（飞书SDK回调）
-    def _handle_feishu_message(self, data) -> None
-    def _handle_feishu_menu(self, data) -> None
-    def _handle_feishu_card(self, data) -> P2CardActionTriggerResponse
+    # 已读状态管理
+    def mark_video_as_read(self, pageid: str) -> bool        # ✅ 标记视频为已读
+    def is_video_read(self, pageid: str) -> bool             # ✅ 检查视频是否已读
 
-    # 消息转换
-    def _convert_message_to_context(self, data) -> Optional[MessageContext]
-    def _convert_menu_to_context(self, data) -> Optional[MessageContext]
-    def _convert_card_to_context(self, data) -> Optional[MessageContext]
-    def _extract_message_content(self, message) -> Any
+    # 统计分析
+    def get_bili_videos_statistics() -> Dict                 # ✅ 获取视频统计数据
 
-    # 用户信息
-    def _get_user_name(self, open_id: str) -> str
-
-    # 消息发送
-    def _send_feishu_reply(self, original_data, result: ProcessResult) -> bool
-    def _send_direct_message(self, user_id: str, result: ProcessResult) -> bool
-
-    # 异步处理
-    def _handle_tts_async(self, original_data, tts_text: str)
-    def _handle_image_generation_async(self, original_data, prompt: str)
-    def _handle_image_conversion_async(self, original_data, context)
-
-    # 资源管理
-    def _get_image_resource(self, original_data) -> Optional[Tuple[str, str, str, int]]
-    def _upload_and_send_images(self, original_data, image_paths: List[str]) -> bool
-    def _upload_and_send_single_image(self, original_data, image_path: str) -> bool
-    def _upload_and_send_audio(self, original_data, audio_data: bytes) -> bool
-    def _upload_opus_to_feishu(self, opus_path: str, duration_ms: int) -> Optional[str]
-
-    # 配置和状态
-    def _init_feishu_config()
-    def _create_ws_client()
-    def get_status() -> Dict[str, Any]
+    # 状态检查
+    def get_status() -> Dict[str, Any]                       # ✅ 获取服务状态
 ```
 
----
+### MessageProcessor (Module/Business/message_processor.py)
 
-## 📊 数据结构规范
-
-### MessageContext
+#### ✅ 实际存在的方法：
 ```python
-@dataclass
-class MessageContext:
-    user_id: str
-    user_name: str
-    message_type: str          # "text", "image", "audio", "menu_click", "card_action"
-    content: Any
-    timestamp: datetime
-    event_id: str
-    metadata: Dict[str, Any] = None
+class MessageProcessor:
+    def __init__(self, app_controller=None)
+
+    # 消息处理
+    def process_message(self, context: MessageContext) -> ProcessResult
+    def create_scheduled_message(self, message_type: str, **kwargs) -> ProcessResult
+
+    # 特定功能处理
+    def handle_text_message(self, context: MessageContext) -> ProcessResult
+    def handle_menu_click(self, context: MessageContext) -> ProcessResult
+    def handle_card_action(self, context: MessageContext) -> ProcessResult
+    def handle_image_message(self, context: MessageContext) -> ProcessResult
 ```
 
-### ProcessResult
+---
+
+## 🚀 启动和使用
+
+### 标准启动
+```bash
+# Windows环境
+start.bat
+
+# 或直接运行
+python main_refactored.py
+```
+
+### 高级启动选项
+```bash
+# 启动时验证API
+python main_refactored.py --verify-api
+
+# 同时启动HTTP API服务器
+python main_refactored.py --http-api --http-port 8000
+
+# 完整功能启动
+python main_refactored.py --verify-api --http-api --http-port 8000
+```
+
+### Jupyter环境
 ```python
-@dataclass
-class ProcessResult:
-    success: bool
-    response_type: str         # "text", "image", "audio", "post", "image_list"
-    response_content: Any
-    error_message: str = None
-    should_reply: bool = True
-
-    # 工厂方法
-    @classmethod
-    def success_result(cls, response_type: str, content: Any)
-
-    @classmethod
-    def error_result(cls, error_msg: str)
-
-    @classmethod
-    def no_reply_result(cls)
+# 异步启动
+await main_async()
 ```
 
 ---
 
-## 🚀 服务注册和启动流程
+## 📊 功能特性总览
 
-### 正确的启动代码模式：
-```python
-# 1. 创建应用控制器
-app_controller = AppController(project_root_path=str(current_dir))
+### ✅ 已完成功能
+- **📱 基础交互**: 文本对话、菜单点击、卡片交互
+- **🎤 音频处理**: TTS语音合成、格式转换
+- **🎨 图像处理**: AI图像生成、图像风格转换
+- **📺 B站推荐**: 1+3模式、已读管理、数据统计
+- **⏰ 定时任务**: 事件驱动架构、夜间静默模式
+- **🌐 HTTP API**: RESTful接口、安全鉴权
+- **🏗️ 四层架构**: 完整实现和统一服务管理
 
-# 2. 自动注册服务（正确方法名！）
-registration_results = app_controller.auto_register_services()
-
-# 3. 检查系统健康状态（正确方法名！）
-health_status = app_controller.health_check()
-
-# 4. 获取服务（ConfigService不需要initialize）
-config_service = app_controller.get_service('config')
-# ❌ 错误：config_service.initialize()  # ConfigService没有此方法！
-
-# 5. 初始化有initialize方法的服务
-image_service = app_controller.get_service('image')
-if image_service:
-    image_service.initialize()  # ✅ 正确：ImageService有此方法
-
-# 6. 创建业务处理器和适配器
-message_processor = MessageProcessor(app_controller=app_controller)
-feishu_adapter = FeishuAdapter(
-    message_processor=message_processor,
-    app_controller=app_controller
-)
-
-# 7. 启动适配器
-feishu_adapter.start()  # 同步方式
-# 或
-await feishu_adapter.start_async()  # 异步方式
-```
+### 🔧 技术特性
+- **异步处理**: 即时响应 + 后台处理
+- **服务化架构**: 模块化、可扩展、易维护
+- **配置管理**: 三层优先级、运行时更新
+- **健康监控**: 完整的系统状态检查
+- **事件驱动**: 解耦的定时任务系统
 
 ---
 
-## 🔍 服务状态检查标准
+## 🛡️ 开发规范
 
-### health_check() 结果处理：
-```python
-health_status = app_controller.health_check()
+### 配置管理规范
+1. **三层配置优先级**: 环境变量(.env) > 认证配置文件 > 静态配置(config.json)
+2. **AUTH_CONFIG_FILE_PATH**: 必须从环境变量读取，不能从config.json读取
+3. **路径解析**: 所有配置文件路径解析都要基于项目根路径
 
-# ✅ 正确的访问方式
-overall_status = health_status['overall_status']
-healthy_count = health_status['summary']['healthy']
-unhealthy_count = health_status['summary']['unhealthy']
-uninitialized_count = health_status['summary']['uninitialized']
+### 代码修改原则
+1. **充分理解**: 每次修改前必须充分理解现有业务逻辑和文件依赖
+2. **避免引入新问题**: 不能为了解决一个问题而引入新问题
+3. **验证失败处理**: 如果验证失败，应该停止尝试，等待用户指导
 
-for service_name, service_info in health_status['services'].items():
-    status = service_info['status']  # ✅ 正确：先获取service_info，再获取status
-    details = service_info.get('details', {})
-
-# ❌ 错误的访问方式（旧版本格式）
-# healthy_count = health_status['healthy_count']        # 错误！
-# status = health_status['services'][service_name]     # 错误！
-```
+### 服务开发规范
+1. **统一接口**: 所有服务都应实现`get_status()`方法
+2. **错误处理**: 优雅处理异常，提供友好错误信息
+3. **日志记录**: 使用`debug_utils`进行统一日志记录
 
 ---
 
-## 📋 服务调用模式
+## 📈 版本历史
 
-### 缓存服务调用：
-```python
-# ✅ 正确的调用方式（直接调用方法）
-cache_service = app_controller.get_service('cache')
-is_duplicate = cache_service.check_event(event_id)
-cache_service.add_event(event_id)
-cache_service.save_event_cache()
-
-# ❌ 错误的调用方式（使用call_service）
-# app_controller.call_service('cache', 'get/set')      # 错误的方法名！
-```
-
-### 配置服务调用：
-```python
-# ✅ 正确的调用方式
-config_service = app_controller.get_service('config')
-value = config_service.get('key_name', default_value)
-
-# 或通过 call_service
-success, value = app_controller.call_service('config', 'get', 'key_name', default_value)
-```
+- **v3.0 重构完成版**: ✅ 四层架构完整实现，所有功能验证通过
+- **项目清理完成**: ✅ 删除旧版本文件，仅保留生产环境必需文件
+- **架构优化**: ✅ NotionService迁移到Services层，统一服务管理
 
 ---
 
-## 📝 文件命名和组织规范
+## 🎯 未来规划
 
-### 主启动文件：
-- `main_refactored_audio.py` - 仅音频功能版本
-- `main_refactored_audio_image.py` - 音频+图像功能版本
-
-### 测试文件：
-- `test_image_service.py` - 图像服务专项测试
-- `test_*.py` - 其他测试文件
-
-### 服务模块：
-- `Module/Services/service_name.py` - 单文件服务
-- `Module/Services/service_name/` - 多文件服务模块
-
----
-
-## ⚠️ 常见错误防范清单
-
-### 在编写任何代码前，必须检查：
-
-1. **方法名检查**：
-   - ✅ `auto_register_services()` 不是 `register_available_services()`
-   - ✅ `health_check()` 不是 `get_health_status()`
-
-2. **初始化方法检查**：
-   - ✅ ConfigService 没有 `initialize()` 方法
-   - ✅ AudioService 没有 `initialize()` 方法
-   - ✅ ImageService 有 `initialize()` 方法
-   - ✅ CacheService 没有 `initialize()` 方法
-   - ✅ SchedulerService 没有 `initialize()` 方法
-
-3. **数据结构检查**：
-   - ✅ health_check返回的是嵌套结构，不是平面结构
-   - ✅ services中每个服务是dict，包含status和details
-
-4. **构造函数参数检查**：
-   - ✅ `AppController(project_root_path=str(path))` 不是 `AppController(path)`
-
-5. **导入检查**：
-   - ✅ 确认所有使用的类和方法都已正确导入
-   - ✅ 确认路径和模块名正确
-
----
-
-## 📚 参考代码示例
-
-参考已验证可用的代码：
-- `main_refactored_audio.py` - 完整的启动流程
-- `main_refactored_audio_image.py` - 多媒体功能版本
-- `main_refactored_schedule.py` - 定时任务版本
-- `Module/Services/` - 各服务的实际实现
-- `Module/Business/message_processor.py` - 业务逻辑处理
-
-**记住：所有新代码都必须基于实际存在的方法和接口！**
-
----
-
-## 🔄 文档更新规范
-
-每当添加新服务或修改现有接口时，必须同步更新本文档的相应部分。
-
-**版本：** 2024-12-19
-**最后更新：** 阶段3 MVP完成版 - 所有核心服务完整集成
+- **微信适配器**: WeChatAdapter实现
+- **更多数据源**: 扩展数据获取渠道
+- **智能推荐**: 优化推荐算法
+- **性能优化**: 进一步提升系统性能

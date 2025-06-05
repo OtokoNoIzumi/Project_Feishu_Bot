@@ -9,7 +9,7 @@ from .config_service import ConfigService
 from .audio import AudioService
 from .image import ImageService
 from .scheduler import SchedulerService
-from Module.Core.notion_service import NotionService
+from .notion import NotionService
 
 __all__ = [
     'CacheService',

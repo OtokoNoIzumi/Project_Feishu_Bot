@@ -350,7 +350,7 @@ def main():
         debug_utils.log_and_print("  🎨 图像处理：AI生成 (输入'生图 描述') + 风格转换 (发送图片)", log_level="INFO")
         debug_utils.log_and_print("  📺 B站推荐：1+3模式、已读管理、统计分析", log_level="INFO")
         debug_utils.log_and_print("  ⏰ 定时任务：07:30日程提醒、15:30/23:55 B站更新", log_level="INFO")
-        debug_utils.log_and_print("  🌙 夜间模式：22:00-08:00 静默处理", log_level="INFO")
+        debug_utils.log_and_print("  🌙 夜间模式：23:00-07:00 静默处理", log_level="INFO")
         debug_utils.log_and_print("  ❓ 帮助功能：输入'帮助'查看详细指令", log_level="INFO")
 
         if args.http_api:
@@ -413,7 +413,7 @@ async def main_async():
         debug_utils.log_and_print("  🎨 图像处理：AI生成 (输入'生图 描述') + 风格转换 (发送图片)", log_level="INFO")
         debug_utils.log_and_print("  📺 B站推荐：1+3模式、已读管理、统计分析", log_level="INFO")
         debug_utils.log_and_print("  ⏰ 定时任务：07:30日程提醒、15:30/23:55 B站更新", log_level="INFO")
-        debug_utils.log_and_print("  🌙 夜间模式：22:00-08:00 静默处理", log_level="INFO")
+        debug_utils.log_and_print("  🌙 夜间模式：23:00-07:00 静默处理", log_level="INFO")
         debug_utils.log_and_print("  ❓ 帮助功能：输入'帮助'查看详细指令", log_level="INFO")
 
         # 启动定时任务调度器（在后台线程中运行）

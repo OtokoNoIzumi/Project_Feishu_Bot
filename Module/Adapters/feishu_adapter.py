@@ -163,8 +163,10 @@ class FeishuAdapter:
 
                 user_id = result.response_content.get("user_id", "")
                 if user_id:
-                    # 先发送提示消息
-                    self._send_feishu_reply(data, result)
+                    # 只有在有实际文本内容时才发送提示消息
+                    text_content = result.response_content.get("text", "")
+                    if text_content and text_content.strip():
+                        self._send_feishu_reply(data, result)
                     # 启动异步处理
                     self._handle_bili_video_async(data, user_id)
                     return
@@ -234,10 +236,14 @@ class FeishuAdapter:
                 user_id = result.response_content.get("user_id", "")
                 debug_utils.log_and_print(f"🎬 启动B站视频异步处理，用户ID: {user_id}", log_level="INFO")
 
-                # 先发送提前提示消息
-                debug_utils.log_and_print("📤 先发送B站视频处理提示消息", log_level="INFO")
-                success = self._send_direct_message(context.user_id, result)
-                debug_utils.log_and_print(f"📬 提示消息发送结果: {success}", log_level="INFO")
+                # 只有在有实际文本内容时才发送提示消息
+                text_content = result.response_content.get("text", "")
+                if text_content and text_content.strip():
+                    debug_utils.log_and_print("📤 发送B站视频处理提示消息", log_level="INFO")
+                    success = self._send_direct_message(context.user_id, result)
+                    debug_utils.log_and_print(f"📬 提示消息发送结果: {success}", log_level="INFO")
+                else:
+                    debug_utils.log_and_print("⚡ 无需发送提示消息，直接处理", log_level="INFO")
 
                 self._handle_bili_video_async(data, user_id)
                 return

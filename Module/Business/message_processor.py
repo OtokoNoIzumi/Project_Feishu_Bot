@@ -273,9 +273,8 @@ class MessageProcessor:
         from Module.Common.scripts.common import debug_utils
 
         try:
-            debug_utils.log_and_print("🎬 开始处理B站视频推荐请求", log_level="INFO")
-
-            # 检查缓存状态，决定提示消息内容
+            # 检查缓存状态，决定是否需要发送提示消息
+            need_cache_sync = False
             cache_status_msg = "正在获取B站视频推荐，请稍候..."
 
             if self.app_controller:
@@ -283,15 +282,26 @@ class MessageProcessor:
                 if notion_service:
                     # 检查缓存是否需要更新
                     if not notion_service._is_cache_valid() or not notion_service.cache_data.get(notion_service.bili_cache_key):
+                        need_cache_sync = True
                         cache_status_msg = "正在从Notion同步最新数据，首次获取可能需要较长时间，请稍候..."
                         debug_utils.log_and_print("📋 检测到缓存过期，将执行数据同步", log_level="INFO")
 
-            # 发送相应的处理中提示
-            result = ProcessResult.success_result("text", {
-                "text": cache_status_msg,
-                "next_action": "process_bili_video",
-                "user_id": context.user_id
-            })
+            # 只有在需要同步缓存时才发送提示消息
+            if need_cache_sync:
+                result = ProcessResult.success_result("text", {
+                    "text": cache_status_msg,
+                    "next_action": "process_bili_video",
+                    "user_id": context.user_id
+                })
+                debug_utils.log_and_print("📤 发送数据同步提示消息", log_level="INFO")
+            else:
+                # 直接返回异步处理指令，不发送提示消息
+                result = ProcessResult.success_result("text", {
+                    "text": "",  # 空文本，不显示
+                    "next_action": "process_bili_video",
+                    "user_id": context.user_id
+                })
+                debug_utils.log_and_print("⚡ 缓存有效，跳过提示消息直接处理", log_level="INFO")
 
             debug_utils.log_and_print(f"✅ B站视频推荐请求处理完成，next_action: {result.response_content.get('next_action')}", log_level="INFO")
             return result
@@ -343,9 +353,9 @@ class MessageProcessor:
             )
 
             # 生成B站视频推荐卡片（1+3模式）
-            debug_utils.log_and_print("🎨 开始生成B站视频卡片（1+3模式）", log_level="INFO")
+
             card_content = self._create_bili_video_card_multiple(main_video, additional_videos)
-            debug_utils.log_and_print("✅ B站视频卡片生成完成", log_level="INFO")
+
 
             return ProcessResult.success_result("interactive", card_content)
 
@@ -494,8 +504,8 @@ class MessageProcessor:
                 })
 
                 # 额外视频的操作按钮（一行显示）
-                mobile_url = video.get('mobile_url', video.get('url', ''))
                 desktop_url = video.get('url', '')
+                mobile_url = self._convert_to_bili_app_link(desktop_url)  # 转换为B站应用链接
                 pageid = video.get('pageid', '')
 
                 # 使用action_layout实现按钮一行显示
@@ -562,22 +572,32 @@ class MessageProcessor:
         Returns:
             str: B站应用链接
         """
-        # 检查是否是BV号格式
-        import re
-        bv_match = re.search(r'(/BV[a-zA-Z0-9]+)', web_url)
-        if bv_match:
-            bv_id = bv_match.group(1).replace('/', '')
-            # 构造B站应用链接
-            return f"bilibili://video/{bv_id}"
+        from Module.Common.scripts.common import debug_utils
 
-        # 检查是否包含av号
-        av_match = re.search(r'av(\d+)', web_url)
-        if av_match:
-            av_id = av_match.group(1)
-            return f"bilibili://video/av{av_id}"
+        try:
+            # 输入验证
+            if not web_url or not isinstance(web_url, str):
+                return web_url or ""
 
-        # 默认返回原始链接
-        return web_url
+            # 检查是否是BV号格式
+            import re
+            bv_match = re.search(r'(/BV[a-zA-Z0-9]+)', web_url)
+            if bv_match:
+                bv_id = bv_match.group(1).replace('/', '')
+                return f"bilibili://video/{bv_id}"
+
+            # 检查是否包含av号
+            av_match = re.search(r'av(\d+)', web_url)
+            if av_match:
+                av_id = av_match.group(1)
+                return f"bilibili://video/av{av_id}"
+
+            # 默认返回原始链接
+            return web_url
+
+        except Exception as e:
+            debug_utils.log_and_print(f"[链接转换] 处理异常: {e}, URL: {web_url}", log_level="ERROR")
+            return web_url  # 异常时返回原始链接
 
     def _process_card_action(self, context: MessageContext) -> ProcessResult:
         """处理卡片按钮动作（包含mark_bili_read）"""
@@ -707,24 +727,7 @@ class MessageProcessor:
             debug_utils.log_and_print(f"❌ 标记B站视频为已读失败: {str(e)}", log_level="ERROR")
             return ProcessResult.error_result(f"处理失败：{str(e)}")
 
-    # def _update_menu_card_video_status(self, pageid: str, video_index: int) -> ProcessResult:
-    #     """
-    #     更新菜单卡片中特定视频的状态（已废弃，避免内容替换问题）
 
-    #     Args:
-    #         pageid: 页面ID
-    #         video_index: 视频序号
-
-    #     Returns:
-    #         ProcessResult: 更新结果
-    #     """
-    #     # 这个方法已经不使用了，保留只是为了兼容性
-    #     return ProcessResult.success_result("card_action_response", {
-    #         "toast": {
-    #             "type": "success",
-    #             "content": "已标记为已读"
-    #         }
-    #     })
 
     def _handle_config_update(self, context: MessageContext, user_msg: str) -> ProcessResult:
         """处理配置更新指令"""
@@ -980,7 +983,7 @@ class MessageProcessor:
 • 图片/壁纸 → 分享精美示例图片
 
 <b>📺 B站推荐</b>
-• 菜单"B站推荐" → 个性化视频推荐（支持1+3模式显示）
+• 菜单"B站" → 个性化视频推荐（支持1+3模式显示）
 • B站/视频 → 快速获取视频推荐
 
 <b>📄 富文本演示</b>
@@ -1005,7 +1008,7 @@ class MessageProcessor:
 • 图片 → 获取精美壁纸
 • B站 → 快速视频推荐
 • 直接发送图片 → 自动转换为贺卡风格
-• 点击菜单"B站推荐" → 获取个性化视频推荐
+• 点击菜单"B站" → 获取个性化视频推荐
 
 <i>定时任务特性：</i>
 • 📅 每天07:30自动发送B站信息汇总（包含推荐视频摘要）
