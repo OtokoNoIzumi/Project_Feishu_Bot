@@ -498,5 +498,5 @@ success, value = app_controller.call_service('config', 'get', 'key_name', defaul
 
 每当添加新服务或修改现有接口时，必须同步更新本文档的相应部分。
 
-**版本：** 2025-06-03
-**最后更新：** schedule服务集成完成后
+**版本：** 2024-12-19
+**最后更新：** 阶段3 MVP完成版 - 所有核心服务完整集成

@@ -73,11 +73,20 @@ class MessageProcessor:
         """加载配置"""
         if self.app_controller:
             # 从配置服务获取配置
-            success, admin_id = self.app_controller.call_service('config', 'get', 'admin_id', '')
-            self.admin_id = admin_id if success else ''
+            config_service = self.app_controller.get_service('config')
+            if config_service:
+                # 获取管理员ID - 优先从环境变量获取
+                self.admin_id = config_service.get_env("ADMIN_ID", "")
+                if not self.admin_id:
+                    # 如果环境变量没有，尝试从配置文件获取
+                    self.admin_id = config_service.get("admin_id", "")
 
-            success, trigger = self.app_controller.call_service('config', 'get', 'update_config_trigger', 'whisk令牌')
-            self.update_config_trigger = trigger if success else 'whisk令牌'
+                # 获取更新触发器配置
+                self.update_config_trigger = config_service.get("update_config_trigger", "whisk令牌")
+            else:
+                # 配置服务不可用，使用默认值
+                self.admin_id = ''
+                self.update_config_trigger = 'whisk令牌'
         else:
             # 默认配置
             self.admin_id = ''
@@ -191,6 +200,18 @@ class MessageProcessor:
         # 图像生成指令
         if "生图" in user_msg or "AI画图" in user_msg:
             return self._handle_image_generation_command(context, user_msg)
+
+        # 富文本指令
+        if "富文本" in user_msg:
+            return self._handle_rich_text_command(context)
+
+        # 图片/壁纸指令
+        if "图片" in user_msg or "壁纸" in user_msg:
+            return self._handle_sample_image_command(context)
+
+        # B站/视频指令（触发菜单效果）
+        if "B站" in user_msg or "视频" in user_msg:
+            return self._handle_bili_text_command(context)
 
         # 基础指令处理
         if "帮助" in user_msg:
@@ -530,135 +551,6 @@ class MessageProcessor:
 
         return card
 
-    # def _create_bili_video_card(self, video: Dict[str, Any], is_read: bool = False) -> Dict[str, Any]:
-    #     """创建单个B站视频推荐卡片（用于标记已读后的更新）"""
-
-    #     # 构建基础卡片
-    #     card = {
-    #         "config": {
-    #             "wide_screen_mode": True
-    #         },
-    #         "elements": [
-    #             # 视频标题
-    #             {
-    #                 "tag": "div",
-    #                 "text": {
-    #                     "tag": "lark_md",
-    #                     "content": f"**📽️ {video.get('title', '无标题视频')}**"
-    #                 }
-    #             },
-    #             # 视频基本信息 - 作者、优先级
-    #             {
-    #                 "tag": "div",
-    #                 "fields": [
-    #                     {
-    #                         "is_short": True,
-    #                         "text": {
-    #                             "tag": "lark_md",
-    #                             "content": f"**作者:** {video.get('author', '未知')}"
-    #                         }
-    #                     },
-    #                     {
-    #                         "is_short": True,
-    #                         "text": {
-    #                             "tag": "lark_md",
-    #                             "content": f"**优先级:** {video.get('chinese_priority', '未知')}"
-    #                         }
-    #                     }
-    #                 ]
-    #             },
-    #             # 视频基本信息 - 时长、来源
-    #             {
-    #                 "tag": "div",
-    #                 "fields": [
-    #                     {
-    #                         "is_short": True,
-    #                         "text": {
-    #                             "tag": "lark_md",
-    #                             "content": f"**时长:** {video.get('duration_str', '未知')}"
-    #                         }
-    #                     },
-    #                     {
-    #                         "is_short": True,
-    #                         "text": {
-    #                             "tag": "lark_md",
-    #                             "content": f"**来源:** {video.get('chinese_source', '未知')}"
-    #                         }
-    #                     }
-    #                 ]
-    #             },
-    #             # 投稿日期
-    #             {
-    #                 "tag": "div",
-    #                 "text": {
-    #                     "tag": "lark_md",
-    #                     "content": f"**投稿日期:** {video.get('upload_date', '未知')}"
-    #                 }
-    #             },
-    #             # 分隔线
-    #             {
-    #                 "tag": "hr"
-    #             },
-    #             # 推荐概要
-    #             {
-    #                 "tag": "div",
-    #                 "text": {
-    #                     "tag": "lark_md",
-    #                     "content": f"**推荐理由:**\n{video.get('summary', '无')}"
-    #                 }
-    #             },
-    #             # 分隔线
-    #             {
-    #                 "tag": "hr"
-    #             },
-    #             # 视频链接 - 创建两个链接，一个用于移动端，一个用于桌面端
-    #             {
-    #                 "tag": "div",
-    #                 "text": {
-    #                     "tag": "lark_md",
-    #                     "content": (
-    #                         f"[🔗 点击观看视频 (移动端)]({self._convert_to_bili_app_link(video.get('url', ''))})\n\n"
-    #                         f"[🔗 点击观看视频 (桌面端)]({video.get('url', '')})"
-    #                     )
-    #                 }
-    #             }
-    #         ],
-    #         "header": {
-    #             "template": "blue",
-    #             "title": {
-    #                 "tag": "plain_text",
-    #                 "content": "📺 B站视频推荐" + (" (已读)" if is_read else "")
-    #             }
-    #         }
-    #     }
-
-    #     # 只有未读状态才添加"标记为已读"按钮
-    #     if not is_read:
-    #         card["elements"].append({
-    #             "tag": "action",
-    #             "actions": [
-    #                 {
-    #                     "tag": "button",
-    #                     "text": {
-    #                         "tag": "plain_text",
-    #                         "content": "👍 标记为已读"
-    #                     },
-    #                     "type": "primary",
-    #                     "value": {
-    #                         "action": "mark_bili_read",
-    #                         "pageid": video.get("pageid", ""),
-    #                         "card_type": "menu",  # 菜单推送卡片
-    #                         "video_index": 0,  # 主视频序号
-    #                         # 保存原视频数据用于卡片重构
-    #                         "original_main_video": video,
-    #                         "original_additional_videos": []
-    #                     }
-    #                 }
-    #             ]
-    #         })
-
-    #     return card
-
     def _convert_to_bili_app_link(self, web_url: str) -> str:
         """
         将B站网页链接转换为B站应用链接
@@ -695,14 +587,14 @@ class MessageProcessor:
         # 根据动作类型处理
         if action == "mark_bili_read":
             return self._handle_mark_bili_read(context, action_value)
-        elif action == "send_alarm":
-            return ProcessResult.success_result("text", {
-                "text": "🚨 收到告警卡片点击，告警功能将在后续版本实现"
-            })
-        elif action == "confirm_action":
-            return ProcessResult.success_result("text", {
-                "text": "✅ 操作已确认"
-            })
+        # elif action == "send_alarm":
+        #     return ProcessResult.success_result("text", {
+        #         "text": "🚨 收到告警卡片点击，告警功能将在后续版本实现"
+        #     })
+        # elif action == "confirm_action":
+        #     return ProcessResult.success_result("text", {
+        #         "text": "✅ 操作已确认"
+        #     })
         else:
             return ProcessResult.success_result("text", {
                 "text": f"收到卡片动作：{action}，功能开发中..."
@@ -815,24 +707,24 @@ class MessageProcessor:
             debug_utils.log_and_print(f"❌ 标记B站视频为已读失败: {str(e)}", log_level="ERROR")
             return ProcessResult.error_result(f"处理失败：{str(e)}")
 
-    def _update_menu_card_video_status(self, pageid: str, video_index: int) -> ProcessResult:
-        """
-        更新菜单卡片中特定视频的状态（已废弃，避免内容替换问题）
+    # def _update_menu_card_video_status(self, pageid: str, video_index: int) -> ProcessResult:
+    #     """
+    #     更新菜单卡片中特定视频的状态（已废弃，避免内容替换问题）
 
-        Args:
-            pageid: 页面ID
-            video_index: 视频序号
+    #     Args:
+    #         pageid: 页面ID
+    #         video_index: 视频序号
 
-        Returns:
-            ProcessResult: 更新结果
-        """
-        # 这个方法已经不使用了，保留只是为了兼容性
-        return ProcessResult.success_result("card_action_response", {
-            "toast": {
-                "type": "success",
-                "content": "已标记为已读"
-            }
-        })
+    #     Returns:
+    #         ProcessResult: 更新结果
+    #     """
+    #     # 这个方法已经不使用了，保留只是为了兼容性
+    #     return ProcessResult.success_result("card_action_response", {
+    #         "toast": {
+    #             "type": "success",
+    #             "content": "已标记为已读"
+    #         }
+    #     })
 
     def _handle_config_update(self, context: MessageContext, user_msg: str) -> ProcessResult:
         """处理配置更新指令"""
@@ -846,14 +738,59 @@ class MessageProcessor:
         command_parts = user_msg[len(self.update_config_trigger):].strip().split(maxsplit=1)
         if len(command_parts) != 2:
             return ProcessResult.error_result(
-                f"格式错误，请使用 '{self.update_config_trigger} 变量名 新值' 格式"
+                f"格式错误，请使用 '{self.update_config_trigger} 变量名 新值' 格式，"
+                f"例如：{self.update_config_trigger} cookies xxxx"
             )
 
         variable_name, new_value = command_parts
-        # 这里后续会实现具体的配置更新逻辑
-        return ProcessResult.success_result("text", {
-            "text": f"配置更新功能将在后续版本实现：{variable_name} = {new_value}"
-        })
+
+        # 检查是否为支持的变量
+        supported_variables = ["cookies", "auth_token"]
+        if variable_name not in supported_variables:
+            return ProcessResult.error_result(
+                f"不支持更新变量 '{variable_name}'，"
+                f"只能更新: {', '.join(supported_variables)}"
+            )
+
+        # 调用配置服务更新配置
+        if not self.app_controller:
+            return ProcessResult.error_result("系统服务不可用")
+
+        config_service = self.app_controller.get_service('config')
+        if not config_service:
+            return ProcessResult.error_result("配置服务不可用")
+
+        try:
+            # 创建验证器字典
+            validators = {
+                "cookies": self._verify_cookie,
+                "auth_token": self._verify_auth_token
+            }
+
+            success, reply_text = config_service.update_config(
+                variable_name,
+                new_value,
+                validators
+            )
+
+            return ProcessResult.success_result("text", {
+                "text": reply_text
+            })
+
+        except Exception as e:
+            return ProcessResult.error_result(f"配置更新失败: {str(e)}")
+
+    def _verify_cookie(self, cookie_value: str) -> tuple[bool, str]:
+        """验证Cookie格式"""
+        if not cookie_value or len(cookie_value.strip()) < 10:
+            return False, "Cookie值太短，请检查格式"
+        return True, "Cookie格式验证通过"
+
+    def _verify_auth_token(self, auth_token_value: str) -> tuple[bool, str]:
+        """验证认证Token格式"""
+        if not auth_token_value or len(auth_token_value.strip()) < 10:
+            return False, "认证Token值太短，请检查格式"
+        return True, "认证Token格式验证通过"
 
     def _handle_tts_command(self, context: MessageContext, user_msg: str) -> ProcessResult:
         """处理TTS配音指令"""
@@ -1027,24 +964,46 @@ class MessageProcessor:
 
     def _handle_help_command(self, context: MessageContext) -> ProcessResult:
         """处理帮助指令"""
-        help_text = """<b>阶段3 MVP - 音频+图像+定时任务功能</b>
+        help_text = """<b>🤖 飞书机器人助手 v3.0 - 重构完成版</b>
 
-当前支持的功能：
-1. <b>基础对话</b> - 发送任意文本消息
-2. <b>问候功能</b> - 输入"你好"获得问候回复
-3. <b>帮助菜单</b> - 输入"帮助"查看此菜单
-4. <b>菜单交互</b> - 支持机器人菜单点击
-5. <b>卡片交互</b> - 支持富文本卡片按钮点击
-6. <b>🎤 TTS配音</b> - 输入"配音 文本内容"生成语音
-7. <b>🎨 AI图像生成</b> - 输入"生图 描述内容"或"AI画图 描述内容"
-8. <b>🖼️ 图像风格转换</b> - 直接发送图片进行风格转换
-9. <b>📺 B站视频推荐</b> - 点击菜单"B站推荐"获取个性化视频
-10. <b>⏰ 定时任务</b> - 日程提醒和B站更新推送（自动执行）
+<b>核心功能：</b>
+
+<b>🔊 AI配音</b>
+• 配音 [文本内容] → 生成语音消息
+
+<b>🎨 AI绘图</b>
+• 生图 [描述] → AI生成图片
+• AI画图 [描述] → AI生成图片
+
+<b>🖼️ 图片处理</b>
+• 上传图片 → 自动转换为精美贺卡风格
+• 图片/壁纸 → 分享精美示例图片
+
+<b>📺 B站推荐</b>
+• 菜单"B站推荐" → 个性化视频推荐（支持1+3模式显示）
+• B站/视频 → 快速获取视频推荐
+
+<b>📄 富文本演示</b>
+• 富文本 → 展示富文本格式示例
+
+<b>📅 定时功能</b>
+• 每天07:30 → 自动推送B站信息汇总
+• 每天15:30和23:55 → 自动推送B站更新
+
+<b>💬 基础交互</b>
+• 帮助 → 查看功能列表
+• 你好 → 问候回复
+
+<b>⚙️ 管理功能</b>
+• whisk令牌 [变量名] [新值] → 更新配置（管理员专用）
 
 <i>使用示例：</i>
 • 配音 你好，这是一段测试语音
 • 生图 一只可爱的小猫在花园里玩耍
 • AI画图 未来城市的科幻景观
+• 富文本 → 查看富文本格式演示
+• 图片 → 获取精美壁纸
+• B站 → 快速视频推荐
 • 直接发送图片 → 自动转换为贺卡风格
 • 点击菜单"B站推荐" → 获取个性化视频推荐
 
@@ -1062,6 +1021,78 @@ class MessageProcessor:
         return ProcessResult.success_result("text", {
             "text": f"你好，{context.user_name}！有什么我可以帮你的吗？"
         })
+
+    def _handle_rich_text_command(self, context: MessageContext) -> ProcessResult:
+        """处理富文本指令"""
+        try:
+            # 获取示例图片路径
+            import os
+            sample_pic_path = os.getenv("SAMPLE_PIC_PATH", "")
+
+            if not sample_pic_path or not os.path.exists(sample_pic_path):
+                return ProcessResult.error_result("示例图片不存在，无法创建富文本消息")
+
+            # 读取图片文件
+            with open(sample_pic_path, "rb") as f:
+                image_data = f.read()
+
+            # 生成富文本内容
+            rich_text_content = {
+                "zh_cn": {
+                    "title": "富文本示例",
+                    "content": [
+                        [
+                            {"tag": "text", "text": "第一行:", "style": ["bold", "underline"]},
+                            {"tag": "a", "href": "https://open.feishu.cn", "text": "飞书开放平台", "style": ["italic"]},
+                            {"tag": "at", "user_id": "all", "style": ["lineThrough"]}
+                        ],
+                        [{"tag": "text", "text": "代码示例:"}],
+                        [{"tag": "code_block", "language": "PYTHON", "text": "print('Hello World')"}],
+                        [{"tag": "hr"}],
+                        [{"tag": "md", "text": "**Markdown内容**\n- 列表项1\n- 列表项2\n```python\nprint('代码块')\n```"}]
+                    ]
+                }
+            }
+
+            return ProcessResult.success_result("rich_text", {
+                "rich_text_content": rich_text_content,
+                "sample_image_data": image_data,
+                "sample_image_name": os.path.basename(sample_pic_path)
+            })
+
+        except Exception as e:
+            return ProcessResult.error_result(f"富文本指令处理失败: {str(e)}")
+
+    def _handle_sample_image_command(self, context: MessageContext) -> ProcessResult:
+        """处理图片/壁纸指令"""
+        try:
+            # 获取示例图片路径
+            import os
+            sample_pic_path = os.getenv("SAMPLE_PIC_PATH", "")
+
+            if not sample_pic_path or not os.path.exists(sample_pic_path):
+                return ProcessResult.error_result("示例图片不存在")
+
+            # 读取图片文件
+            with open(sample_pic_path, "rb") as f:
+                image_data = f.read()
+
+            return ProcessResult.success_result("image", {
+                "image_data": image_data,
+                "image_name": os.path.basename(sample_pic_path)
+            })
+
+        except Exception as e:
+            return ProcessResult.error_result(f"图片指令处理失败: {str(e)}")
+
+    def _handle_bili_text_command(self, context: MessageContext) -> ProcessResult:
+        """处理B站/视频文本指令（等同于菜单点击get_bili_url）"""
+        try:
+            # 直接复用菜单点击的B站处理逻辑
+            return self._handle_bili_video_request(context)
+
+        except Exception as e:
+            return ProcessResult.error_result(f"B站视频指令处理失败: {str(e)}")
 
     def get_status(self) -> Dict[str, Any]:
         """获取处理器状态"""

@@ -156,6 +156,35 @@ class FeishuAdapter:
                 self._handle_image_conversion_async(data, context)
                 return
 
+            # 检查是否需要异步处理B站视频推荐
+            if (result.success and
+                result.response_content and
+                result.response_content.get("next_action") == "process_bili_video"):
+
+                user_id = result.response_content.get("user_id", "")
+                if user_id:
+                    # 先发送提示消息
+                    self._send_feishu_reply(data, result)
+                    # 启动异步处理
+                    self._handle_bili_video_async(data, user_id)
+                    return
+
+            # 检查是否是富文本类型
+            if result.success and result.response_type == "rich_text":
+                self._upload_and_send_rich_text(data, result.response_content)
+                return
+
+            # 检查是否是单个图片类型
+            if result.success and result.response_type == "image":
+                image_data = result.response_content.get("image_data")
+                image_name = result.response_content.get("image_name", "sample_image.jpg")
+                if image_data:
+                    self._upload_and_send_single_image_data(data, image_data, image_name)
+                else:
+                    error_result = ProcessResult.error_result("图片数据为空")
+                    self._send_feishu_reply(data, error_result)
+                return
+
             # 发送结果
             self._send_feishu_reply(data, result)
 
@@ -840,6 +869,124 @@ class FeishuAdapter:
         except Exception as e:
             debug_utils.log_and_print(f"音频上传异常: {e}", log_level="ERROR")
             return None
+
+    def _upload_and_send_rich_text(self, original_data, rich_text_data: Dict[str, Any]) -> bool:
+        """上传并发送富文本"""
+        try:
+            from lark_oapi.api.im.v1 import CreateImageRequest, CreateImageRequestBody, ReplyMessageRequest, ReplyMessageRequestBody
+            from io import BytesIO
+
+            # 上传示例图片
+            image_data = rich_text_data.get("sample_image_data")
+            if not image_data:
+                # 如果没有图片数据，发送纯文本富文本
+                rich_text_content = rich_text_data.get("rich_text_content")
+                content_json = json.dumps(rich_text_content)
+
+                request = ReplyMessageRequest.builder().message_id(
+                    original_data.event.message.message_id
+                ).request_body(
+                    ReplyMessageRequestBody.builder()
+                    .content(content_json)
+                    .msg_type("post")
+                    .build()
+                ).build()
+                response = self.client.im.v1.message.reply(request)
+                return response.success()
+
+            # 上传图片
+            image_file = BytesIO(image_data)
+            upload_response = self.client.im.v1.image.create(
+                CreateImageRequest.builder()
+                .request_body(
+                    CreateImageRequestBody.builder()
+                    .image_type("message")
+                    .image(image_file)
+                    .build()
+                )
+                .build()
+            )
+
+            if not (upload_response.success() and upload_response.data and upload_response.data.image_key):
+                debug_utils.log_and_print("富文本图片上传失败", log_level="ERROR")
+                return False
+
+            # 在富文本内容中添加图片
+            rich_text_content = rich_text_data.get("rich_text_content")
+            image_key = upload_response.data.image_key
+
+            # 在第二行插入图片（在链接行后面）
+            rich_text_content["zh_cn"]["content"].insert(1, [{"tag": "img", "image_key": image_key}])
+
+            content_json = json.dumps(rich_text_content)
+
+            request = ReplyMessageRequest.builder().message_id(
+                original_data.event.message.message_id
+            ).request_body(
+                ReplyMessageRequestBody.builder()
+                .content(content_json)
+                .msg_type("post")
+                .build()
+            ).build()
+            response = self.client.im.v1.message.reply(request)
+
+            if not response.success():
+                debug_utils.log_and_print(f"富文本消息发送失败: {response.code} - {response.msg}", log_level="ERROR")
+                return False
+
+            return True
+
+        except Exception as e:
+            debug_utils.log_and_print(f"富文本上传发送失败: {e}", log_level="ERROR")
+            return False
+
+    def _upload_and_send_single_image_data(self, original_data, image_data: bytes, image_name: str) -> bool:
+        """上传并发送单个图片（从内存数据）"""
+        try:
+            from lark_oapi.api.im.v1 import CreateImageRequest, CreateImageRequestBody, ReplyMessageRequest, ReplyMessageRequestBody
+            from io import BytesIO
+
+            # 上传图片
+            image_file = BytesIO(image_data)
+            upload_response = self.client.im.v1.image.create(
+                CreateImageRequest.builder()
+                .request_body(
+                    CreateImageRequestBody.builder()
+                    .image_type("message")
+                    .image(image_file)
+                    .build()
+                )
+                .build()
+            )
+
+            if not (upload_response.success() and upload_response.data and upload_response.data.image_key):
+                debug_utils.log_and_print(f"图片上传失败: {image_name}", log_level="ERROR")
+                return False
+
+            # 发送图片消息
+            image_key = upload_response.data.image_key
+            content_json = json.dumps({"image_key": image_key})
+
+            request = ReplyMessageRequest.builder().message_id(
+                original_data.event.message.message_id
+            ).request_body(
+                ReplyMessageRequestBody.builder()
+                .content(content_json)
+                .msg_type("image")
+                .build()
+            ).build()
+            response = self.client.im.v1.message.reply(request)
+
+            if not response.success():
+                debug_utils.log_and_print(f"图片消息发送失败: {response.code} - {response.msg}", log_level="ERROR")
+                return False
+
+            debug_utils.log_and_print(f"示例图片发送成功: {image_name}", log_level="INFO")
+            return True
+
+        except Exception as e:
+            debug_utils.log_and_print(f"示例图片上传发送失败: {e}", log_level="ERROR")
+            return False
 
     def start(self):
         """启动飞书WebSocket连接（同步方式）"""
