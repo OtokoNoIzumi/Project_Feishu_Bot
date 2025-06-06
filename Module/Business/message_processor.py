@@ -1063,11 +1063,16 @@ class MessageProcessor:
             "supported_message_types": ["text", "image", "audio", "menu_click", "card_action"]
         }
 
-    def _create_daily_schedule_message(self) -> ProcessResult:
+    def _create_daily_schedule_message(self, services_status: Dict[str, Any] = None) -> ProcessResult:
         """创建每日信息汇总消息（7:30定时卡片容器）"""
         try:
             # 构建B站信息cache分析数据
             analysis_data = self._build_bilibili_cache_analysis()
+
+            # 将服务状态信息加入分析数据
+            if services_status:
+                analysis_data['services_status'] = services_status
+
             card_content = self._create_daily_summary_card(analysis_data)
 
             return ProcessResult.success_result("interactive", card_content)
@@ -1132,6 +1137,11 @@ class MessageProcessor:
         else:
             # 占位信息
             content = f"📊 **{analysis_data['date']} {analysis_data['weekday']}** \n\n🔄 **系统状态**\n\n{analysis_data.get('status', '服务准备中...')}"
+
+        # 添加服务状态信息
+        services_status = analysis_data.get('services_status')
+        if services_status:
+            content += self._format_services_status(services_status)
 
         card = {
             "config": {
@@ -1304,6 +1314,86 @@ class MessageProcessor:
 
         return content
 
+    def _format_services_status(self, services_status: Dict[str, Any]) -> str:
+        """格式化服务状态信息"""
+        content = "\n\n🔧 **外部服务状态检测**"
+        check_time = services_status.get('check_time', '未知时间')
+        content += f"\n检测时间: {check_time}"
+
+        services = services_status.get('services', {})
+
+        # B站API服务状态
+        bili_api = services.get('bilibili_api', {})
+        if bili_api.get('enabled', False):
+            status = bili_api.get('status', 'unknown')
+            message = bili_api.get('message', '')
+            response_time = bili_api.get('response_time', '')
+            url = bili_api.get('url', '')
+
+            status_emoji = {
+                'healthy': '✅',
+                'warning': '⚠️',
+                'error': '❌',
+                'disabled': '⏸️'
+            }.get(status, '❓')
+
+            content += f"\n\n{status_emoji} **{bili_api.get('service_name', 'B站API服务')}**"
+            content += f"\n状态: {message}"
+            if response_time:
+                content += f" ({response_time})"
+            if url and status != 'error':
+                # 截断长URL显示
+                display_url = url if len(url) <= 40 else url[:37] + "..."
+                content += f"\n地址: {display_url}"
+        else:
+            content += "\n\n⏸️ **B站API服务**: 未启用"
+
+        # Gradio服务状态
+        gradio = services.get('gradio', {})
+        if gradio.get('enabled', False):
+            status = gradio.get('status', 'unknown')
+            message = gradio.get('message', '')
+            response_time = gradio.get('response_time', '')
+            url = gradio.get('url', '')
+
+            status_emoji = {
+                'healthy': '✅',
+                'warning': '⚠️',
+                'error': '❌',
+                'disabled': '⏸️'
+            }.get(status, '❓')
+
+            content += f"\n\n{status_emoji} **{gradio.get('service_name', 'Gradio图像服务')}**"
+            content += f"\n状态: {message}"
+            if response_time:
+                content += f" ({response_time})"
+            if url and status != 'error':
+                # 截断长URL显示
+                display_url = url if len(url) <= 40 else url[:37] + "..."
+                content += f"\n地址: {display_url}"
+
+            # 显示令牌信息
+            token_info = gradio.get('token_info', {})
+            if token_info.get('has_token', False):
+                token_status = token_info.get('status', 'unknown')
+                if token_status == 'valid':
+                    expires_in_hours = token_info.get('expires_in_hours', 0)
+                    expires_at = token_info.get('expires_at', '')
+                    if expires_in_hours <= 24:  # 24小时内过期显示警告
+                        content += f"\n⚠️ 令牌将在 {expires_in_hours}小时 后过期 ({expires_at})"
+                    else:
+                        content += f"\n🔑 令牌有效期至: {expires_at}"
+                elif token_status == 'expired':
+                    content += f"\n❌ 令牌已于{token_info.get('expires_at', '')}过期，需要更新"
+                elif token_status == 'parse_error':
+                    content += "\n⚠️ 令牌时间解析异常"
+                elif token_status == 'no_expiry_info':
+                    content += "\n🔑 令牌已配置 (无过期信息)"
+        else:
+            content += "\n\n⏸️ **Gradio图像服务**: 未启用"
+
+        return content
+
     # ================ 定时任务消息生成方法 ================
 
     def create_scheduled_message(self, message_type: str, **kwargs) -> ProcessResult:
@@ -1319,7 +1409,8 @@ class MessageProcessor:
         """
         try:
             if message_type == "daily_schedule":
-                return self._create_daily_schedule_message()
+                services_status = kwargs.get('services_status', None)
+                return self._create_daily_schedule_message(services_status)
 
             elif message_type == "bilibili_updates":
                 sources = kwargs.get('sources', None)

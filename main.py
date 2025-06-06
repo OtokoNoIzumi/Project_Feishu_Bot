@@ -71,7 +71,8 @@ def setup_application():
                     return
 
                 if message_type == "daily_schedule":
-                    result = message_processor.create_scheduled_message("daily_schedule")
+                    services_status = event.data.get('services_status')
+                    result = message_processor.create_scheduled_message("daily_schedule", services_status=services_status)
                 elif message_type == "bilibili_updates":
                     sources = event.data.get('sources')
                     api_result = event.data.get('api_result')

@@ -18,10 +18,15 @@ import schedule
 import requests
 import json
 import os
+# import warnings
 from typing import Dict, Callable, List, Optional, Any, Set
 from pathlib import Path
 
 from Module.Common.scripts.common import debug_utils
+
+# 忽略SSL验证警告（仅用于本地开发环境）
+# import urllib3
+# urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
 class ScheduledEvent:
@@ -57,11 +62,9 @@ class SchedulerService:
     def remove_event_listener(self, listener: Callable):
         """移除事件监听器"""
         self.event_listeners.discard(listener)
-        debug_utils.log_and_print(f"移除事件监听器: {listener.__name__}", log_level="DEBUG")
 
     def _publish_event(self, event: ScheduledEvent):
         """发布事件到所有监听器"""
-        debug_utils.log_and_print(f"发布事件: {event.event_type}", log_level="DEBUG")
         for listener in self.event_listeners:
             try:
                 listener(event)
@@ -218,6 +221,293 @@ class SchedulerService:
             }
         }
 
+    # ================ 服务状态检测方法 ================
+
+    def check_services_status(self) -> Dict[str, Any]:
+        """
+        检测服务状态
+
+        Returns:
+            Dict[str, Any]: 服务状态信息
+        """
+        services_status = {
+            "check_time": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "services": {}
+        }
+
+        # 获取配置服务
+        config_service = self.app_controller.get_service('config') if self.app_controller else None
+
+        # 检查B站API服务
+        services_status["services"]["bilibili_api"] = self._check_bilibili_api_status(config_service)
+
+        # 检查gradio服务
+        services_status["services"]["gradio"] = self._check_gradio_service_status(config_service)
+
+        return services_status
+
+    def _check_bilibili_api_status(self, config_service) -> Dict[str, Any]:
+        """
+        检查B站API服务状态
+
+        Args:
+            config_service: 配置服务实例
+
+        Returns:
+            Dict[str, Any]: B站API状态信息
+        """
+        status_info = {
+            "service_name": "B站API服务",
+            "status": "unknown",
+            "message": "",
+            "url": "",
+            "response_time": None,
+            "enabled": False
+        }
+
+        try:
+            # 获取API基础URL
+            api_base = os.getenv("BILI_API_BASE", "https://localhost:3000")
+            if not api_base or api_base == "https://localhost:3000":
+                status_info.update({
+                    "status": "disabled",
+                    "message": "B站API服务未配置或使用默认配置",
+                    "enabled": False
+                })
+                return status_info
+
+            status_info["enabled"] = True
+            status_info["url"] = api_base
+
+            # 发送健康检查请求
+            start_time = time.time()
+            response = requests.get(
+                api_base,
+                timeout=10,
+                verify=False  # 忽略SSL证书验证
+            )
+            response_time = round((time.time() - start_time) * 1000, 2)  # 毫秒
+
+            status_info["response_time"] = f"{response_time}ms"
+
+            if response.status_code == 200:
+                try:
+                    resp_data = response.json()
+                    if "BiliTools API Service is running" in resp_data.get("message", ""):
+                        status_info.update({
+                            "status": "healthy",
+                            "message": "服务运行正常"
+                        })
+                    else:
+                        status_info.update({
+                            "status": "warning",
+                            "message": f"服务响应异常: {resp_data.get('message', '未知响应')}"
+                        })
+                except:
+                    status_info.update({
+                        "status": "warning",
+                        "message": "服务响应格式异常"
+                    })
+            else:
+                status_info.update({
+                    "status": "error",
+                    "message": f"HTTP状态码: {response.status_code}"
+                })
+
+        except requests.exceptions.Timeout:
+            status_info.update({
+                "status": "error",
+                "message": "连接超时"
+            })
+        except requests.exceptions.ConnectionError:
+            status_info.update({
+                "status": "error",
+                "message": "连接失败"
+            })
+        except Exception as e:
+            status_info.update({
+                "status": "error",
+                "message": f"检测失败: {str(e)}"
+            })
+
+        return status_info
+
+    def _check_gradio_service_status(self, config_service) -> Dict[str, Any]:
+        """
+        检查gradio服务状态
+
+        Args:
+            config_service: 配置服务实例
+
+        Returns:
+            Dict[str, Any]: gradio服务状态信息
+        """
+        status_info = {
+            "service_name": "Gradio图像服务",
+            "status": "unknown",
+            "message": "",
+            "url": "",
+            "response_time": None,
+            "enabled": False,
+            "token_info": {}
+        }
+
+        try:
+            # 获取SERVER_ID配置
+            server_id = ""
+            if config_service:
+                try:
+                    server_id = config_service.get("SERVER_ID", "")
+                except:
+                    server_id = ""
+
+            if not server_id:
+                server_id = os.getenv("SERVER_ID", "")
+
+            if not server_id:
+                status_info.update({
+                    "status": "disabled",
+                    "message": "SERVER_ID未配置，图像服务不可用",
+                    "enabled": False
+                })
+                return status_info
+
+            status_info["enabled"] = True
+            gradio_url = f"https://{server_id}"
+            status_info["url"] = gradio_url
+
+                        # 检查gradio服务连接
+            try:
+                from gradio_client import Client
+                import contextlib
+                import io
+
+                start_time = time.time()
+
+                # 抑制gradio_client的输出
+                with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                    client = Client(gradio_url)
+                    response_time = round((time.time() - start_time) * 1000, 2)
+
+                    status_info["response_time"] = f"{response_time}ms"
+
+                    # 尝试简单连接验证而不获取详细API信息
+                    try:
+                        # 只检查客户端是否成功创建，不调用view_api()
+                        if hasattr(client, 'endpoints') or hasattr(client, 'app'):
+                            status_info.update({
+                                "status": "healthy",
+                                "message": "服务连接正常"
+                            })
+                        else:
+                            status_info.update({
+                                "status": "warning",
+                                "message": "服务连接异常"
+                            })
+
+                        # 检查token信息（如果可用）
+                        status_info["token_info"] = self._get_gradio_token_info(config_service)
+
+                    except Exception as api_error:
+                        status_info.update({
+                            "status": "warning",
+                            "message": f"服务验证异常: {str(api_error)}"
+                        })
+
+            except ImportError:
+                status_info.update({
+                    "status": "error",
+                    "message": "gradio_client模块未安装"
+                })
+            except Exception as e:
+                error_msg = str(e).lower()
+                if "ssl" in error_msg or "certificate" in error_msg:
+                    status_info.update({
+                        "status": "error",
+                        "message": "SSL证书验证失败"
+                    })
+                elif "timeout" in error_msg:
+                    status_info.update({
+                        "status": "error",
+                        "message": "连接超时"
+                    })
+                elif "connection" in error_msg:
+                    status_info.update({
+                        "status": "error",
+                        "message": "连接失败"
+                    })
+                else:
+                    status_info.update({
+                        "status": "error",
+                        "message": f"连接失败: {str(e)}"
+                    })
+
+        except Exception as e:
+            status_info.update({
+                "status": "error",
+                "message": f"检测失败: {str(e)}"
+            })
+
+        return status_info
+
+    def _get_gradio_token_info(self, config_service) -> Dict[str, Any]:
+        """
+        获取gradio令牌信息
+
+        Args:
+            config_service: 配置服务实例
+
+        Returns:
+            Dict[str, Any]: 令牌信息
+        """
+        token_info = {
+            "has_token": False,
+            "expires_at": None,
+            "expires_in_hours": None,
+            "status": "unknown"
+        }
+
+        try:
+            if not config_service:
+                return token_info
+
+            # 检查认证配置文件中的expires_at
+            auth_config = getattr(config_service, 'auth_config', {})
+            if 'expires_at' in auth_config:
+                expires_at_str = auth_config['expires_at']
+                try:
+                    # 解析过期时间
+                    if "T" in expires_at_str:
+                        expires_at = datetime.datetime.fromisoformat(expires_at_str.replace('Z', '+00:00'))
+                    else:
+                        expires_at = datetime.datetime.strptime(expires_at_str, "%Y-%m-%d %H:%M:%S")
+                        expires_at = expires_at.replace(tzinfo=datetime.timezone(datetime.timedelta(hours=8)))
+
+                    now = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=8)))
+                    time_diff = expires_at - now
+                    hours_remaining = time_diff.total_seconds() / 3600
+
+                    token_info.update({
+                        "has_token": True,
+                        "expires_at": expires_at.strftime("%m-%d %H:%M"),
+                        "expires_in_hours": round(hours_remaining, 1),
+                        "status": "valid" if hours_remaining > 0 else "expired"
+                    })
+
+                except Exception as parse_error:
+                    debug_utils.log_and_print(f"解析令牌过期时间失败: {parse_error}", log_level="WARNING")
+                    token_info.update({
+                        "has_token": True,
+                        "status": "parse_error"
+                    })
+            else:
+                token_info["status"] = "no_expiry_info"
+
+        except Exception as e:
+            debug_utils.log_and_print(f"获取令牌信息失败: {e}", log_level="WARNING")
+
+        return token_info
+
     # ================ 定时任务执行方法 ================
 
     def trigger_daily_schedule_reminder(self) -> None:
@@ -228,21 +518,22 @@ class SchedulerService:
         注意：数据构建逻辑已移至MessageProcessor，这里只负责事件触发
         """
         try:
-
-
             # 获取管理员ID
             admin_id = self._get_admin_id()
             if not admin_id:
                 return
 
+            # 检查服务状态
+            services_status = self.check_services_status()
+
             # 发布轻量级事件，数据生成交给MessageProcessor
             event = ScheduledEvent("daily_schedule_reminder", {
                 "admin_id": admin_id,
-                "message_type": "daily_schedule"
+                "message_type": "daily_schedule",
+                "services_status": services_status  # 添加服务状态信息
             })
 
             self._publish_event(event)
-
 
         except Exception as e:
             debug_utils.log_and_print(f"执行每日日程提醒任务失败: {e}", log_level="ERROR")
@@ -368,7 +659,6 @@ class SchedulerService:
         """触发B站更新检查的独立API"""
         try:
             result = self._call_bilibili_api(sources)
-            debug_utils.log_and_print(f"B站更新检查完成: {result}", log_level="INFO")
             return result
         except Exception as e:
             debug_utils.log_and_print(f"B站更新检查失败: {e}", log_level="ERROR")
@@ -458,11 +748,8 @@ class SchedulerService:
             if not verify_ssl:
                 debug_utils.log_and_print("警告：SSL证书验证已禁用", log_level="WARNING")
 
-            # debug_utils.log_and_print(f"B站API调用状态: {response.status_code}", log_level="INFO")
-
             try:
                 resp_json = response.json()
-                # debug_utils.log_and_print(f"B站API响应: {json.dumps(resp_json, ensure_ascii=False)}", log_level="DEBUG")
 
                 # 返回完整的API结果
                 return {
