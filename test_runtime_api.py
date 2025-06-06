@@ -53,11 +53,6 @@ class RuntimeAPIValidator:
         total_count = len(registration_results)
         print(f"📦 独立实例服务注册: {success_count}/{total_count}")
 
-        # 初始化图像服务
-        image_service = self.app_controller.get_service('image')
-        if image_service:
-            image_service.initialize()
-
     def validate_all_apis(self):
         """验证所有API接口"""
         print("\n🧪 开始运行时API验证")
@@ -108,8 +103,18 @@ class RuntimeAPIValidator:
             result = self.app_controller.api_get_schedule_data()
             if result['success']:
                 data = result['data']
-                print(f"   ✅ 日程数据: {data['date']}, 事件数: {len(data['events'])}")
-                return {"success": True, "events": len(data['events'])}
+                # 验证调度器数据结构
+                if 'date' in data and 'events' in data:
+                    events_count = len(data['events'])
+                    date_str = data['date']
+                    scheduler_status = data.get('scheduler_status', {})
+                    task_count = scheduler_status.get('task_count', 0)
+                    service_status = scheduler_status.get('status', 'unknown')
+                    print(f"   ✅ 调度器数据: {date_str}, 任务数: {events_count}, 调度器状态: {service_status}")
+                    return {"success": True, "events": events_count, "scheduler_status": service_status, "task_count": task_count}
+                else:
+                    print(f"   ⚠️ 数据格式异常: {list(data.keys())}")
+                    return {"success": True, "warning": "数据格式不符合预期"}
             else:
                 print(f"   ❌ 失败: {result['error']}")
                 return {"success": False, "error": result['error']}

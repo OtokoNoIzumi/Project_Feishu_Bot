@@ -105,11 +105,6 @@ class MessageProcessor:
         from Module.Common.scripts.common import debug_utils
 
         try:
-            debug_utils.log_and_print(
-                f"🔄 MessageProcessor开始处理消息 - 类型: {context.message_type}, 用户: {context.user_name}",
-                log_level="INFO"
-            )
-
             # 检查事件是否已处理（去重）
             if self._is_duplicate_event(context.event_id):
                 debug_utils.log_and_print("📋 重复事件已跳过", log_level="INFO")
@@ -117,8 +112,6 @@ class MessageProcessor:
 
             # 记录新事件
             self._record_event(context)
-
-            debug_utils.log_and_print(f"📝 开始分发处理 - 消息类型: {context.message_type}", log_level="INFO")
 
             # 根据消息类型分发处理
             if context.message_type == "text":
@@ -128,7 +121,6 @@ class MessageProcessor:
             elif context.message_type == "audio":
                 return self._process_audio_message(context)
             elif context.message_type == "menu_click":
-                debug_utils.log_and_print(f"🎯 处理菜单点击 - 内容: {context.content}", log_level="INFO")
                 return self._process_menu_click(context)
             elif context.message_type == "card_action":
                 return self._process_card_action(context)
@@ -136,7 +128,7 @@ class MessageProcessor:
                 return ProcessResult.error_result(f"不支持的消息类型: {context.message_type}")
 
         except Exception as e:
-            debug_utils.log_and_print(f"❌ MessageProcessor处理失败: {str(e)}", log_level="ERROR")
+            debug_utils.log_and_print(f"❌ 消息处理失败: {str(e)}", log_level="ERROR")
             return ProcessResult.error_result(f"消息处理失败: {str(e)}")
 
     def _is_duplicate_event(self, event_id: str) -> bool:
@@ -154,13 +146,6 @@ class MessageProcessor:
 
         # 直接调用缓存服务的check_event方法
         is_duplicate = cache_service.check_event(event_id)
-        # debug_utils.log_and_print(f"🔍 事件检查 - ID: {event_id[:16]}..., 重复: {is_duplicate}", log_level="INFO")
-
-        if is_duplicate:
-            debug_utils.log_and_print(
-                f"🔄 重复消息已跳过 - ID: {event_id[:16]}...",
-                log_level="INFO"
-            )
 
         return is_duplicate
 
@@ -180,7 +165,6 @@ class MessageProcessor:
         # 直接调用缓存服务的方法
         cache_service.add_event(context.event_id)
         cache_service.save_event_cache()
-        # debug_utils.log_and_print(f"✅ 事件已记录 - ID: {context.event_id}...", log_level="INFO")
 
         # 更新用户缓存
         cache_service.update_user(context.user_id, context.user_name)
@@ -284,7 +268,6 @@ class MessageProcessor:
                     if not notion_service._is_cache_valid() or not notion_service.cache_data.get(notion_service.bili_cache_key):
                         need_cache_sync = True
                         cache_status_msg = "正在从Notion同步最新数据，首次获取可能需要较长时间，请稍候..."
-                        debug_utils.log_and_print("📋 检测到缓存过期，将执行数据同步", log_level="INFO")
 
             # 只有在需要同步缓存时才发送提示消息
             if need_cache_sync:
@@ -293,7 +276,6 @@ class MessageProcessor:
                     "next_action": "process_bili_video",
                     "user_id": context.user_id
                 })
-                debug_utils.log_and_print("📤 发送数据同步提示消息", log_level="INFO")
             else:
                 # 直接返回异步处理指令，不发送提示消息
                 result = ProcessResult.success_result("text", {
@@ -301,9 +283,7 @@ class MessageProcessor:
                     "next_action": "process_bili_video",
                     "user_id": context.user_id
                 })
-                debug_utils.log_and_print("⚡ 缓存有效，跳过提示消息直接处理", log_level="INFO")
 
-            debug_utils.log_and_print(f"✅ B站视频推荐请求处理完成，next_action: {result.response_content.get('next_action')}", log_level="INFO")
             return result
 
         except Exception as e:
@@ -318,13 +298,9 @@ class MessageProcessor:
         from Module.Common.scripts.common import debug_utils
 
         try:
-            debug_utils.log_and_print(f"🎯 开始异步处理B站视频，用户ID: {user_id}", log_level="INFO")
-
             if not self.app_controller:
                 debug_utils.log_and_print("❌ app_controller不可用", log_level="ERROR")
                 return ProcessResult.error_result("系统服务不可用")
-
-            debug_utils.log_and_print("🔍 尝试获取notion服务", log_level="INFO")
 
             # 尝试获取notion服务（需要在新架构中注册）
             notion_service = self.app_controller.get_service('notion')
@@ -332,12 +308,8 @@ class MessageProcessor:
                 debug_utils.log_and_print("❌ notion服务获取失败", log_level="ERROR")
                 return ProcessResult.error_result("抱歉，B站视频推荐服务暂时不可用")
 
-            debug_utils.log_and_print("✅ notion服务获取成功，准备调用get_bili_videos_multiple", log_level="INFO")
-
             # 调用notion服务获取多个B站视频推荐（1+3模式）
-            debug_utils.log_and_print("🌐 开始调用notion_service.get_bili_videos_multiple()...", log_level="INFO")
             videos_data = notion_service.get_bili_videos_multiple()
-            debug_utils.log_and_print(f"📺 notion服务调用完成，结果: {videos_data.get('success', False) if videos_data else 'None'}", log_level="INFO")
 
             if not videos_data.get("success", False):
                 debug_utils.log_and_print("⚠️ 未获取到有效的B站视频", log_level="WARNING")
@@ -346,16 +318,8 @@ class MessageProcessor:
             main_video = videos_data.get("main_video", {})
             additional_videos = videos_data.get("additional_videos", [])
 
-            debug_utils.log_and_print(
-                f"🎬 获取到主视频: {main_video.get('title', '无标题')}, " +
-                f"额外视频: {len(additional_videos)}个",
-                log_level="INFO"
-            )
-
             # 生成B站视频推荐卡片（1+3模式）
-
             card_content = self._create_bili_video_card_multiple(main_video, additional_videos)
-
 
             return ProcessResult.success_result("interactive", card_content)
 
@@ -607,14 +571,6 @@ class MessageProcessor:
         # 根据动作类型处理
         if action == "mark_bili_read":
             return self._handle_mark_bili_read(context, action_value)
-        # elif action == "send_alarm":
-        #     return ProcessResult.success_result("text", {
-        #         "text": "🚨 收到告警卡片点击，告警功能将在后续版本实现"
-        #     })
-        # elif action == "confirm_action":
-        #     return ProcessResult.success_result("text", {
-        #         "text": "✅ 操作已确认"
-        #     })
         else:
             return ProcessResult.success_result("text", {
                 "text": f"收到卡片动作：{action}，功能开发中..."
@@ -967,7 +923,7 @@ class MessageProcessor:
 
     def _handle_help_command(self, context: MessageContext) -> ProcessResult:
         """处理帮助指令"""
-        help_text = """<b>🤖 飞书机器人助手 v3.0 - 重构完成版</b>
+        help_text = """<b>🤖 飞书机器人助手 v3.0</b>
 
 <b>核心功能：</b>
 
@@ -1192,13 +1148,6 @@ class MessageProcessor:
                 {
                     "tag": "hr"
                 },
-                # {
-                #     "tag": "div",
-                #     "text": {
-                #         "content": "📋 **每日信息汇总**\n\n数据来源：B站信息cache分析系统",
-                #         "tag": "lark_md"
-                #     }
-                # }
             ],
             "header": {
                 "template": "blue",
@@ -1226,9 +1175,6 @@ class MessageProcessor:
 
                 # 添加推荐视频标题
                 card["elements"].extend([
-                    # {
-                    #     "tag": "hr"
-                    # },
                     {
                         "tag": "div",
                         "text": {
@@ -1355,22 +1301,6 @@ class MessageProcessor:
                 content += "\n\n📺 **来源分布:**"
                 for source, count in source_stats.items():
                     content += f"\n• {source}: {count} 个"
-
-        # 推荐视频链接（如果有）
-        # recommendations = statistics.get('top_recommendations', None)
-        # if recommendations is None:
-        #     recommendations = statistics.get('今日精选推荐', [])
-        # if recommendations:
-        #     content += "\n\n🔥 **今日精选推荐:**"
-        #     for i, video in enumerate(recommendations[:3], 1):
-        #         # 新版字段
-        #         title = video.get('标题', video.get('title', '无标题'))
-        #         if len(title) > 20:
-        #             title = title[:20] + "..."
-        #         priority = video.get('优先级', video.get('priority', '未知'))
-        #         content += f"\n{i}. **{title}** ({priority})"
-
-        # content += "\n\n💡 **使用提示:** 点击菜单中的\"B站推荐\"获取详细视频信息"
 
         return content
 

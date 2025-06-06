@@ -87,8 +87,11 @@ def verify_admin_access(request: Request, admin_secret_key: Optional[str] = None
     # 满足任一条件即可访问
     has_access = is_allowed_ip or is_valid_key
 
+    # 日志信息优化：显示密钥是否匹配而不是是否提供
     if not has_access:
-        print(f"⚠️ 未授权的API访问尝试，IP: {client_ip}, 密钥提供: {'是' if admin_secret_key else '否'}")
+        print(f"⚠️ 未授权的API访问尝试，IP: {client_ip}, 密钥匹配: {'是' if is_valid_key else '否'}")
+    else:
+        print(f"✅ 授权的API访问，IP: {client_ip}, 密钥匹配: {'是' if is_valid_key else '否'}")
 
     return has_access
 
@@ -135,11 +138,6 @@ class HTTPAPIServer:
         success_count = sum(1 for success in registration_results.values() if success)
         total_count = len(registration_results)
         print(f"📦 HTTP服务独立实例注册: {success_count}/{total_count}")
-
-        # 初始化图像服务
-        image_service = self.app_controller.get_service('image')
-        if image_service:
-            image_service.initialize()
 
     def _setup_routes(self):
         """设置路由"""

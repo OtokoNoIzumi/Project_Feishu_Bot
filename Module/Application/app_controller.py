@@ -34,7 +34,7 @@ class AppController:
         self.service_configs: Dict[str, Dict] = {}
         self.initialized_services: set = set()
 
-        debug_utils.log_and_print(f"应用控制器初始化，项目路径: {self.project_root_path}", log_level="DEBUG")
+
 
     def _get_project_root(self) -> str:
         """获取项目根路径（与配置服务逻辑一致）"""
@@ -71,7 +71,6 @@ class AppController:
                 'status': 'registered'
             }
 
-            debug_utils.log_and_print(f"服务 '{service_name}' 注册成功", log_level="INFO")
             return True
 
         except Exception as e:
@@ -131,7 +130,6 @@ class AppController:
             service_info['status'] = 'initialized'
             self.initialized_services.add(service_name)
 
-            debug_utils.log_and_print(f"服务 '{service_name}' 初始化成功", log_level="INFO")
             return True
 
         except Exception as e:

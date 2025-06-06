@@ -10,6 +10,8 @@ import json
 import time
 from typing import Dict, Any, Optional
 
+from Module.Common.scripts.common import debug_utils
+
 
 class CacheService:
     """缓存管理服务"""
@@ -48,7 +50,7 @@ class CacheService:
                     if v.get("timestamp", 0) > cutoff
                 }
         except Exception as e:
-            print(f"[Cache] 加载用户缓存失败: {e}")
+            debug_utils.log_and_print(f"加载用户缓存失败: {e}", log_level="ERROR")
         return {}
 
     def _load_event_cache(self) -> Dict:
@@ -71,7 +73,7 @@ class CacheService:
                 return {k: float(v) for k, v in raw_data.items() if float(v) > cutoff}
 
         except Exception as e:
-            print(f"[Cache] 加载事件缓存失败: {e}")
+            debug_utils.log_and_print(f"加载事件缓存失败: {e}", log_level="ERROR")
         return {}
 
     def save_all(self):
@@ -103,7 +105,7 @@ class CacheService:
                 json.dump(data, f, indent=2)
             os.replace(temp_file, filename)
         except Exception as e:
-            print(f"[Cache] 保存失败 {filename}: {e}")
+            debug_utils.log_and_print(f"保存缓存失败 {filename}: {e}", log_level="ERROR")
 
     # 原有接口保持不变
     def get_user_name(self, user_id: str) -> Optional[str]:

@@ -48,12 +48,11 @@ class SchedulerService:
         self.scheduled_functions = {}  # 已注册的定时任务函数
         self.event_listeners: Set[Callable] = set()  # 事件监听器
 
-        debug_utils.log_and_print("SchedulerService 初始化成功", log_level="INFO")
+
 
     def add_event_listener(self, listener: Callable):
         """添加事件监听器"""
         self.event_listeners.add(listener)
-        debug_utils.log_and_print(f"添加事件监听器: {listener.__name__}", log_level="DEBUG")
 
     def remove_event_listener(self, listener: Callable):
         """移除事件监听器"""
@@ -86,7 +85,7 @@ class SchedulerService:
         try:
             # 创建一个包装函数来传递参数
             def task_wrapper():
-                debug_utils.log_and_print(f"执行定时任务: {task_name}", log_level="INFO")
+
                 return task_func(*args, **kwargs)
 
             # 添加任务
@@ -99,7 +98,6 @@ class SchedulerService:
                 'kwargs': kwargs
             }
 
-            debug_utils.log_and_print(f"定时任务 '{task_name}' 已添加，执行时间: {time_str}", log_level="INFO")
             return True
         except Exception as e:
             debug_utils.log_and_print(f"添加任务失败: {e}", log_level="ERROR")
@@ -122,7 +120,7 @@ class SchedulerService:
         try:
             # 创建一个包装函数来传递参数
             def task_wrapper():
-                debug_utils.log_and_print(f"执行间隔任务: {task_name}", log_level="INFO")
+
                 return task_func(*args, **kwargs)
 
             # 添加任务
@@ -135,7 +133,6 @@ class SchedulerService:
                 'kwargs': kwargs
             }
 
-            debug_utils.log_and_print(f"间隔任务 '{task_name}' 已添加，间隔: {interval}秒", log_level="INFO")
             return True
         except Exception as e:
             debug_utils.log_and_print(f"添加间隔任务失败: {e}", log_level="ERROR")
@@ -156,7 +153,6 @@ class SchedulerService:
             del self.tasks[task_name]
             if task_name in self.scheduled_functions:
                 del self.scheduled_functions[task_name]
-            debug_utils.log_and_print(f"任务 '{task_name}' 已移除", log_level="INFO")
             return True
         debug_utils.log_and_print(f"任务 '{task_name}' 不存在", log_level="WARNING")
         return False
@@ -195,7 +191,7 @@ class SchedulerService:
 
     def clear_all_tasks(self) -> None:
         """清除所有任务"""
-        debug_utils.log_and_print("清除所有定时任务", log_level="INFO")
+
         self.scheduler.clear()
         self.tasks = {}
         self.scheduled_functions = {}
@@ -232,7 +228,7 @@ class SchedulerService:
         注意：数据构建逻辑已移至MessageProcessor，这里只负责事件触发
         """
         try:
-            debug_utils.log_and_print("开始执行每日日程提醒任务", log_level="INFO")
+
 
             # 获取管理员ID
             admin_id = self._get_admin_id()
@@ -246,7 +242,7 @@ class SchedulerService:
             })
 
             self._publish_event(event)
-            debug_utils.log_and_print(f"✅ 日程提醒事件已发布", log_level="INFO")
+
 
         except Exception as e:
             debug_utils.log_and_print(f"执行每日日程提醒任务失败: {e}", log_level="ERROR")
@@ -260,7 +256,7 @@ class SchedulerService:
             sources: 可选的源列表，如 ["favorites", "dynamic"]
         """
         try:
-            debug_utils.log_and_print(f"开始执行B站更新提醒任务，源: {sources or '默认'}", log_level="INFO")
+
 
             # 检查是否为夜间静默时间（22:00-08:00）
             current_hour = datetime.datetime.now().hour
@@ -289,8 +285,7 @@ class SchedulerService:
 
             # 判断是否需要静默处理
             if is_night_silent and night_silent_enabled:
-                debug_utils.log_and_print(f"🌙 夜间静默模式：仅处理数据，不发送通知卡片", log_level="INFO")
-                debug_utils.log_and_print(f"✅ B站数据处理完成（静默模式）", log_level="INFO")
+
                 return  # 静默模式：只处理API，不发送事件
 
             # 发布事件（非静默时间）
@@ -302,7 +297,7 @@ class SchedulerService:
             })
 
             self._publish_event(event)
-            debug_utils.log_and_print(f"✅ B站更新提醒事件已发布", log_level="INFO")
+
 
         except Exception as e:
             debug_utils.log_and_print(f"执行B站更新提醒任务失败: {e}", log_level="ERROR")
@@ -313,16 +308,61 @@ class SchedulerService:
         """
         获取日程数据的独立API
 
-        注意：实际数据生成已移至MessageProcessor，这里返回提示信息
+        返回调度器本身的状态信息和任务列表
         """
         try:
-            return {
-                "message": "日程数据生成已移至MessageProcessor，请通过MessageProcessor.create_scheduled_message()获取",
-                "timestamp": datetime.datetime.now().isoformat()
+            now = datetime.datetime.now()
+
+            # 获取真实的定时任务列表
+            real_tasks = self.list_tasks()
+
+            # 转换为API格式的events
+            events = []
+            for task in real_tasks:
+                events.append({
+                    "task_name": task["name"],
+                    "time": task.get("time", "unknown"),
+                    "title": self._get_task_title(task["name"]),
+                    "type": self._get_task_type(task["name"]),
+                    "status": "scheduled" if task["next_run"] else "inactive",
+                    "next_run": task["next_run"].isoformat() if task["next_run"] else None,
+                    "last_run": task["last_run"].isoformat() if task["last_run"] else None,
+                    "function_name": task.get("function_name", "unknown")
+                })
+
+            # 返回调度器状态数据
+            schedule_data = {
+                "date": now.strftime("%Y年%m月%d日"),
+                "weekday": ["周一", "周二", "周三", "周四", "周五", "周六", "周日"][now.weekday()],
+                "events": events,  # 真实的任务列表
+                "scheduler_status": self.get_status(),
+                "timestamp": now.isoformat(),
+                "source": "scheduler_service"
             }
+
+            return schedule_data
+
         except Exception as e:
             debug_utils.log_and_print(f"获取日程数据失败: {e}", log_level="ERROR")
             return {"error": str(e)}
+
+    def _get_task_title(self, task_name: str) -> str:
+        """根据任务名获取任务标题"""
+        title_map = {
+            "daily_schedule_reminder": "每日信息汇总",
+            "bili_updates_afternoon": "B站内容更新检查",
+            "bili_updates_night": "B站夜间更新检查"
+        }
+        return title_map.get(task_name, task_name)
+
+    def _get_task_type(self, task_name: str) -> str:
+        """根据任务名获取任务类型"""
+        if "daily_schedule" in task_name:
+            return "daily_schedule_reminder"
+        elif "bili" in task_name:
+            return "bilibili_updates_reminder"
+        else:
+            return "unknown"
 
     def trigger_bilibili_update_check(self, sources: Optional[List[str]] = None) -> Dict[str, Any]:
         """触发B站更新检查的独立API"""
@@ -399,12 +439,12 @@ class SchedulerService:
             # timeout_settings = (10, 300)  # (connect_timeout, read_timeout)
 
             # 禁用代理，避免代理服务器的超时限制
-            proxies = {
-                'http': None,
-                'https': None
-            }
+            # proxies = {
+            #     'http': None,
+            #     'https': None
+            # }
 
-            debug_utils.log_and_print("B站API调用：已禁用代理，直连服务器", log_level="DEBUG")
+            # debug_utils.log_and_print("B站API调用：已禁用代理，直连服务器", log_level="DEBUG")
 
             response = requests.post(
                 url,

@@ -188,7 +188,7 @@ class NotionService:
             self.cache_data[self.bili_cache_time_key] = time.time()
             self._save_cache()
 
-            debug_utils.log_and_print(f"[NotionService] 成功更新B站视频缓存，获取到 {len(videos)} 条记录", log_level="INFO")
+
         except Exception as e:
             debug_utils.log_and_print(f"[NotionService] 更新B站视频缓存失败: {e}", log_level="ERROR")
             import traceback
@@ -447,7 +447,7 @@ class NotionService:
             try:
                 # 使用安全的同步执行方式
                 self._sync_run_coroutine(self._update_page_properties_async(page_id, page_properties))
-                debug_utils.log_and_print(f"[NotionService] 成功更新页面属性: {page_id}", log_level="INFO")
+
             except Exception as e:
                 debug_utils.log_and_print(f"[NotionService] 更新页面属性失败: {e}", log_level="ERROR")
                 import traceback

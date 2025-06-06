@@ -74,7 +74,7 @@ class ImageService:
 
             gradio_url = f"https://{self.server_id}"
             self.gradio_client = Client(gradio_url)
-            debug_utils.log_and_print(f"Gradio客户端连接成功: {gradio_url}", log_level="INFO")
+
 
         except ImportError:
             debug_utils.log_and_print("gradio_client模块未安装，图像服务不可用", log_level="ERROR")
@@ -96,15 +96,6 @@ class ImageService:
             "server_id_configured": bool(self.server_id) if hasattr(self, 'server_id') else False
         }
 
-    def initialize(self) -> bool:
-        """初始化服务"""
-        if self.is_healthy:
-            debug_utils.log_and_print("服务 'image' 初始化成功", log_level="INFO")
-            return True
-        else:
-            debug_utils.log_and_print("服务 'image' 初始化失败 - Gradio服务不可用", log_level="ERROR")
-            return False
-
     def generate_ai_image(self, prompt: str = None, image_input: Dict = None) -> Optional[List[str]]:
         """
         使用AI生成图片或处理图片
@@ -123,7 +114,7 @@ class ImageService:
             return None
 
         try:
-            debug_utils.log_and_print("开始AI图像处理", log_level="INFO")
+
 
             # 准备调用参数
             predict_kwargs = {
@@ -136,10 +127,8 @@ class ImageService:
 
             if image_input:
                 predict_kwargs["image_input1"] = image_input
-                debug_utils.log_and_print("处理图像转换请求", log_level="INFO")
             elif prompt:
                 predict_kwargs["additional_text"] = "/img " + prompt
-                debug_utils.log_and_print(f"处理图像生成请求，提示词: {prompt[:50]}...", log_level="INFO")
 
             # 调用gradio服务
             result = self.gradio_client.predict(**predict_kwargs)
@@ -190,7 +179,6 @@ class ImageService:
                 if image_path is not None:
                     valid_paths.append(image_path)
 
-            debug_utils.log_and_print(f"成功生成 {len(valid_paths)} 张图片", log_level="INFO")
             return valid_paths
 
         except Exception as e:

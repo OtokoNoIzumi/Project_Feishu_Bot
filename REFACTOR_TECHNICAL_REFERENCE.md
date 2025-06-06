@@ -1,52 +1,51 @@
-# 飞书机器人重构版 - 技术参考文档
+# 飞书机器人 - 技术参考文档
 
 ## 📋 项目状态
 
-**当前版本：v3.0 重构完成版 ✅**
-**清理状态：✅ 项目清理完成，仅保留生产环境必需文件**
+**当前版本：生产版本 ✅**
 **架构状态：✅ 四层架构完全实现，所有功能验证通过**
 
 ---
 
-## 📁 当前项目架构
+## 📁 项目架构
 
 ```
 Project_Feishu_Bot/
-├── main_refactored.py                    # 🚀 主启动文件
-├── http_api_server.py                    # 🌐 HTTP API服务器
-├── test_runtime_api.py                   # 🧪 API验证工具
-├── start.bat                             # 🔧 Windows启动脚本
-├── config.json                           # ⚙️ 静态配置文件
-├── requirements.txt                      # 📦 依赖包清单
-├── README.md                             # 📖 项目说明文档
-├── REFACTOR_TECHNICAL_REFERENCE.md       # 📚 技术参考文档
-├── cache/                                # 💾 运行时缓存目录
-├── notebooks/                            # 📓 开发环境
-│   └── Feishu_Bot.ipynb                  # Jupyter开发环境
-└── Module/                               # 🏗️ 核心模块目录
-    ├── Application/                      # 应用控制层
-    │   ├── app_controller.py             # 应用控制器
-    │   └── command.py                    # 命令模式实现
-    ├── Business/                         # 业务逻辑层
-    │   └── message_processor.py          # 消息处理器
-    ├── Adapters/                         # 适配器层
-    │   ├── feishu_adapter.py             # 飞书平台适配器
-    │   └── base.py                       # 适配器基类
-    ├── Services/                         # 服务层
-    │   ├── config_service.py             # 配置服务
-    │   ├── cache_service.py              # 缓存服务
-    │   ├── audio/                        # 音频服务模块
+├── main.py                              # 🚀 主启动文件
+├── http_api_server.py                   # 🌐 HTTP API服务器
+├── test_runtime_api.py                  # 🧪 API验证工具
+├── start.bat                            # 🔧 Windows启动脚本
+├── config.json                          # ⚙️ 静态配置文件
+├── requirements.txt                     # 📦 依赖包清单
+├── README.md                            # 📖 项目说明文档
+├── REFACTOR_TECHNICAL_REFERENCE.md      # 📚 技术参考文档
+├── cache/                               # 💾 运行时缓存目录
+├── notebooks/                           # 📓 开发环境
+│   └── Feishu_Bot.ipynb                 # Jupyter开发环境
+└── Module/                              # 🏗️ 核心模块目录
+    ├── Application/                     # 应用控制层
+    │   ├── app_controller.py            # 应用控制器
+    │   └── command.py                   # 命令模式实现
+    ├── Business/                        # 业务逻辑层
+    │   └── message_processor.py         # 消息处理器
+    ├── Adapters/                        # 适配器层
+    │   ├── feishu_adapter.py            # 飞书平台适配器
+    │   └── base.py                      # 适配器基类
+    ├── Services/                        # 服务层
+    │   ├── config_service.py            # 配置服务
+    │   ├── cache_service.py             # 缓存服务
+    │   ├── audio/                       # 音频服务模块
     │   │   └── audio_service.py
-    │   ├── image/                        # 图像服务模块
+    │   ├── image/                       # 图像服务模块
     │   │   └── image_service.py
-    │   ├── scheduler/                    # 定时任务服务模块
+    │   ├── scheduler/                   # 定时任务服务模块
     │   │   └── scheduler_service.py
-    │   └── notion/                       # Notion服务模块
-    │       └── notion_service.py         # B站数据管理
-    └── Common/                           # 公共模块库
-        └── scripts/                      # 工具脚本
-            └── common/                   # 通用工具
-                └── debug_utils.py        # 调试工具
+    │   └── notion/                      # Notion服务模块
+    │       └── notion_service.py        # B站数据管理
+    └── Common/                          # 公共模块库
+        └── scripts/                     # 工具脚本
+            └── common/                  # 通用工具
+                └── debug_utils.py       # 日志工具
 ```
 
 ---

@@ -94,9 +94,6 @@ class AudioService:
 
             if not audio_data:
                 debug_utils.log_and_print("TTS生成失败，返回空数据", log_level="ERROR")
-            # else:
-            #     debug_utils.log_and_print(f"TTS生成成功，音频大小: {len(audio_data)} bytes", log_level="INFO")
-
             return audio_data
         except Exception as e:
             debug_utils.log_and_print(f"TTS生成异常: {e}", log_level="ERROR")
