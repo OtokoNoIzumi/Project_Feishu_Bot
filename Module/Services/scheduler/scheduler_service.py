@@ -458,11 +458,11 @@ class SchedulerService:
             if not verify_ssl:
                 debug_utils.log_and_print("警告：SSL证书验证已禁用", log_level="WARNING")
 
-            debug_utils.log_and_print(f"B站API调用状态: {response.status_code}", log_level="INFO")
+            # debug_utils.log_and_print(f"B站API调用状态: {response.status_code}", log_level="INFO")
 
             try:
                 resp_json = response.json()
-                debug_utils.log_and_print(f"B站API响应: {json.dumps(resp_json, ensure_ascii=False)}", log_level="DEBUG")
+                # debug_utils.log_and_print(f"B站API响应: {json.dumps(resp_json, ensure_ascii=False)}", log_level="DEBUG")
 
                 # 返回完整的API结果
                 return {

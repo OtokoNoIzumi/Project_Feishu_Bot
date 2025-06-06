@@ -41,6 +41,7 @@ class ImageService:
 
         # 健康状态检查
         self.is_healthy = self._check_service_health()
+        # self.is_init = False
 
     def _load_config(self):
         """加载配置"""
@@ -75,13 +76,34 @@ class ImageService:
             gradio_url = f"https://{self.server_id}"
             self.gradio_client = Client(gradio_url)
 
+            # 更新健康状态
+            self.is_healthy = True
+            debug_utils.log_and_print(f"Gradio客户端连接成功: {gradio_url}", log_level="INFO")
+            self.is_init = True
 
         except ImportError:
             debug_utils.log_and_print("gradio_client模块未安装，图像服务不可用", log_level="ERROR")
             self.gradio_client = None
+            self.is_healthy = False
         except Exception as e:
             debug_utils.log_and_print(f"Gradio客户端连接失败: {e}", log_level="WARNING")
             self.gradio_client = None
+            self.is_healthy = False
+
+    def _reinit_gradio_client(self):
+        """重新初始化Gradio客户端"""
+        try:
+            # 清理旧连接
+            self.gradio_client = None
+            self.is_healthy = False
+
+            # 重新初始化
+            self._init_gradio_client()
+
+        except Exception as e:
+            debug_utils.log_and_print(f"重新初始化Gradio客户端失败: {e}", log_level="ERROR")
+            self.gradio_client = None
+            self.is_healthy = False
 
     def _check_service_health(self) -> bool:
         """检查服务健康状态"""
@@ -109,13 +131,7 @@ class ImageService:
             - 返回None表示系统故障，需要管理员修复
             - 返回空列表表示提示词不合适或处理失败
         """
-        if not self.gradio_client:
-            debug_utils.log_and_print("Gradio服务不可用", log_level="ERROR")
-            return None
-
         try:
-
-
             # 准备调用参数
             predict_kwargs = {
                 "image_input1": None,
@@ -138,6 +154,14 @@ class ImageService:
 
         except Exception as e:
             debug_utils.log_and_print(f"AI图像处理失败: {e}", log_level="ERROR")
+
+            # 如果是连接相关错误，标记客户端为无效，下次调用时会重新初始化
+            error_str = str(e).lower()
+            if any(keyword in error_str for keyword in ['connection', 'timeout', 'ssl', 'handshake', 'network']):
+                debug_utils.log_and_print("检测到网络连接错误，标记Gradio客户端为无效", log_level="WARNING")
+                self.gradio_client = None
+                self.is_healthy = False
+
             return None
 
     def _parse_generation_result(self, result) -> Optional[List[str]]:
@@ -235,6 +259,11 @@ class ImageService:
             debug_utils.log_and_print(f"图像转换处理失败: {e}", log_level="ERROR")
             return None
 
-    def is_available(self) -> bool:
-        """检查服务是否可用"""
+    def is_available(self, need_reinit: bool = False) -> bool:
+        """检查服务是否可用，如果不可用会尝试重新初始化"""
+        # 如果gradio客户端不可用，尝试重新初始化
+        if not self.gradio_client and hasattr(self, 'server_id') and self.server_id and need_reinit:
+            debug_utils.log_and_print("检测到Gradio服务不可用，尝试重新连接", log_level="INFO")
+            self._reinit_gradio_client()
+
         return self.is_healthy and self.gradio_client is not None

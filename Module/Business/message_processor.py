@@ -214,9 +214,9 @@ class MessageProcessor:
             # 检查图像服务是否可用
             if not self.app_controller:
                 return ProcessResult.error_result("系统服务不可用")
-
+            first_init = 'image' in self.app_controller.initialized_services # 根据启动特征，避免首次启动时双倍初始化
             image_service = self.app_controller.get_service('image')
-            if not image_service or not image_service.is_available():
+            if not image_service or not image_service.is_available(need_reinit=first_init):
                 return ProcessResult.error_result("图像处理服务未启动或不可用")
 
             # 先发送处理中提示
