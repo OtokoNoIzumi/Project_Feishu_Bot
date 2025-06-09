@@ -564,6 +564,7 @@ class SchedulerService:
                 debug_utils.log_and_print("B站API调用失败，跳过本次更新提醒", log_level="WARNING")
                 return
 
+            debug_utils.log_and_print(f"B站更新提醒任务执行，sources: {sources}", log_level="INFO")
             # 判断是否需要静默处理
             if is_night_silent and night_silent_enabled:
 

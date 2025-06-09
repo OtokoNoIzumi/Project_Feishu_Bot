@@ -119,11 +119,6 @@ class FeishuAdapter:
                 debug_utils.log_and_print("消息上下文转换失败", log_level="ERROR")
                 return
 
-            debug_utils.log_and_print(
-                f"📱 处理消息: {context.user_name}, 类型={context.message_type}, 内容={str(context.content)[:30]}...",
-                log_level="INFO"
-            )
-
             # 调用业务处理器
             result = self.message_processor.process_message(context)
 
@@ -401,6 +396,8 @@ class FeishuAdapter:
         else:
             return message.content
 
+
+
     def _get_user_name(self, open_id: str) -> str:
         """获取用户名称"""
         # 先从缓存获取
@@ -618,7 +615,6 @@ class FeishuAdapter:
 
     def _handle_bili_video_async(self, original_data, user_id: str):
         """异步处理B站视频推荐请求"""
-        debug_utils.log_and_print(f"🚀 开始异步处理B站视频推荐，用户ID: {user_id}", log_level="INFO")
 
         def process_in_background():
             try:

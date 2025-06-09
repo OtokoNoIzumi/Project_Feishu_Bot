@@ -9,6 +9,7 @@ from typing import Dict, Any, Optional, Tuple, List
 from dataclasses import dataclass
 from datetime import datetime
 import json
+from Module.Common.scripts.common import debug_utils
 
 
 @dataclass
@@ -169,41 +170,74 @@ class MessageProcessor:
         # 更新用户缓存
         cache_service.update_user(context.user_id, context.user_name)
 
+    def _extract_command_content(self, user_msg: str, triggers: list) -> str:
+        """提取指令后的实际内容"""
+        for trigger in triggers:
+            if trigger in user_msg:
+                if user_msg.startswith(trigger):
+                    return user_msg[len(trigger):].strip()
+                else:
+                    # 对于包含型匹配，找到第一个匹配位置后提取
+                    idx = user_msg.find(trigger)
+                    return user_msg[idx + len(trigger):].strip()
+        return user_msg.strip()
+
+    def _log_command(self, user_name: str, emoji: str, action: str, content: str = None):
+        """统一的指令日志输出"""
+        if content:
+            debug_utils.log_and_print(f"{emoji} {user_name} {action}：{content}", log_level="INFO")
+        else:
+            debug_utils.log_and_print(f"{emoji} {user_name} {action}", log_level="INFO")
+
     def _process_text_message(self, context: MessageContext) -> ProcessResult:
         """处理文本消息"""
         user_msg = context.content
 
         # 管理员配置更新指令
         if user_msg.startswith(self.update_config_trigger):
+            content = self._extract_command_content(user_msg, [self.update_config_trigger])
+            self._log_command(context.user_name, "🔧", "触发配置更新指令", content)
             return self._handle_config_update(context, user_msg)
 
         # TTS配音指令
         if "配音" in user_msg:
+            content = self._extract_command_content(user_msg, ["配音"])
+            self._log_command(context.user_name, "🎤", "触发TTS配音指令", content)
             return self._handle_tts_command(context, user_msg)
 
         # 图像生成指令
         if "生图" in user_msg or "AI画图" in user_msg:
+            content = self._extract_command_content(user_msg, ["生图", "AI画图"])
+            self._log_command(context.user_name, "🎨", "触发图像生成指令", content)
             return self._handle_image_generation_command(context, user_msg)
 
         # 富文本指令
         if "富文本" in user_msg:
+            self._log_command(context.user_name, "📄", "触发富文本指令")
             return self._handle_rich_text_command(context)
 
         # 图片/壁纸指令
         if "图片" in user_msg or "壁纸" in user_msg:
+            self._log_command(context.user_name, "🖼️", "触发图片指令")
             return self._handle_sample_image_command(context)
 
         # B站/视频指令（触发菜单效果）
         if "B站" in user_msg or "视频" in user_msg:
+            content = self._extract_command_content(user_msg, ["B站", "视频"])
+            self._log_command(context.user_name, "📺", "触发B站视频指令", content if content else None)
             return self._handle_bili_text_command(context)
 
         # 基础指令处理
         if "帮助" in user_msg:
+            self._log_command(context.user_name, "❓", "查看帮助")
             return self._handle_help_command(context)
         elif "你好" in user_msg:
+            self._log_command(context.user_name, "👋", "发送问候")
             return self._handle_greeting_command(context)
         else:
-            # 默认回复
+            # 默认回复 - 限制长度避免过长
+            content = user_msg[:50] + "..." if len(user_msg) > 50 else user_msg
+            self._log_command(context.user_name, "💬", "发送普通消息", content)
             return ProcessResult.success_result("text", {
                 "text": f"收到你发送的消息：{user_msg}"
             })
@@ -240,11 +274,10 @@ class MessageProcessor:
         from Module.Common.scripts.common import debug_utils
 
         event_key = context.content
-        debug_utils.log_and_print(f"🔍 分析菜单键: {event_key}", log_level="INFO")
 
         # 根据菜单键处理不同功能
         if event_key == "get_bili_url":
-            debug_utils.log_and_print("📺 处理B站视频推荐菜单", log_level="INFO")
+            debug_utils.log_and_print(f"📺 B站视频推荐 by [{context.user_name}]", log_level="INFO")
             return self._handle_bili_video_request(context)
         else:
             debug_utils.log_and_print(f"❓ 未知菜单键: {event_key}", log_level="INFO")
@@ -509,7 +542,7 @@ class MessageProcessor:
                             "action": "mark_bili_read",
                             "pageid": pageid,
                             "card_type": "menu",  # 菜单推送卡片
-                            "video_index": i + 1,  # 额外视频序号 (1,2,3)
+                            "video_index": i,  # 额外视频序号 (1,2,3)
                             # 保存原视频数据用于卡片重构
                             "original_main_video": main_video,
                             "original_additional_videos": additional_videos
