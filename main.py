@@ -131,7 +131,7 @@ def setup_scheduled_tasks(app_controller):
 
 
 def check_system_status(app_controller):
-    """检查系统状态"""
+    """检查系统状态（增强版，包含图像服务认证状态）"""
     try:
         health_status = app_controller.health_check()
         overall_status = health_status['overall_status']
@@ -144,6 +144,26 @@ def check_system_status(app_controller):
             for service_name, service_info in health_status['services'].items():
                 if service_info['status'] != 'healthy':
                     print(f"  - {service_name}: {service_info['status']}")
+
+        # 特别检查图像服务的认证状态
+        image_service = app_controller.get_service('image')
+        if image_service and image_service.is_available():
+            try:
+                auth_status = image_service.get_auth_status()
+                if "error" not in auth_status:
+                    if auth_status.get("is_expired", True):
+                        print("⚠️ 图像服务认证状态: 令牌已过期")
+                    elif auth_status.get("hours_remaining", 0) < 24:
+                        hours = auth_status.get("hours_remaining", 0)
+                        print(f"⏰ 图像服务认证状态: 令牌还有 {hours:.1f} 小时过期")
+                    else:
+                        print("✅ 图像服务认证状态: 正常")
+                else:
+                    print("❌ 图像服务认证状态: 无法获取")
+            except Exception as e:
+                debug_utils.log_and_print(f"检查图像服务认证状态失败: {e}", log_level="DEBUG")
+        elif image_service:
+            print("❌ 图像服务: 不可用")
 
     except Exception as e:
         debug_utils.log_and_print(f"系统状态检查失败: {e}", log_level="ERROR")

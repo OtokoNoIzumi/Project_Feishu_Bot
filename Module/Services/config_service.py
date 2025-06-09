@@ -7,7 +7,6 @@
 支持多配置源：
 1. 环境变量(.env) - 开发/生产环境差异配置
 2. 静态配置(config.json) - 业务配置
-3. 认证配置文件 - 通过环境变量AUTH_CONFIG_FILE_PATH指定的敏感信息文件
 
 注意：适配conda虚拟环境项目架构，正确处理项目根路径
 """
@@ -21,14 +20,13 @@ from Module.Common.scripts.common import debug_utils
 
 
 class ConfigService:
-    """配置管理服务 - 支持环境变量、静态配置、认证配置多源"""
+    """配置管理服务 - 支持环境变量、静态配置多源"""
 
-    def __init__(self, auth_config_file_path: str = "", static_config_file_path: str = "config.json", project_root_path: str = ""):
+    def __init__(self, static_config_file_path: str = "config.json", project_root_path: str = ""):
         """
         初始化配置服务
 
         Args:
-            auth_config_file_path: 认证配置文件路径（动态、敏感信息）
             static_config_file_path: 静态配置文件路径（非敏感信息）
             project_root_path: 项目根路径（用于conda虚拟环境），如果为空则自动检测
         """
@@ -38,16 +36,14 @@ class ConfigService:
         # 加载环境变量（使用项目根路径，与main_new.py保持一致）
         self._load_env_variables()
 
-        self.auth_config_file_path = auth_config_file_path
         self.static_config_file_path = static_config_file_path
 
         # 加载配置源
         self.env_config = self._load_env_config()
-        self.auth_config = self._load_config(auth_config_file_path) if auth_config_file_path.strip() else {}
         self.static_config = self._load_config(self._resolve_config_path(static_config_file_path))
 
-        # 合并配置：env_config > auth_config > static_config
-        self.config = {**self.static_config, **self.auth_config, **self.env_config}
+        # 合并配置：env_config > static_config
+        self.config = {**self.static_config, **self.env_config}
 
     def _get_project_root_path(self, provided_path: str = "") -> str:
         """
@@ -120,12 +116,12 @@ class ConfigService:
 
         # 定义需要从环境变量读取的配置项
         env_keys = [
-            "AUTH_CONFIG_FILE_PATH",
             "FEISHU_APP_MESSAGE_ID",
             "FEISHU_APP_MESSAGE_SECRET",
             "COZE_API_KEY",
             "SERVER_ID",
             "ADMIN_ID",
+            "ADMIN_SECRET_KEY",
             "FFMPEG_PATH"
         ]
 
@@ -156,7 +152,7 @@ class ConfigService:
 
     def get(self, key: str, default: Any = None) -> Any:
         """
-        获取配置项，优先级：环境变量 > 认证配置 > 静态配置
+        获取配置项，优先级：环境变量 > 静态配置
 
         Args:
             key: 配置键
@@ -169,11 +165,7 @@ class ConfigService:
         if key in self.env_config:
             return self.env_config[key]
 
-        # 中等优先级：认证配置
-        if key in self.auth_config:
-            return self.auth_config[key]
-
-        # 最低优先级：静态配置
+        # 静态配置
         if key in self.static_config:
             return self.static_config[key]
 
@@ -194,8 +186,8 @@ class ConfigService:
 
     def update_config(self, variable_name: str, new_value: str, validators: Dict[str, callable] = None) -> Tuple[bool, str]:
         """
-        更新配置文件中指定变量的值
-        敏感信息更新到auth_config_file，其他信息更新到static_config_file
+        更新静态配置文件中指定变量的值
+        注意：敏感认证信息（cookies、auth_token）现在通过gradio API直接处理
 
         Args:
             variable_name: 要更新的变量名
@@ -212,22 +204,20 @@ class ConfigService:
                 return False, f"'{variable_name}' 更新失败: {err_msg}"
 
         # 环境变量不允许通过此方法更新
-        env_keys = ["AUTH_CONFIG_FILE_PATH", "FEISHU_APP_MESSAGE_ID", "FEISHU_APP_MESSAGE_SECRET",
-                   "COZE_API_KEY", "SERVER_ID", "ADMIN_ID", "FFMPEG_PATH"]
+        env_keys = ["FEISHU_APP_MESSAGE_ID", "FEISHU_APP_MESSAGE_SECRET",
+                   "COZE_API_KEY", "SERVER_ID", "ADMIN_ID", "ADMIN_SECRET_KEY", "FFMPEG_PATH"]
         if variable_name in env_keys:
             return False, f"'{variable_name}' 是环境变量，请在.env文件中修改"
 
-        # 确定更新目标文件
-        sensitive_vars = ["cookies", "auth_token"]  # 敏感变量列表
+        # 敏感认证变量现在通过gradio API处理
+        sensitive_vars = ["cookies", "auth_token"]
         if variable_name in sensitive_vars:
-            target_file = self.auth_config_file_path
-            target_config = self.auth_config
-        else:
-            target_file = self._resolve_config_path(self.static_config_file_path)
-            target_config = self.static_config
+            return False, f"'{variable_name}' 现在通过图像服务API处理，请使用相应命令更新"
 
+        # 更新静态配置文件
+        target_file = self._resolve_config_path(self.static_config_file_path)
         if not target_file.strip():
-            return False, f"未配置目标配置文件路径"
+            return False, "未配置静态配置文件路径"
 
         try:
             # 加载目标配置文件
@@ -238,30 +228,17 @@ class ConfigService:
 
             config_data[variable_name] = new_value
 
-            # 如果是敏感配置，添加过期时间
-            if variable_name in sensitive_vars:
-                current_time = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=8)))
-                expires_at_time = current_time + datetime.timedelta(hours=8)
-                config_data["expires_at"] = expires_at_time.isoformat()
-
             # 保存到目标文件
             with open(target_file, 'w', encoding='utf-8') as f:
                 json.dump(config_data, f, indent=2, ensure_ascii=False)
 
             # 更新内存中的配置
-            if variable_name in sensitive_vars:
-                self.auth_config = config_data
-            else:
-                self.static_config = config_data
+            self.static_config = config_data
 
             # 重新合并配置
-            self.config = {**self.static_config, **self.auth_config, **self.env_config}
+            self.config = {**self.static_config, **self.env_config}
 
-            expires_msg = ""
-            if variable_name in sensitive_vars and "expires_at" in config_data:
-                expires_msg = f"，令牌有效至 {expires_at_time.strftime('%Y-%m-%d %H:%M')}"
-
-            return True, f"'{variable_name}' 已成功更新{expires_msg}"
+            return True, f"'{variable_name}' 已成功更新"
 
         except FileNotFoundError:
             return False, f"配置文件 '{target_file}' 未找到，更新失败。"
@@ -270,7 +247,6 @@ class ConfigService:
         except Exception as e:
             return False, f"更新配置文件时发生未知错误: {e}"
 
-    # 新增：简单的状态查询方法（为后续API做准备）
     def get_status(self) -> Dict[str, Any]:
         """获取配置服务状态信息"""
         env_file_path = os.path.join(self.project_root_path, ".env")
@@ -280,12 +256,9 @@ class ConfigService:
             "env_file_path": env_file_path,
             "env_file_exists": os.path.exists(env_file_path),
             "static_config_path": self._resolve_config_path(self.static_config_file_path),
-            "auth_config_path": self.auth_config_file_path,
             "static_config_exists": os.path.exists(self._resolve_config_path(self.static_config_file_path)) if self.static_config_file_path else False,
-            "auth_config_exists": os.path.exists(self.auth_config_file_path) if self.auth_config_file_path.strip() else False,
             "env_config_keys": list(self.env_config.keys()),
             "static_config_keys": list(self.static_config.keys()),
-            "auth_config_keys": list(self.auth_config.keys()),
             "total_config_keys": len(self.config),
-            "config_priority": "env_vars > auth_config > static_config"
+            "config_priority": "env_vars > static_config"
         }

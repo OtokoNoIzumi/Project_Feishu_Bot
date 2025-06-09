@@ -41,7 +41,6 @@ class ImageService:
 
         # 健康状态检查
         self.is_healthy = self._check_service_health()
-        # self.is_init = False
 
     def _load_config(self):
         """加载配置"""
@@ -79,7 +78,6 @@ class ImageService:
             # 更新健康状态
             self.is_healthy = True
             debug_utils.log_and_print(f"Gradio客户端连接成功: {gradio_url}", log_level="INFO")
-            self.is_init = True
 
         except ImportError:
             debug_utils.log_and_print("gradio_client模块未安装，图像服务不可用", log_level="ERROR")
@@ -108,6 +106,45 @@ class ImageService:
     def _check_service_health(self) -> bool:
         """检查服务健康状态"""
         return self.gradio_client is not None
+
+    def get_auth_status(self) -> Dict[str, Any]:
+        """获取gradio服务的认证状态"""
+        try:
+            if not self.gradio_client:
+                return {"error": "Gradio客户端未连接", "available": False}
+
+            # 调用gradio的认证状态API
+            auth_status = self.gradio_client.predict(api_name="/get_auth_status")
+            return auth_status
+
+        except Exception as e:
+            error_info = {
+                "error": f"获取认证状态失败: {str(e)}",
+                "available": False
+            }
+            debug_utils.log_and_print(f"获取认证状态失败: {e}", log_level="WARNING")
+            return error_info
+
+    def update_auth_config(self, variable_name: str, new_value: str) -> Dict[str, Any]:
+        """更新gradio服务的认证配置"""
+        try:
+            if not self.gradio_client:
+                return {"success": False, "message": "Gradio客户端未连接"}
+
+            # 调用gradio的配置更新API
+            result = self.gradio_client.predict(
+                variable_name,
+                new_value,
+                os.getenv("ADMIN_SECRET_KEY", ""),
+                api_name="/update_auth_config"
+            )
+
+            return result
+
+        except Exception as e:
+            error_info = {"success": False, "message": f"更新认证配置失败: {str(e)}"}
+            debug_utils.log_and_print(f"更新认证配置失败: {e}", log_level="ERROR")
+            return error_info
 
     def get_status(self) -> Dict[str, Any]:
         """获取服务状态"""
@@ -155,7 +192,7 @@ class ImageService:
         except Exception as e:
             debug_utils.log_and_print(f"AI图像处理失败: {e}", log_level="ERROR")
 
-            # 如果是连接相关错误，标记客户端为无效，下次调用时会重新初始化
+            # 如果是连接相关错误，标记客户端为无效
             error_str = str(e).lower()
             if any(keyword in error_str for keyword in ['connection', 'timeout', 'ssl', 'handshake', 'network']):
                 debug_utils.log_and_print("检测到网络连接错误，标记Gradio客户端为无效", log_level="WARNING")

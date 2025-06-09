@@ -18,15 +18,10 @@ import schedule
 import requests
 import json
 import os
-# import warnings
 from typing import Dict, Callable, List, Optional, Any, Set
 from pathlib import Path
 
 from Module.Common.scripts.common import debug_utils
-
-# 忽略SSL验证警告（仅用于本地开发环境）
-# import urllib3
-# urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
 class ScheduledEvent:
@@ -268,6 +263,7 @@ class SchedulerService:
         try:
             # 获取API基础URL
             api_base = os.getenv("BILI_API_BASE", "https://localhost:3000")
+            verify_ssl = os.getenv("BILI_API_VERIFY_SSL", "true").lower() != "false"
             if not api_base or api_base == "https://localhost:3000":
                 status_info.update({
                     "status": "disabled",
@@ -284,7 +280,7 @@ class SchedulerService:
             response = requests.get(
                 api_base,
                 timeout=10,
-                verify=False  # 忽略SSL证书验证
+                verify=verify_ssl
             )
             response_time = round((time.time() - start_time) * 1000, 2)  # 毫秒
 
@@ -406,7 +402,11 @@ class SchedulerService:
                             })
 
                         # 检查token信息（如果可用）
-                        status_info["token_info"] = self._get_gradio_token_info(config_service)
+                        # 使用图像服务的原生API获取令牌信息
+                        image_service = None
+                        if self.app_controller:
+                            image_service = self.app_controller.get_service('image')
+                        status_info["token_info"] = self._get_gradio_token_info(image_service)
 
                     except Exception as api_error:
                         status_info.update({
@@ -450,12 +450,12 @@ class SchedulerService:
 
         return status_info
 
-    def _get_gradio_token_info(self, config_service) -> Dict[str, Any]:
+    def _get_gradio_token_info(self, image_service) -> Dict[str, Any]:
         """
-        获取gradio令牌信息
+        获取gradio令牌信息（通过图像服务的原生API）
 
         Args:
-            config_service: 配置服务实例
+            image_service: 图像服务实例
 
         Returns:
             Dict[str, Any]: 令牌信息
@@ -468,43 +468,33 @@ class SchedulerService:
         }
 
         try:
-            if not config_service:
+            if not image_service:
                 return token_info
 
-            # 检查认证配置文件中的expires_at
-            auth_config = getattr(config_service, 'auth_config', {})
-            if 'expires_at' in auth_config:
-                expires_at_str = auth_config['expires_at']
-                try:
-                    # 解析过期时间
-                    if "T" in expires_at_str:
-                        expires_at = datetime.datetime.fromisoformat(expires_at_str.replace('Z', '+00:00'))
-                    else:
-                        expires_at = datetime.datetime.strptime(expires_at_str, "%Y-%m-%d %H:%M:%S")
-                        expires_at = expires_at.replace(tzinfo=datetime.timezone(datetime.timedelta(hours=8)))
+            # 调用图像服务的认证状态API
+            auth_status = image_service.get_auth_status()
 
-                    now = datetime.datetime.now(datetime.timezone(datetime.timedelta(hours=8)))
-                    time_diff = expires_at - now
-                    hours_remaining = time_diff.total_seconds() / 3600
+            if "error" in auth_status:
+                token_info["status"] = "error"
+                return token_info
 
-                    token_info.update({
-                        "has_token": True,
-                        "expires_at": expires_at.strftime("%m-%d %H:%M"),
-                        "expires_in_hours": round(hours_remaining, 1),
-                        "status": "valid" if hours_remaining > 0 else "expired"
-                    })
+            # 从API结果中提取信息
+            has_cookies = auth_status.get("has_cookies", False)
+            has_auth_token = auth_status.get("has_auth_token", False)
+            is_expired = auth_status.get("is_expired", True)
+            hours_remaining = auth_status.get("hours_remaining", 0)
+            expires_at = auth_status.get("expires_at", "")
 
-                except Exception as parse_error:
-                    debug_utils.log_and_print(f"解析令牌过期时间失败: {parse_error}", log_level="WARNING")
-                    token_info.update({
-                        "has_token": True,
-                        "status": "parse_error"
-                    })
-            else:
-                token_info["status"] = "no_expiry_info"
+            token_info.update({
+                "has_token": has_cookies or has_auth_token,
+                "expires_at": expires_at,
+                "expires_in_hours": round(hours_remaining, 1),
+                "status": "valid" if not is_expired else "expired"
+            })
 
         except Exception as e:
-            debug_utils.log_and_print(f"获取令牌信息失败: {e}", log_level="WARNING")
+            debug_utils.log_and_print(f"获取gradio令牌信息失败: {e}", log_level="WARNING")
+            token_info["status"] = "error"
 
         return token_info
 

@@ -272,8 +272,7 @@ class AppController:
                 # 根据服务类型设置默认配置
                 if service_name == 'config':
                     config = {
-                        'static_config_file_path': 'config.json',
-                        'auth_config_file_path': os.getenv('AUTH_CONFIG_FILE_PATH', '')
+                        'static_config_file_path': 'config.json'
                     }
                 elif service_name == 'cache':
                     config = {

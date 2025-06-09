@@ -120,7 +120,7 @@ class FeishuAdapter:
                 return
 
             debug_utils.log_and_print(
-                f"📱 处理消息: {context.user_name}, 类型={context.message_type}, 内容={str(context.content)[:20]}...",
+                f"📱 处理消息: {context.user_name}, 类型={context.message_type}, 内容={str(context.content)[:30]}...",
                 log_level="INFO"
             )
 

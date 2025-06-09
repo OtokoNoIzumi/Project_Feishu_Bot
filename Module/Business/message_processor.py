@@ -711,30 +711,35 @@ class MessageProcessor:
                 f"只能更新: {', '.join(supported_variables)}"
             )
 
-        # 调用配置服务更新配置
+        # 使用图像服务的原生API更新配置
         if not self.app_controller:
             return ProcessResult.error_result("系统服务不可用")
 
-        config_service = self.app_controller.get_service('config')
-        if not config_service:
-            return ProcessResult.error_result("配置服务不可用")
+        image_service = self.app_controller.get_service('image')
+        if not image_service:
+            return ProcessResult.error_result("图像服务不可用")
 
         try:
-            # 创建验证器字典
-            validators = {
-                "cookies": self._verify_cookie,
-                "auth_token": self._verify_auth_token
-            }
+            # 验证输入
+            if variable_name == "cookies":
+                is_valid, err_msg = self._verify_cookie(new_value)
+            elif variable_name == "auth_token":
+                is_valid, err_msg = self._verify_auth_token(new_value)
+            else:
+                is_valid, err_msg = False, "不支持的变量类型"
 
-            success, reply_text = config_service.update_config(
-                variable_name,
-                new_value,
-                validators
-            )
+            if not is_valid:
+                return ProcessResult.error_result(f"'{variable_name}' 更新失败: {err_msg}")
 
-            return ProcessResult.success_result("text", {
-                "text": reply_text
-            })
+            # 调用图像服务的原生API更新配置
+            result = image_service.update_auth_config(variable_name, new_value)
+
+            if result.get("success", False):
+                return ProcessResult.success_result("text", {
+                    "text": result.get("message", f"'{variable_name}' 更新成功")
+                })
+            else:
+                return ProcessResult.error_result(result.get("message", "更新失败"))
 
         except Exception as e:
             return ProcessResult.error_result(f"配置更新失败: {str(e)}")
