@@ -171,6 +171,7 @@ MIT License
 1. **B站工具功能迁移与增强**
    - 已将原B站工具的所有功能迁移，包括按时间筛选、获取某时间段最后一个阅读清单等。
    - 支持在B站视频清单中批量去除特定内容（如炉石）。
+   - 和bili后端配合增加一个日报，以及清理提示词的定时API-bili后端的up主数据分析可以稍微沉淀一点点了，另外的一个搜索，则是要和来源清单一起进入配置，才可以方便拓展和删改-而且看起来最好也有API来维护
    - 计划列出所有能力清单，并探索用LLM驱动的rooter泛化调用已有功能，而不是为每个用例单独开发——包括用卡片把参数重现出来的功能，这个二次输入确认是确保AI辅助编辑的一个重要界面，需要支持API，而不是绑定在飞书上。
 
 2. **飞书机器人智能交互优化**
@@ -190,3 +191,24 @@ MIT License
 
 外部数据源看起来是不太行，打不通。
 先从日常开始吧，天气，日程，rooter？还有B站功能迁移
+
+B站按钮后续增加一个全部已读，以及随机抽取，+选择范围，默认是10分钟？
+
+用类似MCP的规范来做router吗？这样可能会好一点
+
+飞书机器人业务api化——飞书只是前端，不要实现逻辑
+
+数字分身天然就要包括多个自己，除了主体之外还有其他几个预设槽位
+
+
+I am a creative and strategic leader with a passion for crafting immersive game experiences. As a game designer and CEO, I have honed my skills in project management, team leadership, and communication while directing the strategic vision of an AI consulting organization. My experience in narrative design and player engagement analysis allows me to create compelling storylines that resonate with players. Driven by a desire for continuous learning and a deep interest in education and self-development, I am constantly seeking new ways to innovate and improve the player experience. I leverage my expertise in Python and strategic planning to guide development teams and cultivate strong client relationships, ensuring that every project is a success.
+
+不是高频的业务不需要用数据库，反倒是Notion访问性和编辑性都不错，现在也有加载缓存的方法了
+
+所谓可撤销的缓存业务=没有真实提交，但是查询的时候又可以和正式数据合并在一起，这样一来一般也就缓存1-2份数据，这样还要不要有一个定时，也是有必要的，因为没必要一直缓存，可以用一个半小时的循环来检查是不是有超过半小时的缓存，超过的就写入了。
+用户也可以根据下面的跟随气泡快速修改发证机关。点击和打字编辑效果一致——意味着需要开启上下文模式，但这个最好可以用消息评论的串，减少管理的复杂度——或者至少要验证一下消息的id和回复消息的逻辑
+
+对于酒馆战棋这种版本的逻辑，为了呼应思考，至少可以有一个非全局的领域开关，只在这里更新——也就是默认全局不读取，需要主动引用，或者被概率抽到。
+但是对于文档的部分，我可能需要一个可视化的地方，飞书文档应该就是另一个比较好的储存和编辑位置？需要一个结构来储存。
+
+TTS的识别也是要先查看消息结构，是不是包括文字，但这里需要保留的是原始信息，方便回听，这就是闪念胶囊了。

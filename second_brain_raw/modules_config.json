@@ -1,0 +1,58 @@
+{
+    "Note": {
+        "name": "笔记",
+        "description": "记录想法、灵感、知识点等。",
+        "enable": true,
+        "data_structure": {
+            "id": "unique_note_id_1",
+            "content": "示例笔记内容",
+            "timestamp": "2023-10-27T10:00:00",
+            "tags": ["示例标签1", "示例标签2"]
+        }
+    },
+    "Task": {
+        "name": "任务",
+        "description": "管理待办事项、项目任务等。",
+        "enable": true,
+        "data_structure": {
+            "id": "unique_task_id_1",
+            "title": "示例任务标题",
+            "description": "示例任务描述",
+            "status": "待办",
+            "due_date": "2023-10-28"
+        }
+    },
+    "Schedule": {
+        "name": "日程",
+        "description": "记录日程安排、会议、约会等。",
+        "enable": true,
+        "data_structure": {
+            "id": "unique_schedule_id_1",
+            "title": "示例日程标题",
+            "start_time": "2023-10-27T14:00:00",
+            "end_time": "2023-10-27T15:00:00",
+            "location": "示例地点"
+        }
+    },
+    "Contact": {
+        "name": "联系人",
+        "description": "管理联系人信息。",
+        "enable": false,
+        "data_structure": {
+            "id": "unique_contact_id_1",
+            "name": "示例联系人姓名",
+            "phone_number": "1234567890"
+        }
+    },
+    "Resource": {
+        "name": "资源",
+        "description": "管理链接、文件、书籍等资源。",
+        "enable": false,
+        "data_structure": {
+            "id": "unique_resource_id_1",
+            "title": "示例资源标题",
+            "type": "链接",
+            "url": "https://example.com"
+        }
+    }
+}

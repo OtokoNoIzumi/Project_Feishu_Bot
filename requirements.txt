@@ -1,3 +1,4 @@
 lark_oapi
 schedule
 notion-client
+gradio_client
