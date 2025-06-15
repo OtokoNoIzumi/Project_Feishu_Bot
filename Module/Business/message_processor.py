@@ -5,6 +5,7 @@
 完全独立于前端平台，可以被任何适配器调用
 """
 
+import time
 from typing import Dict, Any
 from .processors import (
     BaseProcessor, MessageContext, ProcessResult,
@@ -52,8 +53,10 @@ class MessageProcessor(BaseProcessor):
         """
         try:
             # 检查事件是否已处理（去重）
-            if self._is_duplicate_event(context.event_id):
-                debug_utils.log_and_print("📋 重复事件已跳过", log_level="INFO")
+            is_duplicate, event_timestamp = self._is_duplicate_event(context.event_id)
+            if is_duplicate:
+                time_diff = time.time() - event_timestamp
+                debug_utils.log_and_print(f"📋 重复事件已跳过 [{context.message_type}] [{context.content[:50]}] 时间差: {time_diff:.2f}秒", log_level="INFO")
                 return ProcessResult.no_reply_result()
 
             # 记录新事件
@@ -81,7 +84,7 @@ class MessageProcessor(BaseProcessor):
         """处理文本消息"""
         user_msg = context.content
 
-        # 管理员配置更新指令
+        # 管理员配置更新指令（最高优先级）
         if self.admin_processor.is_admin_command(user_msg):
             content = self._extract_command_content(user_msg, [self.admin_processor.get_update_trigger()])
             self._log_command(context.user_name, "🔧", "触发配置更新指令", content)
@@ -122,9 +125,17 @@ class MessageProcessor(BaseProcessor):
         elif "你好" in user_msg:
             self._log_command(context.user_name, "👋", "发送问候")
             return self.text_processor.handle_greeting_command(context)
-        else:
-            # 默认回复
-            return self.text_processor.handle_default_message(context)
+
+        # AI智能路由（新增 - 在原有指令之前）
+        router_service = self.app_controller.get_service('router') if self.app_controller else None
+        if router_service:
+            route_result = router_service.route_message(user_msg, context.user_id)
+            if route_result.get('success') and route_result.get('route_type') in ['shortcut', 'ai_intent']:
+                # 路由成功，返回确认卡片
+                return self._handle_ai_route_result(context, route_result)
+
+        # 默认回复
+        return self.text_processor.handle_default_message(context)
 
     def _process_image_message(self, context: MessageContext) -> ProcessResult:
         """处理图片消息 - 图像风格转换"""
@@ -146,10 +157,105 @@ class MessageProcessor(BaseProcessor):
         # 根据动作类型处理
         if action == "mark_bili_read":
             return self._handle_mark_bili_read(context, action_value)
+        elif action in ["confirm_thought", "confirm_schedule", "confirm_food_order", "cancel", "edit_content"]:
+            return self._handle_ai_card_action(context, action, action_value)
         else:
             return ProcessResult.success_result("text", {
                 "text": f"收到卡片动作：{action}，功能开发中..."
             })
+
+    def _handle_ai_route_result(self, context: MessageContext, route_result: Dict[str, Any]) -> ProcessResult:
+        """
+        处理AI路由结果，返回确认卡片
+
+        Args:
+            context: 消息上下文
+            route_result: 路由结果
+
+        Returns:
+            ProcessResult: 包含确认卡片的处理结果
+        """
+        try:
+            # 导入卡片构建器
+            from Module.Services.router.card_builder import CardBuilder
+
+            card_builder = CardBuilder()
+            card_content = card_builder.build_intent_confirmation_card(route_result)
+
+            # 记录路由成功
+            intent = route_result.get('intent', '未知')
+            confidence = route_result.get('confidence', 0)
+            route_type = route_result.get('route_type', 'unknown')
+
+            self._log_command(
+                context.user_name,
+                "🎯",
+                f"AI路由成功: {intent} ({route_type})",
+                f"置信度: {confidence}%"
+            )
+
+            return ProcessResult.success_result("interactive", card_content)
+
+        except Exception as e:
+            debug_utils.log_and_print(f"❌ AI路由结果处理失败: {e}", log_level="ERROR")
+            return ProcessResult.error_result(f"路由处理失败: {str(e)}")
+
+    def _handle_ai_card_action(self, context: MessageContext, action: str, action_value: Dict[str, Any]) -> ProcessResult:
+        """
+        处理AI路由卡片的按钮动作
+
+        Args:
+            context: 消息上下文
+            action: 动作类型
+            action_value: 动作参数
+
+        Returns:
+            ProcessResult: 处理结果
+        """
+        try:
+            intent = action_value.get('intent', '未知')
+            content = action_value.get('content', '')
+
+            if action == "cancel":
+                # 取消操作
+                return ProcessResult.success_result("text", {
+                    "text": f"已取消 {intent} 操作"
+                })
+
+            elif action == "edit_content":
+                # 编辑内容（暂时返回提示，后续可扩展为编辑界面）
+                return ProcessResult.success_result("text", {
+                    "text": f"编辑功能开发中，当前内容：{content}"
+                })
+
+            elif action in ["confirm_thought", "confirm_schedule", "confirm_food_order"]:
+                # 确认操作 - 暂时返回成功提示，后续集成实际的数据存储
+                action_map = {
+                    "confirm_thought": "思考记录",
+                    "confirm_schedule": "日程安排",
+                    "confirm_food_order": "点餐订单"
+                }
+
+                operation_name = action_map.get(action, "操作")
+
+                # 记录确认操作
+                self._log_command(
+                    context.user_name,
+                    "✅",
+                    f"确认{operation_name}",
+                    content[:50] + "..." if len(content) > 50 else content
+                )
+
+                return ProcessResult.success_result("text", {
+                    "text": f"✅ {operation_name}已确认记录\n\n内容：{content}\n\n💡 数据存储功能将在后续版本实现"
+                })
+
+            else:
+                return ProcessResult.error_result(f"未知的卡片动作: {action}")
+
+        except Exception as e:
+            debug_utils.log_and_print(f"❌ AI卡片动作处理失败: {e}", log_level="ERROR")
+            return ProcessResult.error_result(f"卡片动作处理失败: {str(e)}")
 
     def _handle_mark_bili_read(self, context: MessageContext, action_value: Dict[str, Any]) -> ProcessResult:
         """

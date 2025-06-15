@@ -10,6 +10,8 @@ from .audio import AudioService
 from .image import ImageService
 from .scheduler import SchedulerService
 from .notion import NotionService
+from .llm import LLMService
+from .router import RouterService
 
 __all__ = [
     'CacheService',
@@ -17,7 +19,9 @@ __all__ = [
     'AudioService',
     'ImageService',
     'SchedulerService',
-    'NotionService'
+    'NotionService',
+    'LLMService',
+    'RouterService'
 ]
 
 # 服务注册表（用于应用控制器）
@@ -27,5 +31,7 @@ AVAILABLE_SERVICES = {
     'audio': AudioService,
     'image': ImageService,
     'scheduler': SchedulerService,
-    'notion': NotionService
+    'notion': NotionService,
+    'llm': LLMService,
+    'router': RouterService
 }

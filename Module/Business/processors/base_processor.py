@@ -96,7 +96,8 @@ class BaseProcessor:
 
         # 直接调用缓存服务的check_event方法
         is_duplicate = cache_service.check_event(event_id)
-        return is_duplicate
+        event_timestamp = cache_service.get_event_timestamp(event_id)
+        return is_duplicate, event_timestamp
 
     def _record_event(self, context: MessageContext):
         """记录新事件"""

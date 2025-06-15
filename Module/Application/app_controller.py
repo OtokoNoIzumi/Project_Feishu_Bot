@@ -31,10 +31,8 @@ class AppController:
         """
         self.project_root_path = project_root_path or self._get_project_root()
         self.services: Dict[str, Any] = {}
-        self.service_configs: Dict[str, Dict] = {}
+        self.service_configs: Dict[str, Dict[str, Any]] = {}
         self.initialized_services: set = set()
-
-
 
     def _get_project_root(self) -> str:
         """获取项目根路径（与配置服务逻辑一致）"""
@@ -110,11 +108,8 @@ class AppController:
                 cache_dir = config.get('cache_dir', os.path.join(self.project_root_path, "cache"))
                 os.makedirs(cache_dir, exist_ok=True)
                 instance = service_class(cache_dir)
-            elif service_name == 'audio':
-                # 音频服务需要传入应用控制器引用
-                instance = service_class(app_controller=self)
-            elif service_name == 'scheduler':
-                # 调度器服务需要传入应用控制器引用
+            elif service_name in ['audio', 'scheduler', 'llm', 'router']:
+                # 这些服务需要传入应用控制器引用
                 instance = service_class(app_controller=self)
             elif service_name == 'notion':
                 # notion服务需要cache服务作为依赖
@@ -128,7 +123,7 @@ class AppController:
 
             service_info['instance'] = instance
             service_info['status'] = 'initialized'
-            self.initialized_services.add(service_name)
+            # self.initialized_services.add(service_name) # 延迟到post_init后标记
 
             return True
 
@@ -226,7 +221,7 @@ class AppController:
                 "controller": {
                     "project_root": self.project_root_path,
                     "total_services": len(self.services),
-                    "initialized_services": len(self.initialized_services)
+                    "initialized_services": sum(1 for name, info in self.services.items() if info.get("status") == 'initialized')
                 },
                 "services": {}
             }
@@ -320,7 +315,7 @@ class AppController:
                 if service_status.get("available", False):
                     status = "healthy"
                     health_status["summary"]["healthy"] += 1
-                elif service_status.get("initialized", False):
+                elif service_status.get("status", "uninitialized") == "initialized":
                     status = "unhealthy"
                     health_status["summary"]["unhealthy"] += 1
                 else:

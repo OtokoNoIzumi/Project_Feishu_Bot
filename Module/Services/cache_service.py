@@ -148,6 +148,15 @@ class CacheService:
         """
         return event_id in self.event_cache
 
+    def get_event_timestamp(self, event_id: str):
+        """
+        记录已处理事件
+
+        Args:
+            event_id: 事件ID
+        """
+        return self.event_cache.get(event_id, None)
+
     def add_event(self, event_id: str):
         """
         记录已处理事件
