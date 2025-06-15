@@ -539,7 +539,7 @@ class SchedulerService:
         try:
 
 
-            # 检查是否为夜间静默时间（22:00-08:00）
+            # 检查是否为夜间静默时间（23:00-07:00）
             current_hour = datetime.datetime.now().hour
             is_night_silent = current_hour >= 23 or current_hour < 7
 

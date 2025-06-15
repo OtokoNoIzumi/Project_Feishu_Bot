@@ -82,7 +82,7 @@ def setup_application():
                 else:
                     debug_utils.log_and_print(f"未知定时任务类型: {message_type}", log_level="WARNING")
                     return
-
+                # print('test-result', result.__dict__)
                 if result.success:
                     feishu_adapter._send_direct_message(admin_id, result)
                     debug_utils.log_and_print(f"✅ 定时消息已发送: {message_type}", log_level="INFO")
@@ -112,6 +112,7 @@ def setup_scheduled_tasks(app_controller):
     # 配置定时任务
     tasks = [
         ("daily_schedule_reminder", "07:30", scheduler_service.trigger_daily_schedule_reminder, {}),
+        # ("bili_updates_afternoon", "07:02", scheduler_service.trigger_bilibili_updates_reminder, {"sources": ["favorites"]}),
         ("bili_updates_afternoon", "15:30", scheduler_service.trigger_bilibili_updates_reminder, {}),
         ("bili_updates_night", "23:55", scheduler_service.trigger_bilibili_updates_reminder,
          {"sources": ["favorites", "dynamic"]})
