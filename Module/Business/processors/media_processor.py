@@ -241,7 +241,7 @@ class MediaProcessor(BaseProcessor):
                 "rich_text_content": rich_text_content,
                 "sample_image_data": image_data,
                 "sample_image_name": os.path.basename(sample_pic_path)
-            })
+            }, parent_id=context.message_id)
 
         except Exception as e:
             return ProcessResult.error_result(f"富文本指令处理失败: {str(e)}")
@@ -262,7 +262,7 @@ class MediaProcessor(BaseProcessor):
             return ProcessResult.success_result("image", {
                 "image_data": image_data,
                 "image_name": os.path.basename(sample_pic_path)
-            })
+            }, parent_id=context.message_id)
 
         except Exception as e:
             return ProcessResult.error_result(f"图片指令处理失败: {str(e)}")

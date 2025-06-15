@@ -90,39 +90,38 @@ class MessageProcessor(BaseProcessor):
             self._log_command(context.user_name, "🔧", "触发配置更新指令", content)
             return self.admin_processor.handle_config_update(context, user_msg)
 
-        # TTS配音指令，改成start
-        if "配音" in user_msg:
+        # TTS配音指令，改成startwith
+        if user_msg.startswith("配音"):
             content = self._extract_command_content(user_msg, ["配音"])
             self._log_command(context.user_name, "🎤", "触发TTS配音指令", content)
             return self.media_processor.handle_tts_command(context, user_msg)
 
         # 图像生成指令
-        if "生图" in user_msg or "AI画图" in user_msg:
+        if user_msg.startswith("生图") or user_msg.startswith("AI画图"):
             content = self._extract_command_content(user_msg, ["生图", "AI画图"])
             self._log_command(context.user_name, "🎨", "触发图像生成指令", content)
             return self.media_processor.handle_image_generation_command(context, user_msg)
 
         # 富文本指令
-        if "富文本" in user_msg:
+        if user_msg == "富文本":
             self._log_command(context.user_name, "📄", "触发富文本指令")
             return self.media_processor.handle_rich_text_command(context)
 
         # 图片/壁纸指令
-        if "图片" in user_msg or "壁纸" in user_msg:
+        if user_msg == "图片" or user_msg == "壁纸":
             self._log_command(context.user_name, "🖼️", "触发图片指令")
             return self.media_processor.handle_sample_image_command(context)
 
         # B站/视频指令（触发菜单效果）
-        if "B站" in user_msg or "视频" in user_msg:
-            content = self._extract_command_content(user_msg, ["B站", "视频"])
-            self._log_command(context.user_name, "📺", "触发B站视频指令", content if content else None)
+        if user_msg == "B站" or user_msg == "视频":
+            self._log_command(context.user_name, "📺", "触发B站视频指令")
             return self.bilibili_processor.handle_bili_text_command(context)
 
         # 基础指令处理
-        if "帮助" in user_msg:
+        if user_msg == "帮助":
             self._log_command(context.user_name, "❓", "查看帮助")
             return self.text_processor.handle_help_command(context)
-        elif "你好" in user_msg:
+        elif user_msg == "你好":
             self._log_command(context.user_name, "👋", "发送问候")
             return self.text_processor.handle_greeting_command(context)
 
@@ -162,7 +161,7 @@ class MessageProcessor(BaseProcessor):
         else:
             return ProcessResult.success_result("text", {
                 "text": f"收到卡片动作：{action}，功能开发中..."
-            })
+            }, parent_id=context.message_id)
 
     def _handle_ai_route_result(self, context: MessageContext, route_result: Dict[str, Any]) -> ProcessResult:
         """
@@ -194,7 +193,7 @@ class MessageProcessor(BaseProcessor):
                 f"置信度: {confidence}%"
             )
 
-            return ProcessResult.success_result("interactive", card_content)
+            return ProcessResult.success_result("interactive", card_content, parent_id=context.message_id)
 
         except Exception as e:
             debug_utils.log_and_print(f"❌ AI路由结果处理失败: {e}", log_level="ERROR")
@@ -220,13 +219,13 @@ class MessageProcessor(BaseProcessor):
                 # 取消操作
                 return ProcessResult.success_result("text", {
                     "text": f"已取消 {intent} 操作"
-                })
+                }, parent_id=context.message_id)
 
             elif action == "edit_content":
                 # 编辑内容（暂时返回提示，后续可扩展为编辑界面）
                 return ProcessResult.success_result("text", {
                     "text": f"编辑功能开发中，当前内容：{content}"
-                })
+                }, parent_id=context.message_id)
 
             elif action in ["confirm_thought", "confirm_schedule", "confirm_food_order"]:
                 # 确认操作 - 暂时返回成功提示，后续集成实际的数据存储
@@ -248,7 +247,7 @@ class MessageProcessor(BaseProcessor):
 
                 return ProcessResult.success_result("text", {
                     "text": f"✅ {operation_name}已确认记录\n\n内容：{content}\n\n💡 数据存储功能将在后续版本实现"
-                })
+                }, parent_id=context.message_id)
 
             else:
                 return ProcessResult.error_result(f"未知的卡片动作: {action}")

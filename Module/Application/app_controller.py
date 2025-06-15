@@ -123,7 +123,7 @@ class AppController:
 
             service_info['instance'] = instance
             service_info['status'] = 'initialized'
-            # self.initialized_services.add(service_name) # 延迟到post_init后标记
+            self.initialized_services.add(service_name) # 延迟到post_init后标记
 
             return True
 

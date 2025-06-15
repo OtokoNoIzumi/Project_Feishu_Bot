@@ -48,7 +48,7 @@ class AdminProcessor(BaseProcessor):
         if context.user_id != self.admin_id:
             return ProcessResult.success_result("text", {
                 "text": f"收到消息：{user_msg}"
-            })
+            }, parent_id=context.message_id)
 
         # 解析配置更新指令
         command_parts = user_msg[len(self.update_config_trigger):].strip().split(maxsplit=1)
@@ -94,7 +94,7 @@ class AdminProcessor(BaseProcessor):
             if result.get("success", False):
                 return ProcessResult.success_result("text", {
                     "text": result.get("message", f"'{variable_name}' 更新成功")
-                })
+                }, parent_id=context.message_id)
             else:
                 return ProcessResult.error_result(result.get("message", "更新失败"))
 

@@ -72,9 +72,9 @@ class FeishuAdapter:
     - 卡片交互 (卡片按钮点击)
 
     回复模式控制：
-    - 群聊: 默认使用reply模式（显示"回复xxx"）
-    - 私聊: 默认使用创建消息模式（不显示回复关系）
-    - 可通过force_reply参数强制控制回复行为
+    - 业务层通过parent_id指定回复关系，适配器根据parent_id决定发送方式
+    - 有parent_id: 使用reply模式，关联到指定的消息
+    - 无parent_id: 群聊默认reply用户消息，私聊创建新消息
     """
 
     def __init__(self, message_processor, app_controller=None):
@@ -203,7 +203,7 @@ class FeishuAdapter:
 
             # 检查是否是富文本类型
             if result.success and result.response_type == "rich_text":
-                self._upload_and_send_rich_text(data, result.response_content)
+                self._upload_and_send_rich_text(data, result)
                 return
 
             # 检查是否是单个图片类型
@@ -218,9 +218,7 @@ class FeishuAdapter:
                 return
 
             # 发送结果
-            # 如果需要强制使用reply模式，可以使用: self._send_feishu_reply(data, result, force_reply=True)
-            # 如果需要强制不使用reply模式，可以使用: self._send_feishu_reply(data, result, force_reply=False)
-            self._send_feishu_reply(data, result, force_reply=True)
+            self._send_feishu_reply(data, result)
 
         except Exception as e:
             debug_utils.log_and_print(f"处理飞书消息失败: {e}", log_level="ERROR")
@@ -274,8 +272,6 @@ class FeishuAdapter:
             context = self._convert_card_to_context(data)
             if not context:
                 return P2CardActionTriggerResponse({})
-
-
 
             # 调用业务处理器
             result = self.message_processor.process_message(context)
@@ -357,6 +353,10 @@ class FeishuAdapter:
             message_type = data.event.message.message_type
             content = self._extract_message_content(data.event.message)
 
+            # 提取消息上下文信息
+            message_id = data.event.message.message_id
+            parent_message_id = data.event.message.parent_id if hasattr(data.event.message, 'parent_id') and data.event.message.parent_id else None
+
             return MessageContext(
                 user_id=user_id,
                 user_name=user_name,
@@ -364,9 +364,11 @@ class FeishuAdapter:
                 content=content,
                 timestamp=timestamp,
                 event_id=event_id,
+                message_id=message_id,
+                parent_message_id=parent_message_id,
                 metadata={
                     'chat_id': data.event.message.chat_id,
-                    'message_id': data.event.message.message_id,
+                    'message_id': message_id,
                     'chat_type': data.event.message.chat_type,
                     'interaction_type': 'message'
                 }
@@ -457,8 +459,6 @@ class FeishuAdapter:
         else:
             return message.content
 
-
-
     def _get_user_name(self, open_id: str) -> str:
         """获取用户名称"""
         # 先从缓存获取
@@ -482,14 +482,13 @@ class FeishuAdapter:
 
         return f"用户_{open_id[:8]}"
 
-    def _send_feishu_reply(self, original_data, result: ProcessResult, force_reply: bool = None) -> bool:
+    def _send_feishu_reply(self, original_data, result: ProcessResult) -> bool:
         """
         发送飞书回复（统一的发送方法）
 
         Args:
             original_data: 原始飞书事件数据
-            result: 处理结果
-            force_reply: 强制使用reply模式。None表示自动判断，True强制回复，False强制不回复
+            result: 处理结果（包含parent_id上下文信息）
         """
         try:
             if not result.response_content:
@@ -498,17 +497,12 @@ class FeishuAdapter:
             # 转换响应内容为飞书格式
             content_json = json.dumps(result.response_content)
 
-            # 决定是否使用reply模式
-            should_reply = force_reply
-            if should_reply is None:
-                # 自动判断：群聊默认使用reply，私聊默认不使用reply
-                should_reply = original_data.event.message.chat_type != "p2p"
-
-            if should_reply:
-                # 使用回复模式
+            # 根据parent_id决定回复方式
+            if result.parent_id:
+                # 业务层指定了要关联的消息ID，使用reply模式
                 request = (
                     ReplyMessageRequest.builder()
-                    .message_id(original_data.event.message.message_id)
+                    .message_id(result.parent_id)  # 使用业务层指定的parent_id
                     .request_body(
                         ReplyMessageRequestBody.builder()
                         .content(content_json)
@@ -519,15 +513,31 @@ class FeishuAdapter:
                 )
                 response = self.client.im.v1.message.reply(request)
             else:
-                # 使用创建消息模式
-                request = CreateMessageRequest.builder().receive_id_type("chat_id").request_body(
-                    CreateMessageRequestBody.builder()
-                    .receive_id(original_data.event.message.chat_id)
-                    .msg_type(result.response_type)
-                    .content(content_json)
-                    .build()
-                ).build()
-                response = self.client.im.v1.message.create(request)
+                # 没有指定parent_id，使用默认逻辑（群聊reply，私聊新消息）
+                if original_data.event.message.chat_type == "p2p":
+                    # 私聊：创建新消息
+                    request = CreateMessageRequest.builder().receive_id_type("chat_id").request_body(
+                        CreateMessageRequestBody.builder()
+                        .receive_id(original_data.event.message.chat_id)
+                        .msg_type(result.response_type)
+                        .content(content_json)
+                        .build()
+                    ).build()
+                    response = self.client.im.v1.message.create(request)
+                else:
+                    # 群聊：回复用户消息
+                    request = (
+                        ReplyMessageRequest.builder()
+                        .message_id(original_data.event.message.message_id)
+                        .request_body(
+                            ReplyMessageRequestBody.builder()
+                            .content(content_json)
+                            .msg_type(result.response_type)
+                            .build()
+                        )
+                        .build()
+                    )
+                    response = self.client.im.v1.message.reply(request)
 
             if not response.success():
                 debug_utils.log_and_print(
@@ -813,8 +823,8 @@ class FeishuAdapter:
 
                     # 发送图片消息
                     image_content = json.dumps({"image_key": upload_response.data.image_key})
-                    image_result = ProcessResult.success_result("image", {"image_key": upload_response.data.image_key})
-                    return self._send_feishu_reply(original_data, image_result, force_reply=True)
+                    image_result = ProcessResult.success_result("image", {"image_key": upload_response.data.image_key}, parent_id=original_data.event.message.message_id)
+                    return self._send_feishu_reply(original_data, image_result)
                 else:
                     debug_utils.log_and_print(f"图片上传失败: {upload_response.code} - {upload_response.msg}", log_level="ERROR")
                     return False
@@ -855,8 +865,8 @@ class FeishuAdapter:
             if file_key:
                 # 发送音频消息
                 content_json = json.dumps({"file_key": file_key})
-                result = ProcessResult.success_result("audio", json.loads(content_json))
-                return self._send_feishu_reply(original_data, result, force_reply=True)
+                result = ProcessResult.success_result("audio", json.loads(content_json), parent_id=original_data.event.message.message_id)
+                return self._send_feishu_reply(original_data, result)
             else:
                 debug_utils.log_and_print("音频上传到飞书失败", log_level="ERROR")
                 return False
@@ -902,19 +912,19 @@ class FeishuAdapter:
             debug_utils.log_and_print(f"音频上传异常: {e}", log_level="ERROR")
             return None
 
-    def _upload_and_send_rich_text(self, original_data, rich_text_data: Dict[str, Any]) -> bool:
+    def _upload_and_send_rich_text(self, original_data, result: ProcessResult) -> bool:
         """上传并发送富文本"""
         try:
             from lark_oapi.api.im.v1 import CreateImageRequest, CreateImageRequestBody
             from io import BytesIO
 
             # 上传示例图片
-            image_data = rich_text_data.get("sample_image_data")
+            image_data = result.response_content.get("sample_image_data")
             if not image_data:
                 # 如果没有图片数据，发送纯文本富文本
-                rich_text_content = rich_text_data.get("rich_text_content")
-                result = ProcessResult.success_result("post", rich_text_content)
-                return self._send_feishu_reply(original_data, result, force_reply=True)
+                rich_text_content = result.response_content.get("rich_text_content")
+                result = ProcessResult.success_result("post", rich_text_content, parent_id=result.parent_id)
+                return self._send_feishu_reply(original_data, result)
 
             # 上传图片
             image_file = BytesIO(image_data)
@@ -934,15 +944,15 @@ class FeishuAdapter:
                 return False
 
             # 在富文本内容中添加图片
-            rich_text_content = rich_text_data.get("rich_text_content")
+            rich_text_content = result.response_content.get("rich_text_content")
             image_key = upload_response.data.image_key
 
             # 在第二行插入图片（在链接行后面）
             rich_text_content["zh_cn"]["content"].insert(1, [{"tag": "img", "image_key": image_key}])
 
             # 使用统一的发送方法
-            result = ProcessResult.success_result("post", rich_text_content)
-            return self._send_feishu_reply(original_data, result, force_reply=True)
+            result = ProcessResult.success_result("post", rich_text_content, parent_id=result.parent_id)
+            return self._send_feishu_reply(original_data, result)
 
         except Exception as e:
             debug_utils.log_and_print(f"富文本上传发送失败: {e}", log_level="ERROR")
@@ -973,8 +983,8 @@ class FeishuAdapter:
 
             # 使用统一的发送方法
             image_key = upload_response.data.image_key
-            result = ProcessResult.success_result("image", {"image_key": image_key})
-            success = self._send_feishu_reply(original_data, result, force_reply=True)
+            result = ProcessResult.success_result("image", {"image_key": image_key}, parent_id=original_data.event.message.message_id)
+            success = self._send_feishu_reply(original_data, result)
 
             if success:
                 debug_utils.log_and_print(f"示例图片发送成功: {image_name}", log_level="INFO")
@@ -985,16 +995,7 @@ class FeishuAdapter:
             debug_utils.log_and_print(f"示例图片上传发送失败: {e}", log_level="ERROR")
             return False
 
-    def _send_feishu_message(self, original_data, result: ProcessResult, use_reply: bool = None) -> bool:
-        """
-        发送飞书消息的便捷方法
 
-        Args:
-            original_data: 原始飞书事件数据
-            result: 处理结果
-            use_reply: 是否使用回复模式。None=自动判断，True=强制回复，False=强制创建新消息
-        """
-        return self._send_feishu_reply(original_data, result, force_reply=use_reply)
 
     def start(self):
         """启动飞书WebSocket连接（同步方式）"""

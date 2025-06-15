@@ -20,6 +20,8 @@ class MessageContext:
     timestamp: datetime
     event_id: str
     metadata: Dict[str, Any] = None
+    message_id: Optional[str] = None  # 用户发送的这条消息的ID（系统回复时作为parent_id）
+    parent_message_id: Optional[str] = None  # 用户消息如果是回复，这里是被回复的消息ID
 
     def __post_init__(self):
         if self.metadata is None:
@@ -34,14 +36,17 @@ class ProcessResult:
     response_content: Any
     error_message: str = None
     should_reply: bool = True
+    # 新增：上下文信息，指向要关联的消息ID
+    parent_id: Optional[str] = None  # 指向要关联的消息ID，用于建立回复关系
 
     @classmethod
-    def success_result(cls, response_type: str, content: Any):
-        return cls(True, response_type, content)
+    def success_result(cls, response_type: str, content: Any, parent_id: Optional[str] = None):
+        return cls(True, response_type, content, parent_id=parent_id)
 
     @classmethod
     def error_result(cls, error_msg: str):
-        return cls(False, "text", {"text": error_msg}, error_msg, True)
+        # 错误消息保持默认逻辑（parent_id=None）
+        return cls(False, "text", {"text": error_msg}, error_msg, True, parent_id=None)
 
     @classmethod
     def no_reply_result(cls):

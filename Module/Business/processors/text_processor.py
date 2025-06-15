@@ -66,13 +66,13 @@ class TextProcessor(BaseProcessor):
 
 <i>架构优势：统一的服务管理，模块化的媒体处理和B站数据分析</i>"""
 
-        return ProcessResult.success_result("text", {"text": help_text})
+        return ProcessResult.success_result("text", {"text": help_text}, parent_id=context.message_id)
 
     def handle_greeting_command(self, context: MessageContext) -> ProcessResult:
         """处理问候指令"""
         return ProcessResult.success_result("text", {
             "text": f"你好，{context.user_name}！有什么我可以帮你的吗？"
-        })
+        }, parent_id=context.message_id)
 
     def handle_default_message(self, context: MessageContext) -> ProcessResult:
         """处理默认消息（未匹配到特定指令的文本）"""
@@ -82,4 +82,4 @@ class TextProcessor(BaseProcessor):
         self._log_command(context.user_name, "💬", "发送普通消息", content)
         return ProcessResult.success_result("text", {
             "text": f"收到你发送的消息：{user_msg}"
-        })
+        }, parent_id=context.message_id)

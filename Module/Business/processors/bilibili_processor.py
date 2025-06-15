@@ -411,4 +411,4 @@ class BilibiliProcessor(BaseProcessor):
             debug_utils.log_and_print(f"❓ 未知菜单键: {event_key}", log_level="INFO")
             return ProcessResult.success_result("text", {
                 "text": f"收到菜单点击：{event_key}，功能开发中..."
-            })
+            }, parent_id=context.message_id)
