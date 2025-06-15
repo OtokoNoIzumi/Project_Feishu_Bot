@@ -90,7 +90,7 @@ class MessageProcessor(BaseProcessor):
             self._log_command(context.user_name, "🔧", "触发配置更新指令", content)
             return self.admin_processor.handle_config_update(context, user_msg)
 
-        # TTS配音指令
+        # TTS配音指令，改成start
         if "配音" in user_msg:
             content = self._extract_command_content(user_msg, ["配音"])
             self._log_command(context.user_name, "🎤", "触发TTS配音指令", content)

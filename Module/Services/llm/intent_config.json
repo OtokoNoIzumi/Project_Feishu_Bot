@@ -1,0 +1,143 @@
+{
+  "intents": {
+    "记录思考": {
+      "core_goal": "捕捉和保存用户的瞬时思绪、知识片段、备忘等非结构化文本内容",
+      "description": "用户想要记录想法、思考、感悟、学习笔记等内容",
+      "stage2_parameters": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "string",
+            "description": "用户想要记录的具体文本内容"
+          },
+          "suggested_tags": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "根据内容建议的标签列表"
+          },
+          "category": {
+            "type": "string",
+            "description": "思考内容的分类（如：学习、工作、生活、灵感等）"
+          }
+        },
+        "required": ["content"]
+      }
+    },
+    "记录日程": {
+      "core_goal": "管理时间、提醒未来事项、跟踪待办事务或任务安排，日程可能是没有时间信息的单纯待办事项",
+      "description": "用户想要记录日程安排、任务、事件、提醒等时间相关内容",
+      "stage2_parameters": {
+        "type": "object",
+        "properties": {
+          "event_content": {
+            "type": "string",
+            "description": "日程或任务的具体描述"
+          },
+          "time_info": {
+            "type": "string",
+            "description": "时间相关信息（如日期、具体时间、相对时间等）"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["计划", "进行中", "完成"],
+            "description": "事件状态"
+          }
+        },
+        "required": ["event_content"]
+      }
+    },
+    "点餐": {
+      "core_goal": "满足用户的餐饮需求，如订购食物或获取餐饮信息",
+      "description": "用户想要点餐、订外卖或询问餐饮相关信息",
+      "stage2_parameters": {
+        "type": "object",
+        "properties": {
+          "food_item_or_type": {
+            "type": "string",
+            "description": "具体食物名称或菜系类型"
+          },
+          "quantity": {
+            "type": "string",
+            "description": "数量信息（可选）"
+          }
+        },
+        "required": ["food_item_or_type"]
+      }
+    },
+    "其他": {
+      "core_goal": "表示用户输入的意图不属于任何其他明确定义的类别，或者意图非常模糊",
+      "description": "无法明确分类的其他意图，如闲聊、询问等",
+      "stage2_parameters": {
+        "type": "object",
+        "properties": {
+          "original_input": {
+            "type": "string",
+            "description": "用户的原始完整输入内容"
+          },
+          "possible_category": {
+            "type": "string",
+            "description": "可能的分类（如：闲聊、询问、抱怨等）"
+          }
+        },
+        "required": ["original_input"]
+      }
+    }
+  },
+  "routing": {
+    "shortcut_commands": {
+      "jl": {
+        "intent": "记录思考",
+        "description": "记录想法、思考、感悟",
+        "handler": "note_service",
+        "method": "record_thought"
+      },
+      "rc": {
+        "intent": "记录日程",
+        "description": "记录日程安排、任务",
+        "handler": "note_service",
+        "method": "record_schedule"
+      },
+      "cx": {
+        "intent": "查询内容",
+        "description": "查询已记录的内容",
+        "handler": "note_service",
+        "method": "query_content"
+      },
+      "dc": {
+        "intent": "点餐",
+        "description": "点餐或餐饮查询",
+        "handler": "food_service",
+        "method": "order_food"
+      }
+    },
+    "intent_handlers": {
+      "记录思考": {
+        "handler": "note_service",
+        "method": "record_thought"
+      },
+      "记录日程": {
+        "handler": "note_service",
+        "method": "record_schedule"
+      },
+      "点餐": {
+        "handler": "food_service",
+        "method": "order_food"
+      },
+      "其他": {
+        "handler": "default",
+        "method": "handle_unknown"
+      }
+    }
+  },
+  "settings": {
+    "default_confidence_threshold": 60,
+    "stage1_model_config": {
+      "temperature": 0.1,
+      "max_tokens": 1000
+    },
+    "stage2_model_config": {
+      "temperature": 0.2,
+      "max_tokens": 800
+    }
+  }
+}

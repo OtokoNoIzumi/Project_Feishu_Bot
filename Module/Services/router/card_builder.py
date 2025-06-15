@@ -48,60 +48,72 @@ class CardBuilder:
         confidence = route_result.get('confidence', 0)
         route_type = route_result.get('route_type', 'unknown')
         parameters = route_result.get('parameters', {})
-        print('test-',route_result)
 
-        # 获取建议的标签
+        # 获取建议的标签（新格式：字符串列表）
         suggested_tags = parameters.get('suggested_tags', [])
+        category = parameters.get('category', '')
 
         # 构建标签选择元素
         tag_elements = []
-        if suggested_tags:
+        if suggested_tags and isinstance(suggested_tags, list):
             tag_options = []
-            for tag_info in suggested_tags[:3]:  # 最多显示3个建议标签
-                tag_options.append({
-                    "text": {
-                        "tag": "plain_text",
-                        "content": f"{tag_info.get('tag', '')} ({tag_info.get('confidence', 0)}%)"
-                    },
-                    "value": tag_info.get('tag', '')
-                })
 
-            # 添加一个备选标签（如果少于3个）
-            if len(tag_options) < 3:
-                tag_options.append({
-                    "text": {
-                        "tag": "plain_text",
-                        "content": "学习 (备选)"
-                    },
-                    "value": "学习"
-                })
-
-            tag_elements.append({
-                "tag": "div",
-                "text": {
-                    "tag": "lark_md",
-                    "content": "**标签选择：**"
-                }
-            })
-
-            tag_elements.append({
-                "tag": "action",
-                "layout": "flow",
-                "actions": [
-                    {
-                        "tag": "select_static",
-                        "placeholder": {
+            # 处理建议标签（最多显示3个）
+            for i, tag in enumerate(suggested_tags[:3]):
+                if isinstance(tag, str):
+                    tag_options.append({
+                        "text": {
                             "tag": "plain_text",
-                            "content": "选择标签"
+                            "content": f"{tag}"
                         },
-                        "options": tag_options,
-                        "value": {
-                            "action": "select_tag",
-                            "intent": "记录思考"
-                        }
+                        "value": tag
+                    })
+
+            # 如果标签少于3个，添加一些通用备选标签
+            if len(tag_options) < 3:
+                backup_tags = ["学习", "工作", "生活", "想法"]
+                for backup_tag in backup_tags:
+                    if backup_tag not in suggested_tags and len(tag_options) < 3:
+                        tag_options.append({
+                            "text": {
+                                "tag": "plain_text",
+                                "content": f"{backup_tag} (备选)"
+                            },
+                            "value": backup_tag
+                        })
+
+            if tag_options:
+                tag_elements.append({
+                    "tag": "div",
+                    "text": {
+                        "tag": "lark_md",
+                        "content": "**标签选择：**"
                     }
-                ]
-            })
+                })
+
+                tag_elements.append({
+                    "tag": "action",
+                    "layout": "flow",
+                    "actions": [
+                        {
+                            "tag": "select_static",
+                            "placeholder": {
+                                "tag": "plain_text",
+                                "content": "选择标签"
+                            },
+                            "options": tag_options,
+                            "value": {
+                                "action": "select_tag",
+                                "intent": "记录思考"
+                            }
+                        }
+                    ]
+                })
+
+        # 构建内容显示
+        content_display = f"**内容：** {content}"
+        if category:
+            content_display += f"\n**分类：** {category}"
 
         card = {
             "config": {
@@ -126,7 +138,7 @@ class CardBuilder:
                     "tag": "div",
                     "text": {
                         "tag": "lark_md",
-                        "content": f"**内容：** {content}"
+                        "content": content_display
                     }
                 },
                 {
@@ -214,11 +226,13 @@ class CardBuilder:
         route_type = route_result.get('route_type', 'unknown')
         parameters = route_result.get('parameters', {})
 
-        # 获取时间信息
-        time_info = parameters.get('time_info', {})
-        mentioned_time = time_info.get('mentioned_time', '未指定')
-        is_future = time_info.get('is_future', True)
-        urgency = time_info.get('urgency', 50)
+        # 获取参数信息（新格式）
+        event_content = parameters.get('event_content', content)
+        time_info = parameters.get('time_info', '未指定时间')
+        status = parameters.get('status', '计划')
+
+        # 构建时间信息显示
+        time_display = f"**时间信息：** {time_info}" if time_info and time_info != '未指定时间' else "**时间信息：** 未指定"
 
         card = {
             "config": {
@@ -243,14 +257,14 @@ class CardBuilder:
                     "tag": "div",
                     "text": {
                         "tag": "lark_md",
-                        "content": f"**日程内容：** {content}"
+                        "content": f"**日程内容：** {event_content}"
                     }
                 },
                 {
                     "tag": "div",
                     "text": {
                         "tag": "lark_md",
-                        "content": f"**时间信息：** {mentioned_time} | **紧急程度：** {urgency}%"
+                        "content": time_display
                     }
                 },
                 {
@@ -277,28 +291,29 @@ class CardBuilder:
                                 {
                                     "text": {
                                         "tag": "plain_text",
-                                        "content": "📋 计划中"
+                                        "content": "📋 计划"
                                     },
-                                    "value": "planned"
+                                    "value": "计划"
                                 },
                                 {
                                     "text": {
                                         "tag": "plain_text",
                                         "content": "🔄 进行中"
                                     },
-                                    "value": "in_progress"
+                                    "value": "进行中"
                                 },
                                 {
                                     "text": {
                                         "tag": "plain_text",
-                                        "content": "✅ 已完成"
+                                        "content": "✅ 完成"
                                     },
-                                    "value": "completed"
+                                    "value": "完成"
                                 }
                             ],
                             "value": {
                                 "action": "select_status",
-                                "intent": "记录日程"
+                                "intent": "记录日程",
+                                "default_status": status
                             }
                         }
                     ]
@@ -319,7 +334,7 @@ class CardBuilder:
                             "type": "primary",
                             "value": {
                                 "action": "confirm_schedule",
-                                "content": content,
+                                "content": event_content,
                                 "intent": "记录日程",
                                 "route_result": route_result
                             }
@@ -333,7 +348,7 @@ class CardBuilder:
                             "type": "default",
                             "value": {
                                 "action": "edit_content",
-                                "content": content,
+                                "content": event_content,
                                 "intent": "记录日程"
                             }
                         },
@@ -361,6 +376,16 @@ class CardBuilder:
         content = route_result.get('content', '')
         confidence = route_result.get('confidence', 0)
         route_type = route_result.get('route_type', 'unknown')
+        parameters = route_result.get('parameters', {})
+
+        # 获取参数信息（新格式）
+        food_item = parameters.get('food_item_or_type', content)
+        quantity = parameters.get('quantity', '')
+
+        # 构建点餐信息显示
+        food_display = f"**点餐需求：** {food_item}"
+        if quantity:
+            food_display += f"\n**数量：** {quantity}"
 
         card = {
             "config": {
@@ -385,7 +410,7 @@ class CardBuilder:
                     "tag": "div",
                     "text": {
                         "tag": "lark_md",
-                        "content": f"**点餐需求：** {content}"
+                        "content": food_display
                     }
                 },
                 {
@@ -404,9 +429,22 @@ class CardBuilder:
                             "type": "primary",
                             "value": {
                                 "action": "confirm_food_order",
-                                "content": content,
+                                "content": food_item,
                                 "intent": "点餐",
                                 "route_result": route_result
+                            }
+                        },
+                        {
+                            "tag": "button",
+                            "text": {
+                                "tag": "plain_text",
+                                "content": "✏️ 编辑内容"
+                            },
+                            "type": "default",
+                            "value": {
+                                "action": "edit_content",
+                                "content": food_item,
+                                "intent": "点餐"
                             }
                         },
                         {
@@ -431,8 +469,18 @@ class CardBuilder:
     def _build_unknown_intent_card(self, route_result: Dict[str, Any]) -> Dict[str, Any]:
         """构建未知意图卡片"""
         content = route_result.get('content', '')
-        confidence = route_result.get('confidence', 0)
         reasoning = route_result.get('reasoning', '无法识别意图')
+        other_intent_name = route_result.get('other_intent_name', '')
+        if other_intent_name:
+            extra_info = {
+                "tag": "div",
+                "text": {
+                    "tag": "lark_md",
+                    "content": f"**AI识别为：**\n• `{other_intent_name}`"
+                }
+            }
+        else:
+            extra_info = ""
 
         card = {
             "config": {
@@ -460,6 +508,7 @@ class CardBuilder:
                         "content": f"**分析结果：** {reasoning}"
                     }
                 },
+                extra_info,
                 {
                     "tag": "hr"
                 },

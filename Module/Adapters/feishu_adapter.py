@@ -115,6 +115,9 @@ class FeishuAdapter:
         try:
             # 转换为标准消息上下文
             context = self._convert_message_to_context(data)
+
+            debug_utils.log_and_print(f"🔍 原始消息明细: {data}", log_level="DEBUG")
+
             if context is None:
                 debug_utils.log_and_print("消息上下文转换失败", log_level="ERROR")
                 return
