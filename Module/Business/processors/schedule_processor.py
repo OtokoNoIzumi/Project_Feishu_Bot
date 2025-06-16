@@ -208,21 +208,19 @@ class ScheduleProcessor(BaseProcessor):
                                 "tag": "button",
                                 "text": {
                                     "tag": "plain_text",
-                                    "content": "📱 手机"
+                                    "content": "📺 B站"
                                 },
                                 "type": "default",
                                 "size": "tiny",
-                                "url": self.convert_to_bili_app_link(video_url)
-                            },
-                            {
-                                "tag": "button",
-                                "text": {
-                                    "tag": "plain_text",
-                                    "content": "💻 电脑"
-                                },
-                                "type": "default",
-                                "size": "tiny",
-                                "url": video_url
+                                "behaviors": [
+                                    {
+                                        "type": "open_url",
+                                        "default_url": video_url,
+                                        "pc_url": video_url,
+                                        "ios_url": video_url,
+                                        "android_url": self.convert_to_bili_app_link(video_url)
+                                    }
+                                ]
                             }
                         ] + ([] if video_read else [{
                             "tag": "button",

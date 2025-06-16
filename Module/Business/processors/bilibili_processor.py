@@ -144,21 +144,19 @@ class BilibiliProcessor(BaseProcessor):
                             "tag": "button",
                             "text": {
                                 "tag": "plain_text",
-                                "content": "📱 手机"
+                                "content": "📺 B站"
                             },
                             "type": "default",
                             "size": "tiny",
-                            "url": self.convert_to_bili_app_link(main_video.get('url', ''))
-                        },
-                        {
-                            "tag": "button",
-                            "text": {
-                                "tag": "plain_text",
-                                "content": "💻 电脑"
-                            },
-                            "type": "default",
-                            "size": "tiny",
-                            "url": main_video.get('url', '')
+                            "behaviors": [
+                                {
+                                    "type": "open_url",
+                                    "default_url": main_video.get('url', ''),
+                                    "pc_url": main_video.get('url', ''),
+                                    "ios_url": main_video.get('url', ''),
+                                    "android_url": self.convert_to_bili_app_link(main_video.get('url', ''))
+                                }
+                            ]
                         }
                     ] + ([] if main_video_read else [{
                         "tag": "button",
@@ -242,21 +240,19 @@ class BilibiliProcessor(BaseProcessor):
                             "tag": "button",
                             "text": {
                                 "tag": "plain_text",
-                                "content": "📱 手机"
+                                "content": "📺 B站"
                             },
                             "type": "default",
                             "size": "tiny",
-                            "url": mobile_url
-                        } if mobile_url else {},
-                        {
-                            "tag": "button",
-                            "text": {
-                                "tag": "plain_text",
-                                "content": "💻 电脑"
-                            },
-                            "type": "default",
-                            "size": "tiny",
-                            "url": desktop_url
+                            "behaviors": [
+                                {
+                                    "type": "open_url",
+                                    "default_url": desktop_url,
+                                    "pc_url": desktop_url,
+                                    "ios_url": desktop_url,
+                                    "android_url": self.convert_to_bili_app_link(desktop_url)
+                                }
+                            ]
                         } if desktop_url else {}
                     ] + ([] if video_read else [{
                         "tag": "button",

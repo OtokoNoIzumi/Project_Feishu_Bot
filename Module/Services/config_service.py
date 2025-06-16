@@ -122,7 +122,9 @@ class ConfigService:
             "SERVER_ID",
             "ADMIN_ID",
             "ADMIN_SECRET_KEY",
-            "FFMPEG_PATH"
+            "FFMPEG_PATH",
+            # B站API配置
+            "BILI_API_BASE"
         ]
 
         for key in env_keys:

@@ -112,7 +112,7 @@ def setup_scheduled_tasks(app_controller):
     # 配置定时任务
     tasks = [
         ("daily_schedule_reminder", "07:30", scheduler_service.trigger_daily_schedule_reminder, {}),
-        # ("bili_updates_afternoon", "07:02", scheduler_service.trigger_bilibili_updates_reminder, {"sources": ["favorites"]}),
+        # ("bili_updates_afternoon", "11:31", scheduler_service.trigger_bilibili_updates_reminder, {"sources": ["favorites"]}),
         ("bili_updates_afternoon", "15:30", scheduler_service.trigger_bilibili_updates_reminder, {}),
         ("bili_updates_night", "23:55", scheduler_service.trigger_bilibili_updates_reminder,
          {"sources": ["favorites", "dynamic"]})
