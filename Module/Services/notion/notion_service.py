@@ -15,6 +15,7 @@ import pandas as pd
 from Module.Common.scripts import DataSource_Notion as dsn
 from Module.Services.cache_service import CacheService
 from Module.Common.scripts.common import debug_utils
+from ..service_decorators import service_operation_safe, external_api_safe, file_processing_safe, cache_operation_safe
 
 
 class NotionService:
@@ -56,41 +57,34 @@ class NotionService:
 
     def _load_cache(self) -> None:
         """加载本地缓存"""
+        # 初始化默认值
+        self.cache_data = {
+            self.bili_cache_key: [],
+            self.bili_cache_time_key: 0,
+            self._read_status_cache_key: []
+        }
+        self._local_read_status = set()
+
         try:
             if os.path.exists(self.cache_file):
                 with open(self.cache_file, "r", encoding="utf-8") as f:
                     self.cache_data = json.load(f)
-            else:
-                self.cache_data = {
-                    self.bili_cache_key: [],
-                    self.bili_cache_time_key: 0,
-                    self._read_status_cache_key: []
-                }
 
             # 加载本地已读状态
             read_status_list = self.cache_data.get(self._read_status_cache_key, [])
             self._local_read_status = set(read_status_list)
-
         except Exception as e:
             debug_utils.log_and_print(f"[NotionService] 加载缓存失败: {e}", log_level="ERROR")
-            self.cache_data = {
-                self.bili_cache_key: [],
-                self.bili_cache_time_key: 0,
-                self._read_status_cache_key: []
-            }
-            self._local_read_status = set()
 
+    @file_processing_safe("Notion缓存保存失败")
     def _save_cache(self) -> None:
         """保存缓存到本地"""
-        try:
-            # 更新已读状态到缓存数据
-            self.cache_data[self._read_status_cache_key] = list(self._local_read_status)
+        # 更新已读状态到缓存数据
+        self.cache_data[self._read_status_cache_key] = list(self._local_read_status)
 
-            os.makedirs(self.cache_service.cache_dir, exist_ok=True)
-            with open(self.cache_file, "w", encoding="utf-8") as f:
-                json.dump(self.cache_data, f, ensure_ascii=False, indent=2)
-        except Exception as e:
-            debug_utils.log_and_print(f"[NotionService] 保存缓存失败: {e}", log_level="ERROR")
+        os.makedirs(self.cache_service.cache_dir, exist_ok=True)
+        with open(self.cache_file, "w", encoding="utf-8") as f:
+            json.dump(self.cache_data, f, ensure_ascii=False, indent=2)
 
     def _is_cache_valid(self) -> bool:
         """
@@ -173,26 +167,20 @@ class NotionService:
             "upload_date": video.get("upload_date", ""),
         }
 
+    @external_api_safe("Notion数据更新失败", api_name="Notion")
     def _update_bili_cache_sync(self) -> None:
         """
         同步更新B站视频缓存
 
         通过异步转同步的方式获取Notion数据
         """
-        try:
-            # 使用更可靠的同步执行异步代码的方式
-            videos = self._sync_run_coroutine(self._fetch_bili_videos_from_notion())
+        # 使用更可靠的同步执行异步代码的方式
+        videos = self._sync_run_coroutine(self._fetch_bili_videos_from_notion())
 
-            # 更新缓存
-            self.cache_data[self.bili_cache_key] = videos
-            self.cache_data[self.bili_cache_time_key] = time.time()
-            self._save_cache()
-
-
-        except Exception as e:
-            debug_utils.log_and_print(f"[NotionService] 更新B站视频缓存失败: {e}", log_level="ERROR")
-            import traceback
-            traceback.print_exc()
+        # 更新缓存
+        self.cache_data[self.bili_cache_key] = videos
+        self.cache_data[self.bili_cache_time_key] = time.time()
+        self._save_cache()
 
     def _sync_run_coroutine(self, coroutine):
         """
@@ -337,6 +325,7 @@ class NotionService:
 
         return videos
 
+    @external_api_safe("视频标记已读失败", return_value=False, api_name="Notion")
     def mark_video_as_read(self, pageid: str) -> bool:
         """
         将视频标记为已读
@@ -350,30 +339,26 @@ class NotionService:
         if not pageid:
             return False
 
-        try:
-            # 更新Notion页面属性 (同步方式)
-            today_date = datetime.now().strftime("%Y-%m-%d")
-            page_properties = {
-                "完成日期": {"date": {"start": today_date, "end": None}}
-            }
+        # 更新Notion页面属性 (同步方式)
+        today_date = datetime.now().strftime("%Y-%m-%d")
+        page_properties = {
+            "完成日期": {"date": {"start": today_date, "end": None}}
+        }
 
-            # 启动一个异步任务更新Notion，但不等待完成
-            self._update_notion_property_async(pageid, page_properties)
+        # 启动一个异步任务更新Notion，但不等待完成
+        self._update_notion_property_async(pageid, page_properties)
 
-            # 更新本地缓存 (这部分是同步的)
-            if self.bili_cache_key in self.cache_data:
-                for v in self.cache_data[self.bili_cache_key]:
-                    if v.get("pageid") == pageid:
-                        v["unread"] = False
+        # 更新本地缓存 (这部分是同步的)
+        if self.bili_cache_key in self.cache_data:
+            for v in self.cache_data[self.bili_cache_key]:
+                if v.get("pageid") == pageid:
+                    v["unread"] = False
 
-            # 添加到本地已读状态跟踪
-            self._local_read_status.add(pageid)
-            self._save_cache()
+        # 添加到本地已读状态跟踪
+        self._local_read_status.add(pageid)
+        self._save_cache()
 
-            return True
-        except Exception as e:
-            debug_utils.log_and_print(f"[NotionService] 标记视频已读失败: {e}", log_level="ERROR")
-            return False
+        return True
 
     def is_video_read(self, pageid: str) -> bool:
         """
@@ -387,6 +372,7 @@ class NotionService:
         """
         return pageid in self._local_read_status
 
+    @cache_operation_safe("获取视频信息失败", return_value=None)
     def get_video_by_id(self, pageid: str) -> Dict:
         """
         根据页面ID获取视频信息
@@ -400,37 +386,33 @@ class NotionService:
         if not pageid:
             return None
 
-        try:
-            # 获取页面信息
-            page_info = self.cache_data.get(self.bili_cache_key, [])
-            # 查找匹配的视频信息
-            matching_videos = [v for v in page_info if v.get("pageid") == pageid]
-            if not matching_videos:
-                return None
-            page_info = matching_videos[0]
-            if not page_info:
-                return None
-            # 构建视频信息
-            video = {
-                "pageid": pageid,
-                "title": page_info.get("title", "无标题视频"),
-                "url": page_info.get("url", ""),
-                "author": page_info.get("author", ""),
-                "priority": page_info.get("priority", ""),
-                "chinese_priority": page_info.get("chinese_priority", ""),
-                "duration": page_info.get("duration", 0),
-                "duration_str": page_info.get("duration_str", ""),
-                "summary": page_info.get("summary", ""),
-                "upload_date": page_info.get("upload_date", ""),
-                "source": page_info.get("source", ""),
-                "chinese_source": page_info.get("chinese_source", ""),
-                "success": True
-            }
-
-            return video
-        except Exception as e:
-            debug_utils.log_and_print(f"[NotionService] 获取视频信息失败: {e}", log_level="ERROR")
+        # 获取页面信息
+        page_info = self.cache_data.get(self.bili_cache_key, [])
+        # 查找匹配的视频信息
+        matching_videos = [v for v in page_info if v.get("pageid") == pageid]
+        if not matching_videos:
             return None
+        page_info = matching_videos[0]
+        if not page_info:
+            return None
+        # 构建视频信息
+        video = {
+            "pageid": pageid,
+            "title": page_info.get("title", "无标题视频"),
+            "url": page_info.get("url", ""),
+            "author": page_info.get("author", ""),
+            "priority": page_info.get("priority", ""),
+            "chinese_priority": page_info.get("chinese_priority", ""),
+            "duration": page_info.get("duration", 0),
+            "duration_str": page_info.get("duration_str", ""),
+            "summary": page_info.get("summary", ""),
+            "upload_date": page_info.get("upload_date", ""),
+            "source": page_info.get("source", ""),
+            "chinese_source": page_info.get("chinese_source", ""),
+            "success": True
+        }
+
+        return video
 
     def _update_notion_property_async(self, page_id: str, page_properties: Dict) -> None:
         """

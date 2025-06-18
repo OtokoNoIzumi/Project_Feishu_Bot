@@ -59,8 +59,8 @@ def external_api_safe(error_message: str, return_value: Any = None, api_name: st
         def wrapper(*args, **kwargs):
             try:
                 result = func(*args, **kwargs)
-                if api_name:
-                    debug_utils.log_and_print(f"🌐 {api_name} API调用成功", log_level="DEBUG")
+                # if api_name:
+                #     debug_utils.log_and_print(f"🌐 {api_name} API调用成功", log_level="DEBUG")
                 return result
             except Exception as e:
                 api_info = f"[{api_name}] " if api_name else ""

@@ -15,6 +15,7 @@ from typing import Optional, List, Dict, Any, Union
 from pathlib import Path
 
 from Module.Common.scripts.common import debug_utils
+from ..service_decorators import service_operation_safe, external_api_safe, file_processing_safe
 
 
 class ImageService:
@@ -42,109 +43,87 @@ class ImageService:
         # 健康状态检查
         self.is_healthy = self._check_service_health()
 
+    @service_operation_safe("图像服务配置加载失败")
     def _load_config(self):
         """加载配置"""
-        try:
-            # 从应用控制器获取配置
-            if self.app_controller:
-                config_service = self.app_controller.get_service('config')
-                if config_service:
-                    self.server_id = config_service.get("SERVER_ID", "")
-                    if self.server_id:
-                        self._init_gradio_client()
-                    return
+        # 从应用控制器获取配置
+        if self.app_controller:
+            config_service = self.app_controller.get_service('config')
+            if config_service:
+                self.server_id = config_service.get("SERVER_ID", "")
+                if self.server_id:
+                    self._init_gradio_client()
+                return
 
-            # 从环境变量获取配置
-            self.server_id = os.getenv("SERVER_ID", "")
-            if self.server_id:
-                self._init_gradio_client()
-
-        except Exception as e:
-            debug_utils.log_and_print(f"图像服务配置加载失败: {e}", log_level="ERROR")
+        # 从环境变量获取配置
+        self.server_id = os.getenv("SERVER_ID", "")
+        if self.server_id:
+            self._init_gradio_client()
 
     def _init_gradio_client(self):
         """初始化Gradio客户端"""
+        # 设置默认值
+        self.gradio_client = None
+        self.is_healthy = False
+
+        if not self.server_id:
+            debug_utils.log_and_print("SERVER_ID未配置，图像服务不可用", log_level="WARNING")
+            return
+
+        # 检查模块依赖
         try:
-            if not self.server_id:
-                debug_utils.log_and_print("SERVER_ID未配置，图像服务不可用", log_level="WARNING")
-                return
-
-            # 导入gradio_client
             from gradio_client import Client
-
-            gradio_url = f"https://{self.server_id}"
-            self.gradio_client = Client(gradio_url)
-
-            # 更新健康状态
-            self.is_healthy = True
-            debug_utils.log_and_print(f"Gradio客户端连接成功: {gradio_url}", log_level="INFO")
-
         except ImportError:
             debug_utils.log_and_print("gradio_client模块未安装，图像服务不可用", log_level="ERROR")
-            self.gradio_client = None
-            self.is_healthy = False
+            return
+
+        try:
+            gradio_url = f"https://{self.server_id}"
+            self.gradio_client = Client(gradio_url)
+            self.is_healthy = True
+            debug_utils.log_and_print(f"Gradio客户端连接成功: {gradio_url}", log_level="INFO")
         except Exception as e:
             debug_utils.log_and_print(f"Gradio客户端连接失败: {e}", log_level="WARNING")
-            self.gradio_client = None
-            self.is_healthy = False
 
+    @service_operation_safe("重新初始化Gradio客户端失败")
     def _reinit_gradio_client(self):
         """重新初始化Gradio客户端"""
-        try:
-            # 清理旧连接
-            self.gradio_client = None
-            self.is_healthy = False
+        # 清理旧连接
+        self.gradio_client = None
+        self.is_healthy = False
 
-            # 重新初始化
-            self._init_gradio_client()
-
-        except Exception as e:
-            debug_utils.log_and_print(f"重新初始化Gradio客户端失败: {e}", log_level="ERROR")
-            self.gradio_client = None
-            self.is_healthy = False
+        # 重新初始化
+        self._init_gradio_client()
 
     def _check_service_health(self) -> bool:
         """检查服务健康状态"""
         return self.gradio_client is not None
 
+    @external_api_safe("获取Gradio认证状态失败", return_value={"error": "认证状态获取失败", "available": False}, api_name="Gradio")
     def get_auth_status(self) -> Dict[str, Any]:
         """获取gradio服务的认证状态"""
-        try:
-            if not self.gradio_client:
-                return {"error": "Gradio客户端未连接", "available": False}
+        if not self.gradio_client:
+            return {"error": "Gradio客户端未连接", "available": False}
 
-            # 调用gradio的认证状态API
-            auth_status = self.gradio_client.predict(api_name="/get_auth_status")
-            return auth_status
+        # 调用gradio的认证状态API
+        auth_status = self.gradio_client.predict(api_name="/get_auth_status")
+        return auth_status
 
-        except Exception as e:
-            error_info = {
-                "error": f"获取认证状态失败: {str(e)}",
-                "available": False
-            }
-            debug_utils.log_and_print(f"获取认证状态失败: {e}", log_level="WARNING")
-            return error_info
-
+    @external_api_safe("更新Gradio认证配置失败", return_value={"success": False, "message": "配置更新失败"}, api_name="Gradio")
     def update_auth_config(self, variable_name: str, new_value: str) -> Dict[str, Any]:
         """更新gradio服务的认证配置"""
-        try:
-            if not self.gradio_client:
-                return {"success": False, "message": "Gradio客户端未连接"}
+        if not self.gradio_client:
+            return {"success": False, "message": "Gradio客户端未连接"}
 
-            # 调用gradio的配置更新API
-            result = self.gradio_client.predict(
-                variable_name,
-                new_value,
-                os.getenv("ADMIN_SECRET_KEY", ""),
-                api_name="/update_auth_config"
-            )
+        # 调用gradio的配置更新API
+        result = self.gradio_client.predict(
+            variable_name,
+            new_value,
+            os.getenv("ADMIN_SECRET_KEY", ""),
+            api_name="/update_auth_config"
+        )
 
-            return result
-
-        except Exception as e:
-            error_info = {"success": False, "message": f"更新认证配置失败: {str(e)}"}
-            debug_utils.log_and_print(f"更新认证配置失败: {e}", log_level="ERROR")
-            return error_info
+        return result
 
     def get_status(self) -> Dict[str, Any]:
         """获取服务状态"""
@@ -201,6 +180,7 @@ class ImageService:
 
             return None
 
+    @service_operation_safe("解析图像生成结果失败", return_value=None)
     def _parse_generation_result(self, result) -> Optional[List[str]]:
         """
         解析图像生成结果
@@ -211,40 +191,35 @@ class ImageService:
         Returns:
             Optional[List[str]]: 处理后的图片路径列表
         """
-        try:
-            # 系统级错误：结果无效或为空元组
-            if not isinstance(result, tuple) or len(result) == 0:
-                debug_utils.log_and_print("图像生成返回无效结果", log_level="ERROR")
+        # 系统级错误：结果无效或为空元组
+        if not isinstance(result, tuple) or len(result) == 0:
+            debug_utils.log_and_print("图像生成返回无效结果", log_level="ERROR")
+            return None
+
+        # 检查特殊情况：close_auth.png 表示需要管理员修复
+        for path in result:
+            if path and "close_auth.png" in str(path):
+                debug_utils.log_and_print("图像生成需要管理员修复权限", log_level="ERROR")
                 return None
 
-            # 检查特殊情况：close_auth.png 表示需要管理员修复
-            for path in result:
-                if path and "close_auth.png" in str(path):
-                    debug_utils.log_and_print("图像生成需要管理员修复权限", log_level="ERROR")
-                    return None
-
-            # 检查特殊情况：close_filter.png 表示处理失败
-            for path in result:
-                if path and "close_filter.png" in str(path):
-                    debug_utils.log_and_print("图像生成被内容过滤器拦截", log_level="WARNING")
-                    return []
-
-            # 检查是否所有结果都为None
-            if all(x is None for x in result):
-                debug_utils.log_and_print("图像生成失败，所有结果为空", log_level="WARNING")
+        # 检查特殊情况：close_filter.png 表示处理失败
+        for path in result:
+            if path and "close_filter.png" in str(path):
+                debug_utils.log_and_print("图像生成被内容过滤器拦截", log_level="WARNING")
                 return []
 
-            # 返回所有非None的图片路径
-            valid_paths = []
-            for image_path in result:
-                if image_path is not None:
-                    valid_paths.append(image_path)
+        # 检查是否所有结果都为None
+        if all(x is None for x in result):
+            debug_utils.log_and_print("图像生成失败，所有结果为空", log_level="WARNING")
+            return []
 
-            return valid_paths
+        # 返回所有非None的图片路径
+        valid_paths = []
+        for image_path in result:
+            if image_path is not None:
+                valid_paths.append(image_path)
 
-        except Exception as e:
-            debug_utils.log_and_print(f"解析图像生成结果失败: {e}", log_level="ERROR")
-            return None
+        return valid_paths
 
     def process_text_to_image(self, prompt: str) -> Optional[List[str]]:
         """
@@ -262,6 +237,7 @@ class ImageService:
 
         return self.generate_ai_image(prompt=prompt.strip())
 
+    @service_operation_safe("图像转换处理失败", return_value=None)
     def process_image_to_image(self, image_base64: str, mime_type: str = "image/jpeg",
                               file_name: str = "image.jpg", file_size: int = 0) -> Optional[List[str]]:
         """
@@ -276,25 +252,20 @@ class ImageService:
         Returns:
             Optional[List[str]]: 处理后的图片路径列表
         """
-        try:
-            # 构建图像输入对象，兼容原有格式
-            image_url = f"data:{mime_type};base64,{image_base64}"
+        # 构建图像输入对象，兼容原有格式
+        image_url = f"data:{mime_type};base64,{image_base64}"
 
-            image_input = {
-                "path": None,
-                "url": image_url,
-                "size": file_size,
-                "orig_name": file_name,
-                "mime_type": mime_type,
-                "is_stream": False,
-                "meta": {}
-            }
+        image_input = {
+            "path": None,
+            "url": image_url,
+            "size": file_size,
+            "orig_name": file_name,
+            "mime_type": mime_type,
+            "is_stream": False,
+            "meta": {}
+        }
 
-            return self.generate_ai_image(image_input=image_input)
-
-        except Exception as e:
-            debug_utils.log_and_print(f"图像转换处理失败: {e}", log_level="ERROR")
-            return None
+        return self.generate_ai_image(image_input=image_input)
 
     def is_available(self, need_reinit: bool = False) -> bool:
         """检查服务是否可用，如果不可用会尝试重新初始化"""
