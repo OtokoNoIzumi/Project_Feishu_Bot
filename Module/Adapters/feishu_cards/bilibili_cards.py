@@ -25,7 +25,7 @@ class BilibiliCardManager(BaseCardManager):
         self.templates = {
             "bili_video_menu": {
                 "template_id": "AAqBPdq4sxIy5",
-                "template_version": "1.0.6"
+                "template_version": "1.0.7"
             }
         }
 
@@ -66,7 +66,6 @@ class BilibiliCardManager(BaseCardManager):
             # 格式化主视频
             template_params = {
                 "main_title": main_video.get('title', ''),
-                "main_pageid": str(main_video.get('pageid', '')),
                 "main_priority": str(main_video.get('chinese_priority', '')),
                 "main_duration_str": str(main_video.get('duration_str', '')),
                 "main_author": str(main_video.get('author', '')),
