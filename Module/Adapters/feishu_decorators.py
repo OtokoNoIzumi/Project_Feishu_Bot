@@ -14,8 +14,21 @@ from lark_oapi.event.callback.model.p2_card_action_trigger import P2CardActionTr
 from Module.Common.scripts.common import debug_utils
 from Module.Business.message_processor import ProcessResult
 from functools import wraps
+from Module.Services.decorator_base import create_exception_handler_decorator, create_feishu_return_value_factory
 
 F = TypeVar('F', bound=Callable[..., Any])
+
+# 创建飞书专用装饰器工厂
+_feishu_sdk_decorator = create_exception_handler_decorator("🔴 飞书SDK异常", default_return_value=False)
+_message_conversion_decorator = create_exception_handler_decorator("🔄 消息转换异常", default_return_value=None)
+_file_operation_decorator = create_exception_handler_decorator("📁 文件操作异常", default_return_value=False)
+_async_operation_decorator = create_exception_handler_decorator("⚡ 异步操作异常", default_return_value=None)
+_feishu_event_decorator = create_exception_handler_decorator("📡 飞书事件异常", default_return_value=None)
+_card_operation_decorator = create_exception_handler_decorator(
+    "🎴 卡片操作异常",
+    default_return_value=False,
+    return_value_factory=create_feishu_return_value_factory()
+)
 
 
 def feishu_sdk_safe(error_message: str = "飞书SDK调用失败", return_value: Any = False):
@@ -32,21 +45,7 @@ def feishu_sdk_safe(error_message: str = "飞书SDK调用失败", return_value: 
         error_message: 错误日志消息
         return_value: 异常时的返回值 (bool/None/dict等)
     """
-    def decorator(func: F) -> F:
-        @functools.wraps(func)
-        def wrapper(*args, **kwargs):
-            try:
-                return func(*args, **kwargs)
-            except Exception as e:
-                # 记录详细的SDK异常信息
-                func_name = func.__name__
-                debug_utils.log_and_print(
-                    f"🔴 飞书SDK异常 [{func_name}]: {error_message} - {str(e)}",
-                    log_level="ERROR"
-                )
-                return return_value
-        return wrapper
-    return decorator
+    return _feishu_sdk_decorator(error_message, return_value)
 
 
 def message_conversion_safe(error_message: str = "消息转换失败"):
@@ -62,20 +61,7 @@ def message_conversion_safe(error_message: str = "消息转换失败"):
     Args:
         error_message: 错误日志消息
     """
-    def decorator(func: F) -> F:
-        @functools.wraps(func)
-        def wrapper(*args, **kwargs):
-            try:
-                return func(*args, **kwargs)
-            except Exception as e:
-                func_name = func.__name__
-                debug_utils.log_and_print(
-                    f"🔄 消息转换异常 [{func_name}]: {error_message} - {str(e)}",
-                    log_level="ERROR"
-                )
-                return None  # 转换失败通常返回None
-        return wrapper
-    return decorator
+    return _message_conversion_decorator(error_message)
 
 
 def file_operation_safe(error_message: str = "文件操作失败", return_value: bool = False):
@@ -93,20 +79,7 @@ def file_operation_safe(error_message: str = "文件操作失败", return_value:
         error_message: 错误日志消息
         return_value: 异常时的返回值
     """
-    def decorator(func: F) -> F:
-        @functools.wraps(func)
-        def wrapper(*args, **kwargs):
-            try:
-                return func(*args, **kwargs)
-            except Exception as e:
-                func_name = func.__name__
-                debug_utils.log_and_print(
-                    f"📁 文件操作异常 [{func_name}]: {error_message} - {str(e)}",
-                    log_level="ERROR"
-                )
-                return return_value
-        return wrapper
-    return decorator
+    return _file_operation_decorator(error_message, return_value)
 
 
 def async_operation_safe(error_message: str = "异步操作失败"):
@@ -122,21 +95,7 @@ def async_operation_safe(error_message: str = "异步操作失败"):
     Args:
         error_message: 错误日志消息
     """
-    def decorator(func: F) -> F:
-        @functools.wraps(func)
-        def wrapper(*args, **kwargs):
-            try:
-                return func(*args, **kwargs)
-            except Exception as e:
-                func_name = func.__name__
-                debug_utils.log_and_print(
-                    f"⚡ 异步操作异常 [{func_name}]: {error_message} - {str(e)}",
-                    log_level="ERROR"
-                )
-                # 异步操作通常无返回值或返回None
-                return None
-        return wrapper
-    return decorator
+    return _async_operation_decorator(error_message)
 
 
 def card_operation_safe(error_message: str = "卡片操作失败"):
@@ -151,32 +110,7 @@ def card_operation_safe(error_message: str = "卡片操作失败"):
     Args:
         error_message: 错误日志消息
     """
-    def decorator(func: F) -> F:
-        @functools.wraps(func)
-        def wrapper(*args, **kwargs):
-            try:
-                return func(*args, **kwargs)
-            except Exception as e:
-                func_name = func.__name__
-                debug_utils.log_and_print(
-                    f"🎴 卡片操作异常 [{func_name}]: {error_message} - {str(e)}",
-                    log_level="ERROR"
-                )
-
-                # 根据函数返回类型决定错误响应
-                if func.__annotations__.get('return') == 'P2CardActionTriggerResponse':
-                    # 卡片交互响应
-                    return P2CardActionTriggerResponse({
-                        "toast": {
-                            "type": "error",
-                            "content": "操作失败，请稍后重试"
-                        }
-                    })
-                else:
-                    # 普通卡片操作，返回False表示失败
-                    return False
-        return wrapper
-    return decorator
+    return _card_operation_decorator(error_message)
 
 
 def feishu_event_handler_safe(error_message: str = "飞书事件处理失败"):
@@ -193,21 +127,7 @@ def feishu_event_handler_safe(error_message: str = "飞书事件处理失败"):
     Args:
         error_message: 错误日志消息
     """
-    def decorator(func: F) -> F:
-        @functools.wraps(func)
-        def wrapper(*args, **kwargs):
-            try:
-                return func(*args, **kwargs)
-            except Exception as e:
-                func_name = func.__name__
-                debug_utils.log_and_print(
-                    f"📡 飞书事件异常 [{func_name}]: {error_message} - {str(e)}",
-                    log_level="ERROR"
-                )
-                # 事件处理函数通常无返回值
-                return None
-        return wrapper
-    return decorator
+    return _feishu_event_decorator(error_message)
 
 
 # 组合装饰器：为常见场景提供预配置的装饰器组合

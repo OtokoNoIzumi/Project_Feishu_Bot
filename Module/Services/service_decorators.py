@@ -8,8 +8,17 @@ Services层专用装饰器
 from functools import wraps
 from typing import TypeVar, Callable, Any, Optional, Dict, List
 from Module.Common.scripts.common import debug_utils
+from .decorator_base import create_exception_handler_decorator, create_file_cleanup_handler
 
 F = TypeVar('F', bound=Callable[..., Any])
+
+# 创建各种装饰器工厂
+_service_decorator = create_exception_handler_decorator("🔧", default_return_value=None)
+_api_decorator = create_exception_handler_decorator("🌐", default_return_value=None)
+_file_decorator = create_exception_handler_decorator("📁", default_return_value=None, cleanup_handler=create_file_cleanup_handler())
+_config_decorator = create_exception_handler_decorator("⚙️", default_return_value=None)
+_cache_decorator = create_exception_handler_decorator("🗄️", default_return_value=None)
+_scheduler_decorator = create_exception_handler_decorator("⏰", default_return_value=None)
 
 
 def service_operation_safe(error_message: str, return_value: Any = None, log_args: bool = False):
@@ -59,8 +68,6 @@ def external_api_safe(error_message: str, return_value: Any = None, api_name: st
         def wrapper(*args, **kwargs):
             try:
                 result = func(*args, **kwargs)
-                # if api_name:
-                #     debug_utils.log_and_print(f"🌐 {api_name} API调用成功", log_level="DEBUG")
                 return result
             except Exception as e:
                 api_info = f"[{api_name}] " if api_name else ""
@@ -84,29 +91,7 @@ def file_processing_safe(error_message: str, return_value: Any = None, cleanup_f
         return_value: 文件操作失败时的返回值
         cleanup_files: 需要清理的临时文件列表
     """
-    def decorator(func: F) -> F:
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-            temp_files = []
-            try:
-                result = func(*args, **kwargs)
-                return result
-            except Exception as e:
-                debug_utils.log_and_print(f"📁 {error_message}: {e}", log_level="ERROR")
-                return return_value
-            finally:
-                # 清理临时文件
-                if cleanup_files:
-                    import os
-                    for file_path in cleanup_files:
-                        if file_path and os.path.exists(file_path):
-                            try:
-                                os.remove(file_path)
-                                debug_utils.log_and_print(f"📁 清理临时文件: {file_path}", log_level="DEBUG")
-                            except:
-                                pass
-        return wrapper
-    return decorator
+    return _file_decorator(error_message, return_value, cleanup_files=cleanup_files)
 
 
 def config_operation_safe(error_message: str, return_value: Any = None, operation_type: str = ""):

@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from functools import wraps
 from Module.Common.scripts.common import debug_utils
+from Module.Services.decorator_base import create_exception_handler_decorator, create_business_return_value_factory
 
 
 @dataclass
@@ -52,6 +53,13 @@ class ProcessResult:
     @classmethod
     def no_reply_result(cls):
         return cls(True, "text", None, should_reply=False)
+
+
+# 创建Business层专用装饰器工厂
+_business_safe_decorator = create_exception_handler_decorator(
+    "🔴 业务处理异常",
+    return_value_factory=create_business_return_value_factory()
+)
 
 
 # 防御性检查装饰器组
@@ -108,15 +116,7 @@ def safe_execute(error_prefix: str = "操作失败"):
     Args:
         error_prefix: 错误消息前缀
     """
-    def decorator(func):
-        @wraps(func)
-        def wrapper(*args, **kwargs):
-            try:
-                return func(*args, **kwargs)
-            except Exception as e:
-                return ProcessResult.error_result(f"{error_prefix}: {str(e)}")
-        return wrapper
-    return decorator
+    return _business_safe_decorator(error_prefix, error_prefix=error_prefix)
 
 
 class BaseProcessor:
