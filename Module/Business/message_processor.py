@@ -6,7 +6,7 @@
 """
 
 import time
-from typing import Dict, Any
+from typing import Dict, Any, Callable, List
 from .processors import (
     BaseProcessor, MessageContext, ProcessResult,
     TextProcessor, MediaProcessor, BilibiliProcessor,
@@ -40,6 +40,47 @@ class MessageProcessor(BaseProcessor):
         self.bilibili_processor = BilibiliProcessor(app_controller)
         self.admin_processor = AdminProcessor(app_controller)
         self.schedule_processor = ScheduleProcessor(app_controller)
+
+        # 初始化Action分发表
+        self._init_action_dispatchers()
+
+    def _init_action_dispatchers(self):
+        """初始化Action分发注册表"""
+        self.action_dispatchers: Dict[str, Callable[[MessageContext, Dict[str, Any]], ProcessResult]] = {
+            # B站相关动作
+            "mark_bili_read": self._handle_mark_bili_read,
+
+            # 管理员相关动作
+            "confirm_update_user": self._handle_admin_card_action,
+            "confirm_update_ads": self._handle_admin_card_action,
+
+            # 交互式管理员动作
+            "confirm_update_user_interactive": self._handle_interactive_admin_card_action,
+            "confirm_update_ads_interactive": self._handle_interactive_admin_card_action,
+            "cancel_admin_operation": self._handle_interactive_admin_card_action,
+
+            # AI路由相关动作
+            "cancel": self._handle_ai_card_action,
+            "edit_content": self._handle_ai_card_action,
+            "confirm_thought": self._handle_ai_card_action,
+            "confirm_schedule": self._handle_ai_card_action,
+            "confirm_food_order": self._handle_ai_card_action,
+        }
+
+    def register_action(self, action_name: str, handler: Callable[[MessageContext, Dict[str, Any]], ProcessResult]):
+        """
+        动态注册新的Action处理器
+
+        Args:
+            action_name: Action名称
+            handler: 处理器函数
+        """
+        self.action_dispatchers[action_name] = handler
+        debug_utils.log_and_print(f"✅ 注册Action处理器: {action_name}", log_level="INFO")
+
+    def get_registered_actions(self) -> List[str]:
+        """获取所有已注册的Action列表"""
+        return list(self.action_dispatchers.keys())
 
     def process_message(self, context: MessageContext) -> ProcessResult:
         """
@@ -158,29 +199,15 @@ class MessageProcessor(BaseProcessor):
         return self.bilibili_processor.handle_menu_click(context)
 
     def _process_card_action(self, context: MessageContext) -> ProcessResult:
-        """处理卡片按钮动作"""
+        """处理卡片按钮动作（使用注册表分发）"""
         action = context.content
         action_value = context.metadata.get('action_value', {})
 
-        # 根据动作类型分发到对应的处理器
         try:
-            # B站相关动作
-            if action == "mark_bili_read":
-                return self._handle_mark_bili_read(context, action_value)
-
-            # 管理员相关动作
-            elif action in ["confirm_update_user", "confirm_update_ads"]:
-                return self._handle_admin_card_action(context, action, action_value)
-
-            # 交互式管理员动作
-            elif action in ["confirm_update_user_interactive", "confirm_update_ads_interactive", "cancel_admin_operation"]:
-                return self._handle_interactive_admin_card_action(context, action, action_value)
-
-            # AI路由相关动作
-            elif action in ["cancel", "edit_content", "confirm_thought", "confirm_schedule", "confirm_food_order"]:
-                return self._handle_ai_card_action(context, action, action_value)
-
-            # 未知动作
+            # 使用Action分发注册表
+            dispatcher = self.action_dispatchers.get(action)
+            if dispatcher:
+                return dispatcher(context, action_value)
             else:
                 return ProcessResult.error_result(f"未知的卡片动作: {action}")
 
@@ -224,7 +251,7 @@ class MessageProcessor(BaseProcessor):
             debug_utils.log_and_print(f"❌ AI路由结果处理失败: {e}", log_level="ERROR")
             return ProcessResult.error_result(f"路由处理失败: {str(e)}")
 
-    def _handle_ai_card_action(self, context: MessageContext, action: str, action_value: Dict[str, Any]) -> ProcessResult:
+    def _handle_ai_card_action(self, context: MessageContext, action_value: Dict[str, Any]) -> ProcessResult:
         """
         处理AI路由卡片的按钮动作
 
@@ -237,6 +264,8 @@ class MessageProcessor(BaseProcessor):
             ProcessResult: 处理结果
         """
         try:
+            # 从action_value中获取action类型
+            action = action_value.get("action") or context.content
             intent = action_value.get('intent', '未知')
             content = action_value.get('content', '')
 
@@ -300,7 +329,7 @@ class MessageProcessor(BaseProcessor):
             debug_utils.log_and_print(f"❌ 标记B站视频为已读失败: {str(e)}", log_level="ERROR")
             return ProcessResult.error_result(f"处理失败：{str(e)}")
 
-    def _handle_admin_card_action(self, context: MessageContext, action: str, action_value: Dict[str, Any]) -> ProcessResult:
+    def _handle_admin_card_action(self, context: MessageContext, action_value: Dict[str, Any]) -> ProcessResult:
         """
         处理管理员卡片动作
 
@@ -313,6 +342,9 @@ class MessageProcessor(BaseProcessor):
             ProcessResult: 处理结果
         """
         try:
+            # 从action_value中获取action类型
+            action = action_value.get("action") or context.content
+
             if action == "confirm_update_user":
                 # 确认更新用户信息
                 uid = action_value.get("uid", "")
@@ -331,7 +363,7 @@ class MessageProcessor(BaseProcessor):
             debug_utils.log_and_print(f"❌ 管理员卡片动作处理失败: {e}", log_level="ERROR")
             return ProcessResult.error_result(f"卡片动作处理失败: {str(e)}")
 
-    def _handle_interactive_admin_card_action(self, context: MessageContext, action: str, action_value: Dict[str, Any]) -> ProcessResult:
+    def _handle_interactive_admin_card_action(self, context: MessageContext, action_value: Dict[str, Any]) -> ProcessResult:
         """
         处理交互式管理员卡片动作
 
@@ -344,6 +376,9 @@ class MessageProcessor(BaseProcessor):
             ProcessResult: 处理结果
         """
         try:
+            # 从action_value中获取action类型
+            action = action_value.get("action") or context.content
+
             if action == "confirm_update_user_interactive":
                 # 确认更新用户信息
                 uid = action_value.get("uid", "")
@@ -407,5 +442,9 @@ class MessageProcessor(BaseProcessor):
                 "schedule": "ScheduleProcessor"
             },
             "app_controller_available": self.app_controller is not None,
-            "supported_message_types": ["text", "image", "audio", "menu_click", "card_action"]
+            "supported_message_types": ["text", "image", "audio", "menu_click", "card_action"],
+            "registered_actions": {
+                "count": len(self.action_dispatchers),
+                "actions": list(self.action_dispatchers.keys())
+            }
         }

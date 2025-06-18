@@ -25,7 +25,7 @@ class BilibiliCardManager(BaseCardManager):
         self.templates = {
             "bili_video_menu": {
                 "template_id": "AAqBPdq4sxIy5",
-                "template_version": "1.0.7"
+                "template_version": "1.0.8"
             }
         }
 

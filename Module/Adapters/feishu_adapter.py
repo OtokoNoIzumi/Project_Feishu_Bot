@@ -284,53 +284,12 @@ class FeishuAdapter:
 
             # 检查是否是B站卡片更新结果
             if result.success and result.response_type == "bili_card_update":
-                # 获取业务层返回的卡片数据
-                card_data = result.response_content
-
-                # 使用卡片管理器构建更新的卡片内容
-                try:
-                    card_content = self.bili_card_manager.build_bili_video_menu_card(card_data)
-                    response_data = {
-                        "toast": {
-                            "type": "success",
-                            "content": "视频成功设置为已读"
-                        },
-                        "card": {
-                            "type": "raw",
-                            "data": card_content
-                        }
-                    }
-                    return P2CardActionTriggerResponse(response_data)
-
-                    # # 更新卡片
-                    # open_message_id = context.metadata.get('open_message_id', '')
-                    # if open_message_id:
-                    #     success = self._update_interactive_card(open_message_id, card_content)
-
-                    #     if not success:
-                    #         return P2CardActionTriggerResponse({
-                    #             "toast": {
-                    #                 "type": "error",
-                    #                 "content": "卡片更新失败"
-                    #             }
-                    #         })
-                    #     return
-                    # else:
-                    #     return P2CardActionTriggerResponse({
-                    #         "toast": {
-                    #             "type": "error",
-                    #             "content": "缺少消息ID"
-                    #         }
-                    #     })
-
-                except Exception as e:
-                    debug_utils.log_and_print(f"❌ B站卡片构建失败: {e}", log_level="ERROR")
-                    return P2CardActionTriggerResponse({
-                        "toast": {
-                            "type": "error",
-                            "content": "卡片构建失败"
-                        }
-                    })
+                # 使用统一的卡片处理方法
+                return self._handle_bili_card_operation(
+                    result.response_content,
+                    operation_type="update_response",
+                    toast_message="视频成功设置为已读"
+                )
 
             # 处理不同类型的响应
             if result.success:
@@ -363,6 +322,65 @@ class FeishuAdapter:
                     "content": "处理操作失败，请稍后重试"
                 }
             })
+
+    def _handle_bili_card_operation(self, video_data: Dict[str, Any], operation_type: str, **kwargs) -> Any:
+        """
+        统一处理B站卡片的构建和操作
+
+        Args:
+            video_data: 业务层返回的视频数据
+            operation_type: 操作类型 ('send' | 'update_response')
+            **kwargs: 额外参数(user_id, toast_message等)
+
+        Returns:
+            bool: 发送操作的成功状态
+            P2CardActionTriggerResponse: 更新响应操作的响应对象
+        """
+        try:
+            # 使用卡片管理器构建卡片内容
+            card_content = self.bili_card_manager.build_bili_video_menu_card(video_data)
+
+            if operation_type == "send":
+                # 发送新卡片
+                user_id = kwargs.get("user_id")
+                if not user_id:
+                    debug_utils.log_and_print("❌ 发送卡片缺少用户ID", log_level="ERROR")
+                    return False
+
+                success = self._send_interactive_card(user_id, card_content)
+                if not success:
+                    debug_utils.log_and_print("❌ B站视频卡片发送失败", log_level="ERROR")
+                return success
+
+            elif operation_type == "update_response":
+                # 构建卡片更新响应
+                toast_message = kwargs.get("toast_message", "操作成功")
+                response_data = {
+                    "toast": {
+                        "type": "success",
+                        "content": toast_message
+                    },
+                    "card": {
+                        "type": "raw",
+                        "data": card_content
+                    }
+                }
+                return P2CardActionTriggerResponse(response_data)
+
+            else:
+                debug_utils.log_and_print(f"❌ 未知的卡片操作类型: {operation_type}", log_level="ERROR")
+                return False
+
+        except Exception as e:
+            debug_utils.log_and_print(f"❌ B站卡片操作失败: {e}", log_level="ERROR")
+            if operation_type == "update_response":
+                return P2CardActionTriggerResponse({
+                    "toast": {
+                        "type": "error",
+                        "content": "卡片构建失败"
+                    }
+                })
+            return False
 
     def _convert_message_to_context(self, data) -> Optional[MessageContext]:
         """将飞书消息转换为标准消息上下文"""
@@ -844,24 +862,16 @@ class FeishuAdapter:
                 result = self.message_processor.process_bili_video_async()
 
                 if result.success and result.response_type == "bili_video_data":
-                    # 获取原始视频数据
-                    video_data = result.response_content
+                    # 使用统一的卡片处理方法
+                    success = self._handle_bili_card_operation(
+                        result.response_content,
+                        operation_type="send",
+                        user_id=user_id
+                    )
 
-                    # 使用卡片管理器构建卡片内容
-                    try:
-                        card_content = self.bili_card_manager.build_bili_video_menu_card(video_data)
-
-                        # 使用adapter的发送方法发送卡片
-                        success = self._send_interactive_card(user_id, card_content)
-
-                        if not success:
-                            # 发送失败，使用降级方案
-                            error_result = ProcessResult.error_result("B站视频卡片发送失败")
-                            self._send_direct_message(user_id, error_result)
-
-                    except Exception as e:
-                        debug_utils.log_and_print(f"❌ B站卡片构建失败: {e}", log_level="ERROR")
-                        error_result = ProcessResult.error_result(f"B站视频卡片构建失败: {str(e)}")
+                    if not success:
+                        # 发送失败，使用降级方案
+                        error_result = ProcessResult.error_result("B站视频卡片发送失败")
                         self._send_direct_message(user_id, error_result)
                 else:
                     debug_utils.log_and_print(f"❌ B站视频获取失败: {result.error_message}", log_level="ERROR")
