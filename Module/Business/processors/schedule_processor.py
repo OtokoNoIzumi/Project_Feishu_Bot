@@ -6,7 +6,7 @@
 
 from typing import Dict, Any, List, Optional
 from datetime import datetime
-from .base_processor import BaseProcessor, MessageContext, ProcessResult
+from .base_processor import BaseProcessor, MessageContext, ProcessResult, require_service, safe_execute
 from Module.Common.scripts.common import debug_utils
 
 
@@ -17,6 +17,7 @@ class ScheduleProcessor(BaseProcessor):
     处理各种定时任务相关的功能
     """
 
+    @safe_execute("创建定时消息失败")
     def create_scheduled_message(self, message_type: str, **kwargs) -> ProcessResult:
         """
         创建定时任务消息（供SchedulerService调用）
@@ -28,38 +29,31 @@ class ScheduleProcessor(BaseProcessor):
         Returns:
             ProcessResult: 包含富文本卡片的处理结果
         """
-        try:
-            if message_type == "daily_schedule":
-                services_status = kwargs.get('services_status', None)
-                return self.create_daily_schedule_message(services_status)
+        if message_type == "daily_schedule":
+            services_status = kwargs.get('services_status', None)
+            return self.create_daily_schedule_message(services_status)
 
-            elif message_type == "bilibili_updates":
-                sources = kwargs.get('sources', None)
-                api_result = kwargs.get('api_result', None)
-                return self.create_bilibili_updates_message(sources, api_result)
+        elif message_type == "bilibili_updates":
+            sources = kwargs.get('sources', None)
+            api_result = kwargs.get('api_result', None)
+            return self.create_bilibili_updates_message(sources, api_result)
 
-            else:
-                return ProcessResult.error_result(f"不支持的定时消息类型: {message_type}")
+        else:
+            return ProcessResult.error_result(f"不支持的定时消息类型: {message_type}")
 
-        except Exception as e:
-            return ProcessResult.error_result(f"创建定时消息失败: {str(e)}")
-
+    @safe_execute("创建每日信息汇总失败")
     def create_daily_schedule_message(self, services_status: Dict[str, Any] = None) -> ProcessResult:
         """创建每日信息汇总消息（7:30定时卡片容器）"""
-        try:
-            # 构建B站信息cache分析数据
-            analysis_data = self.build_bilibili_cache_analysis()
+        # 构建B站信息cache分析数据
+        analysis_data = self.build_bilibili_cache_analysis()
 
-            # 将服务状态信息加入分析数据
-            if services_status:
-                analysis_data['services_status'] = services_status
+        # 将服务状态信息加入分析数据
+        if services_status:
+            analysis_data['services_status'] = services_status
 
-            card_content = self.create_daily_summary_card(analysis_data)
+        card_content = self.create_daily_summary_card(analysis_data)
 
-            return ProcessResult.success_result("interactive", card_content)
-
-        except Exception as e:
-            return ProcessResult.error_result(f"创建每日信息汇总失败: {str(e)}")
+        return ProcessResult.success_result("interactive", card_content)
 
     def build_bilibili_cache_analysis(self) -> Dict[str, Any]:
         """
@@ -103,7 +97,7 @@ class ScheduleProcessor(BaseProcessor):
         return {
             "date": now.strftime("%Y年%m月%d日"),
             "weekday": ["周一", "周二", "周三", "周四", "周五", "周六", "周日"][now.weekday()],
-            "status": "notion服务B站数据获取中...",
+            "status": "目前没有待看的B站视频",
             "source": "placeholder",
             "timestamp": now.isoformat()
         }
@@ -432,16 +426,13 @@ class ScheduleProcessor(BaseProcessor):
 
         return content
 
+    @safe_execute("创建B站更新提醒失败")
     def create_bilibili_updates_message(self, sources: Optional[List[str]] = None, api_result: Dict[str, Any] = None) -> ProcessResult:
         """创建B站更新提醒消息"""
-        try:
-            # 生成B站更新通知卡片，传入API结果数据
-            card_content = self.create_bilibili_updates_card(sources, api_result)
+        # 生成B站更新通知卡片，传入API结果数据
+        card_content = self.create_bilibili_updates_card(sources, api_result)
 
-            return ProcessResult.success_result("interactive", card_content)
-
-        except Exception as e:
-            return ProcessResult.error_result(f"创建B站更新提醒失败: {str(e)}")
+        return ProcessResult.success_result("interactive", card_content)
 
     def create_bilibili_updates_card(self, sources: Optional[List[str]] = None, api_result: Dict[str, Any] = None) -> Dict[str, Any]:
         """创建B站更新通知卡片"""
@@ -520,66 +511,58 @@ class ScheduleProcessor(BaseProcessor):
 
         return card
 
+    @require_service('notion', "标记服务暂时不可用")
+    @safe_execute("定时卡片标记已读失败")
     def handle_mark_bili_read(self, context: MessageContext, action_value: Dict[str, Any]) -> ProcessResult:
         """
         处理定时卡片中的标记B站视频为已读
         """
+        # 获取notion服务
+        notion_service = self.app_controller.get_service('notion')
+
+        # 获取参数
+        pageid = action_value.get("pageid", "")
+        video_index = action_value.get("video_index", 0)
+
+        if not pageid:
+            return ProcessResult.error_result("缺少页面ID，无法标记为已读")
+
+        # 执行标记为已读操作
+        success = notion_service.mark_video_as_read(pageid)
+        if not success:
+            return ProcessResult.error_result("标记为已读失败")
+
+        # 定时卡片：基于原始数据重构，只更新已读状态，不重新获取统计数据
         try:
-            if not self.app_controller:
-                return ProcessResult.error_result("系统服务不可用")
+            original_analysis_data = action_value.get("original_analysis_data")
+            if original_analysis_data:
+                # 使用原始数据重新生成卡片，已读状态会自动更新
+                updated_card = self.create_daily_summary_card(original_analysis_data)
 
-            # 获取notion服务
-            notion_service = self.app_controller.get_service('notion')
-            if not notion_service:
-                return ProcessResult.error_result("标记服务暂时不可用")
-
-            # 获取参数
-            pageid = action_value.get("pageid", "")
-            video_index = action_value.get("video_index", 0)
-
-            if not pageid:
-                return ProcessResult.error_result("缺少页面ID，无法标记为已读")
-
-            # 执行标记为已读操作
-            success = notion_service.mark_video_as_read(pageid)
-            if not success:
-                return ProcessResult.error_result("标记为已读失败")
-
-            # 定时卡片：基于原始数据重构，只更新已读状态，不重新获取统计数据
-            try:
-                original_analysis_data = action_value.get("original_analysis_data")
-                if original_analysis_data:
-                    # 使用原始数据重新生成卡片，已读状态会自动更新
-                    updated_card = self.create_daily_summary_card(original_analysis_data)
-
-                    return ProcessResult.success_result("card_action_response", {
-                        "toast": {
-                            "type": "success",
-                            "content": f"已标记第{video_index + 1}个推荐为已读"
-                        },
-                        "card": {
-                            "type": "raw",
-                            "data": updated_card
-                        }
-                    })
-                else:
-                    # 如果没有原始数据，降级处理
-                    return ProcessResult.success_result("card_action_response", {
-                        "toast": {
-                            "type": "success",
-                            "content": f"已标记第{video_index + 1}个推荐为已读"
-                        }
-                    })
-            except Exception as e:
-                # 如果重新生成失败，只返回toast
-                debug_utils.log_and_print(f"❌ 重新生成定时卡片失败: {str(e)}", log_level="ERROR")
+                return ProcessResult.success_result("card_action_response", {
+                    "toast": {
+                        "type": "success",
+                        "content": f"已标记第{video_index + 1}个推荐为已读"
+                    },
+                    "card": {
+                        "type": "raw",
+                        "data": updated_card
+                    }
+                })
+            else:
+                # 如果没有原始数据，降级处理
                 return ProcessResult.success_result("card_action_response", {
                     "toast": {
                         "type": "success",
                         "content": f"已标记第{video_index + 1}个推荐为已读"
                     }
                 })
-
         except Exception as e:
-            debug_utils.log_and_print(f"❌ 定时卡片标记已读失败: {str(e)}", log_level="ERROR")
-            return ProcessResult.error_result(f"处理失败：{str(e)}")
+            # 如果重新生成失败，只返回toast
+            debug_utils.log_and_print(f"❌ 重新生成定时卡片失败: {str(e)}", log_level="ERROR")
+            return ProcessResult.success_result("card_action_response", {
+                "toast": {
+                    "type": "success",
+                    "content": f"已标记第{video_index + 1}个推荐为已读"
+                }
+            })

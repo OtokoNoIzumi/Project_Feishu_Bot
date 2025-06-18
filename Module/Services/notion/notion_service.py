@@ -527,7 +527,6 @@ class NotionService:
             "title": main_video.get("title", "无标题视频"),
             "url": main_video.get("url", ""),
             "pageid": main_video.get("pageid", ""),
-            "success": True,
             "author": main_video.get("author", ""),
             "duration_str": main_video.get("duration_str", ""),
             "chinese_priority": main_video.get("chinese_priority", ""),
@@ -552,7 +551,7 @@ class NotionService:
         return {
             "main_video": main_video_formatted,
             "additional_videos": additional_videos_formatted,
-            "success": True
+            "success": True if main_video.get("pageid", "") else False,
         }
 
     def get_bili_videos_statistics(self) -> Dict:

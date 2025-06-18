@@ -7,6 +7,7 @@
 from typing import Dict, Any, Optional, List
 from dataclasses import dataclass
 from datetime import datetime
+from functools import wraps
 from Module.Common.scripts.common import debug_utils
 
 
@@ -51,6 +52,71 @@ class ProcessResult:
     @classmethod
     def no_reply_result(cls):
         return cls(True, "text", None, should_reply=False)
+
+
+# 防御性检查装饰器组
+def require_app_controller(error_msg: str = "系统服务不可用"):
+    """
+    装饰器：确保app_controller可用
+
+    Args:
+        error_msg: 检查失败时的错误消息
+    """
+    def decorator(func):
+        @wraps(func)
+        def wrapper(self, *args, **kwargs):
+            if not self.app_controller:
+                return ProcessResult.error_result(error_msg)
+            return func(self, *args, **kwargs)
+        return wrapper
+    return decorator
+
+
+def require_service(service_name: str, error_msg: Optional[str] = None, check_available: bool = False):
+    """
+    装饰器：确保指定服务可用
+
+    Args:
+        service_name: 服务名称
+        error_msg: 自定义错误消息，默认为"xxx服务不可用"
+        check_available: 是否检查服务的is_available()方法
+    """
+    def decorator(func):
+        @wraps(func)
+        def wrapper(self, *args, **kwargs):
+            if not self.app_controller:
+                return ProcessResult.error_result("系统服务不可用")
+
+            service = self.app_controller.get_service(service_name)
+            if not service:
+                msg = error_msg or f"{service_name}服务不可用"
+                return ProcessResult.error_result(msg)
+
+            if check_available and hasattr(service, 'is_available') and not service.is_available():
+                msg = error_msg or f"{service_name}服务未启动或不可用"
+                return ProcessResult.error_result(msg)
+
+            return func(self, *args, **kwargs)
+        return wrapper
+    return decorator
+
+
+def safe_execute(error_prefix: str = "操作失败"):
+    """
+    装饰器：统一异常处理
+
+    Args:
+        error_prefix: 错误消息前缀
+    """
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            try:
+                return func(*args, **kwargs)
+            except Exception as e:
+                return ProcessResult.error_result(f"{error_prefix}: {str(e)}")
+        return wrapper
+    return decorator
 
 
 class BaseProcessor:
