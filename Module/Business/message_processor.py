@@ -87,8 +87,13 @@ class MessageProcessor(BaseProcessor):
         # 管理员配置更新指令（最高优先级）
         if self.admin_processor.is_admin_command(user_msg):
             content = self._extract_command_content(user_msg, [self.admin_processor.get_update_trigger()])
-            self._log_command(context.user_name, "🔧", "触发配置更新指令", content)
-            return self.admin_processor.handle_config_update(context, user_msg)
+            if user_msg.startswith(self.admin_processor.get_update_trigger()):
+                self._log_command(context.user_name, "🔧", "触发配置更新指令", content)
+            elif user_msg.startswith("更新用户"):
+                self._log_command(context.user_name, "👤", "触发用户更新指令", user_msg[4:])
+            elif user_msg.startswith("更新广告"):
+                self._log_command(context.user_name, "📺", "触发广告更新指令", user_msg[4:])
+            return self.admin_processor.handle_admin_command(context, user_msg)
 
         # TTS配音指令，改成startwith
         if user_msg.startswith("配音"):
@@ -146,6 +151,10 @@ class MessageProcessor(BaseProcessor):
 
     def _process_menu_click(self, context: MessageContext) -> ProcessResult:
         """处理菜单点击"""
+        event_key = context.content
+        if event_key == "get_bili_url":
+            return self.bilibili_processor.handle_menu_click(context)
+
         return self.bilibili_processor.handle_menu_click(context)
 
     def _process_card_action(self, context: MessageContext) -> ProcessResult:
@@ -153,15 +162,31 @@ class MessageProcessor(BaseProcessor):
         action = context.content
         action_value = context.metadata.get('action_value', {})
 
-        # 根据动作类型处理
-        if action == "mark_bili_read":
-            return self._handle_mark_bili_read(context, action_value)
-        elif action in ["confirm_thought", "confirm_schedule", "confirm_food_order", "cancel", "edit_content"]:
-            return self._handle_ai_card_action(context, action, action_value)
-        else:
-            return ProcessResult.success_result("text", {
-                "text": f"收到卡片动作：{action}，功能开发中..."
-            }, parent_id=context.message_id)
+        # 根据动作类型分发到对应的处理器
+        try:
+            # B站相关动作
+            if action == "mark_bili_read":
+                return self._handle_mark_bili_read(context, action_value)
+
+            # 管理员相关动作
+            elif action in ["confirm_update_user", "confirm_update_ads"]:
+                return self._handle_admin_card_action(context, action, action_value)
+
+            # 交互式管理员动作
+            elif action in ["confirm_update_user_interactive", "confirm_update_ads_interactive", "cancel_admin_operation"]:
+                return self._handle_interactive_admin_card_action(context, action, action_value)
+
+            # AI路由相关动作
+            elif action in ["cancel", "edit_content", "confirm_thought", "confirm_schedule", "confirm_food_order"]:
+                return self._handle_ai_card_action(context, action, action_value)
+
+            # 未知动作
+            else:
+                return ProcessResult.error_result(f"未知的卡片动作: {action}")
+
+        except Exception as e:
+            debug_utils.log_and_print(f"❌ 卡片动作处理失败: {e}", log_level="ERROR")
+            return ProcessResult.error_result(f"卡片动作处理失败: {str(e)}")
 
     def _handle_ai_route_result(self, context: MessageContext, route_result: Dict[str, Any]) -> ProcessResult:
         """
@@ -275,11 +300,77 @@ class MessageProcessor(BaseProcessor):
             debug_utils.log_and_print(f"❌ 标记B站视频为已读失败: {str(e)}", log_level="ERROR")
             return ProcessResult.error_result(f"处理失败：{str(e)}")
 
+    def _handle_admin_card_action(self, context: MessageContext, action: str, action_value: Dict[str, Any]) -> ProcessResult:
+        """
+        处理管理员卡片动作
+
+        Args:
+            context: 消息上下文
+            action: 动作类型
+            action_value: 动作参数
+
+        Returns:
+            ProcessResult: 处理结果
+        """
+        try:
+            if action == "confirm_update_user":
+                # 确认更新用户信息
+                uid = action_value.get("uid", "")
+                account_type = action_value.get("account_type", "")
+                self._log_command(context.user_name, "✅", "确认更新用户", f"UID:{uid} 类型:{account_type}")
+                return self.admin_processor.handle_confirm_update_user(context, action_value)
+            elif action == "confirm_update_ads":
+                # 确认更新广告信息
+                bvid = action_value.get("bvid", "")
+                ad_timestamps = action_value.get("ad_timestamps", "")
+                self._log_command(context.user_name, "✅", "确认更新广告", f"BVID:{bvid} 时间:{ad_timestamps}")
+                return self.admin_processor.handle_confirm_update_ads(context, action_value)
+            else:
+                return ProcessResult.error_result(f"未知的管理员卡片动作: {action}")
+        except Exception as e:
+            debug_utils.log_and_print(f"❌ 管理员卡片动作处理失败: {e}", log_level="ERROR")
+            return ProcessResult.error_result(f"卡片动作处理失败: {str(e)}")
+
+    def _handle_interactive_admin_card_action(self, context: MessageContext, action: str, action_value: Dict[str, Any]) -> ProcessResult:
+        """
+        处理交互式管理员卡片动作
+
+        Args:
+            context: 消息上下文
+            action: 动作类型
+            action_value: 动作参数
+
+        Returns:
+            ProcessResult: 处理结果
+        """
+        try:
+            if action == "confirm_update_user_interactive":
+                # 确认更新用户信息
+                uid = action_value.get("uid", "")
+                account_type = action_value.get("account_type", "")
+                self._log_command(context.user_name, "✅", "确认更新用户", f"UID:{uid} 类型:{account_type}")
+                return self.admin_processor.handle_interactive_card_action(context, action, action_value)
+            elif action == "confirm_update_ads_interactive":
+                # 确认更新广告信息
+                bvid = action_value.get("bvid", "")
+                ad_timestamps = action_value.get("ad_timestamps", "")
+                self._log_command(context.user_name, "✅", "确认更新广告", f"BVID:{bvid} 时间:{ad_timestamps}")
+                return self.admin_processor.handle_interactive_card_action(context, action, action_value)
+            elif action == "cancel_admin_operation":
+                # 取消管理员操作
+                self._log_command(context.user_name, "❌", "取消管理员操作")
+                return self.admin_processor.handle_interactive_card_action(context, action, action_value)
+            else:
+                return ProcessResult.error_result(f"未知的交互式管理员卡片动作: {action}")
+        except Exception as e:
+            debug_utils.log_and_print(f"❌ 交互式管理员卡片动作处理失败: {e}", log_level="ERROR")
+            return ProcessResult.error_result(f"卡片动作处理失败: {str(e)}")
+
     # ================ 异步处理方法（供适配器调用）================
 
-    def process_bili_video_async(self, user_id: str) -> ProcessResult:
+    def process_bili_video_async(self, cached_data: Dict[str, Any] = None) -> ProcessResult:
         """异步处理B站视频推荐（由FeishuAdapter调用）"""
-        return self.bilibili_processor.process_bili_video_async(user_id)
+        return self.bilibili_processor.process_bili_video_async(cached_data)
 
     def process_tts_async(self, tts_text: str) -> ProcessResult:
         """异步处理TTS生成（由FeishuAdapter调用）"""

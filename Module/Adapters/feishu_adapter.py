@@ -23,11 +23,13 @@ from lark_oapi.api.im.v1 import (
     ReplyMessageRequest, ReplyMessageRequestBody,
     CreateFileRequest, CreateFileRequestBody,
     GetMessageResourceRequest,
-    CreateImageRequest, CreateImageRequestBody
+    CreateImageRequest, CreateImageRequestBody,
+    PatchMessageRequest, PatchMessageRequestBody
 )
 from lark_oapi.event.callback.model.p2_card_action_trigger import P2CardActionTriggerResponse
 
 from Module.Common.scripts.common import debug_utils
+from .feishu_cards import initialize_card_managers, get_card_manager
 from Module.Business.message_processor import MessageContext, ProcessResult
 
 def custom_serializer(obj):
@@ -87,6 +89,10 @@ class FeishuAdapter:
         """
         self.message_processor = message_processor
         self.app_controller = app_controller
+
+        # 导入并初始化新的卡片管理架构
+        self.card_registry = initialize_card_managers()
+        self.bili_card_manager = get_card_manager("bilibili")
 
         # 初始化飞书SDK配置
         self._init_feishu_config()
@@ -273,8 +279,58 @@ class FeishuAdapter:
             if not context:
                 return P2CardActionTriggerResponse({})
 
-            # 调用业务处理器
+            # 调用业务处理器，由业务层判断处理类型
             result = self.message_processor.process_message(context)
+
+            # 检查是否是B站卡片更新结果
+            if result.success and result.response_type == "bili_card_update":
+                # 获取业务层返回的卡片数据
+                card_data = result.response_content
+
+                # 使用卡片管理器构建更新的卡片内容
+                try:
+                    card_content = self.bili_card_manager.build_bili_video_menu_card(card_data)
+                    response_data = {
+                        "toast": {
+                            "type": "success",
+                            "content": "视频成功设置为已读"
+                        },
+                        "card": {
+                            "type": "raw",
+                            "data": card_content
+                        }
+                    }
+                    return P2CardActionTriggerResponse(response_data)
+
+                    # # 更新卡片
+                    # open_message_id = context.metadata.get('open_message_id', '')
+                    # if open_message_id:
+                    #     success = self._update_interactive_card(open_message_id, card_content)
+
+                    #     if not success:
+                    #         return P2CardActionTriggerResponse({
+                    #             "toast": {
+                    #                 "type": "error",
+                    #                 "content": "卡片更新失败"
+                    #             }
+                    #         })
+                    #     return
+                    # else:
+                    #     return P2CardActionTriggerResponse({
+                    #         "toast": {
+                    #             "type": "error",
+                    #             "content": "缺少消息ID"
+                    #         }
+                    #     })
+
+                except Exception as e:
+                    debug_utils.log_and_print(f"❌ B站卡片构建失败: {e}", log_level="ERROR")
+                    return P2CardActionTriggerResponse({
+                        "toast": {
+                            "type": "error",
+                            "content": "卡片构建失败"
+                        }
+                    })
 
             # 处理不同类型的响应
             if result.success:
@@ -440,7 +496,9 @@ class FeishuAdapter:
                 event_id=event_id,
                 metadata={
                     'action_value': action_value,
-                    'interaction_type': 'card'
+                    'interaction_type': 'card',
+                    'open_message_id': data.event.context.open_message_id if hasattr(data.event, 'context') and hasattr(data.event.context, 'open_message_id') else '',
+                    'open_chat_id': data.event.context.open_chat_id if hasattr(data.event, 'context') and hasattr(data.event.context, 'open_chat_id') else ''
                 }
             )
 
@@ -584,6 +642,87 @@ class FeishuAdapter:
             debug_utils.log_and_print(f"发送飞书直接消息失败: {e}", log_level="ERROR")
             return False
 
+    def _send_interactive_card(self, user_id: str, card_content: Dict[str, Any]) -> bool:
+        """发送交互式卡片消息"""
+        try:
+            # 将卡片内容转换为JSON字符串
+            content_json = json.dumps(card_content, ensure_ascii=False)
+            # print('test-card_content',type(card_content), user_id,'\n', content_json)
+            # final_output_string = json.dumps(content_json, ensure_ascii=False)
+            # print('test-card_content',type(content_json), user_id,'\n', final_output_string)
+
+            # 创建发送请求
+            request = CreateMessageRequest.builder().receive_id_type("open_id").request_body(
+                CreateMessageRequestBody.builder()
+                .receive_id(user_id)
+                .msg_type("interactive")
+                .content(content_json)
+                .build()
+            ).build()
+
+            response = self.client.im.v1.message.create(request)
+
+            if not response.success():
+                debug_utils.log_and_print(
+                    f"飞书交互式卡片发送失败: {response.code} - {response.msg}",
+                    log_level="ERROR"
+                )
+                return False
+
+            return True
+
+        except Exception as e:
+            debug_utils.log_and_print(f"发送交互式卡片失败: {e}", log_level="ERROR")
+            return False
+
+    def _update_interactive_card(self, message_id: str, card_content: Dict[str, Any]) -> bool:
+        """更新交互式卡片消息"""
+        try:
+            # 将卡片内容转换为JSON字符串
+            content_json = json.dumps(card_content, ensure_ascii=False)
+            # print('test-card_content',type(card_content), message_id,'\n', content_json)
+            # final_output_string = json.dumps(content_json, ensure_ascii=False, indent=2, sort_keys=True)
+            # print('test-card_content',type(content_json), message_id,'\n', final_output_string)
+
+            # # 创建更新请求
+            # request = PatchMessageRequest.builder() \
+            #     .message_id(message_id) \
+            #     .request_body(PatchMessageRequestBody.builder()
+            #         .content(content_json)
+            #         .build()) \
+            #     .build()
+            content_data = "{\"data\": {\"template_id\": \"AAqBPdq4sxIy5\", \"template_variable\": {\"main_title\": \"【官方MV】大石昌良 - uni-verse《古力特宇宙》主题曲\", \"main_pageid\": \"21536d82-1893-8158-b64b-e89a231ee457\", \"main_priority\": \"👾低\", \"main_duration_str\": \"4分30秒\", \"main_author\": \"大石昌良\", \"main_source\": \"主页推送\", \"main_upload_date_str\": \"2025-06-16\", \"main_summary\": \"感受《古力特宇宙》主题曲的魅力，体验动画与音乐的完美融合。\", \"main_url\": \"https://www.bilibili.com/video/BV1HqNbzEEHp?adskip=none\", \"main_android_url\": \"bilibili://video/BV1HqNbzEEHp\", \"main_is_read_str\": \"\", \"main_is_read\": false, \"action_info\": {\"action\": \"mark_bili_read\", \"pageid\": \"21536d82-1893-8158-b64b-e89a231ee457\", \"card_type\": \"menu\", \"cached_video_data\": {\"main_video\": {\"title\": \"【官方MV】大石昌良 - uni-verse《古力特宇宙》主题曲\", \"url\": \"https://www.bilibili.com/video/BV1HqNbzEEHp?adskip=none\", \"pageid\": \"21536d82-1893-8158-b64b-e89a231ee457\", \"success\": true, \"author\": \"大石昌良\", \"duration_str\": \"4分30秒\", \"chinese_priority\": \"👾低\", \"chinese_source\": \"主页推送\", \"summary\": \"感受《古力特宇宙》主题曲的魅力，体验动画与音乐的完美融合。\", \"upload_date\": \"2025-06-16\", \"is_read\": false, \"is_read_str\": \"\", \"android_url\": \"bilibili://video/BV1HqNbzEEHp\"}, \"additional_videos\": [{\"title\": \"炒面技巧是要表面脆，面芯软《豉油王炒面》\", \"url\": \"https://www.bilibili.com/video/BV1iMNbzMEGV?adskip=none\", \"pageid\": \"21536d82-1893-8182-be78-de5f47832705\", \"duration_str\": \"12分钟\", \"author\": \"酒满饭宝\", \"chinese_priority\": \"👾低\", \"chinese_source\": \"主页推送\", \"is_read\": false, \"is_read_str\": \"\", \"android_url\": \"bilibili://video/BV1iMNbzMEGV\"}]}, \"video_index\": 0}, \"addtional_videos\": [{\"title\": \"炒面技巧是要表面脆，面芯软《豉油王炒面》\", \"pageid\": \"21536d82-1893-8182-be78-de5f47832705\", \"priority\": \"👾低\", \"duration_str\": \"12分钟\", \"video_index\": \"1\", \"is_read_str\": \"\", \"is_read\": false, \"url\": \"https://www.bilibili.com/video/BV1iMNbzMEGV?adskip=none\", \"android_url\": \"bilibili://video/BV1iMNbzMEGV\", \"action_info\": {\"action\": \"mark_bili_read\", \"pageid\": \"21536d82-1893-8158-b64b-e89a231ee457\", \"card_type\": \"menu\", \"cached_video_data\": {\"main_video\": {\"title\": \"【官方MV】大石昌良 - uni-verse《古力特宇宙》主题曲\", \"url\": \"https://www.bilibili.com/video/BV1HqNbzEEHp?adskip=none\", \"pageid\": \"21536d82-1893-8158-b64b-e89a231ee457\", \"success\": true, \"author\": \"大石昌良\", \"duration_str\": \"4分30秒\", \"chinese_priority\": \"👾低\", \"chinese_source\": \"主页推送\", \"summary\": \"感受《古力特宇宙》主题曲的魅力，体验动画与音乐的完美融合。\", \"upload_date\": \"2025-06-16\", \"is_read\": false, \"is_read_str\": \"\", \"android_url\": \"bilibili://video/BV1HqNbzEEHp\"}, \"additional_videos\": [{\"title\": \"炒面技巧是要表面脆，面芯软《豉油王炒面》\", \"url\": \"https://www.bilibili.com/video/BV1iMNbzMEGV?adskip=none\", \"pageid\": \"21536d82-1893-8182-be78-de5f47832705\", \"duration_str\": \"12分钟\", \"author\": \"酒满饭宝\", \"chinese_priority\": \"👾低\", \"chinese_source\": \"主页推送\", \"is_read\": false, \"is_read_str\": \"\", \"android_url\": \"bilibili://video/BV1iMNbzMEGV\"}]}, \"video_index\": 1}}]}, \"template_version_name\": \"1.0.6\"}, \"type\": \"template\"}"
+
+            temp_client = lark.Client.builder() \
+                .app_id("cli_a6bf8e1105de900b") \
+                .app_secret("MlKGGQOiMhz9KSl3e05DObSff5GvgcqL") \
+                .log_level(lark.LogLevel.DEBUG) \
+                .build()
+            # 构造请求对象
+            request: PatchMessageRequest = PatchMessageRequest.builder() \
+                .message_id("om_x100b4a15be28a1700f247d7b26d0720") \
+                .request_body(PatchMessageRequestBody.builder()
+                    .content(content_data)
+                    .build()) \
+                .build()
+
+            # response = self.client.im.v1.message.patch(request)
+            response = temp_client.im.v1.message.patch(request)
+
+            if not response.success():
+                debug_utils.log_and_print(
+                    f"飞书交互式卡片更新失败: {response.code} - {response.msg}",
+                    log_level="ERROR"
+                )
+                return False
+
+            debug_utils.log_and_print("✅ 交互式卡片更新成功", log_level="INFO")
+            return True
+
+        except Exception as e:
+            debug_utils.log_and_print(f"更新交互式卡片失败: {e}", log_level="ERROR")
+            return False
+
     def _handle_tts_async(self, original_data, tts_text: str):
         """异步处理TTS请求"""
         def process_in_background():
@@ -697,22 +836,37 @@ class FeishuAdapter:
         thread.start()
 
     def _handle_bili_video_async(self, original_data, user_id: str):
-        """异步处理B站视频推荐请求"""
+        """异步处理B站视频推荐请求（使用新的卡片架构）"""
 
         def process_in_background():
             try:
+                # 调用业务处理器获取原始数据
+                result = self.message_processor.process_bili_video_async()
 
-                # 调用业务处理器的异步B站视频方法
-                result = self.message_processor.process_bili_video_async(user_id)
+                if result.success and result.response_type == "bili_video_data":
+                    # 获取原始视频数据
+                    video_data = result.response_content
 
+                    # 使用卡片管理器构建卡片内容
+                    try:
+                        card_content = self.bili_card_manager.build_bili_video_menu_card(video_data)
 
-                if result.success:
-                    # 菜单点击应该使用直接发送消息，而不是回复
-                    success = self._send_direct_message(user_id, result)
+                        # 使用adapter的发送方法发送卡片
+                        success = self._send_interactive_card(user_id, card_content)
+
+                        if not success:
+                            # 发送失败，使用降级方案
+                            error_result = ProcessResult.error_result("B站视频卡片发送失败")
+                            self._send_direct_message(user_id, error_result)
+
+                    except Exception as e:
+                        debug_utils.log_and_print(f"❌ B站卡片构建失败: {e}", log_level="ERROR")
+                        error_result = ProcessResult.error_result(f"B站视频卡片构建失败: {str(e)}")
+                        self._send_direct_message(user_id, error_result)
                 else:
                     debug_utils.log_and_print(f"❌ B站视频获取失败: {result.error_message}", log_level="ERROR")
                     # B站视频获取失败，发送错误信息
-                    success = self._send_direct_message(user_id, result)
+                    self._send_direct_message(user_id, result)
 
             except Exception as e:
                 debug_utils.log_and_print(f"B站视频推荐异步处理失败: {e}", log_level="ERROR")
@@ -994,8 +1148,6 @@ class FeishuAdapter:
         except Exception as e:
             debug_utils.log_and_print(f"示例图片上传发送失败: {e}", log_level="ERROR")
             return False
-
-
 
     def start(self):
         """启动飞书WebSocket连接（同步方式）"""
