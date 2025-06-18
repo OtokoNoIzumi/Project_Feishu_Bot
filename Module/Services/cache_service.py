@@ -11,6 +11,7 @@ import time
 from typing import Dict, Any, Optional
 
 from Module.Common.scripts.common import debug_utils
+from .service_decorators import service_operation_safe, file_processing_safe, cache_operation_safe
 
 
 class CacheService:
@@ -33,6 +34,7 @@ class CacheService:
         # 事件缓存结构：{event_id: timestamp}
         self.event_cache: Dict[str, float] = self._load_event_cache()
 
+    @cache_operation_safe("用户缓存加载失败", return_value={})
     def _load_user_cache(self) -> Dict:
         """
         加载用户缓存
@@ -40,19 +42,17 @@ class CacheService:
         Returns:
             Dict: 用户缓存数据
         """
-        try:
-            if os.path.exists(self.user_cache_file):
-                with open(self.user_cache_file, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                cutoff = time.time() - 604800  # 7天
-                return {
-                    k: v for k, v in data.items()
-                    if v.get("timestamp", 0) > cutoff
-                }
-        except Exception as e:
-            debug_utils.log_and_print(f"加载用户缓存失败: {e}", log_level="ERROR")
+        if os.path.exists(self.user_cache_file):
+            with open(self.user_cache_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            cutoff = time.time() - 604800  # 7天
+            return {
+                k: v for k, v in data.items()
+                if v.get("timestamp", 0) > cutoff
+            }
         return {}
 
+    @cache_operation_safe("事件缓存加载失败", return_value={})
     def _load_event_cache(self) -> Dict:
         """
         加载事件缓存，兼容旧格式
@@ -60,20 +60,17 @@ class CacheService:
         Returns:
             Dict: 事件缓存数据
         """
-        try:
-            if os.path.exists(self.event_cache_file):
-                with open(self.event_cache_file, "r", encoding="utf-8") as f:
-                    raw_data = json.load(f)
+        if os.path.exists(self.event_cache_file):
+            with open(self.event_cache_file, "r", encoding="utf-8") as f:
+                raw_data = json.load(f)
 
-                # 兼容旧版事件缓存格式（列表转字典）
-                if isinstance(raw_data, list):
-                    return {k: time.time() for k in raw_data}
+            # 兼容旧版事件缓存格式（列表转字典）
+            if isinstance(raw_data, list):
+                return {k: time.time() for k in raw_data}
 
-                cutoff = time.time() - 32 * 3600
-                return {k: float(v) for k, v in raw_data.items() if float(v) > cutoff}
+            cutoff = time.time() - 32 * 3600
+            return {k: float(v) for k, v in raw_data.items() if float(v) > cutoff}
 
-        except Exception as e:
-            debug_utils.log_and_print(f"加载事件缓存失败: {e}", log_level="ERROR")
         return {}
 
     def save_all(self):
@@ -90,6 +87,7 @@ class CacheService:
         processed_events = {k: str(v) for k, v in self.event_cache.items()}
         self._atomic_save(self.event_cache_file, processed_events)
 
+    @file_processing_safe("缓存文件保存失败")
     def _atomic_save(self, filename: str, data: Dict):
         """
         原子化保存
@@ -98,14 +96,11 @@ class CacheService:
             filename: 文件路径
             data: 要保存的数据
         """
-        try:
-            os.makedirs(os.path.dirname(filename), exist_ok=True)
-            temp_file = filename + ".tmp"
-            with open(temp_file, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=2)
-            os.replace(temp_file, filename)
-        except Exception as e:
-            debug_utils.log_and_print(f"保存缓存失败 {filename}: {e}", log_level="ERROR")
+        os.makedirs(os.path.dirname(filename), exist_ok=True)
+        temp_file = filename + ".tmp"
+        with open(temp_file, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+        os.replace(temp_file, filename)
 
     # 原有接口保持不变
     def get_user_name(self, user_id: str) -> Optional[str]:

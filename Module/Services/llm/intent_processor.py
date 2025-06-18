@@ -10,6 +10,7 @@ import os
 from typing import Dict, Any, Optional, Tuple
 from google import genai
 from Module.Common.scripts.common import debug_utils
+from ..service_decorators import file_processing_safe
 
 
 class IntentProcessor:
@@ -37,16 +38,13 @@ class IntentProcessor:
         self.intents = self.config.get('intents', {})
         self.settings = self.config.get('settings', {})
 
+    @file_processing_safe("意图配置加载失败", return_value={"intents": {}, "settings": {}})
     def _load_config(self, config_path: str) -> Dict[str, Any]:
         """加载意图配置文件"""
-        try:
-            with open(config_path, 'r', encoding='utf-8') as f:
-                config = json.load(f)
-            debug_utils.log_and_print(f"✅ 意图配置加载成功: {len(config.get('intents', {}))} 个意图", log_level="DEBUG")
-            return config
-        except Exception as e:
-            debug_utils.log_and_print(f"❌ 意图配置加载失败: {e}", log_level="ERROR")
-            return {"intents": {}, "settings": {}}
+        with open(config_path, 'r', encoding='utf-8') as f:
+            config = json.load(f)
+        debug_utils.log_and_print(f"✅ 意图配置加载成功: {len(config.get('intents', {}))} 个意图", log_level="DEBUG")
+        return config
 
     # ==================== 第一阶段：意图识别 ====================
 

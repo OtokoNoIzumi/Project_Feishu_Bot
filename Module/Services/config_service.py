@@ -17,6 +17,7 @@ import datetime
 from typing import Dict, Any, Tuple, List, Optional
 from dotenv import load_dotenv
 from Module.Common.scripts.common import debug_utils
+from .service_decorators import file_processing_safe
 
 
 class ConfigService:
@@ -134,6 +135,7 @@ class ConfigService:
 
         return env_config
 
+    @file_processing_safe("配置文件加载失败", return_value={})
     def _load_config(self, config_file_path: str) -> Dict[str, Any]:
         """
         加载配置
@@ -144,12 +146,9 @@ class ConfigService:
         Returns:
             Dict[str, Any]: 配置数据
         """
-        try:
-            if config_file_path and os.path.exists(config_file_path):
-                with open(config_file_path, "r", encoding="utf-8") as f:
-                    return json.load(f)
-        except Exception as e:
-            debug_utils.log_and_print(f"加载配置失败 ({config_file_path}): {e}", log_level="ERROR")
+        if config_file_path and os.path.exists(config_file_path):
+            with open(config_file_path, "r", encoding="utf-8") as f:
+                return json.load(f)
         return {}
 
     def get(self, key: str, default: Any = None) -> Any:

@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Optional, Tuple, Dict, Any, Union
 
 from Module.Common.scripts.common import debug_utils
+from ..service_decorators import service_operation_safe, external_api_safe, file_processing_safe
 
 
 class AudioService:
@@ -75,6 +76,7 @@ class AudioService:
             self.coze_access_token = os.getenv("COZE_API_KEY", "")
             self.voice_id = "peach"
 
+    @external_api_safe("TTS语音生成失败", return_value=None, api_name="Coze TTS")
     def generate_tts(self, text: str) -> Optional[bytes]:
         """
         文本转语音
@@ -89,16 +91,13 @@ class AudioService:
             debug_utils.log_and_print("TTS服务未初始化", log_level="ERROR")
             return None
 
-        try:
-            audio_data = self.tts_service.generate(text)
+        audio_data = self.tts_service.generate(text)
 
-            if not audio_data:
-                debug_utils.log_and_print("TTS生成失败，返回空数据", log_level="ERROR")
-            return audio_data
-        except Exception as e:
-            debug_utils.log_and_print(f"TTS生成异常: {e}", log_level="ERROR")
-            return None
+        if not audio_data:
+            debug_utils.log_and_print("TTS生成失败，返回空数据", log_level="ERROR")
+        return audio_data
 
+    @file_processing_safe("音频格式转换失败", return_value=(None, 0))
     def convert_to_opus(
         self,
         input_path: str,
@@ -116,68 +115,63 @@ class AudioService:
         Returns:
             Tuple[Optional[str], int]: (输出文件路径, 音频时长毫秒)
         """
-        try:
-            input_path = Path(input_path)
+        input_path = Path(input_path)
 
-            # 检查输入文件
-            if not input_path.exists():
-                debug_utils.log_and_print(f"输入文件不存在: {input_path}", log_level="ERROR")
-                return None, 0
-
-            # 检查FFmpeg
-            ffmpeg_cmd = self._get_ffmpeg_command()
-            if not ffmpeg_cmd:
-                debug_utils.log_and_print("FFmpeg不可用", log_level="ERROR")
-                return None, 0
-
-            # 设置输出路径
-            output_path = Path(output_dir or input_path.parent) / f"{input_path.stem}.opus"
-
-            if output_path.exists() and not overwrite:
-                debug_utils.log_and_print(f"输出文件已存在: {output_path}", log_level="WARNING")
-                return str(output_path), 0
-
-            # 构建FFmpeg命令
-            cmd = [
-                ffmpeg_cmd,
-                "-i", str(input_path),
-                "-strict", "-2",
-                "-acodec", "opus",
-                "-ac", "1",
-                "-ar", "48000",
-                "-y" if overwrite else "-n",
-                str(output_path)
-            ]
-
-            # 执行转换
-            with subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                universal_newlines=True
-            ) as process:
-                duration_ms = 0
-
-                for line in process.stdout:
-                    if "Duration:" in line:
-                        try:
-                            time_str = line.split("Duration: ")[1].split(",")[0].strip()
-                            h, m, s = time_str.split(":")
-                            duration_ms = int((int(h)*3600 + int(m)*60 + float(s)) * 1000)
-                        except:
-                            pass
-
-                return_code = process.wait()
-
-                if return_code != 0:
-                    debug_utils.log_and_print(f"音频转换失败，返回码: {return_code}", log_level="ERROR")
-                    return None, 0
-
-                return str(output_path), duration_ms
-
-        except Exception as e:
-            debug_utils.log_and_print(f"音频转换异常: {e}", log_level="ERROR")
+        # 检查输入文件
+        if not input_path.exists():
+            debug_utils.log_and_print(f"输入文件不存在: {input_path}", log_level="ERROR")
             return None, 0
+
+        # 检查FFmpeg
+        ffmpeg_cmd = self._get_ffmpeg_command()
+        if not ffmpeg_cmd:
+            debug_utils.log_and_print("FFmpeg不可用", log_level="ERROR")
+            return None, 0
+
+        # 设置输出路径
+        output_path = Path(output_dir or input_path.parent) / f"{input_path.stem}.opus"
+
+        if output_path.exists() and not overwrite:
+            debug_utils.log_and_print(f"输出文件已存在: {output_path}", log_level="WARNING")
+            return str(output_path), 0
+
+        # 构建FFmpeg命令
+        cmd = [
+            ffmpeg_cmd,
+            "-i", str(input_path),
+            "-strict", "-2",
+            "-acodec", "opus",
+            "-ac", "1",
+            "-ar", "48000",
+            "-y" if overwrite else "-n",
+            str(output_path)
+        ]
+
+        # 执行转换
+        with subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            universal_newlines=True
+        ) as process:
+            duration_ms = 0
+
+            for line in process.stdout:
+                if "Duration:" in line:
+                    try:
+                        time_str = line.split("Duration: ")[1].split(",")[0].strip()
+                        h, m, s = time_str.split(":")
+                        duration_ms = int((int(h)*3600 + int(m)*60 + float(s)) * 1000)
+                    except:
+                        pass
+
+            return_code = process.wait()
+
+            if return_code != 0:
+                debug_utils.log_and_print(f"音频转换失败，返回码: {return_code}", log_level="ERROR")
+                return None, 0
+
+            return str(output_path), duration_ms
 
     def _get_ffmpeg_command(self) -> Optional[str]:
         """获取可用的FFmpeg命令"""
@@ -192,6 +186,7 @@ class AudioService:
 
         return None
 
+    @service_operation_safe("TTS请求处理失败", return_value=(False, None, "处理失败"))
     def process_tts_request(self, text: str) -> Tuple[bool, Optional[bytes], str]:
         """
         处理TTS请求的完整流程
@@ -208,14 +203,11 @@ class AudioService:
         if not self.tts_service:
             return False, None, "TTS服务未配置"
 
-        try:
-            audio_data = self.generate_tts(text)
-            if audio_data:
-                return True, audio_data, ""
-            else:
-                return False, None, "TTS生成失败"
-        except Exception as e:
-            return False, None, f"TTS处理异常: {str(e)}"
+        audio_data = self.generate_tts(text)
+        if audio_data:
+            return True, audio_data, ""
+        else:
+            return False, None, "TTS生成失败"
 
     def create_temp_audio_file(self, audio_data: bytes, suffix: str = ".mp3") -> str:
         """
@@ -235,6 +227,7 @@ class AudioService:
 
         return temp_file.name
 
+    @file_processing_safe("清理临时文件失败")
     def cleanup_temp_file(self, file_path: str):
         """
         清理临时文件
@@ -242,11 +235,8 @@ class AudioService:
         Args:
             file_path: 文件路径
         """
-        try:
-            if os.path.exists(file_path):
-                os.unlink(file_path)
-        except Exception as e:
-            debug_utils.log_and_print(f"清理临时文件失败: {e}", log_level="WARNING")
+        if os.path.exists(file_path):
+            os.unlink(file_path)
 
     def get_status(self) -> Dict[str, Any]:
         """获取音频服务状态"""

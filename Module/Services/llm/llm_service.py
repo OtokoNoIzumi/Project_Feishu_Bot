@@ -90,6 +90,7 @@ class LLMService:
                 debug_utils.log_and_print("✅ 意图处理器初始化成功", log_level="DEBUG")
             else:
                 debug_utils.log_and_print("⚠️ 无法初始化意图处理器：LLM客户端不可用", log_level="WARNING")
+                self.intent_processor = None
         except Exception as e:
             debug_utils.log_and_print(f"❌ 意图处理器初始化失败: {e}", log_level="ERROR")
             self.intent_processor = None
