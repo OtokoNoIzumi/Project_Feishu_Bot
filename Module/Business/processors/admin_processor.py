@@ -9,7 +9,7 @@ import re
 import requests
 import json
 from typing import Tuple, Dict, Any, Optional
-from .base_processor import BaseProcessor, MessageContext, ProcessResult, require_service, safe_execute
+from .base_processor import BaseProcessor, MessageContext, ProcessResult, require_service, safe_execute, require_app_controller
 from Module.Common.scripts.common import debug_utils
 
 
@@ -24,6 +24,7 @@ class AdminProcessor(BaseProcessor):
         """初始化管理员处理器"""
         super().__init__(app_controller)
         self._load_config()
+        self._register_pending_operations()
 
     def _load_config(self):
         """加载配置"""
@@ -43,18 +44,36 @@ class AdminProcessor(BaseProcessor):
                 # 获取B站API配置 - 修正环境变量名称
                 self.bili_api_base_url = config_service.get_env("BILI_API_BASE", "https://localhost:3000")
                 self.bili_admin_secret = config_service.get_env("ADMIN_SECRET_KEY", "izumi_the_beauty")
+
+                # 获取pending_cache配置
+                pending_cache_config = config_service.get("pending_cache", {})
+                self.operation_timeouts = pending_cache_config.get("operation_timeouts", {})
+                self.default_timeout = pending_cache_config.get("default_timeout", 30)
             else:
                 # 配置服务不可用，使用默认值
                 self.admin_id = ''
                 self.update_config_trigger = 'whisk令牌'
                 self.bili_api_base_url = 'https://localhost:3000'
                 self.bili_admin_secret = 'izumi_the_beauty'
+                self.operation_timeouts = {"update_user": 30, "update_ads": 45, "system_config": 60}
+                self.default_timeout = 30
         else:
             # 默认配置
             self.admin_id = ''
             self.update_config_trigger = 'whisk令牌'
             self.bili_api_base_url = 'https://localhost:3000'
             self.bili_admin_secret = 'izumi_the_beauty'
+
+    def _register_pending_operations(self):
+        """注册缓存操作执行器"""
+        if self.app_controller:
+            pending_cache_service = self.app_controller.get_service('pending_cache')
+            if pending_cache_service:
+                # 注册用户更新操作执行器
+                pending_cache_service.register_executor(
+                    "update_user",
+                    self._execute_user_update_operation
+                )
 
     def is_admin_command(self, user_msg: str) -> bool:
         """检查是否是管理员指令"""
@@ -112,12 +131,10 @@ class AdminProcessor(BaseProcessor):
         account_type = account_type_map[account_type_input]
         account_type_display = {0: "普通用户", 1: "支持者", 2: "受邀用户"}[account_type]
 
-        # 通过卡片管理器生成确认卡片
-        card_content = self._create_update_user_confirmation_card(
-            uid, account_type, account_type_display
+        # 使用新的缓存服务创建确认操作
+        return self._create_pending_user_update_operation(
+            context, uid, account_type + 1, ' '.join(parts[1:])  # 转换为1-3的用户类型
         )
-
-        return ProcessResult.success_result("interactive", card_content, parent_id=context.message_id)
 
     @safe_execute("更新广告命令解析失败")
     def handle_update_ads_command(self, context: MessageContext, user_msg: str) -> ProcessResult:
@@ -650,6 +667,191 @@ class AdminProcessor(BaseProcessor):
         except Exception as e:
             return False, {"message": f"API调用异常: {str(e)}"}
 
+    @require_app_controller("应用控制器不可用")
+    @require_service('pending_cache', "缓存业务服务不可用")
+    @safe_execute("创建待处理用户更新操作失败")
+    def _create_pending_user_update_operation(self, context: MessageContext, user_id: str, user_type: int, admin_input: str) -> ProcessResult:
+        """
+        创建待处理的用户更新操作
+
+        Args:
+            context: 消息上下文
+            user_id: 用户ID
+            user_type: 用户类型 (1-3)
+            admin_input: 管理员原始输入
+
+        Returns:
+            ProcessResult: 处理结果
+        """
+        pending_cache_service = self.app_controller.get_service('pending_cache')
+
+        # 从配置获取超时时间
+        timeout_seconds = self.get_operation_timeout("update_user")
+        timeout_text = self._format_timeout_text(timeout_seconds)
+
+        # 准备操作数据
+        operation_data = {
+            'user_id': user_id,
+            'user_type': user_type,
+            'admin_input': admin_input,
+            'finished': False,
+            'result': '确认⏰',
+            'hold_time': timeout_text
+        }
+
+        # 创建缓存操作
+        operation_id = pending_cache_service.create_operation(
+            user_id=context.user_id,  # 管理员用户ID
+            operation_type="update_user",
+            operation_data=operation_data,
+            admin_input=admin_input,
+            hold_time_seconds=timeout_seconds,
+            default_action="confirm"
+        )
+
+        # 添加操作ID到数据中
+        operation_data['operation_id'] = operation_id
+
+        # 使用admin卡片管理器生成卡片
+        return ProcessResult.success_result(
+            "admin_card_send",
+            operation_data,
+            parent_id=context.message_id
+        )
+
+    @safe_execute("执行用户更新操作失败")
+    def _execute_user_update_operation(self, operation) -> bool:
+        """
+        执行用户更新操作（缓存服务回调）
+
+        Args:
+            operation: PendingOperation对象
+
+        Returns:
+            bool: 是否执行成功
+        """
+        try:
+            user_id = operation.operation_data.get('user_id')
+            user_type = operation.operation_data.get('user_type')
+
+            if not user_id or not user_type:
+                debug_utils.log_and_print("❌ 用户更新操作缺少必要参数", log_level="ERROR")
+                return False
+
+            # 转换用户类型 (1-3 -> 0-2)
+            account_type = user_type - 1
+
+            # 调用B站API
+            success, response_data = self._call_update_user_api(user_id, account_type)
+
+            if success:
+                debug_utils.log_and_print(f"✅ 用户 {user_id} 状态更新成功 {response_data.get('message', '')}", log_level="INFO")
+                return True
+            else:
+                error_msg = response_data.get("message", "未知错误") if response_data else "API调用失败"
+                debug_utils.log_and_print(f"❌ 用户 {user_id} 状态更新失败: {error_msg}", log_level="ERROR")
+                return False
+
+        except Exception as e:
+            debug_utils.log_and_print(f"❌ 执行用户更新操作异常: {e}", log_level="ERROR")
+            return False
+
+    @require_app_controller("应用控制器不可用")
+    @require_service('pending_cache', "缓存业务服务不可用")
+    @safe_execute("处理缓存操作确认失败")
+    def handle_pending_operation_action(self, context: MessageContext, action_value: Dict[str, Any]) -> ProcessResult:
+        """
+        处理缓存操作的确认、取消等动作
+
+        Args:
+            context: 消息上下文
+            action_value: 动作参数
+
+        Returns:
+            ProcessResult: 处理结果
+        """
+        pending_cache_service = self.app_controller.get_service('pending_cache')
+
+        action = action_value.get('action', '')
+        operation_id = action_value.get('operation_id', '')
+
+        if not operation_id:
+            return ProcessResult.error_result("缺少操作ID")
+
+        operation = pending_cache_service.get_operation(operation_id)
+        if not operation:
+            return ProcessResult.error_result("操作不存在")
+
+        if action == "confirm_user_update":
+            # 更新操作数据（可能有表单修改）
+            if 'user_id' in action_value:
+                operation.operation_data['user_id'] = action_value['user_id']
+            if 'user_type' in action_value:
+                operation.operation_data['user_type'] = action_value['user_type']
+
+            # 确认操作
+            success = pending_cache_service.confirm_operation(operation_id)
+
+            if success:
+                # 构建成功的卡片更新数据
+                result_data = operation.operation_data.copy()
+                result_data.update({
+                    'finished': True,
+                    'hold_time': '',
+                    'result': " | 已完成",
+                    'result_type': 'success'
+                })
+
+                return ProcessResult.success_result(
+                    "admin_card_update",
+                    result_data
+                )
+            else:
+                # 构建失败的卡片更新数据
+                result_data = operation.operation_data.copy()
+                result_data.update({
+                    'finished': True,
+                    'result': " | ❌ 执行失败",
+                    'result_type': 'error'
+                })
+
+                return ProcessResult.success_result(
+                    "admin_card_update",
+                    result_data
+                )
+
+        elif action == "cancel_user_update":
+            # 取消操作
+            success = pending_cache_service.cancel_operation(operation_id)
+
+            # 构建取消的卡片更新数据
+            result_data = operation.operation_data.copy()
+            result_data.update({
+                'finished': True,
+                'hold_time': '',
+                'result': " | 操作取消",
+                'result_type': 'info'
+            })
+
+            return ProcessResult.success_result(
+                "admin_card_update",
+                result_data
+            )
+
+        elif action == "update_data":
+            # 更新操作数据
+            new_data = action_value.get('new_data', {})
+            pending_cache_service.update_operation_data(operation_id, new_data)
+
+            # 返回简单成功响应（不需要更新卡片）
+            return ProcessResult.success_result("toast", {
+                "message": "数据已更新",
+                "type": "success"
+            })
+
+        else:
+            return ProcessResult.error_result(f"未知的操作类型: {action}")
+
     @require_service('image', "图像服务不可用")
     @safe_execute("配置更新失败")
     def handle_config_update(self, context: MessageContext, user_msg: str) -> ProcessResult:
@@ -711,3 +913,42 @@ class AdminProcessor(BaseProcessor):
     def get_update_trigger(self) -> str:
         """获取更新触发器"""
         return self.update_config_trigger
+
+    def get_operation_timeout(self, operation_type: str) -> int:
+        """
+        获取操作类型对应的超时时间
+
+        Args:
+            operation_type: 操作类型
+
+        Returns:
+            int: 超时时间（秒）
+        """
+        return self.operation_timeouts.get(operation_type, self.default_timeout)
+
+    def _format_timeout_text(self, seconds: int) -> str:
+        """
+        格式化超时时间文本
+
+        Args:
+            seconds: 秒数
+
+        Returns:
+            str: 格式化的时间文本
+        """
+        if seconds < 60:
+            return f"({seconds}s)"
+        elif seconds < 3600:
+            minutes = seconds // 60
+            remaining_seconds = seconds % 60
+            if remaining_seconds > 0:
+                return f"({minutes}m{remaining_seconds}s)"
+            else:
+                return f"({minutes}m)"
+        else:
+            hours = seconds // 3600
+            remaining_minutes = (seconds % 3600) // 60
+            if remaining_minutes > 0:
+                return f"({hours}h{remaining_minutes}m)"
+            else:
+                return f"({hours}h)"

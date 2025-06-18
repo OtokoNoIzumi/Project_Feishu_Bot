@@ -273,6 +273,11 @@ class AppController:
                     config = {
                         'cache_dir': os.path.join(self.project_root_path, 'cache')
                     }
+                elif service_name == 'pending_cache':
+                    config = {
+                        'cache_dir': os.path.join(self.project_root_path, 'cache'),
+                        'max_operations_per_user': 2
+                    }
                 else:
                     config = {}
 

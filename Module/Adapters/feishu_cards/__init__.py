@@ -7,12 +7,14 @@
 
 from .base_card_manager import BaseCardManager, FeishuCardRegistry
 from .bilibili_cards import BilibiliCardManager
+from .admin_cards import AdminCardManager
 
 # 导出主要组件
 __all__ = [
     'BaseCardManager',
     'FeishuCardRegistry',
-    'BilibiliCardManager'
+    'BilibiliCardManager',
+    'AdminCardManager'
 ]
 
 # 创建全局卡片注册中心
@@ -24,6 +26,10 @@ def initialize_card_managers():
     # 注册B站卡片管理器
     bili_manager = BilibiliCardManager()
     card_registry.register_manager("bilibili", bili_manager)
+
+    # 注册管理员卡片管理器
+    admin_manager = AdminCardManager()
+    card_registry.register_manager("admin", admin_manager)
 
     # 后续可以继续添加其他卡片管理器
     # music_manager = MusicCardManager()

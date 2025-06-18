@@ -12,6 +12,7 @@ from .scheduler import SchedulerService
 from .notion import NotionService
 from .llm import LLMService
 from .router import RouterService
+from .pending_cache_service import PendingCacheService
 
 __all__ = [
     'CacheService',
@@ -21,7 +22,8 @@ __all__ = [
     'SchedulerService',
     'NotionService',
     'LLMService',
-    'RouterService'
+    'RouterService',
+    'PendingCacheService'
 ]
 
 # 服务注册表（用于应用控制器）
@@ -33,5 +35,6 @@ AVAILABLE_SERVICES = {
     'scheduler': SchedulerService,
     'notion': NotionService,
     'llm': LLMService,
-    'router': RouterService
+    'router': RouterService,
+    'pending_cache': PendingCacheService
 }

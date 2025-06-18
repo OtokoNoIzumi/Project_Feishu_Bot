@@ -97,6 +97,7 @@ class FeishuAdapter:
         # 导入并初始化新的卡片管理架构
         self.card_registry = initialize_card_managers()
         self.bili_card_manager = get_card_manager("bilibili")
+        self.admin_card_manager = get_card_manager("admin")
 
         # 初始化飞书SDK配置
         self._init_feishu_config()
@@ -216,6 +217,20 @@ class FeishuAdapter:
             self._upload_and_send_rich_text(data, result)
             return
 
+        # 检查是否需要发送管理员确认卡片
+        if result.success and result.response_type == "admin_card_send":
+            user_id = context.user_id
+            success = self._handle_admin_card_operation(
+                result.response_content,
+                operation_type="send",
+                user_id=user_id
+            )
+            if not success:
+                # 发送失败，发送错误信息
+                error_result = ProcessResult.error_result("管理员卡片发送失败")
+                self._send_feishu_reply(data, error_result)
+            return
+
         # 检查是否是单个图片类型
         if result.success and result.response_type == "image":
             image_data = result.response_content.get("image_data")
@@ -289,6 +304,14 @@ class FeishuAdapter:
                 toast_message="视频成功设置为已读"
             )
 
+        # 检查是否是管理员卡片更新结果
+        if result.success and result.response_type == "admin_card_update":
+            # 使用管理员卡片处理方法
+            return self._handle_admin_card_operation(
+                result.response_content,
+                operation_type="update_response"
+            )
+
         # 处理不同类型的响应
         if result.success:
             # 检查是否是卡片动作响应（包含卡片更新）
@@ -358,6 +381,59 @@ class FeishuAdapter:
 
         else:
             debug_utils.log_and_print(f"❌ 未知的卡片操作类型: {operation_type}", log_level="ERROR")
+            return False
+
+    @card_operation_safe("管理员卡片操作失败")
+    def _handle_admin_card_operation(self, operation_data: Dict[str, Any], operation_type: str, **kwargs) -> Any:
+        """
+        统一处理管理员卡片的构建和操作
+
+        Args:
+            operation_data: 业务层返回的操作数据
+            operation_type: 操作类型 ('send' | 'update_response')
+            **kwargs: 额外参数(user_id, toast_message等)
+
+        Returns:
+            bool: 发送操作的成功状态
+            P2CardActionTriggerResponse: 更新响应操作的响应对象
+        """
+        # 使用卡片管理器构建卡片内容
+        card_content = self.admin_card_manager.build_user_update_confirm_card(operation_data)
+
+        if operation_type == "send":
+            # 发送新卡片
+            user_id = kwargs.get("user_id")
+            if not user_id:
+                debug_utils.log_and_print("❌ 发送卡片缺少用户ID", log_level="ERROR")
+                return False
+
+            success = self._send_interactive_card(user_id, card_content)
+            if not success:
+                debug_utils.log_and_print("❌ 管理员卡片发送失败", log_level="ERROR")
+            return success
+
+        elif operation_type == "update_response":
+            # 构建卡片更新响应
+            toast_message = kwargs.get("toast_message", "操作完成")
+            result_type = operation_data.get('result_type', 'success')
+
+            # 根据结果类型设置Toast类型
+            toast_type = result_type
+
+            response_data = {
+                "toast": {
+                    "type": toast_type,
+                    "content": toast_message
+                },
+                "card": {
+                    "type": "raw",
+                    "data": card_content
+                }
+            }
+            return P2CardActionTriggerResponse(response_data)
+
+        else:
+            debug_utils.log_and_print(f"❌ 未知的管理员卡片操作类型: {operation_type}", log_level="ERROR")
             return False
 
     @message_conversion_safe("消息转换失败")
@@ -463,6 +539,21 @@ class FeishuAdapter:
     @message_conversion_safe("卡片转换失败")
     def _convert_card_to_context(self, data) -> Optional[MessageContext]:
         """将飞书卡片点击转换为标准消息上下文"""
+        # 详细输出P2ImMessageReceiveV1对象信息
+        debug_utils.log_and_print(f"🔍 P2ImMessageReceiveV1Card对象详细信息 (JSON序列化):", log_level="DEBUG")
+        try:
+            # 使用自定义序列化器进行转换
+            serializable_data = custom_serializer(data)
+            json_output = json.dumps(serializable_data, indent=2, ensure_ascii=False)
+            debug_utils.log_and_print(json_output, log_level="DEBUG")
+            debug_utils.log_and_print(f"🔍 P2ImMessageReceiveV1Card对象详细信息 (pprint):", log_level="DEBUG")
+            dict_representation = custom_serializer(data)
+            pretty_output = pprint.pformat(dict_representation, indent=2, width=120)
+            debug_utils.log_and_print(pretty_output, log_level="DEBUG")
+        except Exception as e:
+            debug_utils.log_and_print(f"  - 序列化失败: {e}", log_level="ERROR")
+            debug_utils.log_and_print(f"  - 尝试使用 repr(): {repr(data)}", log_level="DEBUG")
+
         # 提取基本信息
         event_id = f"card_{data.event.operator.open_id}_{int(time.time())}"  # 卡片事件生成ID
         timestamp = datetime.datetime.now()
@@ -473,7 +564,10 @@ class FeishuAdapter:
 
         # 卡片动作信息
         action = data.event.action
-        action_value = action.value if hasattr(action, 'value') else {}
+        # 优化action.value为None或空的处理逻辑
+        action_value = getattr(action, 'value', None)
+        if not isinstance(action_value, dict) or action_value is None:
+            action_value = {}
 
         return MessageContext(
             user_id=user_id,

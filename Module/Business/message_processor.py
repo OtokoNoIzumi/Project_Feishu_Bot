@@ -54,6 +54,11 @@ class MessageProcessor(BaseProcessor):
             "confirm_update_user": self._handle_admin_card_action,
             "confirm_update_ads": self._handle_admin_card_action,
 
+            # 新的缓存业务管理员动作
+            "confirm_user_update": self._handle_pending_admin_card_action,
+            "cancel_user_update": self._handle_pending_admin_card_action,
+            "update_user_type": self._handle_pending_admin_card_action,
+
             # 交互式管理员动作
             "confirm_update_user_interactive": self._handle_interactive_admin_card_action,
             "confirm_update_ads_interactive": self._handle_interactive_admin_card_action,
@@ -400,6 +405,24 @@ class MessageProcessor(BaseProcessor):
         except Exception as e:
             debug_utils.log_and_print(f"❌ 交互式管理员卡片动作处理失败: {e}", log_level="ERROR")
             return ProcessResult.error_result(f"卡片动作处理失败: {str(e)}")
+
+    def _handle_pending_admin_card_action(self, context: MessageContext, action_value: Dict[str, Any]) -> ProcessResult:
+        """
+        处理缓存业务管理员卡片动作
+
+        Args:
+            context: 消息上下文
+            action_value: 动作参数
+
+        Returns:
+            ProcessResult: 处理结果
+        """
+        try:
+            # 直接调用admin_processor的缓存操作处理方法
+            return self.admin_processor.handle_pending_operation_action(context, action_value)
+        except Exception as e:
+            debug_utils.log_and_print(f"❌ 缓存业务管理员卡片动作处理失败: {e}", log_level="ERROR")
+            return ProcessResult.error_result(f"缓存操作处理失败: {str(e)}")
 
     # ================ 异步处理方法（供适配器调用）================
 

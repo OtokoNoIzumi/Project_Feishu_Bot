@@ -10,3 +10,4 @@ local_settings/
 cache/notion_bili_cache.json
 cache/processed_events.json
 cache/user_cache.json
+cache/pending_operations.json
