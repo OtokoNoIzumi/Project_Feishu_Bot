@@ -10,10 +10,12 @@
 import json
 import time
 import datetime
-import tempfile
 import os
 from typing import Optional, Dict, Any, Tuple, List
 from pathlib import Path
+from io import BytesIO
+import base64
+import threading
 
 import pprint
 import lark_oapi as lark
@@ -39,34 +41,39 @@ from .feishu_decorators import (
 # P2ImMessageReceiveV1对象调试开关 - 开发调试用
 DEBUG_P2IM_OBJECTS = False  # 设置为True启用详细调试输出
 
+
 def custom_serializer(obj):
     """
     自定义序列化函数，用于json.dumps。
     它会尝试获取对象的__dict__，如果对象没有__dict__（例如内置类型或使用__slots__的对象），
     或者__dict__中的某些值无法直接序列化，则回退到str(obj)。
     """
-    if isinstance(obj, bytes): # 处理字节串，例如图片内容
+    # 处理特殊类型
+    if isinstance(obj, bytes):
         return f"<bytes data len={len(obj)}>"
+
+    # 处理复合类型
+    if isinstance(obj, (list, tuple)):
+        return [custom_serializer(item) for item in obj]
+
+    if isinstance(obj, dict):
+        return {k: custom_serializer(v) for k, v in obj.items()}
+
+    # 处理有__dict__的对象
     if hasattr(obj, '__dict__'):
-        # 创建一个新的字典，只包含非私有/保护的、非可调用属性
-        # 并对每个值递归调用 custom_serializer
         return {
             k: custom_serializer(v)
             for k, v in vars(obj).items()
-            if not k.startswith('_') # and not callable(v) # 通常SDK模型属性不是可调用的
+            if not k.startswith('_')
         }
-    elif isinstance(obj, list):
-        return [custom_serializer(item) for item in obj]
-    elif isinstance(obj, tuple):
-        return tuple(custom_serializer(item) for item in obj)
-    elif isinstance(obj, dict):
-        return {k: custom_serializer(v) for k, v in obj.items()}
+
+    # 尝试JSON序列化，失败则转为字符串
     try:
-        # 尝试让json自己处理，如果不行，则转为字符串
-        json.dumps(obj) # 测试是否可序列化
+        json.dumps(obj)  # 测试是否可序列化
         return obj
     except TypeError:
-        return str(obj) # 对于无法序列化的，返回其字符串表示
+        return str(obj)
+
 
 def debug_p2im_object(data, object_type: str = "P2ImMessageReceiveV1"):
     """
@@ -93,6 +100,7 @@ def debug_p2im_object(data, object_type: str = "P2ImMessageReceiveV1"):
         debug_utils.log_and_print(f"  - 序列化失败: {e}", log_level="ERROR")
         debug_utils.log_and_print(f"  - 尝试使用 repr(): {repr(data)}", log_level="DEBUG")
 
+
 def debug_parent_id_analysis(data):
     """
     分析并调试parent_id相关信息
@@ -109,9 +117,10 @@ def debug_parent_id_analysis(data):
         if parent_id:
             debug_utils.log_and_print(f"  - 关键信息: 此消息为回复消息, parent_id = {parent_id}", log_level="INFO")
         else:
-            debug_utils.log_and_print(f"  - 关键信息: 此消息非回复消息 (parent_id is None or empty)", log_level="DEBUG")
+            debug_utils.log_and_print("  - 关键信息: 此消息非回复消息 (parent_id is None or empty)", log_level="DEBUG")
     else:
-        debug_utils.log_and_print(f"  - 关键信息: 未找到 parent_id 属性路径", log_level="DEBUG")
+        debug_utils.log_and_print("  - 关键信息: 未找到 parent_id 属性路径", log_level="DEBUG")
+
 
 class FeishuAdapter:
     """
@@ -196,7 +205,13 @@ class FeishuAdapter:
             log_level=self.log_level
         )
 
-    # ================ 通用转换工具方法 ================
+    # ================ 通用工具方法 ================
+
+    def _execute_async(self, func):
+        """通用异步执行方法，统一管理线程创建"""
+        thread = threading.Thread(target=func)
+        thread.daemon = True
+        thread.start()
 
     def _extract_common_context_data(self, data, user_id: str) -> Dict[str, Any]:
         """
@@ -224,6 +239,27 @@ class FeishuAdapter:
             'user_name': user_name
         }
 
+    @feishu_api_call("获取用户名失败", return_value="用户_未知")
+    def _get_user_name(self, open_id: str) -> str:
+        """获取用户名称"""
+        # 先从缓存获取
+        if self.app_controller:
+            success, cached_name = self.app_controller.call_service('cache', 'get', f"user:{open_id}")
+            if success and cached_name:
+                return cached_name
+
+        # 从飞书API获取
+        request = GetUserRequest.builder().user_id_type("open_id").user_id(open_id).build()
+        response = self.client.contact.v3.user.get(request)
+        if response.success() and response.data and response.data.user:
+            name = response.data.user.name
+            # 缓存用户名
+            if self.app_controller:
+                self.app_controller.call_service('cache', 'set', f"user:{open_id}", name, 604800)
+            return name
+
+        return f"用户_{open_id[:8]}"
+
     # ================ 事件处理方法（消息类型）================
 
     @feishu_event_handler_safe("处理飞书消息失败")
@@ -238,7 +274,6 @@ class FeishuAdapter:
         """
         # 转换为标准消息上下文
         context = self._convert_message_to_context(data)
-
         if context is None:
             debug_utils.log_and_print("消息上下文转换失败", log_level="ERROR")
             return
@@ -246,43 +281,183 @@ class FeishuAdapter:
         # 调用业务处理器
         result = self.message_processor.process_message(context)
 
-        # 统一提前返回不需要回复的情况
+        # 不需要回复的情况
         if not result.should_reply:
             return
 
-        # 统一处理异步action
-        next_action = result.response_content.get("next_action") if (result.success and result.response_content) else None
-
-        if next_action == "process_tts":
-            tts_text = result.response_content.get("tts_text", "")
-            self._handle_tts_async(data, tts_text)
+        # 处理异步操作
+        if self._handle_async_actions(data, result):
             return
 
-        if next_action == "process_image_generation":
-            prompt = result.response_content.get("generation_prompt", "")
-            self._handle_image_generation_async(data, prompt)
+        # 处理特殊回复类型
+        if self._handle_special_response_types(data, result, context):
             return
 
-        if next_action == "process_image_conversion":
-            self._handle_image_conversion_async(data, context)
-            return
+        # 默认发送普通回复
+        self._send_feishu_reply(data, result)
 
-        if next_action == "process_bili_video":
-            user_id = result.response_content.get("user_id", "")
-            if user_id:
-                text_content = result.response_content.get("text", "")
-                if text_content and text_content.strip():
-                    self._send_feishu_reply(data, result)
-                self._handle_bili_video_async(data, user_id)
-            return
+    def _handle_async_actions(self, data, result) -> bool:
+        """处理异步操作，返回True表示已处理"""
+        if not (result.success and result.response_content):
+            return False
 
-        # 处理不同的回复类型
-        if result.success:
-            if result.response_type == "rich_text":
-                self._upload_and_send_rich_text(data, result)
+        next_action = result.response_content.get("next_action")
+        if not next_action:
+            return False
+
+        # 异步操作映射表，直接映射到处理逻辑
+        action_handlers = {
+            "process_tts": lambda: self._handle_tts_async(data, result.response_content.get("tts_text", "")),
+            "process_image_generation": lambda: self._handle_image_generation_async(data, result.response_content.get("generation_prompt", "")),
+            "process_image_conversion": lambda: self._handle_image_conversion_async(data),
+            "process_bili_video": lambda: self._handle_bili_video_with_text_check(data, result)
+        }
+
+        handler = action_handlers.get(next_action)
+        if handler:
+            handler()
+            return True
+
+        return False
+
+    def _handle_bili_video_with_text_check(self, data, result):
+        """处理B站视频操作（包含文本检查逻辑）"""
+        user_id = result.response_content.get("user_id", "")
+        if user_id:
+            text_content = result.response_content.get("text", "")
+            if text_content and text_content.strip():
+                self._send_feishu_reply(data, result)
+            self._handle_bili_video_async(user_id)
+
+
+    @async_operation_safe("TTS异步处理失败")
+    def _handle_tts_async(self, original_data, tts_text: str):
+        """异步处理TTS请求"""
+        def process_in_background():
+            # 调用业务处理器的异步TTS方法
+            result = self.message_processor.process_tts_async(tts_text)
+
+            if result.success and result.response_type == "audio":
+                # 上传并发送音频
+                audio_data = result.response_content.get("audio_data")
+                if audio_data:
+                    self._upload_and_send_audio(original_data, audio_data)
+                else:
+                    # 音频数据为空，发送错误提示
+                    error_result = ProcessResult.error_result("音频生成失败，数据为空")
+                    self._send_feishu_reply(original_data, error_result)
+            else:
+                # TTS处理失败，发送错误信息
+                self._send_feishu_reply(original_data, result)
+
+        # 使用通用异步执行方法
+        self._execute_async(process_in_background)
+
+    @async_operation_safe("图像生成异步处理失败")
+    def _handle_image_generation_async(self, original_data, prompt: str):
+        """异步处理图像生成请求"""
+        def process_in_background():
+            # 先发送处理中提示
+            processing_result = ProcessResult.success_result("text", {"text": "正在生成图片，请稍候..."})
+            self._send_feishu_reply(original_data, processing_result)
+
+            # 调用业务处理器的异步图像生成方法
+            result = self.message_processor.process_image_generation_async(prompt)
+
+            if result.success and result.response_type == "image_list":
+                # 上传并发送图像
+                image_paths = result.response_content.get("image_paths", [])
+                if image_paths:
+                    self._upload_and_send_images(original_data, image_paths)
+                else:
+                    # 图像列表为空，发送错误提示
+                    error_result = ProcessResult.error_result("图像生成失败，结果为空")
+                    self._send_feishu_reply(original_data, error_result)
+            else:
+                # 图像生成失败，发送错误信息
+                self._send_feishu_reply(original_data, result)
+
+        # 使用通用异步执行方法
+        self._execute_async(process_in_background)
+
+    @async_operation_safe("图像转换异步处理失败")
+    def _handle_image_conversion_async(self, original_data):
+        """异步处理图像转换请求"""
+        def process_in_background():
+            # 先发送处理中提示
+            processing_result = ProcessResult.success_result("text", {"text": "正在转换图片风格，请稍候..."})
+            self._send_feishu_reply(original_data, processing_result)
+
+            # 获取图像资源
+            image_data = self._get_image_resource(original_data)
+            if not image_data:
+                error_result = ProcessResult.error_result("获取图片资源失败")
+                self._send_feishu_reply(original_data, error_result)
                 return
 
-            if result.response_type == "admin_card_send":
+            image_base64, mime_type, file_name, file_size = image_data
+
+            # 调用业务处理器的异步图像转换方法
+            result = self.message_processor.process_image_conversion_async(
+                image_base64, mime_type, file_name, file_size
+            )
+
+            if result.success and result.response_type == "image_list":
+                # 上传并发送图像
+                image_paths = result.response_content.get("image_paths", [])
+                if image_paths:
+                    self._upload_and_send_images(original_data, image_paths)
+                else:
+                    # 图像列表为空，发送错误提示
+                    error_result = ProcessResult.error_result("图像转换失败，结果为空")
+                    self._send_feishu_reply(original_data, error_result)
+            else:
+                # 图像转换失败，发送错误信息
+                self._send_feishu_reply(original_data, result)
+
+        # 使用通用异步执行方法
+        self._execute_async(process_in_background)
+
+    @async_operation_safe("B站视频推荐异步处理失败")
+    def _handle_bili_video_async(self, user_id: str):
+        """异步处理B站视频推荐请求（使用新的卡片架构）"""
+
+        def process_in_background():
+            # 调用业务处理器获取原始数据
+            result = self.message_processor.process_bili_video_async()
+
+            if result.success and result.response_type == "bili_video_data":
+                # 使用统一的卡片处理方法
+                success = self._handle_bili_card_operation(
+                    result.response_content,
+                    operation_type="send",
+                    user_id=user_id
+                )
+
+                if not success:
+                    # 发送失败，使用降级方案
+                    error_result = ProcessResult.error_result("B站视频卡片发送失败")
+                    self._send_direct_message(user_id, error_result)
+            else:
+                debug_utils.log_and_print(f"❌ B站视频获取失败: {result.error_message}", log_level="ERROR")
+                # B站视频获取失败，发送错误信息
+                self._send_direct_message(user_id, result)
+
+        # 使用通用异步执行方法
+        self._execute_async(process_in_background)
+
+
+    def _handle_special_response_types(self, data, result, context) -> bool:
+        """处理特殊回复类型，返回True表示已处理"""
+        if not result.success:
+            return False
+
+        match result.response_type:
+            case "rich_text":
+                self._upload_and_send_rich_text(data, result)
+                return True
+
+            case "admin_card_send":
                 user_id = context.user_id
                 chat_id = data.event.message.chat_id
                 message_id = data.event.message.message_id
@@ -296,9 +471,9 @@ class FeishuAdapter:
                 if not success:
                     error_result = ProcessResult.error_result("管理员卡片发送失败")
                     self._send_feishu_reply(data, error_result, force_reply_mode="reply")
-                return
+                return True
 
-            if result.response_type == "image":
+            case "image":
                 image_data = result.response_content.get("image_data")
                 image_name = result.response_content.get("image_name", "sample_image.jpg")
                 if image_data:
@@ -306,10 +481,10 @@ class FeishuAdapter:
                 else:
                     error_result = ProcessResult.error_result("图片数据为空")
                     self._send_feishu_reply(data, error_result)
-                return
+                return True
 
-        # 默认发送普通回复
-        self._send_feishu_reply(data, result)
+            case _:
+                return False
 
     @message_conversion_safe("消息转换失败")
     def _convert_message_to_context(self, data) -> Optional[MessageContext]:
@@ -348,6 +523,16 @@ class FeishuAdapter:
             }
         )
 
+    def _extract_message_content(self, message) -> Any:
+        """提取飞书消息内容"""
+        match message.message_type:
+            case "text":
+                return json.loads(message.content)["text"]
+            case "image" | "audio":
+                return json.loads(message.content)
+            case _:
+                return message.content
+
     # ================ 事件处理方法（菜单类型）================
 
     @feishu_event_handler_safe("飞书菜单处理失败")
@@ -376,9 +561,9 @@ class FeishuAdapter:
             # 只有在有实际文本内容时才发送提示消息
             text_content = result.response_content.get("text", "")
             if text_content and text_content.strip():
-                success = self._send_direct_message(context.user_id, result)
+                self._send_direct_message(context.user_id, result)
 
-            self._handle_bili_video_async(data, user_id)
+            self._handle_bili_video_async(user_id)
             return
 
         # 发送回复（菜单点击通常需要主动发送消息）
@@ -432,26 +617,28 @@ class FeishuAdapter:
         # 统一处理成功和失败的响应，减少分支嵌套
         if result.success:
             # 特殊类型处理
-            if result.response_type == "bili_card_update":
-                return self._handle_bili_card_operation(
-                    result.response_content,
-                    operation_type="update_response",
-                    toast_message="视频成功设置为已读"
-                )
-            if result.response_type == "admin_card_update":
-                return self._handle_admin_card_operation(
-                    result.response_content,
-                    operation_type="update_response"
-                )
-            if result.response_type == "card_action_response":
-                return P2CardActionTriggerResponse(result.response_content)
-            # 默认成功响应
-            return P2CardActionTriggerResponse({
-                "toast": {
-                    "type": "success",
-                    "content": "操作成功"
-                }
-            })
+            match result.response_type:
+                case "bili_card_update":
+                    return self._handle_bili_card_operation(
+                        result.response_content,
+                        operation_type="update_response",
+                        toast_message="视频成功设置为已读"
+                    )
+                case "admin_card_update":
+                    return self._handle_admin_card_operation(
+                        result.response_content,
+                        operation_type="update_response"
+                    )
+                case "card_action_response":
+                    return P2CardActionTriggerResponse(result.response_content)
+                case _:
+                    # 默认成功响应
+                    return P2CardActionTriggerResponse({
+                        "toast": {
+                            "type": "success",
+                            "content": "操作成功"
+                        }
+                    })
         else:
             # 失败响应
             return P2CardActionTriggerResponse({
@@ -577,13 +764,15 @@ class FeishuAdapter:
             **kwargs
         )
 
-    def _handle_card_operation_common(self,
-                                    card_manager,
-                                    build_method_name: str,
-                                    data: Dict[str, Any],
-                                    operation_type: str,
-                                    card_config_type: str,
-                                    **kwargs) -> Any:
+    def _handle_card_operation_common(
+        self,
+        card_manager,
+        build_method_name: str,
+        data: Dict[str, Any],
+        operation_type: str,
+        card_config_type: str,
+        **kwargs
+    ) -> Any:
         """
         通用卡片操作处理方法
 
@@ -603,39 +792,40 @@ class FeishuAdapter:
         build_method = getattr(card_manager, build_method_name)
         card_content = build_method(data)
 
-        if operation_type == "send":
-            # 从配置获取卡片的回复模式
-            reply_mode = self._get_card_reply_mode(card_config_type)
+        match operation_type:
+            case "send":
+                # 从配置获取卡片的回复模式
+                reply_mode = self._get_card_reply_mode(card_config_type)
 
-            # 构建发送参数
-            send_params = {"card_content": card_content, "reply_mode": reply_mode}
-            send_params.update(kwargs)
+                # 构建发送参数
+                send_params = {"card_content": card_content, "reply_mode": reply_mode}
+                send_params.update(kwargs)
 
-            success = self._send_interactive_card(**send_params)
-            if not success:
-                debug_utils.log_and_print(f"❌ {card_config_type}卡片发送失败", log_level="ERROR")
-            return success
+                success = self._send_interactive_card(**send_params)
+                if not success:
+                    debug_utils.log_and_print(f"❌ {card_config_type}卡片发送失败", log_level="ERROR")
+                return success
 
-        elif operation_type == "update_response":
-            # 构建卡片更新响应
-            toast_message = kwargs.get("toast_message", "操作完成")
-            result_type = data.get('result_type', 'success') if isinstance(data, dict) else 'success'
+            case "update_response":
+                # 构建卡片更新响应
+                toast_message = kwargs.get("toast_message", "操作完成")
+                result_type = data.get('result_type', 'success') if isinstance(data, dict) else 'success'
 
-            response_data = {
-                "toast": {
-                    "type": result_type,
-                    "content": toast_message
-                },
-                "card": {
-                    "type": "raw",
-                    "data": card_content
+                response_data = {
+                    "toast": {
+                        "type": result_type,
+                        "content": toast_message
+                    },
+                    "card": {
+                        "type": "raw",
+                        "data": card_content
+                    }
                 }
-            }
-            return P2CardActionTriggerResponse(response_data)
+                return P2CardActionTriggerResponse(response_data)
 
-        else:
-            debug_utils.log_and_print(f"❌ 未知的{card_config_type}卡片操作类型: {operation_type}", log_level="ERROR")
-            return False
+            case _:
+                debug_utils.log_and_print(f"❌ 未知的{card_config_type}卡片操作类型: {operation_type}", log_level="ERROR")
+                return False
 
     @feishu_sdk_safe("获取卡片回复模式失败", return_value="reply")
     def _get_card_reply_mode(self, card_type: str) -> str:
@@ -652,41 +842,9 @@ class FeishuAdapter:
         if config_service:
             reply_modes = config_service.get("cards", {}).get("reply_modes", {})
             return reply_modes.get(card_type, reply_modes.get("default", "reply"))
-        else:
-            debug_utils.log_and_print("⚠️ 无法获取配置服务，使用默认回复模式", log_level="WARNING")
-            return "reply"
 
-    def _extract_message_content(self, message) -> Any:
-        """提取飞书消息内容"""
-        if message.message_type == "text":
-            return json.loads(message.content)["text"]
-        elif message.message_type == "image":
-            return json.loads(message.content)
-        elif message.message_type == "audio":
-            return json.loads(message.content)
-        else:
-            return message.content
-
-    @feishu_api_call("获取用户名失败", return_value="用户_未知")
-    def _get_user_name(self, open_id: str) -> str:
-        """获取用户名称"""
-        # 先从缓存获取
-        if self.app_controller:
-            success, cached_name = self.app_controller.call_service('cache', 'get', f"user:{open_id}")
-            if success and cached_name:
-                return cached_name
-
-        # 从飞书API获取
-        request = GetUserRequest.builder().user_id_type("open_id").user_id(open_id).build()
-        response = self.client.contact.v3.user.get(request)
-        if response.success() and response.data and response.data.user:
-            name = response.data.user.name
-            # 缓存用户名
-            if self.app_controller:
-                self.app_controller.call_service('cache', 'set', f"user:{open_id}", name, 604800)
-            return name
-
-        return f"用户_{open_id[:8]}"
+        debug_utils.log_and_print("⚠️ 无法获取配置服务，使用默认回复模式", log_level="WARNING")
+        return "reply"
 
     @feishu_api_call("发送飞书回复失败", return_value=False)
     def _send_feishu_reply(self, original_data, result: ProcessResult, force_reply_mode: str = None) -> bool:
@@ -717,13 +875,19 @@ class FeishuAdapter:
         user_id = original_data.event.sender.sender_id.open_id
 
         try:
-            if reply_mode == "new":
-                # 模式1: 新消息
-                return self._send_create_message(user_id, content_json, result.response_type)
-            else:
-                # 模式2&3: 回复消息 (含新话题)
-                message_id = original_data.event.message.message_id
-                return self._send_reply_message(message_id, content_json, result.response_type, reply_mode == "thread")
+            match reply_mode:
+                case "new":
+                    # 模式1: 新消息
+                    return self._send_create_message(user_id, content_json, result.response_type)
+
+                case "reply" | "thread":
+                    # 模式2&3: 回复消息 (含新话题)
+                    message_id = original_data.event.message.message_id
+                    return self._send_reply_message(message_id, content_json, result.response_type, reply_mode == "thread")
+
+                case _:
+                    debug_utils.log_and_print(f"❌ 未知的回复模式: {reply_mode}", log_level="ERROR")
+                    return False
 
         except Exception as e:
             debug_utils.log_and_print(f"❌ 发送消息失败: {e}", log_level="ERROR")
@@ -813,9 +977,15 @@ class FeishuAdapter:
 
         return True
 
-    @file_operation_safe("发送交互式卡片失败", return_value=False)
-    def _send_interactive_card(self, chat_id: str = None, user_id: str = None, card_content: Dict[str, Any] = None,
-                              reply_mode: str = "new", message_id: str = None) -> bool:
+    @feishu_api_call("发送交互式卡片失败", return_value=False)
+    def _send_interactive_card(
+        self,
+        chat_id: str = None,
+        user_id: str = None,
+        card_content: Dict[str, Any] = None,
+        reply_mode: str = "new",
+        message_id: str = None
+    ) -> bool:
         """
         统一的交互式卡片发送方法
 
@@ -834,39 +1004,21 @@ class FeishuAdapter:
         Returns:
             bool: 是否发送成功
         """
-        if not card_content:
-            debug_utils.log_and_print("❌ 卡片内容为空", log_level="ERROR")
+        # 参数验证
+        validation_result = self._validate_card_send_params(
+            card_content, reply_mode, chat_id, user_id, message_id
+        )
+        if not validation_result["valid"]:
+            debug_utils.log_and_print(f"❌ {validation_result['error']}", log_level="ERROR")
             return False
 
         # 将卡片内容转换为JSON字符串
         content_json = json.dumps(card_content, ensure_ascii=False)
-        try:
-            if reply_mode == "new":
-                # 新消息模式
-                receive_id = chat_id or user_id
-                if not receive_id:
-                    debug_utils.log_and_print("❌ 新消息模式需要chat_id或user_id", log_level="ERROR")
-                    return False
 
-                # 优先使用chat_id，否则使用user_id（向后兼容）
-                receive_id_type = "chat_id" if chat_id else "open_id"
-
-                request = CreateMessageRequest.builder().receive_id_type(receive_id_type).request_body(
-                    CreateMessageRequestBody.builder()
-                    .receive_id(receive_id)
-                    .msg_type("interactive")
-                    .content(content_json)
-                    .build()
-                ).build()
-
-                response = self.client.im.v1.message.create(request)
-
-            elif reply_mode in ["reply", "thread"]:
+        # 处理不同发送模式
+        match reply_mode:
+            case "reply" | "thread":
                 # 复用_send_reply_message逻辑，统一处理
-                if not message_id:
-                    debug_utils.log_and_print("❌ 回复模式需要message_id", log_level="ERROR")
-                    return False
-                # 这里直接调用_send_reply_message，msg_type固定为"interactive"
                 return self._send_reply_message(
                     message_id=message_id,
                     content=content_json,
@@ -874,195 +1026,63 @@ class FeishuAdapter:
                     reply_in_thread=(reply_mode == "thread")
                 )
 
-            else:
+            case "new":
+                # 处理新消息模式
+                return self._send_new_interactive_card(chat_id, user_id, content_json)
+
+            case _:
                 debug_utils.log_and_print(f"❌ 不支持的发送模式: {reply_mode}", log_level="ERROR")
                 return False
 
-            if not response.success():
-                debug_utils.log_and_print(
-                    f"❌ 交互式卡片发送失败 (模式:{reply_mode}): {response.code} - {response.msg}",
-                    log_level="ERROR"
-                )
-                return False
+    def _validate_card_send_params(
+        self, card_content, reply_mode: str, chat_id: str, user_id: str, message_id: str
+    ) -> Dict[str, Any]:
+        """验证卡片发送参数"""
+        if not card_content:
+            return {"valid": False, "error": "卡片内容为空"}
 
-            debug_utils.log_and_print(f"✅ 交互式卡片发送成功 (模式:{reply_mode})", log_level="INFO")
+        match reply_mode:
+            case "new":
+                if not (chat_id or user_id):
+                    return {"valid": False, "error": "新消息模式需要chat_id或user_id"}
+
+            case "reply" | "thread":
+                if not message_id:
+                    return {"valid": False, "error": "回复模式需要message_id"}
+
+            case _:
+                return {"valid": False, "error": f"不支持的发送模式: {reply_mode}"}
+
+        return {"valid": True}
+
+    @feishu_api_call("发送新交互式卡片失败", return_value=False)
+    def _send_new_interactive_card(self, chat_id: str, user_id: str, content_json: str) -> bool:
+        """发送新的交互式卡片消息"""
+        # 确定接收者信息
+        receive_id = chat_id or user_id
+        receive_id_type = "chat_id" if chat_id else "open_id"
+
+        # 构建请求
+        request = CreateMessageRequest.builder().receive_id_type(receive_id_type).request_body(
+            CreateMessageRequestBody.builder()
+            .receive_id(receive_id)
+            .msg_type("interactive")
+            .content(content_json)
+            .build()
+        ).build()
+
+        # 发送请求
+        response = self.client.im.v1.message.create(request)
+
+        if response.success():
+            debug_utils.log_and_print("✅ 交互式卡片发送成功 (模式:new)", log_level="INFO")
             return True
 
-        except Exception as e:
-            debug_utils.log_and_print(f"❌ 发送交互式卡片异常 (模式:{reply_mode}): {e}", log_level="ERROR")
-            return False
-
-    @file_operation_safe("更新交互式卡片失败", return_value=False)
-    def _update_interactive_card(self, message_id: str, card_content: Dict[str, Any]) -> bool:
-        """更新交互式卡片消息"""
-        # 将卡片内容转换为JSON字符串
-        content_json = json.dumps(card_content, ensure_ascii=False)
-        # print('test-card_content',type(card_content), message_id,'\n', content_json)
-        # final_output_string = json.dumps(content_json, ensure_ascii=False, indent=2, sort_keys=True)
-        # print('test-card_content',type(content_json), message_id,'\n', final_output_string)
-
-        # # 创建更新请求
-        # request = PatchMessageRequest.builder() \
-        #     .message_id(message_id) \
-        #     .request_body(PatchMessageRequestBody.builder()
-        #         .content(content_json)
-        #         .build()) \
-        #     .build()
-        content_data = "{\"data\": {\"template_id\": \"AAqBPdq4sxIy5\", \"template_variable\": {\"main_title\": \"【官方MV】大石昌良 - uni-verse《古力特宇宙》主题曲\", \"main_pageid\": \"21536d82-1893-8158-b64b-e89a231ee457\", \"main_priority\": \"👾低\", \"main_duration_str\": \"4分30秒\", \"main_author\": \"大石昌良\", \"main_source\": \"主页推送\", \"main_upload_date_str\": \"2025-06-16\", \"main_summary\": \"感受《古力特宇宙》主题曲的魅力，体验动画与音乐的完美融合。\", \"main_url\": \"https://www.bilibili.com/video/BV1HqNbzEEHp?adskip=none\", \"main_android_url\": \"bilibili://video/BV1HqNbzEEHp\", \"main_is_read_str\": \"\", \"main_is_read\": false, \"action_info\": {\"action\": \"mark_bili_read\", \"pageid\": \"21536d82-1893-8158-b64b-e89a231ee457\", \"card_type\": \"menu\", \"cached_video_data\": {\"main_video\": {\"title\": \"【官方MV】大石昌良 - uni-verse《古力特宇宙》主题曲\", \"url\": \"https://www.bilibili.com/video/BV1HqNbzEEHp?adskip=none\", \"pageid\": \"21536d82-1893-8158-b64b-e89a231ee457\", \"success\": true, \"author\": \"大石昌良\", \"duration_str\": \"4分30秒\", \"chinese_priority\": \"👾低\", \"chinese_source\": \"主页推送\", \"summary\": \"感受《古力特宇宙》主题曲的魅力，体验动画与音乐的完美融合。\", \"upload_date\": \"2025-06-16\", \"is_read\": false, \"is_read_str\": \"\", \"android_url\": \"bilibili://video/BV1HqNbzEEHp\"}, \"additional_videos\": [{\"title\": \"炒面技巧是要表面脆，面芯软《豉油王炒面》\", \"url\": \"https://www.bilibili.com/video/BV1iMNbzMEGV?adskip=none\", \"pageid\": \"21536d82-1893-8182-be78-de5f47832705\", \"duration_str\": \"12分钟\", \"author\": \"酒满饭宝\", \"chinese_priority\": \"👾低\", \"chinese_source\": \"主页推送\", \"is_read\": false, \"is_read_str\": \"\", \"android_url\": \"bilibili://video/BV1iMNbzMEGV\"}]}, \"video_index\": 0}, \"addtional_videos\": [{\"title\": \"炒面技巧是要表面脆，面芯软《豉油王炒面》\", \"pageid\": \"21536d82-1893-8182-be78-de5f47832705\", \"priority\": \"👾低\", \"duration_str\": \"12分钟\", \"video_index\": \"1\", \"is_read_str\": \"\", \"is_read\": false, \"url\": \"https://www.bilibili.com/video/BV1iMNbzMEGV?adskip=none\", \"android_url\": \"bilibili://video/BV1iMNbzMEGV\", \"action_info\": {\"action\": \"mark_bili_read\", \"pageid\": \"21536d82-1893-8158-b64b-e89a231ee457\", \"card_type\": \"menu\", \"cached_video_data\": {\"main_video\": {\"title\": \"【官方MV】大石昌良 - uni-verse《古力特宇宙》主题曲\", \"url\": \"https://www.bilibili.com/video/BV1HqNbzEEHp?adskip=none\", \"pageid\": \"21536d82-1893-8158-b64b-e89a231ee457\", \"success\": true, \"author\": \"大石昌良\", \"duration_str\": \"4分30秒\", \"chinese_priority\": \"👾低\", \"chinese_source\": \"主页推送\", \"summary\": \"感受《古力特宇宙》主题曲的魅力，体验动画与音乐的完美融合。\", \"upload_date\": \"2025-06-16\", \"is_read\": false, \"is_read_str\": \"\", \"android_url\": \"bilibili://video/BV1HqNbzEEHp\"}, \"additional_videos\": [{\"title\": \"炒面技巧是要表面脆，面芯软《豉油王炒面》\", \"url\": \"https://www.bilibili.com/video/BV1iMNbzMEGV?adskip=none\", \"pageid\": \"21536d82-1893-8182-be78-de5f47832705\", \"duration_str\": \"12分钟\", \"author\": \"酒满饭宝\", \"chinese_priority\": \"👾低\", \"chinese_source\": \"主页推送\", \"is_read\": false, \"is_read_str\": \"\", \"android_url\": \"bilibili://video/BV1iMNbzMEGV\"}]}, \"video_index\": 1}}]}, \"template_version_name\": \"1.0.6\"}, \"type\": \"template\"}"
-
-        temp_client = lark.Client.builder() \
-            .app_id("cli_a6bf8e1105de900b") \
-            .app_secret("MlKGGQOiMhz9KSl3e05DObSff5GvgcqL") \
-            .log_level(lark.LogLevel.DEBUG) \
-            .build()
-        # 构造请求对象
-        request: PatchMessageRequest = PatchMessageRequest.builder() \
-            .message_id("om_x100b4a15be28a1700f247d7b26d0720") \
-            .request_body(PatchMessageRequestBody.builder()
-                .content(content_data)
-                .build()) \
-            .build()
-
-        # response = self.client.im.v1.message.patch(request)
-        response = temp_client.im.v1.message.patch(request)
-
-        if not response.success():
-            debug_utils.log_and_print(
-                f"飞书交互式卡片更新失败: {response.code} - {response.msg}",
-                log_level="ERROR"
-            )
-            return False
-
-        debug_utils.log_and_print("✅ 交互式卡片更新成功", log_level="INFO")
-        return True
-
-    @async_operation_safe("TTS异步处理失败")
-    def _handle_tts_async(self, original_data, tts_text: str):
-        """异步处理TTS请求"""
-        def process_in_background():
-            # 调用业务处理器的异步TTS方法
-            result = self.message_processor.process_tts_async(tts_text)
-
-            if result.success and result.response_type == "audio":
-                # 上传并发送音频
-                audio_data = result.response_content.get("audio_data")
-                if audio_data:
-                    self._upload_and_send_audio(original_data, audio_data)
-                else:
-                    # 音频数据为空，发送错误提示
-                    error_result = ProcessResult.error_result("音频生成失败，数据为空")
-                    self._send_feishu_reply(original_data, error_result)
-            else:
-                # TTS处理失败，发送错误信息
-                self._send_feishu_reply(original_data, result)
-
-        # 在新线程中处理
-        import threading
-        thread = threading.Thread(target=process_in_background)
-        thread.daemon = True
-        thread.start()
-
-    @async_operation_safe("图像生成异步处理失败")
-    def _handle_image_generation_async(self, original_data, prompt: str):
-        """异步处理图像生成请求"""
-        def process_in_background():
-            # 先发送处理中提示
-            processing_result = ProcessResult.success_result("text", {"text": "正在生成图片，请稍候..."})
-            self._send_feishu_reply(original_data, processing_result)
-
-            # 调用业务处理器的异步图像生成方法
-            result = self.message_processor.process_image_generation_async(prompt)
-
-            if result.success and result.response_type == "image_list":
-                # 上传并发送图像
-                image_paths = result.response_content.get("image_paths", [])
-                if image_paths:
-                    self._upload_and_send_images(original_data, image_paths)
-                else:
-                    # 图像列表为空，发送错误提示
-                    error_result = ProcessResult.error_result("图像生成失败，结果为空")
-                    self._send_feishu_reply(original_data, error_result)
-            else:
-                # 图像生成失败，发送错误信息
-                self._send_feishu_reply(original_data, result)
-
-        # 在新线程中处理
-        import threading
-        thread = threading.Thread(target=process_in_background)
-        thread.daemon = True
-        thread.start()
-
-    @async_operation_safe("图像转换异步处理失败")
-    def _handle_image_conversion_async(self, original_data, context):
-        """异步处理图像转换请求"""
-        def process_in_background():
-            # 先发送处理中提示
-            processing_result = ProcessResult.success_result("text", {"text": "正在转换图片风格，请稍候..."})
-            self._send_feishu_reply(original_data, processing_result)
-
-            # 获取图像资源
-            image_data = self._get_image_resource(original_data)
-            if not image_data:
-                error_result = ProcessResult.error_result("获取图片资源失败")
-                self._send_feishu_reply(original_data, error_result)
-                return
-
-            image_base64, mime_type, file_name, file_size = image_data
-
-            # 调用业务处理器的异步图像转换方法
-            result = self.message_processor.process_image_conversion_async(
-                image_base64, mime_type, file_name, file_size
-            )
-
-            if result.success and result.response_type == "image_list":
-                # 上传并发送图像
-                image_paths = result.response_content.get("image_paths", [])
-                if image_paths:
-                    self._upload_and_send_images(original_data, image_paths)
-                else:
-                    # 图像列表为空，发送错误提示
-                    error_result = ProcessResult.error_result("图像转换失败，结果为空")
-                    self._send_feishu_reply(original_data, error_result)
-            else:
-                # 图像转换失败，发送错误信息
-                self._send_feishu_reply(original_data, result)
-
-        # 在新线程中处理
-        import threading
-        thread = threading.Thread(target=process_in_background)
-        thread.daemon = True
-        thread.start()
-
-    @async_operation_safe("B站视频推荐异步处理失败")
-    def _handle_bili_video_async(self, original_data, user_id: str):
-        """异步处理B站视频推荐请求（使用新的卡片架构）"""
-
-        def process_in_background():
-            # 调用业务处理器获取原始数据
-            result = self.message_processor.process_bili_video_async()
-
-            if result.success and result.response_type == "bili_video_data":
-                # 使用统一的卡片处理方法
-                success = self._handle_bili_card_operation(
-                    result.response_content,
-                    operation_type="send",
-                    user_id=user_id
-                )
-
-                if not success:
-                    # 发送失败，使用降级方案
-                    error_result = ProcessResult.error_result("B站视频卡片发送失败")
-                    self._send_direct_message(user_id, error_result)
-            else:
-                debug_utils.log_and_print(f"❌ B站视频获取失败: {result.error_message}", log_level="ERROR")
-                # B站视频获取失败，发送错误信息
-                self._send_direct_message(user_id, result)
-
-        # 在新线程中处理
-        import threading
-        thread = threading.Thread(target=process_in_background)
-        thread.daemon = True
-        thread.start()
+        debug_utils.log_and_print(
+            f"❌ 交互式卡片发送失败 (模式:new): {response.code} - {response.msg}",
+            log_level="ERROR"
+        )
+        return False
 
     @file_operation_safe("获取图像资源失败", return_value=None)
     def _get_image_resource(self, original_data) -> Optional[Tuple[str, str, str, int]]:
@@ -1107,7 +1127,6 @@ class FeishuAdapter:
         file_size = len(file_content)
 
         # 转换为base64
-        import base64
         image_base64 = base64.b64encode(file_content).decode('utf-8')
 
         debug_utils.log_and_print(f"成功获取图片资源: {file_name}, 大小: {file_size} bytes", log_level="INFO")
@@ -1129,9 +1148,9 @@ class FeishuAdapter:
         if success_count > 0:
             debug_utils.log_and_print(f"成功发送 {success_count}/{len(image_paths)} 张图片", log_level="INFO")
             return True
-        else:
-            debug_utils.log_and_print("没有成功发送任何图片", log_level="ERROR")
-            return False
+
+        debug_utils.log_and_print("没有成功发送任何图片", log_level="ERROR")
+        return False
 
     @file_operation_safe("上传单张图片失败", return_value=False)
     def _upload_and_send_single_image(self, original_data, image_path: str) -> bool:
@@ -1153,12 +1172,11 @@ class FeishuAdapter:
                 upload_response.data.image_key):
 
                 # 发送图片消息
-                image_content = json.dumps({"image_key": upload_response.data.image_key})
                 image_result = ProcessResult.success_result("image", {"image_key": upload_response.data.image_key}, parent_id=original_data.event.message.message_id)
                 return self._send_feishu_reply(original_data, image_result)
-            else:
-                debug_utils.log_and_print(f"图片上传失败: {upload_response.code} - {upload_response.msg}", log_level="ERROR")
-                return False
+
+            debug_utils.log_and_print(f"图片上传失败: {upload_response.code} - {upload_response.msg}", log_level="ERROR")
+            return False
 
     @file_operation_safe("音频上传处理失败", return_value=False)
     def _upload_and_send_audio(self, original_data, audio_data: bytes) -> bool:
@@ -1195,9 +1213,9 @@ class FeishuAdapter:
                 content_json = json.dumps({"file_key": file_key})
                 result = ProcessResult.success_result("audio", json.loads(content_json), parent_id=original_data.event.message.message_id)
                 return self._send_feishu_reply(original_data, result)
-            else:
-                debug_utils.log_and_print("音频上传到飞书失败", log_level="ERROR")
-                return False
+
+            debug_utils.log_and_print("音频上传到飞书失败", log_level="ERROR")
+            return False
 
         finally:
             # 清理临时文件
@@ -1226,18 +1244,16 @@ class FeishuAdapter:
 
             if upload_response.success() and upload_response.data and upload_response.data.file_key:
                 return upload_response.data.file_key
-            else:
-                debug_utils.log_and_print(
-                    f"音频上传失败: {upload_response.code} - {upload_response.msg}",
-                    log_level="ERROR"
-                )
-                return None
+
+            debug_utils.log_and_print(
+                f"音频上传失败: {upload_response.code} - {upload_response.msg}",
+                log_level="ERROR"
+            )
+            return None
 
     @file_operation_safe("富文本上传发送失败", return_value=False)
     def _upload_and_send_rich_text(self, original_data, result: ProcessResult) -> bool:
         """上传并发送富文本"""
-        from lark_oapi.api.im.v1 import CreateImageRequest, CreateImageRequestBody
-        from io import BytesIO
 
         # 上传示例图片
         image_data = result.response_content.get("sample_image_data")
@@ -1278,10 +1294,6 @@ class FeishuAdapter:
     @file_operation_safe("示例图片上传发送失败", return_value=False)
     def _upload_and_send_single_image_data(self, original_data, image_data: bytes, image_name: str) -> bool:
         """上传并发送单个图片（从内存数据）"""
-        from lark_oapi.api.im.v1 import CreateImageRequest, CreateImageRequestBody
-        from io import BytesIO
-
-        # 上传图片
         image_file = BytesIO(image_data)
         upload_response = self.client.im.v1.image.create(
             CreateImageRequest.builder()
@@ -1335,3 +1347,51 @@ class FeishuAdapter:
             "message_processor_available": self.message_processor is not None,
             "supported_interactions": ["message", "menu", "card"]
         }
+
+    # ================ 备份无法触发更新卡片的Patch方法，待后续更新================
+
+    @file_operation_safe("更新交互式卡片失败", return_value=False)
+    def _update_interactive_card(self, message_id: str, card_content: Dict[str, Any]) -> bool:
+        """更新交互式卡片消息"""
+        # 将卡片内容转换为JSON字符串
+        content_json = json.dumps(card_content, ensure_ascii=False)
+        # print('test-card_content',type(card_content), message_id,'\n', content_json)
+        # final_output_string = json.dumps(content_json, ensure_ascii=False, indent=2, sort_keys=True)
+        # print('test-card_content',type(content_json), message_id,'\n', final_output_string)
+
+        # # 创建更新请求
+        # request = PatchMessageRequest.builder() \
+        #     .message_id(message_id) \
+        #     .request_body(PatchMessageRequestBody.builder()
+        #         .content(content_json)
+        #         .build()) \
+        #     .build()
+
+        # 两次json dump的结果贴在这里
+        content_data = "{\"data\": {\"templatete\"}"
+
+        temp_client = lark.Client.builder() \
+            .app_id("cli_a6bf8e1105de900b") \
+            .app_secret("MlKGGQOiMhz9KSl3e05DObSff5GvgcqL") \
+            .log_level(lark.LogLevel.DEBUG) \
+            .build()
+        # 构造请求对象
+        request: PatchMessageRequest = PatchMessageRequest.builder() \
+            .message_id("om_x100b4a15be28a1700f247d7b26d0720") \
+            .request_body(PatchMessageRequestBody.builder()
+                .content(content_data)
+                .build()) \
+            .build()
+
+        # response = self.client.im.v1.message.patch(request)
+        response = temp_client.im.v1.message.patch(request)
+
+        if not response.success():
+            debug_utils.log_and_print(
+                f"飞书交互式卡片更新失败: {response.code} - {response.msg}",
+                log_level="ERROR"
+            )
+            return False
+
+        debug_utils.log_and_print("✅ 交互式卡片更新成功", log_level="INFO")
+        return True
