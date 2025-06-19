@@ -217,18 +217,22 @@ class FeishuAdapter:
             self._upload_and_send_rich_text(data, result)
             return
 
-        # 检查是否需要发送管理员确认卡片
+        # 检查是否需要发送管理员确认卡片，要思考一下未来的架构里chat_id和user_id哪个是必须的
         if result.success and result.response_type == "admin_card_send":
             user_id = context.user_id
+            chat_id = data.event.message.chat_id
+            message_id = data.event.message.message_id
             success = self._handle_admin_card_operation(
                 result.response_content,
                 operation_type="send",
-                user_id=user_id
+                user_id=user_id,
+                chat_id=chat_id,
+                message_id=message_id
             )
             if not success:
                 # 发送失败，发送错误信息
                 error_result = ProcessResult.error_result("管理员卡片发送失败")
-                self._send_feishu_reply(data, error_result)
+                self._send_feishu_reply(data, error_result, force_reply_mode="reply")
             return
 
         # 检查是否是单个图片类型
@@ -356,17 +360,24 @@ class FeishuAdapter:
             # 发送新卡片
             user_id = kwargs.get("user_id")
             if not user_id:
-                debug_utils.log_and_print("❌ 发送卡片缺少用户ID", log_level="ERROR")
+                debug_utils.log_and_print("❌ 发送B站卡片缺少用户ID", log_level="ERROR")
                 return False
 
-            success = self._send_interactive_card(user_id, card_content)
+            # 从配置获取B站卡片的回复模式
+            reply_mode = self._get_card_reply_mode("bilibili_cards")
+
+            success = self._send_interactive_card(
+                user_id=user_id,
+                card_content=card_content,
+                reply_mode=reply_mode
+            )
             if not success:
-                debug_utils.log_and_print("❌ B站视频卡片发送失败", log_level="ERROR")
+                debug_utils.log_and_print("❌ B站卡片发送失败", log_level="ERROR")
             return success
 
         elif operation_type == "update_response":
             # 构建卡片更新响应
-            toast_message = kwargs.get("toast_message", "操作成功")
+            toast_message = kwargs.get("toast_message", "操作完成")
             response_data = {
                 "toast": {
                     "type": "success",
@@ -380,7 +391,7 @@ class FeishuAdapter:
             return P2CardActionTriggerResponse(response_data)
 
         else:
-            debug_utils.log_and_print(f"❌ 未知的卡片操作类型: {operation_type}", log_level="ERROR")
+            debug_utils.log_and_print(f"❌ 未知的B站卡片操作类型: {operation_type}", log_level="ERROR")
             return False
 
     @card_operation_safe("管理员卡片操作失败")
@@ -391,7 +402,7 @@ class FeishuAdapter:
         Args:
             operation_data: 业务层返回的操作数据
             operation_type: 操作类型 ('send' | 'update_response')
-            **kwargs: 额外参数(user_id, toast_message等)
+            **kwargs: 额外参数(chat_id, user_id, message_id等)
 
         Returns:
             bool: 发送操作的成功状态
@@ -401,13 +412,23 @@ class FeishuAdapter:
         card_content = self.admin_card_manager.build_user_update_confirm_card(operation_data)
 
         if operation_type == "send":
-            # 发送新卡片
-            user_id = kwargs.get("user_id")
-            if not user_id:
-                debug_utils.log_and_print("❌ 发送卡片缺少用户ID", log_level="ERROR")
+            # 发送管理员卡片 - 从配置读取回复模式
+            chat_id = kwargs.get("chat_id")
+            message_id = kwargs.get("message_id")
+
+            if not chat_id or not message_id:
+                debug_utils.log_and_print("❌ 发送管理员卡片缺少chat_id或message_id", log_level="ERROR")
                 return False
 
-            success = self._send_interactive_card(user_id, card_content)
+            # 从配置获取管理员卡片的回复模式
+            reply_mode = self._get_card_reply_mode("admin_cards")
+
+            success = self._send_interactive_card(
+                chat_id=chat_id,
+                card_content=card_content,
+                reply_mode=reply_mode,
+                message_id=message_id if reply_mode in ["reply", "thread"] else None
+            )
             if not success:
                 debug_utils.log_and_print("❌ 管理员卡片发送失败", log_level="ERROR")
             return success
@@ -417,12 +438,9 @@ class FeishuAdapter:
             toast_message = kwargs.get("toast_message", "操作完成")
             result_type = operation_data.get('result_type', 'success')
 
-            # 根据结果类型设置Toast类型
-            toast_type = result_type
-
             response_data = {
                 "toast": {
-                    "type": toast_type,
+                    "type": result_type,
                     "content": toast_message
                 },
                 "card": {
@@ -435,6 +453,28 @@ class FeishuAdapter:
         else:
             debug_utils.log_and_print(f"❌ 未知的管理员卡片操作类型: {operation_type}", log_level="ERROR")
             return False
+
+    def _get_card_reply_mode(self, card_type: str) -> str:
+        """
+        从配置获取卡片回复模式
+
+        Args:
+            card_type: 卡片类型 ("admin_cards" | "bilibili_cards" | 等)
+
+        Returns:
+            str: 回复模式 ("new" | "reply" | "thread")
+        """
+        try:
+            config_service = self.app_controller.get_service('config') if self.app_controller else None
+            if config_service:
+                reply_modes = config_service.get("cards",{}).get("reply_modes", {})
+                return reply_modes.get(card_type, reply_modes.get("default", "reply"))
+            else:
+                debug_utils.log_and_print("⚠️ 无法获取配置服务，使用默认回复模式", log_level="WARNING")
+                return "reply"
+        except Exception as e:
+            debug_utils.log_and_print(f"⚠️ 读取卡片回复模式配置失败: {e}，使用默认值", log_level="WARNING")
+            return "reply"
 
     @message_conversion_safe("消息转换失败")
     def _convert_message_to_context(self, data) -> Optional[MessageContext]:
@@ -569,15 +609,32 @@ class FeishuAdapter:
         if not isinstance(action_value, dict) or action_value is None:
             action_value = {}
 
+        action_tag = action.tag if hasattr(action, 'tag') else 'button'
+
+        # 处理select_static类型的特殊情况
+        if action_tag == 'select_static':
+            # 对于select_static，action.option包含选中的值
+            action_option = action.option if hasattr(action, 'option') else '0'
+            action_value.update({
+                'action': 'select_change',  # 统一的动作名
+                'option': action_option,
+                'tag': action_tag
+            })
+            content = 'select_change'
+        else:
+            # 普通按钮动作
+            content = action_value.get('action', 'unknown_action')
+
         return MessageContext(
             user_id=user_id,
             user_name=user_name,
             message_type="card_action",  # 自定义类型
-            content=action_value.get('action', 'unknown_action'),
+            content=content,
             timestamp=timestamp,
             event_id=event_id,
             metadata={
                 'action_value': action_value,
+                'action_tag': action_tag,
                 'interaction_type': 'card',
                 'open_message_id': data.event.context.open_message_id if hasattr(data.event, 'context') and hasattr(data.event.context, 'open_message_id') else '',
                 'open_chat_id': data.event.context.open_chat_id if hasattr(data.event, 'context') and hasattr(data.event.context, 'open_chat_id') else ''
@@ -617,69 +674,100 @@ class FeishuAdapter:
         return f"用户_{open_id[:8]}"
 
     @feishu_api_call("发送飞书回复失败", return_value=False)
-    def _send_feishu_reply(self, original_data, result: ProcessResult) -> bool:
+    def _send_feishu_reply(self, original_data, result: ProcessResult, force_reply_mode: str = None) -> bool:
         """
-        发送飞书回复（统一的发送方法）
+        发送飞书回复消息
+
+        支持3种消息模式：
+        1. "new" - 新消息 (CreateMessage)
+        2. "reply" - 回复消息 (ReplyMessage)
+        3. "thread" - 回复新话题 (ReplyMessage + reply_in_thread)
 
         Args:
-            original_data: 原始飞书事件数据
-            result: 处理结果（包含parent_id上下文信息）
+            original_data: 原始飞书消息数据
+            result: 处理结果
+            force_reply_mode: 强制指定回复模式 ("new"|"reply"|"thread")
         """
-        if not result.response_content:
+        if not result.should_reply:
             return True
 
         # 转换响应内容为飞书格式
         content_json = json.dumps(result.response_content)
 
-        # 根据parent_id决定回复方式
-        if result.parent_id:
-            # 业务层指定了要关联的消息ID，使用reply模式
-            request = (
-                ReplyMessageRequest.builder()
-                .message_id(result.parent_id)  # 使用业务层指定的parent_id
-                .request_body(
-                    ReplyMessageRequestBody.builder()
-                    .content(content_json)
-                    .msg_type(result.response_type)
-                    .build()
-                )
-                .build()
-            )
-            response = self.client.im.v1.message.reply(request)
-        else:
-            # 没有指定parent_id，使用默认逻辑（群聊reply，私聊新消息）
-            if original_data.event.message.chat_type == "p2p":
-                # 私聊：创建新消息
-                request = CreateMessageRequest.builder().receive_id_type("chat_id").request_body(
-                    CreateMessageRequestBody.builder()
-                    .receive_id(original_data.event.message.chat_id)
-                    .msg_type(result.response_type)
-                    .content(content_json)
-                    .build()
-                ).build()
-                response = self.client.im.v1.message.create(request)
-            else:
-                # 群聊：回复用户消息
-                request = (
-                    ReplyMessageRequest.builder()
-                    .message_id(original_data.event.message.message_id)
-                    .request_body(
-                        ReplyMessageRequestBody.builder()
-                        .content(content_json)
-                        .msg_type(result.response_type)
-                        .build()
-                    )
-                    .build()
-                )
-                response = self.client.im.v1.message.reply(request)
+        # 决定消息模式
+        reply_mode = self._determine_reply_mode(original_data, result, force_reply_mode)
 
-        if not response.success():
-            debug_utils.log_and_print(
-                f"飞书消息发送失败: {response.code} - {response.msg}",
-                log_level="ERROR"
-            )
+        # 提取基础信息
+        chat_id = original_data.event.message.chat_id
+        user_id = original_data.event.sender.sender_id.open_id
+
+        try:
+            if reply_mode == "new":
+                # 模式1: 新消息
+                return self._send_create_message(user_id, content_json, result.response_type)
+            else:
+                # 模式2&3: 回复消息 (含新话题)
+                message_id = original_data.event.message.message_id
+                return self._send_reply_message(message_id, content_json, result.response_type, reply_mode == "thread")
+
+        except Exception as e:
+            debug_utils.log_and_print(f"❌ 发送消息失败: {e}", log_level="ERROR")
             return False
 
+    def _determine_reply_mode(self, original_data, result: ProcessResult, force_mode: str = None) -> str:
+        """
+        决定回复模式
+
+        优先级:
+        1. 强制模式参数
+        2. ProcessResult中的parent_id指定
+        3. 消息类型和聊天类型的默认策略
+        """
+        if force_mode in ["new", "reply", "thread"]:
+            return force_mode
+
+        # 根据parent_id判断
+        if result.parent_id:
+            return "reply"
+
+        # 默认策略: 群聊回复，私聊新消息
+        chat_type = original_data.event.message.chat_type
+        return "reply" if chat_type == "group" else "new"
+
+    def _send_create_message(self, user_id: str, content: str, msg_type: str) -> bool:
+        """发送新消息"""
+        request = CreateMessageRequest.builder().receive_id_type("open_id").request_body(
+            CreateMessageRequestBody.builder()
+            .receive_id(user_id)
+            .msg_type(msg_type)
+            .content(content)
+            .build()
+        ).build()
+
+        response = self.client.im.v1.message.create(request)
+        if not response.success():
+            debug_utils.log_and_print(f"❌ 新消息发送失败: {response.code} - {response.msg}", log_level="ERROR")
+            return False
+        return True
+
+    def _send_reply_message(self, message_id: str, content: str, msg_type: str, reply_in_thread: bool = False) -> bool:
+        """发送回复消息"""
+        builder = ReplyMessageRequestBody.builder() \
+            .msg_type(msg_type) \
+            .content(content)
+
+        if reply_in_thread:
+            builder = builder.reply_in_thread(True)
+
+        request = ReplyMessageRequest.builder() \
+            .message_id(message_id) \
+            .request_body(builder.build()) \
+            .build()
+
+        response = self.client.im.v1.message.reply(request)
+        if not response.success():
+            debug_utils.log_and_print(f"❌ 回复消息发送失败: {response.code} - {response.msg}", log_level="ERROR")
+            return False
         return True
 
     @feishu_api_call("发送飞书直接消息失败", return_value=False)
@@ -711,33 +799,83 @@ class FeishuAdapter:
         return True
 
     @file_operation_safe("发送交互式卡片失败", return_value=False)
-    def _send_interactive_card(self, user_id: str, card_content: Dict[str, Any]) -> bool:
-        """发送交互式卡片消息"""
-        # 将卡片内容转换为JSON字符串
-        content_json = json.dumps(card_content, ensure_ascii=False)
-        # print('test-card_content',type(card_content), user_id,'\n', content_json)
-        # final_output_string = json.dumps(content_json, ensure_ascii=False)
-        # print('test-card_content',type(content_json), user_id,'\n', final_output_string)
+    def _send_interactive_card(self, chat_id: str = None, user_id: str = None, card_content: Dict[str, Any] = None,
+                              reply_mode: str = "new", message_id: str = None) -> bool:
+        """
+        统一的交互式卡片发送方法
 
-        # 创建发送请求
-        request = CreateMessageRequest.builder().receive_id_type("open_id").request_body(
-            CreateMessageRequestBody.builder()
-            .receive_id(user_id)
-            .msg_type("interactive")
-            .content(content_json)
-            .build()
-        ).build()
+        支持3种发送模式：
+        1. "new" - 新消息模式 (CreateMessage)
+        2. "reply" - 回复模式 (ReplyMessage)
+        3. "thread" - 回复新话题模式 (ReplyMessage + reply_in_thread)
 
-        response = self.client.im.v1.message.create(request)
+        Args:
+            chat_id: 聊天ID (new模式使用)
+            user_id: 用户ID (new模式的替代方案，兼容旧版本)
+            card_content: 卡片内容
+            reply_mode: 发送模式 ("new"|"reply"|"thread")
+            message_id: 回复的消息ID (reply/thread模式必需)
 
-        if not response.success():
-            debug_utils.log_and_print(
-                f"飞书交互式卡片发送失败: {response.code} - {response.msg}",
-                log_level="ERROR"
-            )
+        Returns:
+            bool: 是否发送成功
+        """
+        if not card_content:
+            debug_utils.log_and_print("❌ 卡片内容为空", log_level="ERROR")
             return False
 
-        return True
+        # 将卡片内容转换为JSON字符串
+        content_json = json.dumps(card_content, ensure_ascii=False)
+        try:
+            if reply_mode == "new":
+                # 新消息模式
+                receive_id = chat_id or user_id
+                if not receive_id:
+                    debug_utils.log_and_print("❌ 新消息模式需要chat_id或user_id", log_level="ERROR")
+                    return False
+
+                # 优先使用chat_id，否则使用user_id（向后兼容）
+                receive_id_type = "chat_id" if chat_id else "open_id"
+
+                request = CreateMessageRequest.builder().receive_id_type(receive_id_type).request_body(
+                    CreateMessageRequestBody.builder()
+                    .receive_id(receive_id)
+                    .msg_type("interactive")
+                    .content(content_json)
+                    .build()
+                ).build()
+
+                response = self.client.im.v1.message.create(request)
+
+            elif reply_mode in ["reply", "thread"]:
+                # 复用_send_reply_message逻辑，统一处理
+                if not message_id:
+                    debug_utils.log_and_print("❌ 回复模式需要message_id", log_level="ERROR")
+                    return False
+                # 这里直接调用_send_reply_message，msg_type固定为"interactive"
+                return self._send_reply_message(
+                    message_id=message_id,
+                    content=content_json,
+                    msg_type="interactive",
+                    reply_in_thread=(reply_mode == "thread")
+                )
+
+            else:
+                debug_utils.log_and_print(f"❌ 不支持的发送模式: {reply_mode}", log_level="ERROR")
+                return False
+
+            if not response.success():
+                debug_utils.log_and_print(
+                    f"❌ 交互式卡片发送失败 (模式:{reply_mode}): {response.code} - {response.msg}",
+                    log_level="ERROR"
+                )
+                return False
+
+            debug_utils.log_and_print(f"✅ 交互式卡片发送成功 (模式:{reply_mode})", log_level="INFO")
+            return True
+
+        except Exception as e:
+            debug_utils.log_and_print(f"❌ 发送交互式卡片异常 (模式:{reply_mode}): {e}", log_level="ERROR")
+            return False
 
     @file_operation_safe("更新交互式卡片失败", return_value=False)
     def _update_interactive_card(self, message_id: str, card_content: Dict[str, Any]) -> bool:

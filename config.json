@@ -13,5 +13,23 @@
       "delete_operation": 120
     },
     "default_timeout": 30
+  },
+  "cards": {
+    "reply_modes": {
+      "admin_cards": "reply",
+      "bilibili_cards": "new",
+      "default": "reply"
+    },
+    "auto_update": {
+      "enabled": true,
+      "interval_seconds": 1,
+      "max_updates": 60
+    },
+    "templates": {
+      "admin_user_update_confirm": {
+        "template_id": "AAqdbwJ2cflOp",
+        "template_version": "1.0.5"
+      }
+    }
   }
 }

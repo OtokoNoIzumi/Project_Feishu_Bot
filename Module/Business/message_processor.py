@@ -10,7 +10,8 @@ from typing import Dict, Any, Callable, List
 from .processors import (
     BaseProcessor, MessageContext, ProcessResult,
     TextProcessor, MediaProcessor, BilibiliProcessor,
-    AdminProcessor, ScheduleProcessor
+    AdminProcessor, ScheduleProcessor,
+    require_app_controller, safe_execute
 )
 from Module.Common.scripts.common import debug_utils
 
@@ -44,49 +45,24 @@ class MessageProcessor(BaseProcessor):
         # 初始化Action分发表
         self._init_action_dispatchers()
 
+    @safe_execute("消息分发器初始化失败")
     def _init_action_dispatchers(self):
-        """初始化Action分发注册表"""
-        self.action_dispatchers: Dict[str, Callable[[MessageContext, Dict[str, Any]], ProcessResult]] = {
-            # B站相关动作
+        """初始化Action分发表，映射卡片动作到处理方法"""
+        self.action_dispatchers = {
+            # B站相关卡片动作
             "mark_bili_read": self._handle_mark_bili_read,
 
-            # 管理员相关动作
-            "confirm_update_user": self._handle_admin_card_action,
-            "confirm_update_ads": self._handle_admin_card_action,
-
-            # 新的缓存业务管理员动作
+            # 管理员相关卡片动作（缓存业务，新版本）
             "confirm_user_update": self._handle_pending_admin_card_action,
             "cancel_user_update": self._handle_pending_admin_card_action,
             "update_user_type": self._handle_pending_admin_card_action,
 
-            # 交互式管理员动作
-            "confirm_update_user_interactive": self._handle_interactive_admin_card_action,
-            "confirm_update_ads_interactive": self._handle_interactive_admin_card_action,
-            "cancel_admin_operation": self._handle_interactive_admin_card_action,
-
-            # AI路由相关动作
-            "cancel": self._handle_ai_card_action,
-            "edit_content": self._handle_ai_card_action,
-            "confirm_thought": self._handle_ai_card_action,
-            "confirm_schedule": self._handle_ai_card_action,
-            "confirm_food_order": self._handle_ai_card_action,
+            # 卡片选择器动作
+            "select_change": self._handle_select_action,
         }
 
-    def register_action(self, action_name: str, handler: Callable[[MessageContext, Dict[str, Any]], ProcessResult]):
-        """
-        动态注册新的Action处理器
-
-        Args:
-            action_name: Action名称
-            handler: 处理器函数
-        """
-        self.action_dispatchers[action_name] = handler
-        debug_utils.log_and_print(f"✅ 注册Action处理器: {action_name}", log_level="INFO")
-
-    def get_registered_actions(self) -> List[str]:
-        """获取所有已注册的Action列表"""
-        return list(self.action_dispatchers.keys())
-
+    @require_app_controller("系统服务不可用")
+    @safe_execute("消息处理失败")
     def process_message(self, context: MessageContext) -> ProcessResult:
         """
         处理消息的主入口
@@ -97,48 +73,42 @@ class MessageProcessor(BaseProcessor):
         Returns:
             ProcessResult: 处理结果
         """
-        try:
-            # 检查事件是否已处理（去重）
-            is_duplicate, event_timestamp = self._is_duplicate_event(context.event_id)
-            if is_duplicate:
-                time_diff = time.time() - event_timestamp
-                debug_utils.log_and_print(f"📋 重复事件已跳过 [{context.message_type}] [{context.content[:50]}] 时间差: {time_diff:.2f}秒", log_level="INFO")
-                return ProcessResult.no_reply_result()
+        # 检查事件是否已处理（去重）
+        is_duplicate, event_timestamp = self._is_duplicate_event(context.event_id)
+        if is_duplicate:
+            time_diff = time.time() - event_timestamp
+            debug_utils.log_and_print(f"📋 重复事件已跳过 [{context.message_type}] [{context.content[:50]}] 时间差: {time_diff:.2f}秒", log_level="INFO")
+            return ProcessResult.no_reply_result()
 
-            # 记录新事件
-            self._record_event(context)
+        # 记录新事件
+        self._record_event(context)
 
-            # 根据消息类型分发处理
-            if context.message_type == "text":
-                return self._process_text_message(context)
-            elif context.message_type == "image":
-                return self._process_image_message(context)
-            elif context.message_type == "audio":
-                return self._process_audio_message(context)
-            elif context.message_type == "menu_click":
-                return self._process_menu_click(context)
-            elif context.message_type == "card_action":
-                return self._process_card_action(context)
-            else:
-                return ProcessResult.error_result(f"不支持的消息类型: {context.message_type}")
+        # 根据消息类型分发处理
+        return self._dispatch_by_message_type(context)
 
-        except Exception as e:
-            debug_utils.log_and_print(f"❌ 消息处理失败: {str(e)}", log_level="ERROR")
-            return ProcessResult.error_result(f"消息处理失败: {str(e)}")
+    @safe_execute("消息类型分发失败")
+    def _dispatch_by_message_type(self, context: MessageContext) -> ProcessResult:
+        """根据消息类型分发处理"""
+        if context.message_type == "text":
+            return self._process_text_message(context)
+        elif context.message_type == "image":
+            return self._process_image_message(context)
+        elif context.message_type == "audio":
+            return self._process_audio_message(context)
+        elif context.message_type == "menu_click":
+            return self._process_menu_click(context)
+        elif context.message_type == "card_action":
+            return self._process_card_action(context)
+        else:
+            return ProcessResult.error_result(f"不支持的消息类型: {context.message_type}")
 
+    @safe_execute("文本消息处理失败")
     def _process_text_message(self, context: MessageContext) -> ProcessResult:
         """处理文本消息"""
         user_msg = context.content
 
-        # 管理员配置更新指令（最高优先级）
+        # 1. 检查管理员命令
         if self.admin_processor.is_admin_command(user_msg):
-            content = self._extract_command_content(user_msg, [self.admin_processor.get_update_trigger()])
-            if user_msg.startswith(self.admin_processor.get_update_trigger()):
-                self._log_command(context.user_name, "🔧", "触发配置更新指令", content)
-            elif user_msg.startswith("更新用户"):
-                self._log_command(context.user_name, "👤", "触发用户更新指令", user_msg[4:])
-            elif user_msg.startswith("更新广告"):
-                self._log_command(context.user_name, "📺", "触发广告更新指令", user_msg[4:])
             return self.admin_processor.handle_admin_command(context, user_msg)
 
         # TTS配音指令，改成startwith
@@ -188,7 +158,7 @@ class MessageProcessor(BaseProcessor):
         return self.text_processor.handle_default_message(context)
 
     def _process_image_message(self, context: MessageContext) -> ProcessResult:
-        """处理图片消息 - 图像风格转换"""
+        """处理图片消息"""
         return self.media_processor.handle_image_message(context)
 
     def _process_audio_message(self, context: MessageContext) -> ProcessResult:
@@ -203,22 +173,19 @@ class MessageProcessor(BaseProcessor):
 
         return self.bilibili_processor.handle_menu_click(context)
 
+    @safe_execute("卡片动作处理失败")
     def _process_card_action(self, context: MessageContext) -> ProcessResult:
-        """处理卡片按钮动作（使用注册表分发）"""
+        """处理卡片动作"""
         action = context.content
         action_value = context.metadata.get('action_value', {})
 
-        try:
-            # 使用Action分发注册表
-            dispatcher = self.action_dispatchers.get(action)
-            if dispatcher:
-                return dispatcher(context, action_value)
-            else:
-                return ProcessResult.error_result(f"未知的卡片动作: {action}")
+        # 使用分发表处理动作
+        handler = self.action_dispatchers.get(action)
+        if handler:
+            return handler(context, action_value)
+        else:
+            return ProcessResult.error_result(f"未知的卡片动作: {action}")
 
-        except Exception as e:
-            debug_utils.log_and_print(f"❌ 卡片动作处理失败: {e}", log_level="ERROR")
-            return ProcessResult.error_result(f"卡片动作处理失败: {str(e)}")
 
     def _handle_ai_route_result(self, context: MessageContext, route_result: Dict[str, Any]) -> ProcessResult:
         """
@@ -334,78 +301,7 @@ class MessageProcessor(BaseProcessor):
             debug_utils.log_and_print(f"❌ 标记B站视频为已读失败: {str(e)}", log_level="ERROR")
             return ProcessResult.error_result(f"处理失败：{str(e)}")
 
-    def _handle_admin_card_action(self, context: MessageContext, action_value: Dict[str, Any]) -> ProcessResult:
-        """
-        处理管理员卡片动作
-
-        Args:
-            context: 消息上下文
-            action: 动作类型
-            action_value: 动作参数
-
-        Returns:
-            ProcessResult: 处理结果
-        """
-        try:
-            # 从action_value中获取action类型
-            action = action_value.get("action") or context.content
-
-            if action == "confirm_update_user":
-                # 确认更新用户信息
-                uid = action_value.get("uid", "")
-                account_type = action_value.get("account_type", "")
-                self._log_command(context.user_name, "✅", "确认更新用户", f"UID:{uid} 类型:{account_type}")
-                return self.admin_processor.handle_confirm_update_user(context, action_value)
-            elif action == "confirm_update_ads":
-                # 确认更新广告信息
-                bvid = action_value.get("bvid", "")
-                ad_timestamps = action_value.get("ad_timestamps", "")
-                self._log_command(context.user_name, "✅", "确认更新广告", f"BVID:{bvid} 时间:{ad_timestamps}")
-                return self.admin_processor.handle_confirm_update_ads(context, action_value)
-            else:
-                return ProcessResult.error_result(f"未知的管理员卡片动作: {action}")
-        except Exception as e:
-            debug_utils.log_and_print(f"❌ 管理员卡片动作处理失败: {e}", log_level="ERROR")
-            return ProcessResult.error_result(f"卡片动作处理失败: {str(e)}")
-
-    def _handle_interactive_admin_card_action(self, context: MessageContext, action_value: Dict[str, Any]) -> ProcessResult:
-        """
-        处理交互式管理员卡片动作
-
-        Args:
-            context: 消息上下文
-            action: 动作类型
-            action_value: 动作参数
-
-        Returns:
-            ProcessResult: 处理结果
-        """
-        try:
-            # 从action_value中获取action类型
-            action = action_value.get("action") or context.content
-
-            if action == "confirm_update_user_interactive":
-                # 确认更新用户信息
-                uid = action_value.get("uid", "")
-                account_type = action_value.get("account_type", "")
-                self._log_command(context.user_name, "✅", "确认更新用户", f"UID:{uid} 类型:{account_type}")
-                return self.admin_processor.handle_interactive_card_action(context, action, action_value)
-            elif action == "confirm_update_ads_interactive":
-                # 确认更新广告信息
-                bvid = action_value.get("bvid", "")
-                ad_timestamps = action_value.get("ad_timestamps", "")
-                self._log_command(context.user_name, "✅", "确认更新广告", f"BVID:{bvid} 时间:{ad_timestamps}")
-                return self.admin_processor.handle_interactive_card_action(context, action, action_value)
-            elif action == "cancel_admin_operation":
-                # 取消管理员操作
-                self._log_command(context.user_name, "❌", "取消管理员操作")
-                return self.admin_processor.handle_interactive_card_action(context, action, action_value)
-            else:
-                return ProcessResult.error_result(f"未知的交互式管理员卡片动作: {action}")
-        except Exception as e:
-            debug_utils.log_and_print(f"❌ 交互式管理员卡片动作处理失败: {e}", log_level="ERROR")
-            return ProcessResult.error_result(f"卡片动作处理失败: {str(e)}")
-
+    @safe_execute("缓存业务管理员卡片动作处理失败")
     def _handle_pending_admin_card_action(self, context: MessageContext, action_value: Dict[str, Any]) -> ProcessResult:
         """
         处理缓存业务管理员卡片动作
@@ -417,12 +313,8 @@ class MessageProcessor(BaseProcessor):
         Returns:
             ProcessResult: 处理结果
         """
-        try:
-            # 直接调用admin_processor的缓存操作处理方法
-            return self.admin_processor.handle_pending_operation_action(context, action_value)
-        except Exception as e:
-            debug_utils.log_and_print(f"❌ 缓存业务管理员卡片动作处理失败: {e}", log_level="ERROR")
-            return ProcessResult.error_result(f"缓存操作处理失败: {str(e)}")
+        # 直接调用admin_processor的缓存操作处理方法
+        return self.admin_processor.handle_pending_operation_action(context, action_value)
 
     # ================ 异步处理方法（供适配器调用）================
 
@@ -471,3 +363,32 @@ class MessageProcessor(BaseProcessor):
                 "actions": list(self.action_dispatchers.keys())
             }
         }
+
+    @safe_execute("下拉选择处理失败")
+    def _handle_select_action(self, context: MessageContext, action_value: Dict[str, Any]) -> ProcessResult:
+        """
+        处理select_static类型的卡片动作（用户修改下拉选择）
+
+        Args:
+            context: 消息上下文
+            action_value: 动作值，包含option字段
+
+        Returns:
+            ProcessResult: 处理结果
+        """
+        # 从用户的日志信息可以看到，select_static类型的action包含：
+        # - tag: "select_static"
+        # - option: "0" (选中的选项值，字符串类型)
+        print('test-select_action',action_value,'\n')
+        print('test-context',context.__dict__,'\n')
+        selected_option = action_value.get('option', '0')
+
+                # 记录选择变更
+        debug_utils.log_and_print(f"🔄 用户 {context.user_name} 修改选择: {selected_option}", log_level="INFO")
+
+        # 检查是否有operation_id，如果有则为管理员卡片的选择器
+        message_id = context.metadata.get('open_message_id', '')
+
+        # 目前返回静默处理（不显示Toast）
+        # 实际的业务逻辑会在用户点击确认按钮时处理
+        return ProcessResult.no_reply_result()

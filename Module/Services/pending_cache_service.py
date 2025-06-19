@@ -38,6 +38,10 @@ class PendingOperation:
     hold_time_text: str        # 倒计时显示文本
     status: OperationStatus    # 操作状态
     default_action: str = "confirm"  # 默认操作 (confirm/cancel)
+    # 新增字段：卡片更新相关
+    card_message_id: Optional[str] = None  # 关联的卡片消息ID
+    update_count: int = 0      # 更新次数
+    last_update_time: float = 0  # 最后更新时间
 
     def to_dict(self) -> Dict[str, Any]:
         """转换为字典"""
@@ -69,9 +73,17 @@ class PendingOperation:
         minutes = remaining // 60
         seconds = remaining % 60
         if minutes > 0:
-            return f"{minutes}分{seconds}秒"
+            return f"({minutes}m{seconds}s)"
         else:
-            return f"{seconds}秒"
+            return f"({seconds}s)"
+
+    def needs_card_update(self, interval_seconds: int = 1) -> bool:
+        """检查是否需要更新卡片"""
+        if self.status != OperationStatus.PENDING:
+            return False
+        if not self.card_message_id:
+            return False
+        return time.time() - self.last_update_time >= interval_seconds
 
 
 class PendingCacheService:
@@ -94,11 +106,22 @@ class PendingCacheService:
         self.timers: Dict[str, threading.Timer] = {}
         self.executor_callbacks: Dict[str, Callable] = {}  # operation_type -> callback
 
+        # 卡片更新相关
+        self.card_update_callback: Optional[Callable] = None
+        self.auto_update_enabled: bool = True
+        self.update_interval: int = 1
+        self.max_updates: int = 60
+        self._update_thread: Optional[threading.Thread] = None
+        self._stop_update_flag: bool = False
+
         # 加载已保存的操作
         self._load_operations()
 
         # 启动清理定时器
         self._start_cleanup_timer()
+
+        # 启动自动更新线程
+        self._start_auto_update_thread()
 
     @cache_operation_safe("加载缓存操作失败", return_value={})
     def _load_operations(self) -> None:
@@ -395,33 +418,187 @@ class PendingCacheService:
     def _start_cleanup_timer(self) -> None:
         """启动清理定时器"""
         def cleanup():
-            expired_ops = []
-            for op_id, operation in self.pending_operations.items():
-                if operation.status in [OperationStatus.EXECUTED, OperationStatus.CANCELLED, OperationStatus.EXPIRED]:
-                    # 清理超过1小时的已完成操作
-                    if time.time() - operation.created_time > 3600:
+            try:
+                expired_ops = []
+                completed_ops = []
+                current_time = time.time()
+
+                for op_id, operation in list(self.pending_operations.items()):
+                    # 清理1：过期但未处理的操作
+                    if operation.status == OperationStatus.PENDING and operation.is_expired():
                         expired_ops.append(op_id)
+                        debug_utils.log_and_print(f"⏰ 操作 {op_id} 已过期", log_level="INFO")
 
-            for op_id in expired_ops:
-                operation = self.pending_operations.pop(op_id, None)
-                if operation:
-                    # 从用户索引中移除
-                    user_ops = self.user_operations.get(operation.user_id, [])
-                    if op_id in user_ops:
-                        user_ops.remove(op_id)
-                    self._cancel_timer(op_id)
+                    # 清理2：已完成操作（超过1小时）
+                    elif operation.status in [OperationStatus.EXECUTED, OperationStatus.CANCELLED, OperationStatus.EXPIRED]:
+                        if current_time - operation.created_time > 3600:  # 1小时
+                            completed_ops.append(op_id)
 
-            if expired_ops:
-                self._save_operations()
-                debug_utils.log_and_print(f"🧹 清理了 {len(expired_ops)} 个过期操作", log_level="INFO")
+                    # 清理3：异常状态的操作（超过24小时）
+                    elif current_time - operation.created_time > 86400:  # 24小时
+                        expired_ops.append(op_id)
+                        debug_utils.log_and_print(f"🧹 清理异常状态操作 {op_id} (状态: {operation.status.value})", log_level="WARNING")
 
-            # 设置下次清理
-            timer = threading.Timer(1800, cleanup)  # 30分钟后再次清理
+                # 执行清理
+                total_cleaned = 0
+
+                # 清理过期操作
+                for op_id in expired_ops:
+                    operation = self.pending_operations.pop(op_id, None)
+                    if operation:
+                        self._remove_from_user_index(operation.user_id, op_id)
+                        self._cancel_timer(op_id)
+                        total_cleaned += 1
+
+                # 清理已完成操作
+                for op_id in completed_ops:
+                    operation = self.pending_operations.pop(op_id, None)
+                    if operation:
+                        self._remove_from_user_index(operation.user_id, op_id)
+                        self._cancel_timer(op_id)
+                        total_cleaned += 1
+
+                if total_cleaned > 0:
+                    self._save_operations()
+                    debug_utils.log_and_print(f"🧹 清理了 {total_cleaned} 个过期/完成操作", log_level="INFO")
+
+                # 内存状态检查
+                pending_count = len([op for op in self.pending_operations.values() if op.status == OperationStatus.PENDING])
+                if pending_count > 100:  # 警告阈值
+                    debug_utils.log_and_print(f"⚠️ pending操作数量较多: {pending_count}", log_level="WARNING")
+
+            except Exception as e:
+                debug_utils.log_and_print(f"❌ 定期清理异常: {e}", log_level="ERROR")
+
+            # 设置下次清理 - 根据操作数量调整清理频率
+            operation_count = len(self.pending_operations)
+            if operation_count > 50:
+                next_cleanup = 300  # 5分钟
+            elif operation_count > 10:
+                next_cleanup = 900  # 15分钟
+            else:
+                next_cleanup = 1800  # 30分钟
+
+            timer = threading.Timer(next_cleanup, cleanup)
+            timer.daemon = True
             timer.start()
 
-        # 初始清理
-        timer = threading.Timer(60, cleanup)  # 1分钟后开始清理
+        # 初始清理 - 1分钟后开始
+        timer = threading.Timer(60, cleanup)
+        timer.daemon = True
         timer.start()
+
+    def _remove_from_user_index(self, user_id: str, operation_id: str) -> None:
+        """从用户操作索引中移除操作"""
+        if user_id in self.user_operations:
+            try:
+                self.user_operations[user_id].remove(operation_id)
+                # 如果用户没有操作了，清理用户索引
+                if not self.user_operations[user_id]:
+                    del self.user_operations[user_id]
+            except ValueError:
+                pass  # 操作ID不在列表中，忽略
+
+    def force_cleanup(self) -> Dict[str, int]:
+        """
+        强制清理所有过期和已完成的操作
+
+        Returns:
+            Dict[str, int]: 清理统计信息
+        """
+        cleanup_stats = {
+            "expired": 0,
+            "completed": 0,
+            "total": 0
+        }
+
+        current_time = time.time()
+        to_remove = []
+
+        for op_id, operation in self.pending_operations.items():
+            if operation.status == OperationStatus.PENDING and operation.is_expired():
+                to_remove.append((op_id, "expired"))
+            elif operation.status in [OperationStatus.EXECUTED, OperationStatus.CANCELLED, OperationStatus.EXPIRED]:
+                to_remove.append((op_id, "completed"))
+
+        for op_id, reason in to_remove:
+            operation = self.pending_operations.pop(op_id, None)
+            if operation:
+                self._remove_from_user_index(operation.user_id, op_id)
+                self._cancel_timer(op_id)
+                cleanup_stats[reason] += 1
+                cleanup_stats["total"] += 1
+
+        if cleanup_stats["total"] > 0:
+            self._save_operations()
+            debug_utils.log_and_print(f"🧹 强制清理完成: {cleanup_stats}", log_level="INFO")
+
+        return cleanup_stats
+
+    def get_cache_statistics(self) -> Dict[str, Any]:
+        """
+        获取缓存统计信息
+
+        Returns:
+            Dict[str, Any]: 统计信息
+        """
+        current_time = time.time()
+        stats = {
+            "total_operations": len(self.pending_operations),
+            "status_breakdown": {},
+            "user_breakdown": {},
+            "age_breakdown": {
+                "under_1m": 0,
+                "1m_to_5m": 0,
+                "5m_to_1h": 0,
+                "over_1h": 0
+            },
+            "active_timers": len(self.timers),
+            "oldest_operation": None,
+            "newest_operation": None
+        }
+
+        oldest_time = float('inf')
+        newest_time = 0
+
+        for operation in self.pending_operations.values():
+            # 状态统计
+            status = operation.status.value
+            stats["status_breakdown"][status] = stats["status_breakdown"].get(status, 0) + 1
+
+            # 用户统计
+            user_id = operation.user_id
+            stats["user_breakdown"][user_id] = stats["user_breakdown"].get(user_id, 0) + 1
+
+            # 年龄统计
+            age = current_time - operation.created_time
+            if age < 60:
+                stats["age_breakdown"]["under_1m"] += 1
+            elif age < 300:
+                stats["age_breakdown"]["1m_to_5m"] += 1
+            elif age < 3600:
+                stats["age_breakdown"]["5m_to_1h"] += 1
+            else:
+                stats["age_breakdown"]["over_1h"] += 1
+
+            # 最新最旧操作
+            if operation.created_time < oldest_time:
+                oldest_time = operation.created_time
+                stats["oldest_operation"] = {
+                    "id": operation.operation_id,
+                    "age_seconds": int(age),
+                    "status": status
+                }
+
+            if operation.created_time > newest_time:
+                newest_time = operation.created_time
+                stats["newest_operation"] = {
+                    "id": operation.operation_id,
+                    "age_seconds": int(current_time - operation.created_time),
+                    "status": status
+                }
+
+        return stats
 
     def get_service_status(self) -> Dict[str, Any]:
         """获取服务状态"""
@@ -436,3 +613,102 @@ class PendingCacheService:
             "active_timers": len(self.timers),
             "max_operations_per_user": self.max_operations_per_user
         }
+
+    def _start_auto_update_thread(self) -> None:
+        """启动自动更新线程"""
+        if not self.auto_update_enabled:
+            return
+
+        def auto_update():
+            debug_utils.log_and_print("🔄 启动卡片自动更新线程", log_level="INFO")
+            while not self._stop_update_flag:
+                try:
+                    updated_count = 0
+                    for op_id, operation in list(self.pending_operations.items()):
+                        if operation.needs_card_update(self.update_interval):
+                            if self.card_update_callback and operation.update_count < self.max_updates:
+                                # 更新操作数据中的倒计时文本
+                                operation.operation_data['hold_time'] = operation.get_remaining_time_text()
+
+                                # 调用卡片更新回调
+                                success = self.card_update_callback(operation)
+                                if success:
+                                    operation.last_update_time = time.time()
+                                    operation.update_count += 1
+                                    updated_count += 1
+
+                                    # 检查是否已过期，结束更新
+                                    if operation.is_expired():
+                                        debug_utils.log_and_print(f"⏰ 操作 {op_id} 倒计时结束", log_level="INFO")
+                                        break
+
+                    if updated_count > 0:
+                        debug_utils.log_and_print(f"🔄 更新了 {updated_count} 个卡片", log_level="DEBUG")
+
+                except Exception as e:
+                    debug_utils.log_and_print(f"❌ 卡片自动更新异常: {e}", log_level="ERROR")
+
+                time.sleep(self.update_interval)
+
+            debug_utils.log_and_print("⏹️ 卡片自动更新线程已停止", log_level="INFO")
+
+        self._update_thread = threading.Thread(target=auto_update, daemon=True)
+        self._update_thread.start()
+
+    def register_card_update_callback(self, callback: Callable[[PendingOperation], bool]) -> None:
+        """
+        注册卡片更新回调函数
+
+        Args:
+            callback: 回调函数，接收PendingOperation，返回bool表示是否更新成功
+        """
+        self.card_update_callback = callback
+        debug_utils.log_and_print("✅ 注册卡片更新回调成功", log_level="INFO")
+
+    def configure_auto_update(self, enabled: bool = True, interval: int = 1, max_updates: int = 60) -> None:
+        """
+        配置自动更新参数
+
+        Args:
+            enabled: 是否启用自动更新
+            interval: 更新间隔（秒）
+            max_updates: 最大更新次数
+        """
+        self.auto_update_enabled = enabled
+        self.update_interval = interval
+        self.max_updates = max_updates
+        debug_utils.log_and_print(f"⚙️ 卡片自动更新配置: enabled={enabled}, interval={interval}s, max_updates={max_updates}", log_level="INFO")
+
+    def bind_card_message(self, operation_id: str, message_id: str) -> bool:
+        """
+        绑定操作和卡片消息ID
+
+        Args:
+            operation_id: 操作ID
+            message_id: 卡片消息ID
+
+        Returns:
+            bool: 是否绑定成功
+        """
+        operation = self.pending_operations.get(operation_id)
+        if not operation:
+            return False
+
+        operation.card_message_id = message_id
+        operation.last_update_time = time.time()
+        self._save_operations()
+
+        debug_utils.log_and_print(f"🔗 操作 {operation_id} 绑定卡片消息 {message_id}", log_level="INFO")
+        return True
+
+    def stop_auto_update(self) -> None:
+        """停止自动更新线程"""
+        if self._update_thread and self._update_thread.is_alive():
+            debug_utils.log_and_print("⏹️ 正在停止卡片自动更新线程...", log_level="INFO")
+            self._stop_update_flag = True
+            self._update_thread.join(timeout=5)  # 5秒超时
+
+            if self._update_thread.is_alive():
+                debug_utils.log_and_print("⚠️ 自动更新线程未能正常停止", log_level="WARNING")
+            else:
+                debug_utils.log_and_print("✅ 自动更新线程已停止", log_level="INFO")

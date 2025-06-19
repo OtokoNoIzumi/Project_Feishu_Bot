@@ -26,7 +26,7 @@ class AdminCardManager(BaseCardManager):
         self.templates = {
             "admin_user_update_confirm": {
                 "template_id": "AAqdbwJ2cflOp",
-                "template_version": "1.0.4"
+                "template_version": "1.0.8"
             }
         }
 
@@ -74,31 +74,32 @@ class AdminCardManager(BaseCardManager):
             3: "受邀用户"
         }
         user_type_display = user_type_map.get(user_type, "未知类型")
-        user_type_str = str(user_type)
 
-        # # 构建确认操作的action数据
-        # confirm_action_data = {
-        #     "action": "confirm_user_update",
-        #     "operation_id": operation_id,
-        #     "user_id": user_id,
-        #     "user_type": user_type
-        # }
+        # 构建确认操作的action数据——虽然可以放在card里定义，但这样card模板就有逻辑了，还是应该直接传进去，模板应该是和业务完全无关
+        confirm_action_data = {
+            "action": "confirm_user_update",
+            "operation_id": operation_id,
+            "user_id": user_id,
+            "user_type": user_type
+        }
 
-        # # 构建取消操作的action数据
-        # cancel_action_data = {
-        #     "action": "cancel_user_update",
-        #     "operation_id": operation_id
-        # }
+        # 构建取消操作的action数据
+        cancel_action_data = {
+            "action": "cancel_user_update",
+            "operation_id": operation_id
+        }
         # 操作已完成，显示结果
         template_params = {
             "user_id": str(user_id),
             "user_type": user_type,
-            "user_type_str": user_type_str,
             "admin_input": admin_input,
             "hold_time": hold_time,
             "result": result,
             "finished": finished,
-            "operation_id": operation_id
+            "confirm_action_data": confirm_action_data,
+            "cancel_action_data": cancel_action_data,
+            "operation_id": operation_id,
+            "extra_functions":[]
         }
 
 

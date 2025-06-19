@@ -4,7 +4,7 @@
 将原有的MessageProcessor按业务功能拆分为多个专门的处理器
 """
 
-from .base_processor import BaseProcessor, MessageContext, ProcessResult
+from .base_processor import BaseProcessor, MessageContext, ProcessResult, safe_execute, require_app_controller
 from .text_processor import TextProcessor
 from .media_processor import MediaProcessor
 from .bilibili_processor import BilibiliProcessor
@@ -19,5 +19,7 @@ __all__ = [
     'MediaProcessor',
     'BilibiliProcessor',
     'AdminProcessor',
-    'ScheduleProcessor'
+    'ScheduleProcessor',
+    'safe_execute',
+    'require_app_controller'
 ]
