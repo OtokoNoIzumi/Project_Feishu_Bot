@@ -12,9 +12,6 @@
 - 模式灵活：支持多种发送模式
 """
 
-# 当发送器拆分完成后，将在此处导入相关类
-# from .message_sender import MessageSender
+from .message_sender import MessageSender
 
-__all__ = [
-    # 'MessageSender'
-]
+__all__ = ['MessageSender']

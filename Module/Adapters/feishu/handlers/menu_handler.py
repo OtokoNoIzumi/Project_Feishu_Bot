@@ -1,0 +1,119 @@
+"""
+飞书菜单处理器 (Feishu Menu Handler)
+
+负责处理飞书菜单事件，包括：
+- 菜单点击事件处理
+- 菜单到消息上下文的转换
+"""
+
+import datetime
+from typing import Optional
+
+from Module.Common.scripts.common import debug_utils
+from Module.Business.message_processor import MessageContext
+from ..decorators import (
+    feishu_event_handler_safe, message_conversion_safe
+)
+
+
+class MenuHandler:
+    """飞书菜单处理器"""
+
+    def __init__(self, message_processor, sender, user_name_getter):
+        """
+        初始化菜单处理器
+
+        Args:
+            message_processor: 业务消息处理器
+            sender: 消息发送器实例
+            user_name_getter: 用户名获取函数
+        """
+        self.message_processor = message_processor
+        self.sender = sender
+        self._get_user_name = user_name_getter
+
+    def _extract_common_context_data(self, data, user_id: str) -> dict:
+        """
+        提取通用的上下文数据（时间戳和用户名）
+
+        Args:
+            data: 飞书事件数据
+            user_id: 用户ID
+
+        Returns:
+            Dict: 包含timestamp和user_name的字典
+        """
+        # 对于菜单事件，使用当前时间而不是事件时间（保持原有逻辑）
+        create_time_ms = int(data.event.message.create_time)
+        timestamp = datetime.datetime.fromtimestamp(create_time_ms / 1000)
+        user_name = self._get_user_name(user_id)
+
+        return {
+            'timestamp': timestamp,
+            'user_name': user_name
+        }
+
+    @feishu_event_handler_safe("飞书菜单处理失败")
+    def handle_feishu_menu(self, data) -> None:
+        """
+        处理飞书菜单点击事件
+
+        将菜单点击转换为标准消息上下文处理
+        """
+        # 转换为标准消息上下文
+        context = self._convert_menu_to_context(data)
+        if not context:
+            debug_utils.log_and_print("❌ 菜单上下文转换失败", log_level="ERROR")
+            return
+
+        # 调用业务处理器
+        result = self.message_processor.process_message(context)
+
+        # 检查是否需要异步处理B站视频推荐
+        if (
+            result.success
+            and result.response_content
+            and result.response_content.get("next_action") == "process_bili_video"
+        ):
+
+            user_id = result.response_content.get("user_id", "")
+
+            # 只有在有实际文本内容时才发送提示消息
+            text_content = result.response_content.get("text", "")
+            if text_content and text_content.strip():
+                self.sender.send_direct_message(context.user_id, result)
+
+            # 调用注入的message_handler方法处理B站视频异步操作
+            self.sender.handle_bili_video_async(user_id)
+            return
+
+        # 发送回复（菜单点击通常需要主动发送消息）
+        if result.should_reply:
+            self.sender.send_direct_message(context.user_id, result)
+
+    @message_conversion_safe("菜单转换失败")
+    def _convert_menu_to_context(self, data) -> Optional[MessageContext]:
+        """将飞书菜单点击转换为标准消息上下文"""
+        # 提取基本信息
+        event_id = data.header.event_id
+        user_id = data.event.operator.operator_id.open_id
+
+        # 提取通用数据（时间戳和用户名）
+        common_data = self._extract_common_context_data(data, user_id)
+
+        # 菜单事件的内容是event_key
+        event_key = data.event.event_key
+
+        return MessageContext(
+            user_id=user_id,
+            user_name=common_data['user_name'],
+            message_type="menu_click",  # 自定义类型
+            content=event_key,
+            timestamp=common_data['timestamp'],
+            event_id=event_id,
+            metadata={
+                'app_id': data.header.app_id,
+                'event_key': event_key,
+                'interaction_type': 'menu'
+            }
+        )

@@ -84,7 +84,7 @@ def setup_application():
                     return
                 # print('test-result', result.__dict__)
                 if result.success:
-                    feishu_adapter._send_direct_message(admin_id, result)
+                    feishu_adapter.sender.send_direct_message(admin_id, result)
                     debug_utils.log_and_print(f"✅ 定时消息已发送: {message_type}", log_level="INFO")
                 else:
                     debug_utils.log_and_print(f"❌ 消息生成失败: {result.error_message}", log_level="ERROR")

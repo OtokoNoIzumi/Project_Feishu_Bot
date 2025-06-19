@@ -99,7 +99,7 @@ class CacheService:
         os.makedirs(os.path.dirname(filename), exist_ok=True)
         temp_file = filename + ".tmp"
         with open(temp_file, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2)
+            json.dump(data, f, indent=2, ensure_ascii=False)
         os.replace(temp_file, filename)
 
     # 原有接口保持不变
