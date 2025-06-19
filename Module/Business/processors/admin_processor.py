@@ -133,7 +133,7 @@ class AdminProcessor(BaseProcessor):
 
         # 使用新的缓存服务创建确认操作
         return self._create_pending_user_update_operation(
-            context, uid, account_type + 1, ' '.join(parts[1:])  # 转换为1-3的用户类型
+            context, uid, account_type, ' '.join(parts[1:])  # 转换为0-2的用户类型
         )
 
     @safe_execute("更新广告命令解析失败")
@@ -221,18 +221,6 @@ class AdminProcessor(BaseProcessor):
         else:
             error_msg = response_data.get("message", "未知错误") if response_data else "API调用失败"
             return ProcessResult.error_result(f"❌ 广告时间戳更新失败: {error_msg}")
-
-    @safe_execute("处理交互式卡片动作失败")
-    def handle_interactive_card_action(self, context: MessageContext, action: str, action_value: Dict[str, Any]) -> ProcessResult:
-        """处理交互式卡片动作"""
-        if action == "confirm_update_user_interactive":
-            return self.handle_confirm_update_user_interactive(context, action_value)
-        elif action == "confirm_update_ads_interactive":
-            return self.handle_confirm_update_ads_interactive(context, action_value)
-        elif action == "cancel_admin_operation":
-            return self.handle_cancel_admin_operation(context)
-        else:
-            return ProcessResult.error_result(f"未知的交互式卡片动作: {action}")
 
     @safe_execute("处理用户更新失败")
     def handle_confirm_update_user_interactive(self, context: MessageContext, action_value: Dict[str, Any]) -> ProcessResult:
@@ -738,11 +726,8 @@ class AdminProcessor(BaseProcessor):
                 debug_utils.log_and_print("❌ 用户更新操作缺少必要参数", log_level="ERROR")
                 return False
 
-            # 转换用户类型 (1-3 -> 0-2)
-            account_type = user_type - 1
-
             # 调用B站API
-            success, response_data = self._call_update_user_api(user_id, account_type)
+            success, response_data = self._call_update_user_api(user_id, user_type)
 
             if success:
                 debug_utils.log_and_print(f"✅ 用户 {user_id} 状态更新成功 {response_data.get('message', '')}", log_level="INFO")
@@ -759,7 +744,7 @@ class AdminProcessor(BaseProcessor):
     @require_app_controller("应用控制器不可用")
     @require_service('pending_cache', "缓存业务服务不可用")
     @safe_execute("处理缓存操作确认失败")
-    def handle_pending_operation_action(self, context: MessageContext, action_value: Dict[str, Any]) -> ProcessResult:
+    def handle_pending_operation_action(self, action_value: Dict[str, Any]) -> ProcessResult:
         """
         处理缓存操作的确认、取消等动作
 
@@ -784,10 +769,10 @@ class AdminProcessor(BaseProcessor):
 
         if action == "confirm_user_update":
             # 更新操作数据（可能有表单修改）
-            if 'user_id' in action_value:
-                operation.operation_data['user_id'] = action_value['user_id']
-            if 'user_type' in action_value:
-                operation.operation_data['user_type'] = action_value['user_type']
+            # if 'user_id' in action_value:
+            #     operation.operation_data['user_id'] = action_value['user_id']
+            # if 'user_type' in action_value:
+            #     operation.operation_data['user_type'] = action_value['user_type']
 
             # 确认操作
             success = pending_cache_service.confirm_operation(operation_id)
@@ -942,13 +927,13 @@ class AdminProcessor(BaseProcessor):
             minutes = seconds // 60
             remaining_seconds = seconds % 60
             if remaining_seconds > 0:
-                return f"({minutes}m{remaining_seconds}s)"
+                return f"({minutes}分{remaining_seconds}秒)"
             else:
-                return f"({minutes}m)"
+                return f"({minutes}分)"
         else:
             hours = seconds // 3600
             remaining_minutes = (seconds % 3600) // 60
             if remaining_minutes > 0:
-                return f"({hours}h{remaining_minutes}m)"
+                return f"({hours}时{remaining_minutes}分)"
             else:
-                return f"({hours}h)"
+                return f"({hours}时)"

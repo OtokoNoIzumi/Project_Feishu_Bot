@@ -480,29 +480,29 @@ class FeishuAdapter:
     def _convert_message_to_context(self, data) -> Optional[MessageContext]:
         """将飞书消息转换为标准消息上下文"""
         # 详细输出P2ImMessageReceiveV1对象信息
-        debug_utils.log_and_print(f"🔍 P2ImMessageReceiveV1对象详细信息 (JSON序列化):", log_level="DEBUG")
-        try:
-            # 使用自定义序列化器进行转换
-            serializable_data = custom_serializer(data)
-            json_output = json.dumps(serializable_data, indent=2, ensure_ascii=False)
-            debug_utils.log_and_print(json_output, log_level="DEBUG")
-            debug_utils.log_and_print(f"🔍 P2ImMessageReceiveV1对象详细信息 (pprint):", log_level="DEBUG")
-            dict_representation = custom_serializer(data)
-            pretty_output = pprint.pformat(dict_representation, indent=2, width=120)
-            debug_utils.log_and_print(pretty_output, log_level="DEBUG")
-        except Exception as e:
-            debug_utils.log_and_print(f"  - 序列化失败: {e}", log_level="ERROR")
-            debug_utils.log_and_print(f"  - 尝试使用 repr(): {repr(data)}", log_level="DEBUG")
+        # debug_utils.log_and_print(f"🔍 P2ImMessageReceiveV1对象详细信息 (JSON序列化):", log_level="DEBUG")
+        # try:
+        #     # 使用自定义序列化器进行转换
+        #     serializable_data = custom_serializer(data)
+        #     json_output = json.dumps(serializable_data, indent=2, ensure_ascii=False)
+        #     debug_utils.log_and_print(json_output, log_level="DEBUG")
+        #     debug_utils.log_and_print(f"🔍 P2ImMessageReceiveV1对象详细信息 (pprint):", log_level="DEBUG")
+        #     dict_representation = custom_serializer(data)
+        #     pretty_output = pprint.pformat(dict_representation, indent=2, width=120)
+        #     debug_utils.log_and_print(pretty_output, log_level="DEBUG")
+        # except Exception as e:
+        #     debug_utils.log_and_print(f"  - 序列化失败: {e}", log_level="ERROR")
+        #     debug_utils.log_and_print(f"  - 尝试使用 repr(): {repr(data)}", log_level="DEBUG")
 
-        # 特别关注回复消息的关键字段 parent_id
-        if hasattr(data, 'event') and hasattr(data.event, 'message') and hasattr(data.event.message, 'parent_id'):
-            parent_id = data.event.message.parent_id
-            if parent_id:
-                debug_utils.log_and_print(f"  - 关键信息: 此消息为回复消息, parent_id = {parent_id}", log_level="INFO")
-            else:
-                debug_utils.log_and_print(f"  - 关键信息: 此消息非回复消息 (parent_id is None or empty)", log_level="DEBUG")
-        else:
-            debug_utils.log_and_print(f"  - 关键信息: 未找到 parent_id 属性路径", log_level="DEBUG")
+        # # 特别关注回复消息的关键字段 parent_id
+        # if hasattr(data, 'event') and hasattr(data.event, 'message') and hasattr(data.event.message, 'parent_id'):
+        #     parent_id = data.event.message.parent_id
+        #     if parent_id:
+        #         debug_utils.log_and_print(f"  - 关键信息: 此消息为回复消息, parent_id = {parent_id}", log_level="INFO")
+        #     else:
+        #         debug_utils.log_and_print(f"  - 关键信息: 此消息非回复消息 (parent_id is None or empty)", log_level="DEBUG")
+        # else:
+        #     debug_utils.log_and_print(f"  - 关键信息: 未找到 parent_id 属性路径", log_level="DEBUG")
         # 提取基本信息
         event_id = data.header.event_id
         event_time = data.header.create_time or time.time()
@@ -580,19 +580,19 @@ class FeishuAdapter:
     def _convert_card_to_context(self, data) -> Optional[MessageContext]:
         """将飞书卡片点击转换为标准消息上下文"""
         # 详细输出P2ImMessageReceiveV1对象信息
-        debug_utils.log_and_print(f"🔍 P2ImMessageReceiveV1Card对象详细信息 (JSON序列化):", log_level="DEBUG")
-        try:
-            # 使用自定义序列化器进行转换
-            serializable_data = custom_serializer(data)
-            json_output = json.dumps(serializable_data, indent=2, ensure_ascii=False)
-            debug_utils.log_and_print(json_output, log_level="DEBUG")
-            debug_utils.log_and_print(f"🔍 P2ImMessageReceiveV1Card对象详细信息 (pprint):", log_level="DEBUG")
-            dict_representation = custom_serializer(data)
-            pretty_output = pprint.pformat(dict_representation, indent=2, width=120)
-            debug_utils.log_and_print(pretty_output, log_level="DEBUG")
-        except Exception as e:
-            debug_utils.log_and_print(f"  - 序列化失败: {e}", log_level="ERROR")
-            debug_utils.log_and_print(f"  - 尝试使用 repr(): {repr(data)}", log_level="DEBUG")
+        # debug_utils.log_and_print(f"🔍 P2ImMessageReceiveV1Card对象详细信息 (JSON序列化):", log_level="DEBUG")
+        # try:
+        #     # 使用自定义序列化器进行转换
+        #     serializable_data = custom_serializer(data)
+        #     json_output = json.dumps(serializable_data, indent=2, ensure_ascii=False)
+        #     debug_utils.log_and_print(json_output, log_level="DEBUG")
+        #     debug_utils.log_and_print(f"🔍 P2ImMessageReceiveV1Card对象详细信息 (pprint):", log_level="DEBUG")
+        #     dict_representation = custom_serializer(data)
+        #     pretty_output = pprint.pformat(dict_representation, indent=2, width=120)
+        #     debug_utils.log_and_print(pretty_output, log_level="DEBUG")
+        # except Exception as e:
+        #     debug_utils.log_and_print(f"  - 序列化失败: {e}", log_level="ERROR")
+        #     debug_utils.log_and_print(f"  - 尝试使用 repr(): {repr(data)}", log_level="DEBUG")
 
         # 提取基本信息
         event_id = f"card_{data.event.operator.open_id}_{int(time.time())}"  # 卡片事件生成ID

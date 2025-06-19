@@ -347,7 +347,6 @@ class PendingCacheService:
         operation.operation_data.update(new_data)
         self._save_operations()
 
-        debug_utils.log_and_print(f"✅ 操作数据已更新: {operation_id}", log_level="INFO")
         return True
 
     def _enforce_user_limit(self, user_id: str) -> None:

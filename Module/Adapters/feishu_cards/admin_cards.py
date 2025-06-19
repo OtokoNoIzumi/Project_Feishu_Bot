@@ -2,12 +2,74 @@
 管理员相关卡片管理器
 
 处理管理员操作确认、用户状态修改等功能的飞书卡片
+版本：1.0.9 - 标准化交互组件架构
 """
 
 from typing import Dict, Any, Optional
 from Module.Common.scripts.common import debug_utils
 from .base_card_manager import BaseCardManager
 from ..feishu_decorators import card_build_safe
+
+
+class AdminCardInteractionComponents:
+    """管理员卡片交互组件定义 - 业务层集中管理"""
+
+    @staticmethod
+    def get_user_update_confirm_components(operation_id: str, user_id: str, user_type: int) -> Dict[str, Any]:
+        """
+        获取用户更新确认卡片的交互组件
+
+        Args:
+            operation_id: 操作ID
+            user_id: 用户ID
+            user_type: 当前用户类型
+
+        Returns:
+            Dict[str, Any]: 包含所有交互组件的定义
+        """
+        return {
+            # 确认按钮组件
+            "confirm_action": {
+                "action": "confirm_user_update",
+                "operation_id": operation_id,
+                "user_id": user_id,
+                "user_type": user_type
+            },
+
+            # 取消按钮组件
+            "cancel_action": {
+                "action": "cancel_user_update",
+                "operation_id": operation_id
+            },
+
+            # 用户类型选择器组件
+            "user_type_selector": {
+                "action": "select_change",
+                "operation_id": operation_id,
+                "target_field": "user_type",  # 明确指定要更新的字段
+                "value_mapping": {
+                    "0": 0,  # "普通用户" -> 1
+                    "1": 1,  # "支持者" -> 2
+                    "2": 2   # "受邀用户" -> 3
+                },
+                "current_value": str(user_type - 1)  # 当前选中值 (1-3 -> 0-2)
+            }
+        }
+
+    @staticmethod
+    def get_operation_type_mapping() -> Dict[str, str]:
+        """
+        获取操作类型映射 - 用于识别不同业务的交互组件
+
+        Returns:
+            Dict[str, str]: operation_type -> component_getter_method
+        """
+        return {
+            "update_user": "get_user_update_confirm_components",
+            # 未来扩展:
+            # "update_ads": "get_ads_update_confirm_components",
+            # "system_config": "get_system_config_components"
+        }
 
 
 class AdminCardManager(BaseCardManager):
@@ -26,7 +88,7 @@ class AdminCardManager(BaseCardManager):
         self.templates = {
             "admin_user_update_confirm": {
                 "template_id": "AAqdbwJ2cflOp",
-                "template_version": "1.0.8"
+                "template_version": "1.0.9"
             }
         }
 
@@ -75,33 +137,28 @@ class AdminCardManager(BaseCardManager):
         }
         user_type_display = user_type_map.get(user_type, "未知类型")
 
-        # 构建确认操作的action数据——虽然可以放在card里定义，但这样card模板就有逻辑了，还是应该直接传进去，模板应该是和业务完全无关
-        confirm_action_data = {
-            "action": "confirm_user_update",
-            "operation_id": operation_id,
-            "user_id": user_id,
-            "user_type": user_type
-        }
+        # 使用交互组件定义系统
+        interaction_components = AdminCardInteractionComponents.get_user_update_confirm_components(
+            operation_id, user_id, user_type + 1
+        )
 
-        # 构建取消操作的action数据
-        cancel_action_data = {
-            "action": "cancel_user_update",
-            "operation_id": operation_id
-        }
-        # 操作已完成，显示结果
+        # 构建模板参数
         template_params = {
             "user_id": str(user_id),
-            "user_type": user_type,
+            "user_type": user_type + 1,
             "admin_input": admin_input,
             "hold_time": hold_time,
             "result": result,
             "finished": finished,
-            "confirm_action_data": confirm_action_data,
-            "cancel_action_data": cancel_action_data,
-            "operation_id": operation_id,
-            "extra_functions":[]
-        }
 
+
+            # 1.0.9版本：标准化交互组件
+            "confirm_action_data": interaction_components["confirm_action"],
+            "cancel_action_data": interaction_components["cancel_action"],
+            "user_type_selector_data": interaction_components["user_type_selector"],
+
+            "extra_functions": []
+        }
 
         return template_params
 

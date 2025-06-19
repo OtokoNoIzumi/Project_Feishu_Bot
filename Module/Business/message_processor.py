@@ -314,7 +314,7 @@ class MessageProcessor(BaseProcessor):
             ProcessResult: 处理结果
         """
         # 直接调用admin_processor的缓存操作处理方法
-        return self.admin_processor.handle_pending_operation_action(context, action_value)
+        return self.admin_processor.handle_pending_operation_action(action_value)
 
     # ================ 异步处理方法（供适配器调用）================
 
@@ -368,27 +368,108 @@ class MessageProcessor(BaseProcessor):
     def _handle_select_action(self, context: MessageContext, action_value: Dict[str, Any]) -> ProcessResult:
         """
         处理select_static类型的卡片动作（用户修改下拉选择）
+        基于1.0.9版本的交互组件架构
 
         Args:
             context: 消息上下文
-            action_value: 动作值，包含option字段
+            action_value: 动作值，包含operation_id、option等字段
 
         Returns:
             ProcessResult: 处理结果
         """
-        # 从用户的日志信息可以看到，select_static类型的action包含：
-        # - tag: "select_static"
-        # - option: "0" (选中的选项值，字符串类型)
-        print('test-select_action',action_value,'\n')
-        print('test-context',context.__dict__,'\n')
+        # 从action_value提取关键信息
+        operation_id = action_value.get('operation_id')
         selected_option = action_value.get('option', '0')
 
-                # 记录选择变更
-        debug_utils.log_and_print(f"🔄 用户 {context.user_name} 修改选择: {selected_option}", log_level="INFO")
+        if not operation_id:
+            debug_utils.log_and_print("❌ select_action缺少operation_id", log_level="ERROR")
+            return ProcessResult.no_reply_result()
 
-        # 检查是否有operation_id，如果有则为管理员卡片的选择器
-        message_id = context.metadata.get('open_message_id', '')
+        # 获取pending操作
+        pending_cache_service = self.app_controller.get_service('pending_cache')
+        operation = pending_cache_service.get_operation(operation_id)
 
-        # 目前返回静默处理（不显示Toast）
-        # 实际的业务逻辑会在用户点击确认按钮时处理
+        if not operation:
+            debug_utils.log_and_print(f"❌ 未找到操作: {operation_id}", log_level="ERROR")
+            return ProcessResult.no_reply_result()
+
+        # 使用交互组件架构获取更新逻辑
+        update_success = self._apply_select_change(operation, selected_option)
+
+        if not update_success:
+            debug_utils.log_and_print(
+                f"⚠️ 选择更新失败: option={selected_option}, operation={operation_id}",
+                log_level="WARNING"
+            )
+
+        # 返回静默处理（select_action不显示Toast，用户体验更流畅）
         return ProcessResult.no_reply_result()
+
+    def _apply_select_change(self, operation, selected_option: str) -> bool:
+        """
+        应用选择变更到操作数据
+        基于1.0.9版本交互组件架构的配置驱动更新
+
+        Args:
+            operation: 待处理操作对象
+            selected_option: 用户选择的选项值
+
+        Returns:
+            bool: 是否更新成功
+        """
+        try:
+            # 导入交互组件定义
+            from Module.Adapters.feishu_cards.admin_cards import AdminCardInteractionComponents
+
+            # 获取操作类型映射
+            type_mapping = AdminCardInteractionComponents.get_operation_type_mapping()
+            component_getter = type_mapping.get(operation.operation_type)
+
+            if not component_getter:
+                debug_utils.log_and_print(f"⚠️ 未支持的操作类型select_change: {operation.operation_type}", log_level="WARNING")
+                return False
+
+            # 获取交互组件定义
+            if component_getter == "get_user_update_confirm_components":
+                components = AdminCardInteractionComponents.get_user_update_confirm_components(
+                    operation.operation_id,
+                    operation.operation_data.get('user_id', ''),
+                    operation.operation_data.get('user_type', 1)
+                )
+
+                # 处理用户类型选择器更新
+                selector_config = components.get("user_type_selector", {})
+                target_field = selector_config.get("target_field")
+                value_mapping = selector_config.get("value_mapping", {})
+
+                if target_field and selected_option in value_mapping:
+                    # 执行数据更新
+                    new_value = value_mapping[selected_option]
+                    old_value = operation.operation_data.get(target_field)
+
+                    # 更新操作数据
+                    pending_cache_service = self.app_controller.get_service('pending_cache')
+                    success = pending_cache_service.update_operation_data(
+                        operation.operation_id,
+                        {target_field: new_value}
+                    )
+
+                    if success:
+                        debug_utils.log_and_print(
+                            f"🔄 操作数据已更新: {target_field} {old_value}→{new_value}",
+                            log_level="INFO"
+                        )
+
+                    return success
+                else:
+                    debug_utils.log_and_print(f"⚠️ 无效的选项映射: {selected_option}", log_level="WARNING")
+                    return False
+
+            # 未来可扩展其他操作类型的处理
+            else:
+                debug_utils.log_and_print(f"⚠️ 未实现的组件获取方法: {component_getter}", log_level="WARNING")
+                return False
+
+        except Exception as e:
+            debug_utils.log_and_print(f"❌ 应用选择变更失败: {e}", log_level="ERROR")
+            return False
