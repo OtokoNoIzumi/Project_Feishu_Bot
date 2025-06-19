@@ -10,7 +10,7 @@ import datetime
 from typing import Optional
 
 from Module.Common.scripts.common import debug_utils
-from Module.Business.message_processor import MessageContext
+from Module.Business.processors import MessageContext
 from ..decorators import (
     feishu_event_handler_safe, message_conversion_safe
 )
@@ -43,8 +43,8 @@ class MenuHandler:
         Returns:
             Dict: 包含timestamp和user_name的字典
         """
-        # 对于菜单事件，使用当前时间而不是事件时间（保持原有逻辑）
-        create_time_ms = int(data.event.message.create_time)
+        # 对于菜单事件，使用事件时间
+        create_time_ms = int(data.header.create_time)
         timestamp = datetime.datetime.fromtimestamp(create_time_ms / 1000)
         user_name = self._get_user_name(user_id)
 

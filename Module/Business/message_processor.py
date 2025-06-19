@@ -7,13 +7,16 @@
 
 import time
 from typing import Dict, Any
+
+from Module.Common.scripts.common import debug_utils
+from Module.Services.router.card_builder import CardBuilder
+from Module.Adapters.feishu.cards.admin_cards import AdminCardInteractionComponents
 from .processors import (
     BaseProcessor, MessageContext, ProcessResult,
     TextProcessor, MediaProcessor, BilibiliProcessor,
     AdminProcessor, ScheduleProcessor,
     require_app_controller, safe_execute
 )
-from Module.Common.scripts.common import debug_utils
 
 
 class MessageProcessor(BaseProcessor):
@@ -77,7 +80,12 @@ class MessageProcessor(BaseProcessor):
         is_duplicate, event_timestamp = self._is_duplicate_event(context.event_id)
         if is_duplicate:
             time_diff = time.time() - event_timestamp
-            debug_utils.log_and_print(f"📋 重复事件已跳过 [{context.message_type}] [{context.content[:50]}] 时间差: {time_diff:.2f}秒", log_level="INFO")
+            time_diff_str = f"时间差: {time_diff:.2f}秒"
+            debug_utils.log_and_print(
+                f"📋 重复事件已跳过 [{context.message_type}] "
+                f"[{context.content[:50]}] {time_diff_str}",
+                log_level="INFO"
+            )
             return ProcessResult.no_reply_result()
 
         # 记录新事件
@@ -89,18 +97,19 @@ class MessageProcessor(BaseProcessor):
     @safe_execute("消息类型分发失败")
     def _dispatch_by_message_type(self, context: MessageContext) -> ProcessResult:
         """根据消息类型分发处理"""
-        if context.message_type == "text":
-            return self._process_text_message(context)
-        elif context.message_type == "image":
-            return self._process_image_message(context)
-        elif context.message_type == "audio":
-            return self._process_audio_message(context)
-        elif context.message_type == "menu_click":
-            return self._process_menu_click(context)
-        elif context.message_type == "card_action":
-            return self._process_card_action(context)
-        else:
-            return ProcessResult.error_result(f"不支持的消息类型: {context.message_type}")
+        match context.message_type:
+            case "text":
+                return self._process_text_message(context)
+            case "image":
+                return self._process_image_message(context)
+            case "audio":
+                return self._process_audio_message(context)
+            case "menu_click":
+                return self._process_menu_click(context)
+            case "card_action":
+                return self._process_card_action(context)
+            case _:
+                return ProcessResult.error_result(f"不支持的消息类型: {context.message_type}")
 
     @safe_execute("文本消息处理失败")
     def _process_text_message(self, context: MessageContext) -> ProcessResult:
@@ -123,34 +132,31 @@ class MessageProcessor(BaseProcessor):
             self._log_command(context.user_name, "🎨", "触发图像生成指令", content)
             return self.media_processor.handle_image_generation_command(context, user_msg)
 
-        # 富文本指令
-        if user_msg == "富文本":
-            self._log_command(context.user_name, "📄", "触发富文本指令")
-            return self.media_processor.handle_rich_text_command(context)
-
-        # 图片/壁纸指令
-        if user_msg == "图片" or user_msg == "壁纸":
-            self._log_command(context.user_name, "🖼️", "触发图片指令")
-            return self.media_processor.handle_sample_image_command(context)
-
-        # B站/视频指令（触发菜单效果）
-        if user_msg == "B站" or user_msg == "视频":
-            self._log_command(context.user_name, "📺", "触发B站视频指令")
-            return self.bilibili_processor.handle_bili_text_command(context)
-
-        # 基础指令处理
-        if user_msg == "帮助":
-            self._log_command(context.user_name, "❓", "查看帮助")
-            return self.text_processor.handle_help_command(context)
-        elif user_msg == "你好":
-            self._log_command(context.user_name, "👋", "发送问候")
-            return self.text_processor.handle_greeting_command(context)
+        # 基础指令处理 - 使用 match case 优化
+        match user_msg:
+            case "帮助":
+                self._log_command(context.user_name, "❓", "查看帮助")
+                return self.text_processor.handle_help_command(context)
+            case "你好":
+                self._log_command(context.user_name, "👋", "发送问候")
+                return self.text_processor.handle_greeting_command(context)
+            case "富文本":
+                self._log_command(context.user_name, "📄", "触发富文本指令")
+                return self.media_processor.handle_rich_text_command(context)
+            case "图片" | "壁纸":
+                self._log_command(context.user_name, "🖼️", "触发图片指令")
+                return self.media_processor.handle_sample_image_command(context)
+            case "B站" | "视频":
+                self._log_command(context.user_name, "📺", "触发B站视频指令")
+                return self.bilibili_processor.handle_bili_text_command(context)
 
         # AI智能路由（新增 - 在原有指令之前）
         router_service = self.app_controller.get_service('router') if self.app_controller else None
         if router_service:
             route_result = router_service.route_message(user_msg, context.user_id)
-            if route_result.get('success') and route_result.get('route_type') in ['shortcut', 'ai_intent']:
+            route_success = route_result.get('success', False)
+            route_type = route_result.get('route_type', '')
+            if route_success and route_type in ['shortcut', 'ai_intent']:
                 # 路由成功，返回确认卡片
                 return self._handle_ai_route_result(context, route_result)
 
@@ -183,8 +189,7 @@ class MessageProcessor(BaseProcessor):
         handler = self.action_dispatchers.get(action)
         if handler:
             return handler(context, action_value)
-        else:
-            return ProcessResult.error_result(f"未知的卡片动作: {action}")
+        return ProcessResult.error_result(f"未知的卡片动作: {action}")
 
     def _handle_ai_route_result(self, context: MessageContext, route_result: Dict[str, Any]) -> ProcessResult:
         """
@@ -198,9 +203,6 @@ class MessageProcessor(BaseProcessor):
             ProcessResult: 包含确认卡片的处理结果
         """
         try:
-            # 导入卡片构建器
-            from Module.Services.router.card_builder import CardBuilder
-
             card_builder = CardBuilder()
             card_content = card_builder.build_intent_confirmation_card(route_result)
 
@@ -228,7 +230,6 @@ class MessageProcessor(BaseProcessor):
 
         Args:
             context: 消息上下文
-            action: 动作类型
             action_value: 动作参数
 
         Returns:
@@ -240,42 +241,45 @@ class MessageProcessor(BaseProcessor):
             intent = action_value.get('intent', '未知')
             content = action_value.get('content', '')
 
-            if action == "cancel":
-                # 取消操作
-                return ProcessResult.success_result("text", {
-                    "text": f"已取消 {intent} 操作"
-                }, parent_id=context.message_id)
+            match action:
+                case "cancel":
+                    # 取消操作
+                    return ProcessResult.success_result("text", {
+                        "text": f"已取消 {intent} 操作"
+                    }, parent_id=context.message_id)
 
-            elif action == "edit_content":
-                # 编辑内容（暂时返回提示，后续可扩展为编辑界面）
-                return ProcessResult.success_result("text", {
-                    "text": f"编辑功能开发中，当前内容：{content}"
-                }, parent_id=context.message_id)
+                case "edit_content":
+                    # 编辑内容（暂时返回提示，后续可扩展为编辑界面）
+                    return ProcessResult.success_result("text", {
+                        "text": f"编辑功能开发中，当前内容：{content}"
+                    }, parent_id=context.message_id)
 
-            elif action in ["confirm_thought", "confirm_schedule", "confirm_food_order"]:
-                # 确认操作 - 暂时返回成功提示，后续集成实际的数据存储
-                action_map = {
-                    "confirm_thought": "思考记录",
-                    "confirm_schedule": "日程安排",
-                    "confirm_food_order": "点餐订单"
-                }
+                case "confirm_thought" | "confirm_schedule" | "confirm_food_order":
+                    # 确认操作 - 暂时返回成功提示，后续集成实际的数据存储
+                    action_map = {
+                        "confirm_thought": "思考记录",
+                        "confirm_schedule": "日程安排",
+                        "confirm_food_order": "点餐订单"
+                    }
 
-                operation_name = action_map.get(action, "操作")
+                    operation_name = action_map.get(action, "操作")
 
-                # 记录确认操作
-                self._log_command(
-                    context.user_name,
-                    "✅",
-                    f"确认{operation_name}",
-                    content[:50] + "..." if len(content) > 50 else content
-                )
+                    # 记录确认操作
+                    self._log_command(
+                        context.user_name,
+                        "✅",
+                        f"确认{operation_name}",
+                        content[:50] + "..." if len(content) > 50 else content
+                    )
 
-                return ProcessResult.success_result("text", {
-                    "text": f"✅ {operation_name}已确认记录\n\n内容：{content}\n\n💡 数据存储功能将在后续版本实现"
-                }, parent_id=context.message_id)
+                    content_text = f"✅ {operation_name}已确认记录\n\n内容：{content}"
+                    content_text += "\n\n💡 数据存储功能将在后续版本实现"
+                    return ProcessResult.success_result("text", {
+                        "text": content_text
+                    }, parent_id=context.message_id)
 
-            else:
-                return ProcessResult.error_result(f"未知的卡片动作: {action}")
+                case _:
+                    return ProcessResult.error_result(f"未知的卡片动作: {action}")
 
         except Exception as e:
             debug_utils.log_and_print(f"❌ AI卡片动作处理失败: {e}", log_level="ERROR")
@@ -289,24 +293,28 @@ class MessageProcessor(BaseProcessor):
         try:
             card_type = action_value.get("card_type", "menu")
 
-            if card_type == "daily":
-                # 定时卡片由ScheduleProcessor处理
-                return self.schedule_processor.handle_mark_bili_read(context, action_value)
-            else:
-                # 菜单卡片由BilibiliProcessor处理
-                return self.bilibili_processor.handle_mark_bili_read(context, action_value)
+            match card_type:
+                case "daily":
+                    # 定时卡片由ScheduleProcessor处理
+                    return self.schedule_processor.handle_mark_bili_read(context, action_value)
+                case _:
+                    # 菜单卡片由BilibiliProcessor处理
+                    return self.bilibili_processor.handle_mark_bili_read(context, action_value)
 
         except Exception as e:
             debug_utils.log_and_print(f"❌ 标记B站视频为已读失败: {str(e)}", log_level="ERROR")
             return ProcessResult.error_result(f"处理失败：{str(e)}")
 
     @safe_execute("缓存业务管理员卡片动作处理失败")
-    def _handle_pending_admin_card_action(self, context: MessageContext, action_value: Dict[str, Any]) -> ProcessResult:
+    def _handle_pending_admin_card_action(
+        self, unused_context: MessageContext,
+        action_value: Dict[str, Any]
+    ) -> ProcessResult:
         """
         处理缓存业务管理员卡片动作
 
         Args:
-            context: 消息上下文
+            unused_context: 消息上下文（此方法暂不使用）
             action_value: 动作参数
 
         Returns:
@@ -329,8 +337,10 @@ class MessageProcessor(BaseProcessor):
         """异步处理图像生成（由FeishuAdapter调用）"""
         return self.media_processor.process_image_generation_async(prompt)
 
-    def process_image_conversion_async(self, image_base64: str, mime_type: str,
-                                     file_name: str, file_size: int) -> ProcessResult:
+    def process_image_conversion_async(
+        self, image_base64: str, mime_type: str,
+        file_name: str, file_size: int
+    ) -> ProcessResult:
         """异步处理图像风格转换（由FeishuAdapter调用）"""
         return self.media_processor.process_image_conversion_async(
             image_base64, mime_type, file_name, file_size
@@ -364,13 +374,16 @@ class MessageProcessor(BaseProcessor):
         }
 
     @safe_execute("下拉选择处理失败")
-    def _handle_select_action(self, context: MessageContext, action_value: Dict[str, Any]) -> ProcessResult:
+    def _handle_select_action(
+        self, unused_context: MessageContext,
+        action_value: Dict[str, Any]
+    ) -> ProcessResult:
         """
         处理select_static类型的卡片动作（用户修改下拉选择）
         基于1.0.9版本的交互组件架构
 
         Args:
-            context: 消息上下文
+            unused_context: 消息上下文（此方法暂不使用）
             action_value: 动作值，包含operation_id、option等字段
 
         Returns:
@@ -404,6 +417,7 @@ class MessageProcessor(BaseProcessor):
         # 返回静默处理（select_action不显示Toast，用户体验更流畅）
         return ProcessResult.no_reply_result()
 
+    @safe_execute("选择变更应用失败")
     def _apply_select_change(self, operation, selected_option: str) -> bool:
         """
         应用选择变更到操作数据
@@ -416,59 +430,53 @@ class MessageProcessor(BaseProcessor):
         Returns:
             bool: 是否更新成功
         """
-        try:
-            # 导入交互组件定义
-            from Module.Adapters.feishu.cards.admin_cards import AdminCardInteractionComponents
+        # 获取操作类型映射
+        type_mapping = AdminCardInteractionComponents.get_operation_type_mapping()
+        component_getter = type_mapping.get(operation.operation_type)
 
-            # 获取操作类型映射
-            type_mapping = AdminCardInteractionComponents.get_operation_type_mapping()
-            component_getter = type_mapping.get(operation.operation_type)
+        if not component_getter:
+            debug_utils.log_and_print(
+                f"⚠️ 未支持的操作类型select_change: {operation.operation_type}",
+                log_level="WARNING"
+            )
+            return False
 
-            if not component_getter:
-                debug_utils.log_and_print(f"⚠️ 未支持的操作类型select_change: {operation.operation_type}", log_level="WARNING")
-                return False
+        # 获取交互组件定义
+        if component_getter == "get_user_update_confirm_components":
+            components = AdminCardInteractionComponents.get_user_update_confirm_components(
+                operation.operation_id,
+                operation.operation_data.get('user_id', ''),
+                operation.operation_data.get('user_type', 1)
+            )
 
-            # 获取交互组件定义
-            if component_getter == "get_user_update_confirm_components":
-                components = AdminCardInteractionComponents.get_user_update_confirm_components(
+            # 处理用户类型选择器更新
+            selector_config = components.get("user_type_selector", {})
+            target_field = selector_config.get("target_field")
+            value_mapping = selector_config.get("value_mapping", {})
+
+            if target_field and selected_option in value_mapping:
+                # 执行数据更新
+                new_value = value_mapping[selected_option]
+                old_value = operation.operation_data.get(target_field)
+
+                # 更新操作数据
+                pending_cache_service = self.app_controller.get_service('pending_cache')
+                success = pending_cache_service.update_operation_data(
                     operation.operation_id,
-                    operation.operation_data.get('user_id', ''),
-                    operation.operation_data.get('user_type', 1)
+                    {target_field: new_value}
                 )
 
-                # 处理用户类型选择器更新
-                selector_config = components.get("user_type_selector", {})
-                target_field = selector_config.get("target_field")
-                value_mapping = selector_config.get("value_mapping", {})
-
-                if target_field and selected_option in value_mapping:
-                    # 执行数据更新
-                    new_value = value_mapping[selected_option]
-                    old_value = operation.operation_data.get(target_field)
-
-                    # 更新操作数据
-                    pending_cache_service = self.app_controller.get_service('pending_cache')
-                    success = pending_cache_service.update_operation_data(
-                        operation.operation_id,
-                        {target_field: new_value}
+                if success:
+                    debug_utils.log_and_print(
+                        f"🔄 操作数据已更新: {target_field} {old_value}→{new_value}",
+                        log_level="INFO"
                     )
 
-                    if success:
-                        debug_utils.log_and_print(
-                            f"🔄 操作数据已更新: {target_field} {old_value}→{new_value}",
-                            log_level="INFO"
-                        )
+                return success
 
-                    return success
-                else:
-                    debug_utils.log_and_print(f"⚠️ 无效的选项映射: {selected_option}", log_level="WARNING")
-                    return False
-
-            # 未来可扩展其他操作类型的处理
-            else:
-                debug_utils.log_and_print(f"⚠️ 未实现的组件获取方法: {component_getter}", log_level="WARNING")
-                return False
-
-        except Exception as e:
-            debug_utils.log_and_print(f"❌ 应用选择变更失败: {e}", log_level="ERROR")
+            debug_utils.log_and_print(f"⚠️ 无效的选项映射: {selected_option}", log_level="WARNING")
             return False
+
+        # 未来可扩展其他操作类型的处理
+        debug_utils.log_and_print(f"⚠️ 未实现的组件获取方法: {component_getter}", log_level="WARNING")
+        return False

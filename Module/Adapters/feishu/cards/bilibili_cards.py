@@ -4,18 +4,13 @@ B站相关卡片管理器
 处理B站视频相关的飞书卡片发送、更新和回调
 """
 
-from typing import Dict, Any, Optional, List
-from Module.Common.scripts.common import debug_utils
+from typing import Dict, Any
 from .card_registry import BaseCardManager
 from ..decorators import card_build_safe
 
 
 class BilibiliCardManager(BaseCardManager):
     """B站卡片管理器"""
-
-    def __init__(self):
-        """初始化B站卡片管理器"""
-        super().__init__()
 
     def get_card_type_name(self) -> str:
         """获取卡片类型名称"""

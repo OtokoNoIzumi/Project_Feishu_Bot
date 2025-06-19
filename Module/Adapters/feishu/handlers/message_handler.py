@@ -13,7 +13,7 @@ import threading
 from typing import Optional, Dict, Any
 
 from Module.Common.scripts.common import debug_utils
-from Module.Business.message_processor import MessageContext, ProcessResult
+from Module.Business.processors import MessageContext, ProcessResult
 from ..decorators import (
     feishu_event_handler_safe, message_conversion_safe, async_operation_safe
 )

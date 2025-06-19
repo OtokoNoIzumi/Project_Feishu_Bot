@@ -5,8 +5,7 @@
 版本：1.0.9 - 标准化交互组件架构
 """
 
-from typing import Dict, Any, Optional
-from Module.Common.scripts.common import debug_utils
+from typing import Dict, Any
 from .card_registry import BaseCardManager
 from ..decorators import card_build_safe
 
@@ -75,10 +74,6 @@ class AdminCardInteractionComponents:
 class AdminCardManager(BaseCardManager):
     """管理员卡片管理器"""
 
-    def __init__(self):
-        """初始化管理员卡片管理器"""
-        super().__init__()
-
     def get_card_type_name(self) -> str:
         """获取卡片类型名称"""
         return "管理员"
@@ -129,14 +124,6 @@ class AdminCardManager(BaseCardManager):
         result = operation_data.get('result', '')
         operation_id = operation_data.get('operation_id', '')
 
-        # 用户类型映射 (1-3 对应 普通用户-受邀用户)
-        user_type_map = {
-            1: "普通用户",
-            2: "支持者",
-            3: "受邀用户"
-        }
-        user_type_display = user_type_map.get(user_type, "未知类型")
-
         # 使用交互组件定义系统
         interaction_components = AdminCardInteractionComponents.get_user_update_confirm_components(
             operation_id, user_id, user_type + 1
@@ -162,7 +149,9 @@ class AdminCardManager(BaseCardManager):
         return template_params
 
     @card_build_safe("更新卡片状态失败")
-    def update_card_status(self, operation_data: Dict[str, Any], new_status: str, result_message: str = "") -> Dict[str, Any]:
+    def update_card_status(
+        self, operation_data: Dict[str, Any], new_status: str, result_message: str = ""
+    ) -> Dict[str, Any]:
         """
         更新卡片状态（用于操作完成后的卡片更新，测试数据，待删除）
 
@@ -211,14 +200,15 @@ class AdminCardManager(BaseCardManager):
         if not operation_id:
             return {"success": False, "message": "缺少操作ID"}
 
-        if action == "confirm_user_update":
-            return self._handle_confirm_action(action_data, form_data)
-        elif action == "cancel_user_update":
-            return self._handle_cancel_action(action_data)
-        elif action == "update_user_type":
-            return self._handle_user_type_update(action_data, form_data)
-        else:
-            return {"success": False, "message": f"未知操作: {action}"}
+        match action:
+            case "confirm_user_update":
+                return self._handle_confirm_action(action_data, form_data)
+            case "cancel_user_update":
+                return self._handle_cancel_action(action_data)
+            case "update_user_type":
+                return self._handle_user_type_update(action_data, form_data)
+            case _:
+                return {"success": False, "message": f"未知操作: {action}"}
 
     def _handle_confirm_action(self, action_data: Dict[str, Any], form_data: Dict[str, Any] = None) -> Dict[str, Any]:
         """处理确认操作"""

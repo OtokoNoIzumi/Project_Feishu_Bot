@@ -26,7 +26,7 @@ from lark_oapi.api.im.v1 import (
 )
 
 from Module.Common.scripts.common import debug_utils
-from Module.Business.message_processor import ProcessResult
+from Module.Business.processors import ProcessResult
 from ..decorators import (
     feishu_sdk_safe, file_operation_safe
 )

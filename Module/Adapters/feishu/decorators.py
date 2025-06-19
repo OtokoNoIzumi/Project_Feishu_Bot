@@ -8,12 +8,10 @@
 4. 异步处理异常 - 线程、后台任务错误
 """
 
-import functools
-from typing import Any, Callable, TypeVar, Union, Optional
-from lark_oapi.event.callback.model.p2_card_action_trigger import P2CardActionTriggerResponse
-from Module.Common.scripts.common import debug_utils
-from Module.Business.message_processor import ProcessResult
+from typing import Any, Callable, TypeVar
 from functools import wraps
+
+from Module.Common.scripts.common import debug_utils
 from Module.Services.decorator_base import create_exception_handler_decorator, create_feishu_return_value_factory
 
 F = TypeVar('F', bound=Callable[..., Any])

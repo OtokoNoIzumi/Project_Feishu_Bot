@@ -13,7 +13,7 @@ from typing import Optional, Dict, Any
 from lark_oapi.event.callback.model.p2_card_action_trigger import P2CardActionTriggerResponse
 
 from Module.Common.scripts.common import debug_utils
-from Module.Business.message_processor import MessageContext
+from Module.Business.processors import MessageContext
 from ..decorators import (
     card_operation_safe, message_conversion_safe
 )
