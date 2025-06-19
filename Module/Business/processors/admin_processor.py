@@ -129,7 +129,6 @@ class AdminProcessor(BaseProcessor):
             )
 
         account_type = account_type_map[account_type_input]
-        account_type_display = {0: "普通用户", 1: "支持者", 2: "受邀用户"}[account_type]
 
         # 使用新的缓存服务创建确认操作
         return self._create_pending_user_update_operation(
@@ -166,146 +165,6 @@ class AdminProcessor(BaseProcessor):
 
         return ProcessResult.success_result("interactive", card_content, parent_id=context.message_id)
 
-    @safe_execute("处理更新用户操作失败")
-    def handle_confirm_update_user(self, context: MessageContext, action_value: Dict[str, Any]) -> ProcessResult:
-        """处理确认更新用户操作"""
-        uid = action_value.get("uid")
-        account_type = action_value.get("account_type")
-
-        if not uid or account_type is None:
-            return ProcessResult.error_result("缺少必要参数")
-
-        # 调用B站API
-        success, response_data = self._call_update_user_api(uid, account_type)
-
-        if success:
-            message = response_data.get("message", "更新成功")
-            account_type_display = response_data.get("account_type_display", "未知")
-
-            return ProcessResult.success_result("text", {
-                "text": f"✅ 用户账户更新成功\n\n"
-                       f"用户ID: {uid}\n"
-                       f"新账户类型: {account_type_display}\n"
-                       f"详细信息: {message}"
-            }, parent_id=context.message_id)
-        else:
-            error_msg = response_data.get("message", "未知错误") if response_data else "API调用失败"
-            return ProcessResult.error_result(f"❌ 用户账户更新失败: {error_msg}")
-
-    @safe_execute("处理更新广告操作失败")
-    def handle_confirm_update_ads(self, context: MessageContext, action_value: Dict[str, Any]) -> ProcessResult:
-        """处理确认更新广告操作"""
-        bvid = action_value.get("bvid")
-        ad_timestamps = action_value.get("ad_timestamps")
-
-        if not bvid or not ad_timestamps:
-            return ProcessResult.error_result("缺少必要参数")
-
-        # 调用B站API
-        success, response_data = self._call_update_ads_api(bvid, ad_timestamps)
-
-        if success:
-            message = response_data.get("message", "更新成功")
-            video_title = response_data.get("video_title", "")
-            old_timestamps = response_data.get("old_ad_timestamps", "")
-            new_timestamps = response_data.get("new_ad_timestamps", "")
-
-            return ProcessResult.success_result("text", {
-                "text": f"✅ 广告时间戳更新成功\n\n"
-                       f"视频: {bvid}\n"
-                       f"标题: {video_title}\n"
-                       f"原时间戳: {old_timestamps or '(空)'}\n"
-                       f"新时间戳: {new_timestamps}\n"
-                       f"详细信息: {message}"
-            }, parent_id=context.message_id)
-        else:
-            error_msg = response_data.get("message", "未知错误") if response_data else "API调用失败"
-            return ProcessResult.error_result(f"❌ 广告时间戳更新失败: {error_msg}")
-
-    @safe_execute("处理用户更新失败")
-    def handle_confirm_update_user_interactive(self, context: MessageContext, action_value: Dict[str, Any]) -> ProcessResult:
-        """处理交互式用户更新确认"""
-        # 从卡片表单获取实际输入值
-        form_data = context.metadata.get('form_data', {})
-        uid = form_data.get('user_id_input', action_value.get('original_uid'))
-
-        # 由于select_static在action中，可能需要从action值或form_data中获取
-        # 先尝试从action_value中获取，如果没有则使用原始值
-        if 'selected_account_type' in action_value:
-            account_type_str = action_value.get('selected_account_type')
-        elif 'account_type_select' in form_data:
-            account_type_str = form_data.get('account_type_select')
-        else:
-            account_type_str = str(action_value.get('original_account_type', 0))
-
-        account_type = int(account_type_str)
-
-        if not uid:
-            return ProcessResult.error_result("用户ID不能为空")
-
-        # 调用B站API
-        success, response_data = self._call_update_user_api(uid, account_type)
-
-        if success:
-            message = response_data.get("message", "更新成功")
-            account_type_display = response_data.get("account_type_display", "未知")
-
-            # 使用Toast更新卡片
-            return ProcessResult.success_result("toast", {
-                "type": "success",
-                "message": f"用户 {uid} 账户类型已更新为: {account_type_display}",
-                "card_update": {
-                    "action": "disable_buttons",
-                    "message": f"✅ 操作已完成\n\n用户ID: {uid}\n新账户类型: {account_type_display}"
-                }
-            }, parent_id=context.message_id)
-        else:
-            error_msg = response_data.get("message", "未知错误") if response_data else "API调用失败"
-            return ProcessResult.success_result("toast", {
-                "type": "error",
-                "message": f"更新失败: {error_msg}"
-            }, parent_id=context.message_id)
-
-    @safe_execute("处理广告更新失败")
-    def handle_confirm_update_ads_interactive(self, context: MessageContext, action_value: Dict[str, Any]) -> ProcessResult:
-        """处理交互式广告更新确认"""
-        # 从卡片表单获取实际输入值
-        form_data = context.metadata.get('form_data', {})
-        bvid = form_data.get('bvid_input', action_value.get('original_bvid'))
-        ad_timestamps = form_data.get('timestamp_input', action_value.get('original_timestamps'))
-
-        if not bvid or not ad_timestamps:
-            return ProcessResult.error_result("BVID和时间戳不能为空")
-
-        # 验证时间戳格式
-        if not re.match(r'^\d{2}:\d{2}[\s]*-[\s]*\d{2}:\d{2}$', ad_timestamps):
-            return ProcessResult.error_result("时间戳格式错误，请使用格式：MM:SS-MM:SS")
-
-        # 调用B站API
-        success, response_data = self._call_update_ads_api(bvid, ad_timestamps)
-
-        if success:
-            message = response_data.get("message", "更新成功")
-            video_title = response_data.get("video_title", "")
-            old_timestamps = response_data.get("old_ad_timestamps", "")
-            new_timestamps = response_data.get("new_ad_timestamps", "")
-
-            # 使用Toast更新卡片
-            return ProcessResult.success_result("toast", {
-                "type": "success",
-                "message": f"视频 {bvid} 广告时间戳更新成功",
-                "card_update": {
-                    "action": "disable_buttons",
-                    "message": f"✅ 操作已完成\n\n视频: {bvid}\n标题: {video_title}\n新时间戳: {new_timestamps}"
-                }
-            }, parent_id=context.message_id)
-        else:
-            error_msg = response_data.get("message", "未知错误") if response_data else "API调用失败"
-            return ProcessResult.success_result("toast", {
-                "type": "error",
-                "message": f"更新失败: {error_msg}"
-            }, parent_id=context.message_id)
-
     def handle_cancel_admin_operation(self, context: MessageContext) -> ProcessResult:
         """处理取消管理员操作"""
         return ProcessResult.success_result("toast", {
@@ -316,344 +175,6 @@ class AdminProcessor(BaseProcessor):
                 "message": "❌ 操作已取消"
             }
         }, parent_id=context.message_id)
-
-    def _create_update_user_confirmation_card(self, uid: str, account_type: int, account_type_display: str) -> Dict[str, Any]:
-        """创建更新用户确认卡片（交互式）"""
-        # 账户类型选项
-        account_options = [
-            {
-                "text": {"tag": "plain_text", "content": "普通用户"},
-                "value": "0",
-                "icon": {"tag": "standard_icon", "token": "user_outlined"}
-            },
-            {
-                "text": {"tag": "plain_text", "content": "支持者"},
-                "value": "1",
-                "icon": {"tag": "standard_icon", "token": "like_outlined"}
-            },
-            {
-                "text": {"tag": "plain_text", "content": "受邀用户"},
-                "value": "2",
-                "icon": {"tag": "standard_icon", "token": "invite_outlined"}
-            }
-        ]
-
-        return {
-            "config": {"wide_screen_mode": True},
-            "elements": [
-                {
-                    "tag": "div",
-                    "text": {
-                        "tag": "lark_md",
-                        "content": f"**操作确认**\n\n**操作类型:** 更新用户账户类型\n**当前用户ID:** {uid}\n**当前选择账户类型:** {account_type_display}"
-                    }
-                },
-                {
-                    "tag": "hr"
-                },
-                {
-                    "tag": "div",
-                    "text": {
-                        "tag": "plain_text",
-                        "content": "用户ID:"
-                    }
-                },
-                {
-                    "tag": "input",
-                    "name": "user_id_input",
-                    "required": True,
-                    "placeholder": {"tag": "plain_text", "content": "请输入用户ID"},
-                    "default_value": uid
-                },
-                {
-                    "tag": "div",
-                    "text": {
-                        "tag": "plain_text",
-                        "content": "账户类型:"
-                    }
-                },
-                {
-                    "tag": "action",
-                    "actions": [
-                        {
-                            "tag": "select_static",
-                            "placeholder": {
-                                "tag": "plain_text",
-                                "content": "请选择账户类型"
-                            },
-                            "options": account_options,
-                            "type": "default",
-                            "width": "default",
-                            "initial_option": account_type_display
-                        }
-                    ]
-                },
-                {
-                    "tag": "hr"
-                },
-                {
-                    "tag": "action",
-                    "actions": [
-                        {
-                            "tag": "button",
-                            "text": {"tag": "plain_text", "content": "✅ 确认执行"},
-                            "type": "primary",
-                            "value": {
-                                "action": "confirm_update_user_interactive",
-                                "original_uid": uid,
-                                "original_account_type": account_type
-                            }
-                        },
-                        {
-                            "tag": "button",
-                            "text": {"tag": "plain_text", "content": "❌ 取消"},
-                            "type": "default",
-                            "value": {"action": "cancel_admin_operation"}
-                        }
-                    ]
-                }
-            ],
-            "header": {
-                "template": "orange",
-                "title": {"tag": "plain_text", "content": "🔧 管理员确认"}
-            }
-        }
-
-    def _create_update_ads_confirmation_card(self, bvid: str, ad_timestamps: str) -> Dict[str, Any]:
-        """创建更新广告确认卡片（交互式）"""
-        try:
-            # 解析和计算时间信息
-            time_info = self._parse_timestamp_info(ad_timestamps)
-
-            return {
-                "config": {"wide_screen_mode": True},
-                "elements": [
-                    {
-                        "tag": "div",
-                        "text": {
-                            "tag": "lark_md",
-                            "content": f"**🔧 管理员操作确认**\n\n**操作类型:** 更新视频广告时间戳\n**当前视频ID:** {bvid}"
-                        }
-                    },
-                    {
-                        "tag": "div",
-                        "text": {
-                            "tag": "lark_md",
-                            "content": f"**⏰ 时间戳信息**\n**原始输入:** {ad_timestamps}\n**标准格式:** {time_info['formatted']}\n**广告总时长:** {time_info['duration']}"
-                        }
-                    },
-                    {
-                        "tag": "hr"
-                    },
-                    {
-                        "tag": "div",
-                        "text": {
-                            "tag": "plain_text",
-                            "content": "视频ID:"
-                        }
-                    },
-                    {
-                        "tag": "input",
-                        "name": "bvid_input",
-                        "required": true,
-                        "placeholder": {"tag": "plain_text", "content": "请输入BVID"},
-                        "default_value": bvid
-                    },
-                    {
-                        "tag": "div",
-                        "text": {
-                            "tag": "plain_text",
-                            "content": "广告时间戳 (格式: MM:SS-MM:SS):"
-                        }
-                    },
-                    {
-                        "tag": "input",
-                        "name": "timestamp_input",
-                        "required": true,
-                        "placeholder": {"tag": "plain_text", "content": "例如: 04:50-06:05"},
-                        "default_value": time_info['formatted']
-                    },
-                    {
-                        "tag": "hr"
-                    },
-                    {
-                        "tag": "action",
-                        "actions": [
-                            {
-                                "tag": "button",
-                                "text": {"tag": "plain_text", "content": "✅ 确认执行"},
-                                "type": "primary",
-                                "value": {
-                                    "action": "confirm_update_ads_interactive",
-                                    "original_bvid": bvid,
-                                    "original_timestamps": ad_timestamps
-                                }
-                            },
-                            {
-                                "tag": "button",
-                                "text": {"tag": "plain_text", "content": "❌ 取消"},
-                                "type": "default",
-                                "value": {"action": "cancel_admin_operation"}
-                            }
-                        ]
-                    }
-                ],
-                "header": {
-                    "template": "orange",
-                    "title": {"tag": "plain_text", "content": "🔧 管理员确认"}
-                }
-            }
-        except Exception as e:
-            # 如果解析失败，返回简化版本
-            return {
-                "config": {"wide_screen_mode": True},
-                "elements": [
-                    {
-                        "tag": "div",
-                        "text": {
-                            "tag": "lark_md",
-                            "content": f"**🔧 管理员操作确认**\n\n**操作类型:** 更新视频广告时间戳\n**视频ID:** {bvid}\n**时间戳:** {ad_timestamps}"
-                        }
-                    },
-                    {
-                        "tag": "action",
-                        "actions": [
-                            {
-                                "tag": "button",
-                                "text": {"tag": "plain_text", "content": "✅ 确认执行"},
-                                "type": "primary",
-                                "value": {
-                                    "action": "confirm_update_ads_interactive",
-                                    "original_bvid": bvid,
-                                    "original_timestamps": ad_timestamps
-                                }
-                            },
-                            {
-                                "tag": "button",
-                                "text": {"tag": "plain_text", "content": "❌ 取消"},
-                                "type": "default",
-                                "value": {"action": "cancel_admin_operation"}
-                            }
-                        ]
-                    }
-                ],
-                "header": {
-                    "template": "orange",
-                    "title": {"tag": "plain_text", "content": "🔧 管理员确认"}
-                }
-            }
-
-    def _parse_timestamp_info(self, ad_timestamps: str) -> Dict[str, str]:
-        """解析时间戳信息，支持多种格式"""
-        try:
-            # 尝试解析不同格式的时间戳
-            if '-' in ad_timestamps:
-                parts = ad_timestamps.split('-')
-                start_str = parts[0].strip()
-                end_str = parts[1].strip()
-
-                # 如果是秒数格式，转换为MM:SS
-                if ':' not in start_str and start_str.isdigit():
-                    start_seconds = int(start_str)
-                    start_formatted = f"{start_seconds//60:02d}:{start_seconds%60:02d}"
-                else:
-                    start_formatted = start_str
-
-                if ':' not in end_str and end_str.isdigit():
-                    end_seconds = int(end_str)
-                    end_formatted = f"{end_seconds//60:02d}:{end_seconds%60:02d}"
-                else:
-                    end_formatted = end_str
-
-                formatted_timestamp = f"{start_formatted}-{end_formatted}"
-
-                # 计算广告时长
-                def time_to_seconds(time_str):
-                    if ':' in time_str:
-                        mm, ss = map(int, time_str.split(':'))
-                        return mm * 60 + ss
-                    else:
-                        return int(time_str) if time_str.isdigit() else 0
-
-                start_sec = time_to_seconds(start_str)
-                end_sec = time_to_seconds(end_str)
-                duration_sec = end_sec - start_sec
-                duration_formatted = f"{duration_sec//60:02d}:{duration_sec%60:02d}"
-
-                return {
-                    'formatted': formatted_timestamp,
-                    'duration': f"{duration_formatted} ({duration_sec}秒)"
-                }
-            else:
-                return {
-                    'formatted': ad_timestamps,
-                    'duration': "无法计算"
-                }
-        except Exception:
-            return {
-                'formatted': ad_timestamps,
-                'duration': "格式错误"
-            }
-
-    def _call_update_user_api(self, uid: str, account_type: int) -> Tuple[bool, Dict[str, Any]]:
-        """调用更新用户API"""
-        try:
-            if not self.bili_api_base_url or not self.bili_admin_secret:
-                return False, {"message": "B站API配置缺失"}
-
-            url = f"{self.bili_api_base_url}/api/admin/update_user"
-            headers = {"Content-Type": "application/json"}
-            data = {
-                "admin_secret_key": self.bili_admin_secret,
-                "uid": uid,
-                "account_type": account_type
-            }
-
-            response = requests.post(url, headers=headers, data=json.dumps(data), timeout=10)
-
-            if response.status_code == 200:
-                response_data = response.json()
-                return response_data.get("success", False), response_data
-            else:
-                return False, {"message": f"HTTP错误: {response.status_code}"}
-
-        except requests.exceptions.Timeout:
-            return False, {"message": "请求超时"}
-        except requests.exceptions.RequestException as e:
-            return False, {"message": f"网络错误: {str(e)}"}
-        except Exception as e:
-            return False, {"message": f"API调用异常: {str(e)}"}
-
-    def _call_update_ads_api(self, bvid: str, ad_timestamps: str) -> Tuple[bool, Dict[str, Any]]:
-        """调用更新广告API"""
-        try:
-            if not self.bili_api_base_url or not self.bili_admin_secret:
-                return False, {"message": "B站API配置缺失"}
-
-            url = f"{self.bili_api_base_url}/api/admin/update_ads"
-            headers = {
-                "Content-Type": "application/json",
-                "Connection": "close"
-            }
-            data = {
-                "admin_secret_key": self.bili_admin_secret,
-                "bvid": bvid,
-                "ad_timestamps": ad_timestamps
-            }
-            response = requests.post(url, headers=headers, data=json.dumps(data), timeout=10)
-
-            if response.status_code == 200:
-                response_data = response.json()
-                return response_data.get("success", False), response_data
-            else:
-                return False, {"message": f"HTTP错误: {response.status_code}"}
-
-        except requests.exceptions.Timeout:
-            return False, {"message": "请求超时"}
-        except requests.exceptions.RequestException as e:
-            return False, {"message": f"网络错误: {str(e)}"}
-        except Exception as e:
-            return False, {"message": f"API调用异常: {str(e)}"}
 
     @require_app_controller("应用控制器不可用")
     @require_service('pending_cache', "缓存业务服务不可用")
@@ -768,11 +289,6 @@ class AdminProcessor(BaseProcessor):
             return ProcessResult.error_result("操作不存在")
 
         if action == "confirm_user_update":
-            # 更新操作数据（可能有表单修改）
-            # if 'user_id' in action_value:
-            #     operation.operation_data['user_id'] = action_value['user_id']
-            # if 'user_type' in action_value:
-            #     operation.operation_data['user_type'] = action_value['user_type']
 
             # 确认操作
             success = pending_cache_service.confirm_operation(operation_id)
@@ -937,3 +453,63 @@ class AdminProcessor(BaseProcessor):
                 return f"({hours}时{remaining_minutes}分)"
             else:
                 return f"({hours}时)"
+
+    def _call_update_user_api(self, uid: str, account_type: int) -> Tuple[bool, Dict[str, Any]]:
+        """调用更新用户API"""
+        try:
+            if not self.bili_api_base_url or not self.bili_admin_secret:
+                return False, {"message": "B站API配置缺失"}
+
+            url = f"{self.bili_api_base_url}/api/admin/update_user"
+            headers = {"Content-Type": "application/json"}
+            data = {
+                "admin_secret_key": self.bili_admin_secret,
+                "uid": uid,
+                "account_type": account_type
+            }
+
+            response = requests.post(url, headers=headers, data=json.dumps(data), timeout=10)
+
+            if response.status_code == 200:
+                response_data = response.json()
+                return response_data.get("success", False), response_data
+            else:
+                return False, {"message": f"HTTP错误: {response.status_code}"}
+
+        except requests.exceptions.Timeout:
+            return False, {"message": "请求超时"}
+        except requests.exceptions.RequestException as e:
+            return False, {"message": f"网络错误: {str(e)}"}
+        except Exception as e:
+            return False, {"message": f"API调用异常: {str(e)}"}
+
+    def _call_update_ads_api(self, bvid: str, ad_timestamps: str) -> Tuple[bool, Dict[str, Any]]:
+        """调用更新广告API"""
+        try:
+            if not self.bili_api_base_url or not self.bili_admin_secret:
+                return False, {"message": "B站API配置缺失"}
+
+            url = f"{self.bili_api_base_url}/api/admin/update_ads"
+            headers = {
+                "Content-Type": "application/json",
+                "Connection": "close"
+            }
+            data = {
+                "admin_secret_key": self.bili_admin_secret,
+                "bvid": bvid,
+                "ad_timestamps": ad_timestamps
+            }
+            response = requests.post(url, headers=headers, data=json.dumps(data), timeout=10)
+
+            if response.status_code == 200:
+                response_data = response.json()
+                return response_data.get("success", False), response_data
+            else:
+                return False, {"message": f"HTTP错误: {response.status_code}"}
+
+        except requests.exceptions.Timeout:
+            return False, {"message": "请求超时"}
+        except requests.exceptions.RequestException as e:
+            return False, {"message": f"网络错误: {str(e)}"}
+        except Exception as e:
+            return False, {"message": f"API调用异常: {str(e)}"}

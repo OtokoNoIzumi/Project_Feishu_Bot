@@ -404,15 +404,15 @@ class PendingCacheService:
     def _format_hold_time(self, seconds: int) -> str:
         """格式化倒计时文本"""
         if seconds < 60:
-            return f"{seconds}秒"
+            return f"({seconds}s)"
         elif seconds < 3600:
             minutes = seconds // 60
             secs = seconds % 60
-            return f"{minutes}分{secs}秒" if secs > 0 else f"{minutes}分钟"
+            return f"({minutes}分{secs}秒)" if secs > 0 else f"({minutes}分)"
         else:
             hours = seconds // 3600
             minutes = (seconds % 3600) // 60
-            return f"{hours}小时{minutes}分钟" if minutes > 0 else f"{hours}小时"
+            return f"({hours}时{minutes}分)" if minutes > 0 else f"({hours}时)"
 
     def _start_cleanup_timer(self) -> None:
         """启动清理定时器"""

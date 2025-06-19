@@ -33,8 +33,11 @@ from .feishu_cards import initialize_card_managers, get_card_manager
 from Module.Business.message_processor import MessageContext, ProcessResult
 from .feishu_decorators import (
     feishu_event_handler_safe, message_conversion_safe, feishu_api_call,
-    file_operation_safe, async_operation_safe, card_operation_safe
+    file_operation_safe, async_operation_safe, card_operation_safe, feishu_sdk_safe
 )
+
+# P2ImMessageReceiveV1对象调试开关 - 开发调试用
+DEBUG_P2IM_OBJECTS = False  # 设置为True启用详细调试输出
 
 def custom_serializer(obj):
     """
@@ -64,6 +67,51 @@ def custom_serializer(obj):
         return obj
     except TypeError:
         return str(obj) # 对于无法序列化的，返回其字符串表示
+
+def debug_p2im_object(data, object_type: str = "P2ImMessageReceiveV1"):
+    """
+    调试P2ImMessageReceiveV1对象的详细信息输出
+
+    Args:
+        data: 需要调试的对象
+        object_type: 对象类型名称（用于日志标识）
+    """
+    if not DEBUG_P2IM_OBJECTS:
+        return
+
+    debug_utils.log_and_print(f"🔍 {object_type}对象详细信息 (JSON序列化):", log_level="DEBUG")
+    try:
+        # 使用自定义序列化器进行转换
+        serializable_data = custom_serializer(data)
+        json_output = json.dumps(serializable_data, indent=2, ensure_ascii=False)
+        debug_utils.log_and_print(json_output, log_level="DEBUG")
+        debug_utils.log_and_print(f"🔍 {object_type}对象详细信息 (pprint):", log_level="DEBUG")
+        dict_representation = custom_serializer(data)
+        pretty_output = pprint.pformat(dict_representation, indent=2, width=120)
+        debug_utils.log_and_print(pretty_output, log_level="DEBUG")
+    except Exception as e:
+        debug_utils.log_and_print(f"  - 序列化失败: {e}", log_level="ERROR")
+        debug_utils.log_and_print(f"  - 尝试使用 repr(): {repr(data)}", log_level="DEBUG")
+
+def debug_parent_id_analysis(data):
+    """
+    分析并调试parent_id相关信息
+
+    Args:
+        data: 需要分析的消息对象
+    """
+    if not DEBUG_P2IM_OBJECTS:
+        return
+
+    # 特别关注回复消息的关键字段 parent_id
+    if hasattr(data, 'event') and hasattr(data.event, 'message') and hasattr(data.event.message, 'parent_id'):
+        parent_id = data.event.message.parent_id
+        if parent_id:
+            debug_utils.log_and_print(f"  - 关键信息: 此消息为回复消息, parent_id = {parent_id}", log_level="INFO")
+        else:
+            debug_utils.log_and_print(f"  - 关键信息: 此消息非回复消息 (parent_id is None or empty)", log_level="DEBUG")
+    else:
+        debug_utils.log_and_print(f"  - 关键信息: 未找到 parent_id 属性路径", log_level="DEBUG")
 
 class FeishuAdapter:
     """
@@ -148,6 +196,36 @@ class FeishuAdapter:
             log_level=self.log_level
         )
 
+    # ================ 通用转换工具方法 ================
+
+    def _extract_common_context_data(self, data, user_id: str) -> Dict[str, Any]:
+        """
+        提取消息上下文的通用数据
+
+        Args:
+            data: 飞书事件数据
+            user_id: 用户ID
+
+        Returns:
+            Dict: 包含timestamp和user_name的字典
+        """
+        # 提取并处理时间戳
+        event_time = data.header.create_time or time.time()
+        if isinstance(event_time, str):
+            event_time = int(event_time)
+        timestamp_seconds = int(event_time/1000) if event_time > 1e10 else int(event_time)
+        timestamp = datetime.datetime.fromtimestamp(timestamp_seconds)
+
+        # 获取用户名
+        user_name = self._get_user_name(user_id)
+
+        return {
+            'timestamp': timestamp,
+            'user_name': user_name
+        }
+
+    # ================ 事件处理方法（消息类型）================
+
     @feishu_event_handler_safe("处理飞书消息失败")
     def _handle_feishu_message(self, data) -> None:
         """
@@ -168,86 +246,109 @@ class FeishuAdapter:
         # 调用业务处理器
         result = self.message_processor.process_message(context)
 
+        # 统一提前返回不需要回复的情况
         if not result.should_reply:
             return
 
-        # 检查是否需要异步处理TTS
-        if (result.success and
-            result.response_content and
-            result.response_content.get("next_action") == "process_tts"):
+        # 统一处理异步action
+        next_action = result.response_content.get("next_action") if (result.success and result.response_content) else None
 
+        if next_action == "process_tts":
             tts_text = result.response_content.get("tts_text", "")
             self._handle_tts_async(data, tts_text)
             return
 
-        # 检查是否需要异步处理图像生成
-        if (result.success and
-            result.response_content and
-            result.response_content.get("next_action") == "process_image_generation"):
-
+        if next_action == "process_image_generation":
             prompt = result.response_content.get("generation_prompt", "")
             self._handle_image_generation_async(data, prompt)
             return
 
-        # 检查是否需要异步处理图像转换
-        if (result.success and
-            result.response_content and
-            result.response_content.get("next_action") == "process_image_conversion"):
-
+        if next_action == "process_image_conversion":
             self._handle_image_conversion_async(data, context)
             return
 
-        # 检查是否需要异步处理B站视频推荐
-        if (result.success and
-            result.response_content and
-            result.response_content.get("next_action") == "process_bili_video"):
-
+        if next_action == "process_bili_video":
             user_id = result.response_content.get("user_id", "")
             if user_id:
-                # 只有在有实际文本内容时才发送提示消息
                 text_content = result.response_content.get("text", "")
                 if text_content and text_content.strip():
                     self._send_feishu_reply(data, result)
-                # 启动异步处理
                 self._handle_bili_video_async(data, user_id)
+            return
+
+        # 处理不同的回复类型
+        if result.success:
+            if result.response_type == "rich_text":
+                self._upload_and_send_rich_text(data, result)
                 return
 
-        # 检查是否是富文本类型
-        if result.success and result.response_type == "rich_text":
-            self._upload_and_send_rich_text(data, result)
-            return
+            if result.response_type == "admin_card_send":
+                user_id = context.user_id
+                chat_id = data.event.message.chat_id
+                message_id = data.event.message.message_id
+                success = self._handle_admin_card_operation(
+                    result.response_content,
+                    operation_type="send",
+                    user_id=user_id,
+                    chat_id=chat_id,
+                    message_id=message_id
+                )
+                if not success:
+                    error_result = ProcessResult.error_result("管理员卡片发送失败")
+                    self._send_feishu_reply(data, error_result, force_reply_mode="reply")
+                return
 
-        # 检查是否需要发送管理员确认卡片，要思考一下未来的架构里chat_id和user_id哪个是必须的
-        if result.success and result.response_type == "admin_card_send":
-            user_id = context.user_id
-            chat_id = data.event.message.chat_id
-            message_id = data.event.message.message_id
-            success = self._handle_admin_card_operation(
-                result.response_content,
-                operation_type="send",
-                user_id=user_id,
-                chat_id=chat_id,
-                message_id=message_id
-            )
-            if not success:
-                # 发送失败，发送错误信息
-                error_result = ProcessResult.error_result("管理员卡片发送失败")
-                self._send_feishu_reply(data, error_result, force_reply_mode="reply")
-            return
+            if result.response_type == "image":
+                image_data = result.response_content.get("image_data")
+                image_name = result.response_content.get("image_name", "sample_image.jpg")
+                if image_data:
+                    self._upload_and_send_single_image_data(data, image_data, image_name)
+                else:
+                    error_result = ProcessResult.error_result("图片数据为空")
+                    self._send_feishu_reply(data, error_result)
+                return
 
-        # 检查是否是单个图片类型
-        if result.success and result.response_type == "image":
-            image_data = result.response_content.get("image_data")
-            image_name = result.response_content.get("image_name", "sample_image.jpg")
-            if image_data:
-                self._upload_and_send_single_image_data(data, image_data, image_name)
-            else:
-                error_result = ProcessResult.error_result("图片数据为空")
-                self._send_feishu_reply(data, error_result)
-            return
-
-        # 发送结果
+        # 默认发送普通回复
         self._send_feishu_reply(data, result)
+
+    @message_conversion_safe("消息转换失败")
+    def _convert_message_to_context(self, data) -> Optional[MessageContext]:
+        """将飞书消息转换为标准消息上下文"""
+        # 调试输出P2ImMessageReceiveV1对象信息
+        debug_p2im_object(data, "P2ImMessageReceiveV1")
+        debug_parent_id_analysis(data)
+
+        # 提取基本信息
+        event_id = data.header.event_id
+        user_id = data.event.sender.sender_id.open_id
+
+        # 提取通用数据（时间戳和用户名）
+        common_data = self._extract_common_context_data(data, user_id)
+
+        # 提取消息特定内容
+        message_type = data.event.message.message_type
+        content = self._extract_message_content(data.event.message)
+        message_id = data.event.message.message_id
+        parent_message_id = data.event.message.parent_id if hasattr(data.event.message, 'parent_id') and data.event.message.parent_id else None
+
+        return MessageContext(
+            user_id=user_id,
+            user_name=common_data['user_name'],
+            message_type=message_type,
+            content=content,
+            timestamp=common_data['timestamp'],
+            event_id=event_id,
+            message_id=message_id,
+            parent_message_id=parent_message_id,
+            metadata={
+                'chat_id': data.event.message.chat_id,
+                'message_id': message_id,
+                'chat_type': data.event.message.chat_type,
+                'interaction_type': 'message'
+            }
+        )
+
+    # ================ 事件处理方法（菜单类型）================
 
     @feishu_event_handler_safe("飞书菜单处理失败")
     def _handle_feishu_menu(self, data) -> None:
@@ -282,7 +383,36 @@ class FeishuAdapter:
 
         # 发送回复（菜单点击通常需要主动发送消息）
         if result.should_reply:
-            success = self._send_direct_message(context.user_id, result)
+            self._send_direct_message(context.user_id, result)
+
+    @message_conversion_safe("菜单转换失败")
+    def _convert_menu_to_context(self, data) -> Optional[MessageContext]:
+        """将飞书菜单点击转换为标准消息上下文"""
+        # 提取基本信息
+        event_id = data.header.event_id
+        user_id = data.event.operator.operator_id.open_id
+
+        # 提取通用数据（时间戳和用户名）
+        common_data = self._extract_common_context_data(data, user_id)
+
+        # 菜单事件的内容是event_key
+        event_key = data.event.event_key
+
+        return MessageContext(
+            user_id=user_id,
+            user_name=common_data['user_name'],
+            message_type="menu_click",  # 自定义类型
+            content=event_key,
+            timestamp=common_data['timestamp'],
+            event_id=event_id,
+            metadata={
+                'app_id': data.header.app_id,
+                'event_key': event_key,
+                'interaction_type': 'menu'
+            }
+        )
+
+    # ================ 事件处理方法（卡片类型）================
 
     @card_operation_safe("飞书卡片处理失败")
     def _handle_feishu_card(self, data) -> P2CardActionTriggerResponse:
@@ -299,39 +429,31 @@ class FeishuAdapter:
         # 调用业务处理器，由业务层判断处理类型
         result = self.message_processor.process_message(context)
 
-        # 检查是否是B站卡片更新结果
-        if result.success and result.response_type == "bili_card_update":
-            # 使用统一的卡片处理方法
-            return self._handle_bili_card_operation(
-                result.response_content,
-                operation_type="update_response",
-                toast_message="视频成功设置为已读"
-            )
-
-        # 检查是否是管理员卡片更新结果
-        if result.success and result.response_type == "admin_card_update":
-            # 使用管理员卡片处理方法
-            return self._handle_admin_card_operation(
-                result.response_content,
-                operation_type="update_response"
-            )
-
-        # 处理不同类型的响应
+        # 统一处理成功和失败的响应，减少分支嵌套
         if result.success:
-            # 检查是否是卡片动作响应（包含卡片更新）
+            # 特殊类型处理
+            if result.response_type == "bili_card_update":
+                return self._handle_bili_card_operation(
+                    result.response_content,
+                    operation_type="update_response",
+                    toast_message="视频成功设置为已读"
+                )
+            if result.response_type == "admin_card_update":
+                return self._handle_admin_card_operation(
+                    result.response_content,
+                    operation_type="update_response"
+                )
             if result.response_type == "card_action_response":
-                # 返回原有格式的卡片更新响应
-                response_data = result.response_content
-                return P2CardActionTriggerResponse(response_data)
-            else:
-                # 普通成功响应
-                return P2CardActionTriggerResponse({
-                    "toast": {
-                        "type": "success",
-                        "content": "操作成功"
-                    }
-                })
+                return P2CardActionTriggerResponse(result.response_content)
+            # 默认成功响应
+            return P2CardActionTriggerResponse({
+                "toast": {
+                    "type": "success",
+                    "content": "操作成功"
+                }
+            })
         else:
+            # 失败响应
             return P2CardActionTriggerResponse({
                 "toast": {
                     "type": "error",
@@ -339,267 +461,18 @@ class FeishuAdapter:
                 }
             })
 
-    @card_operation_safe("B站卡片操作失败")
-    def _handle_bili_card_operation(self, video_data: Dict[str, Any], operation_type: str, **kwargs) -> Any:
-        """
-        统一处理B站卡片的构建和操作
-
-        Args:
-            video_data: 业务层返回的视频数据
-            operation_type: 操作类型 ('send' | 'update_response')
-            **kwargs: 额外参数(user_id, toast_message等)
-
-        Returns:
-            bool: 发送操作的成功状态
-            P2CardActionTriggerResponse: 更新响应操作的响应对象
-        """
-        # 使用卡片管理器构建卡片内容
-        card_content = self.bili_card_manager.build_bili_video_menu_card(video_data)
-
-        if operation_type == "send":
-            # 发送新卡片
-            user_id = kwargs.get("user_id")
-            if not user_id:
-                debug_utils.log_and_print("❌ 发送B站卡片缺少用户ID", log_level="ERROR")
-                return False
-
-            # 从配置获取B站卡片的回复模式
-            reply_mode = self._get_card_reply_mode("bilibili_cards")
-
-            success = self._send_interactive_card(
-                user_id=user_id,
-                card_content=card_content,
-                reply_mode=reply_mode
-            )
-            if not success:
-                debug_utils.log_and_print("❌ B站卡片发送失败", log_level="ERROR")
-            return success
-
-        elif operation_type == "update_response":
-            # 构建卡片更新响应
-            toast_message = kwargs.get("toast_message", "操作完成")
-            response_data = {
-                "toast": {
-                    "type": "success",
-                    "content": toast_message
-                },
-                "card": {
-                    "type": "raw",
-                    "data": card_content
-                }
-            }
-            return P2CardActionTriggerResponse(response_data)
-
-        else:
-            debug_utils.log_and_print(f"❌ 未知的B站卡片操作类型: {operation_type}", log_level="ERROR")
-            return False
-
-    @card_operation_safe("管理员卡片操作失败")
-    def _handle_admin_card_operation(self, operation_data: Dict[str, Any], operation_type: str, **kwargs) -> Any:
-        """
-        统一处理管理员卡片的构建和操作
-
-        Args:
-            operation_data: 业务层返回的操作数据
-            operation_type: 操作类型 ('send' | 'update_response')
-            **kwargs: 额外参数(chat_id, user_id, message_id等)
-
-        Returns:
-            bool: 发送操作的成功状态
-            P2CardActionTriggerResponse: 更新响应操作的响应对象
-        """
-        # 使用卡片管理器构建卡片内容
-        card_content = self.admin_card_manager.build_user_update_confirm_card(operation_data)
-
-        if operation_type == "send":
-            # 发送管理员卡片 - 从配置读取回复模式
-            chat_id = kwargs.get("chat_id")
-            message_id = kwargs.get("message_id")
-
-            if not chat_id or not message_id:
-                debug_utils.log_and_print("❌ 发送管理员卡片缺少chat_id或message_id", log_level="ERROR")
-                return False
-
-            # 从配置获取管理员卡片的回复模式
-            reply_mode = self._get_card_reply_mode("admin_cards")
-
-            success = self._send_interactive_card(
-                chat_id=chat_id,
-                card_content=card_content,
-                reply_mode=reply_mode,
-                message_id=message_id if reply_mode in ["reply", "thread"] else None
-            )
-            if not success:
-                debug_utils.log_and_print("❌ 管理员卡片发送失败", log_level="ERROR")
-            return success
-
-        elif operation_type == "update_response":
-            # 构建卡片更新响应
-            toast_message = kwargs.get("toast_message", "操作完成")
-            result_type = operation_data.get('result_type', 'success')
-
-            response_data = {
-                "toast": {
-                    "type": result_type,
-                    "content": toast_message
-                },
-                "card": {
-                    "type": "raw",
-                    "data": card_content
-                }
-            }
-            return P2CardActionTriggerResponse(response_data)
-
-        else:
-            debug_utils.log_and_print(f"❌ 未知的管理员卡片操作类型: {operation_type}", log_level="ERROR")
-            return False
-
-    def _get_card_reply_mode(self, card_type: str) -> str:
-        """
-        从配置获取卡片回复模式
-
-        Args:
-            card_type: 卡片类型 ("admin_cards" | "bilibili_cards" | 等)
-
-        Returns:
-            str: 回复模式 ("new" | "reply" | "thread")
-        """
-        try:
-            config_service = self.app_controller.get_service('config') if self.app_controller else None
-            if config_service:
-                reply_modes = config_service.get("cards",{}).get("reply_modes", {})
-                return reply_modes.get(card_type, reply_modes.get("default", "reply"))
-            else:
-                debug_utils.log_and_print("⚠️ 无法获取配置服务，使用默认回复模式", log_level="WARNING")
-                return "reply"
-        except Exception as e:
-            debug_utils.log_and_print(f"⚠️ 读取卡片回复模式配置失败: {e}，使用默认值", log_level="WARNING")
-            return "reply"
-
-    @message_conversion_safe("消息转换失败")
-    def _convert_message_to_context(self, data) -> Optional[MessageContext]:
-        """将飞书消息转换为标准消息上下文"""
-        # 详细输出P2ImMessageReceiveV1对象信息
-        # debug_utils.log_and_print(f"🔍 P2ImMessageReceiveV1对象详细信息 (JSON序列化):", log_level="DEBUG")
-        # try:
-        #     # 使用自定义序列化器进行转换
-        #     serializable_data = custom_serializer(data)
-        #     json_output = json.dumps(serializable_data, indent=2, ensure_ascii=False)
-        #     debug_utils.log_and_print(json_output, log_level="DEBUG")
-        #     debug_utils.log_and_print(f"🔍 P2ImMessageReceiveV1对象详细信息 (pprint):", log_level="DEBUG")
-        #     dict_representation = custom_serializer(data)
-        #     pretty_output = pprint.pformat(dict_representation, indent=2, width=120)
-        #     debug_utils.log_and_print(pretty_output, log_level="DEBUG")
-        # except Exception as e:
-        #     debug_utils.log_and_print(f"  - 序列化失败: {e}", log_level="ERROR")
-        #     debug_utils.log_and_print(f"  - 尝试使用 repr(): {repr(data)}", log_level="DEBUG")
-
-        # # 特别关注回复消息的关键字段 parent_id
-        # if hasattr(data, 'event') and hasattr(data.event, 'message') and hasattr(data.event.message, 'parent_id'):
-        #     parent_id = data.event.message.parent_id
-        #     if parent_id:
-        #         debug_utils.log_and_print(f"  - 关键信息: 此消息为回复消息, parent_id = {parent_id}", log_level="INFO")
-        #     else:
-        #         debug_utils.log_and_print(f"  - 关键信息: 此消息非回复消息 (parent_id is None or empty)", log_level="DEBUG")
-        # else:
-        #     debug_utils.log_and_print(f"  - 关键信息: 未找到 parent_id 属性路径", log_level="DEBUG")
-        # 提取基本信息
-        event_id = data.header.event_id
-        event_time = data.header.create_time or time.time()
-
-        # 处理时间戳
-        if isinstance(event_time, str):
-            event_time = int(event_time)
-        timestamp_seconds = int(event_time/1000) if event_time > 1e10 else int(event_time)
-        timestamp = datetime.datetime.fromtimestamp(timestamp_seconds)
-
-        # 提取用户信息
-        user_id = data.event.sender.sender_id.open_id
-        user_name = self._get_user_name(user_id)
-
-        # 提取消息内容
-        message_type = data.event.message.message_type
-        content = self._extract_message_content(data.event.message)
-
-        # 提取消息上下文信息
-        message_id = data.event.message.message_id
-        parent_message_id = data.event.message.parent_id if hasattr(data.event.message, 'parent_id') and data.event.message.parent_id else None
-
-        return MessageContext(
-            user_id=user_id,
-            user_name=user_name,
-            message_type=message_type,
-            content=content,
-            timestamp=timestamp,
-            event_id=event_id,
-            message_id=message_id,
-            parent_message_id=parent_message_id,
-            metadata={
-                'chat_id': data.event.message.chat_id,
-                'message_id': message_id,
-                'chat_type': data.event.message.chat_type,
-                'interaction_type': 'message'
-            }
-        )
-
-    @message_conversion_safe("菜单转换失败")
-    def _convert_menu_to_context(self, data) -> Optional[MessageContext]:
-        """将飞书菜单点击转换为标准消息上下文"""
-        # 提取基本信息
-        event_id = data.header.event_id
-        event_time = data.header.create_time or time.time()
-
-        # 处理时间戳
-        if isinstance(event_time, str):
-            event_time = int(event_time)
-        timestamp_seconds = int(event_time/1000) if event_time > 1e10 else int(event_time)
-        timestamp = datetime.datetime.fromtimestamp(timestamp_seconds)
-
-        # 提取用户信息
-        user_id = data.event.operator.operator_id.open_id
-        user_name = self._get_user_name(user_id)
-
-        # 菜单事件的内容是event_key
-        event_key = data.event.event_key
-
-        return MessageContext(
-            user_id=user_id,
-            user_name=user_name,
-            message_type="menu_click",  # 自定义类型
-            content=event_key,
-            timestamp=timestamp,
-            event_id=event_id,
-            metadata={
-                'app_id': data.header.app_id,
-                'event_key': event_key,
-                'interaction_type': 'menu'
-            }
-        )
-
     @message_conversion_safe("卡片转换失败")
     def _convert_card_to_context(self, data) -> Optional[MessageContext]:
         """将飞书卡片点击转换为标准消息上下文"""
-        # 详细输出P2ImMessageReceiveV1对象信息
-        # debug_utils.log_and_print(f"🔍 P2ImMessageReceiveV1Card对象详细信息 (JSON序列化):", log_level="DEBUG")
-        # try:
-        #     # 使用自定义序列化器进行转换
-        #     serializable_data = custom_serializer(data)
-        #     json_output = json.dumps(serializable_data, indent=2, ensure_ascii=False)
-        #     debug_utils.log_and_print(json_output, log_level="DEBUG")
-        #     debug_utils.log_and_print(f"🔍 P2ImMessageReceiveV1Card对象详细信息 (pprint):", log_level="DEBUG")
-        #     dict_representation = custom_serializer(data)
-        #     pretty_output = pprint.pformat(dict_representation, indent=2, width=120)
-        #     debug_utils.log_and_print(pretty_output, log_level="DEBUG")
-        # except Exception as e:
-        #     debug_utils.log_and_print(f"  - 序列化失败: {e}", log_level="ERROR")
-        #     debug_utils.log_and_print(f"  - 尝试使用 repr(): {repr(data)}", log_level="DEBUG")
+        # 调试输出P2ImMessageReceiveV1Card对象信息
+        debug_p2im_object(data, "P2ImMessageReceiveV1Card")
 
         # 提取基本信息
         event_id = f"card_{data.event.operator.open_id}_{int(time.time())}"  # 卡片事件生成ID
-        timestamp = datetime.datetime.now()
-
-        # 提取用户信息
         user_id = data.event.operator.open_id
+
+        # 对于卡片事件，使用当前时间而不是事件时间（保持原有逻辑）
+        timestamp = datetime.datetime.now()
         user_name = self._get_user_name(user_id)
 
         # 卡片动作信息
@@ -640,6 +513,148 @@ class FeishuAdapter:
                 'open_chat_id': data.event.context.open_chat_id if hasattr(data.event, 'context') and hasattr(data.event.context, 'open_chat_id') else ''
             }
         )
+
+    @card_operation_safe("B站卡片操作失败")
+    def _handle_bili_card_operation(self, video_data: Dict[str, Any], operation_type: str, **kwargs) -> Any:
+        """
+        统一处理B站卡片的构建和操作
+
+        Args:
+            video_data: 业务层返回的视频数据
+            operation_type: 操作类型 ('send' | 'update_response')
+            **kwargs: 额外参数(user_id, toast_message等)
+
+        Returns:
+            bool: 发送操作的成功状态
+            P2CardActionTriggerResponse: 更新响应操作的响应对象
+        """
+        # B站特有的参数验证
+        if operation_type == "send":
+            user_id = kwargs.get("user_id")
+            if not user_id:
+                debug_utils.log_and_print("❌ 发送B站卡片缺少用户ID", log_level="ERROR")
+                return False
+
+        # 使用通用卡片操作处理
+        return self._handle_card_operation_common(
+            card_manager=self.bili_card_manager,
+            build_method_name="build_bili_video_menu_card",
+            data=video_data,
+            operation_type=operation_type,
+            card_config_type="bilibili_cards",
+            **kwargs
+        )
+
+    @card_operation_safe("管理员卡片操作失败")
+    def _handle_admin_card_operation(self, operation_data: Dict[str, Any], operation_type: str, **kwargs) -> Any:
+        """
+        统一处理管理员卡片的构建和操作
+
+        Args:
+            operation_data: 业务层返回的操作数据
+            operation_type: 操作类型 ('send' | 'update_response')
+            **kwargs: 额外参数(chat_id, user_id, message_id等)
+
+        Returns:
+            bool: 发送操作的成功状态
+            P2CardActionTriggerResponse: 更新响应操作的响应对象
+        """
+        # 管理员特有的参数验证
+        if operation_type == "send":
+            chat_id = kwargs.get("chat_id")
+            message_id = kwargs.get("message_id")
+            if not chat_id or not message_id:
+                debug_utils.log_and_print("❌ 发送管理员卡片缺少chat_id或message_id", log_level="ERROR")
+                return False
+
+        # 使用通用卡片操作处理
+        return self._handle_card_operation_common(
+            card_manager=self.admin_card_manager,
+            build_method_name="build_user_update_confirm_card",
+            data=operation_data,
+            operation_type=operation_type,
+            card_config_type="admin_cards",
+            **kwargs
+        )
+
+    def _handle_card_operation_common(self,
+                                    card_manager,
+                                    build_method_name: str,
+                                    data: Dict[str, Any],
+                                    operation_type: str,
+                                    card_config_type: str,
+                                    **kwargs) -> Any:
+        """
+        通用卡片操作处理方法
+
+        Args:
+            card_manager: 卡片管理器实例
+            build_method_name: 卡片构建方法名
+            data: 业务数据
+            operation_type: 操作类型 ('send' | 'update_response')
+            card_config_type: 卡片配置类型，用于获取回复模式
+            **kwargs: 额外参数
+
+        Returns:
+            bool: 发送操作的成功状态
+            P2CardActionTriggerResponse: 更新响应操作的响应对象
+        """
+        # 使用卡片管理器构建卡片内容
+        build_method = getattr(card_manager, build_method_name)
+        card_content = build_method(data)
+
+        if operation_type == "send":
+            # 从配置获取卡片的回复模式
+            reply_mode = self._get_card_reply_mode(card_config_type)
+
+            # 构建发送参数
+            send_params = {"card_content": card_content, "reply_mode": reply_mode}
+            send_params.update(kwargs)
+
+            success = self._send_interactive_card(**send_params)
+            if not success:
+                debug_utils.log_and_print(f"❌ {card_config_type}卡片发送失败", log_level="ERROR")
+            return success
+
+        elif operation_type == "update_response":
+            # 构建卡片更新响应
+            toast_message = kwargs.get("toast_message", "操作完成")
+            result_type = data.get('result_type', 'success') if isinstance(data, dict) else 'success'
+
+            response_data = {
+                "toast": {
+                    "type": result_type,
+                    "content": toast_message
+                },
+                "card": {
+                    "type": "raw",
+                    "data": card_content
+                }
+            }
+            return P2CardActionTriggerResponse(response_data)
+
+        else:
+            debug_utils.log_and_print(f"❌ 未知的{card_config_type}卡片操作类型: {operation_type}", log_level="ERROR")
+            return False
+
+    @feishu_sdk_safe("获取卡片回复模式失败", return_value="reply")
+    def _get_card_reply_mode(self, card_type: str) -> str:
+        """
+        从配置获取卡片回复模式
+
+        Args:
+            card_type: 卡片类型 ("admin_cards" | "bilibili_cards" | 等)
+
+        Returns:
+            str: 回复模式 ("new" | "reply" | "thread")
+        """
+        config_service = self.app_controller.get_service('config') if self.app_controller else None
+        if config_service:
+            reply_modes = config_service.get("cards", {}).get("reply_modes", {})
+            return reply_modes.get(card_type, reply_modes.get("default", "reply"))
+        else:
+            debug_utils.log_and_print("⚠️ 无法获取配置服务，使用默认回复模式", log_level="WARNING")
+            return "reply"
 
     def _extract_message_content(self, message) -> Any:
         """提取飞书消息内容"""

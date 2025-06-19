@@ -48,9 +48,9 @@ class AdminCardInteractionComponents:
                 "operation_id": operation_id,
                 "target_field": "user_type",  # 明确指定要更新的字段
                 "value_mapping": {
-                    "0": 0,  # "普通用户" -> 1
-                    "1": 1,  # "支持者" -> 2
-                    "2": 2   # "受邀用户" -> 3
+                    "0": 0,  # "普通用户" -> 0
+                    "1": 1,  # "支持者" -> 1
+                    "2": 2   # "受邀用户" -> 2
                 },
                 "current_value": str(user_type - 1)  # 当前选中值 (1-3 -> 0-2)
             }
@@ -150,7 +150,6 @@ class AdminCardManager(BaseCardManager):
             "hold_time": hold_time,
             "result": result,
             "finished": finished,
-
 
             # 1.0.9版本：标准化交互组件
             "confirm_action_data": interaction_components["confirm_action"],
