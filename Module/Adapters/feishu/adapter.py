@@ -31,9 +31,9 @@ from lark_oapi.api.im.v1 import (
 from lark_oapi.event.callback.model.p2_card_action_trigger import P2CardActionTriggerResponse
 
 from Module.Common.scripts.common import debug_utils
-from .feishu_cards import initialize_card_managers, get_card_manager
+from .cards import initialize_card_managers, get_card_manager
 from Module.Business.message_processor import MessageContext, ProcessResult
-from .feishu_decorators import (
+from .decorators import (
     feishu_event_handler_safe, message_conversion_safe, feishu_api_call,
     file_operation_safe, async_operation_safe, card_operation_safe, feishu_sdk_safe
 )

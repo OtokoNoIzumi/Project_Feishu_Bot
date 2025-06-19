@@ -26,7 +26,7 @@ sys.path.insert(0, str(current_dir))
 
 from Module.Application.app_controller import AppController
 from Module.Business.message_processor import MessageProcessor
-from Module.Adapters.feishu_adapter import FeishuAdapter
+from Module.Adapters import FeishuAdapter
 from Module.Common.scripts.common import debug_utils
 
 

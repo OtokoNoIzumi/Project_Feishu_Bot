@@ -7,8 +7,8 @@
 
 from typing import Dict, Any, Optional
 from Module.Common.scripts.common import debug_utils
-from .base_card_manager import BaseCardManager
-from ..feishu_decorators import card_build_safe
+from .card_registry import BaseCardManager
+from ..decorators import card_build_safe
 
 
 class AdminCardInteractionComponents:

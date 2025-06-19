@@ -5,7 +5,7 @@
 提供统一的卡片管理接口和扩展机制
 """
 
-from .base_card_manager import BaseCardManager, FeishuCardRegistry
+from .card_registry import BaseCardManager, FeishuCardRegistry
 from .bilibili_cards import BilibiliCardManager
 from .admin_cards import AdminCardManager
 
