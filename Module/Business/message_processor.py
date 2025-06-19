@@ -6,7 +6,7 @@
 """
 
 import time
-from typing import Dict, Any, Callable, List
+from typing import Dict, Any
 from .processors import (
     BaseProcessor, MessageContext, ProcessResult,
     TextProcessor, MediaProcessor, BilibiliProcessor,
@@ -185,7 +185,6 @@ class MessageProcessor(BaseProcessor):
             return handler(context, action_value)
         else:
             return ProcessResult.error_result(f"未知的卡片动作: {action}")
-
 
     def _handle_ai_route_result(self, context: MessageContext, route_result: Dict[str, Any]) -> ProcessResult:
         """
@@ -419,7 +418,7 @@ class MessageProcessor(BaseProcessor):
         """
         try:
             # 导入交互组件定义
-            from Module.Adapters.feishu_cards.admin_cards import AdminCardInteractionComponents
+            from Module.Adapters.feishu.cards.admin_cards import AdminCardInteractionComponents
 
             # 获取操作类型映射
             type_mapping = AdminCardInteractionComponents.get_operation_type_mapping()
