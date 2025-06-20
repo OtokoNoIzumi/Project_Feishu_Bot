@@ -231,8 +231,8 @@ class CardHandler:
             **kwargs: 额外参数
 
         Returns:
-            bool: 发送操作的成功状态
-            P2CardActionTriggerResponse: 更新响应操作的响应对象
+            发送操作: Tuple[bool, Optional[str]] (是否成功, 消息ID)
+            更新响应操作: P2CardActionTriggerResponse (响应对象)
         """
         # 使用卡片管理器构建卡片内容
         build_method = getattr(card_manager, build_method_name)
@@ -247,10 +247,13 @@ class CardHandler:
                 send_params = {"card_content": card_content, "reply_mode": reply_mode}
                 send_params.update(kwargs)
 
-                success = self.sender.send_interactive_card(**send_params)
+                success, message_id = self.sender.send_interactive_card(**send_params)
                 if not success:
                     debug_utils.log_and_print(f"❌ {card_config_type}卡片发送失败", log_level="ERROR")
-                return success
+                    return False, None
+
+                debug_utils.log_and_print(f"✅ {card_config_type}卡片发送成功", log_level="INFO")
+                return success, message_id
 
             case "update_response":
                 # 构建卡片更新响应
@@ -271,7 +274,56 @@ class CardHandler:
 
             case _:
                 debug_utils.log_and_print(f"❌ 未知的{card_config_type}卡片操作类型: {operation_type}", log_level="ERROR")
-                return False
+                return False, None
 
     def _noop_debug(self, *args, **kwargs):
         """空操作调试函数，当没有注入调试功能时使用"""
+
+    def create_card_ui_update_callback(self):
+        """
+        创建卡片UI更新回调函数
+
+        Returns:
+            Callable: 可以传递给pending_cache_service的回调函数
+        """
+        def update_card_ui(operation) -> bool:
+            """
+            卡片UI更新回调实现
+
+            Args:
+                operation: PendingOperation对象
+
+            Returns:
+                bool: 更新是否成功
+            """
+            try:
+                if not operation.ui_message_id:
+                    debug_utils.log_and_print(f"❌ 卡片更新失败: 缺少ui_message_id [{operation.operation_id[:20]}...]", log_level="ERROR")
+                    return False
+
+                # 根据操作类型选择卡片管理器和构建方法
+                if operation.operation_type == "update_user":
+                    card_manager = self.admin_card_manager
+                    build_method_name = "build_user_update_confirm_card"
+                else:
+                    debug_utils.log_and_print(f"❌ 卡片更新失败: 未知操作类型 {operation.operation_type}", log_level="ERROR")
+                    return False
+
+                # 构建卡片内容
+                build_method = getattr(card_manager, build_method_name)
+                card_content = build_method(operation.operation_data)
+
+                # 调用消息发送器的卡片更新方法
+                success = self.sender.update_interactive_card(operation.ui_message_id, card_content)
+
+                # 只在失败时记录错误日志
+                if not success:
+                    debug_utils.log_and_print(f"❌ 卡片更新API失败 [{operation.operation_id[:20]}...]", log_level="ERROR")
+
+                return success
+
+            except Exception as e:
+                debug_utils.log_and_print(f"❌ 卡片UI更新异常: {e} [{operation.operation_id[:20]}...]", log_level="ERROR")
+                return False
+
+        return update_card_ui

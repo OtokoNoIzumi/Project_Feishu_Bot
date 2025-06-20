@@ -165,6 +165,9 @@ class FeishuAdapter:
         self.sender.handle_admin_card_operation = self.card_handler._handle_admin_card_operation
         self.sender.handle_bili_video_async = self.message_handler._handle_bili_video_async
 
+        # 注册UI更新回调到pending_cache_service
+        self._register_ui_update_callbacks()
+
         # 创建WebSocket客户端
         self.ws_client = self._create_ws_client()
 
@@ -207,6 +210,20 @@ class FeishuAdapter:
             event_handler=event_handler,
             log_level=self.log_level
         )
+
+    def _register_ui_update_callbacks(self):
+        """注册UI更新回调到缓存服务"""
+        if self.app_controller:
+            pending_cache_service = self.app_controller.get_service('pending_cache')
+            if pending_cache_service:
+                # 注册卡片UI更新回调
+                card_ui_callback = self.card_handler.create_card_ui_update_callback()
+                pending_cache_service.register_ui_update_callback("card", card_ui_callback)
+                debug_utils.log_and_print("✅ 卡片UI更新回调注册成功", log_level="INFO")
+            else:
+                debug_utils.log_and_print("⚠️ pending_cache_service不可用，跳过UI更新回调注册", log_level="WARNING")
+        else:
+            debug_utils.log_and_print("⚠️ app_controller不可用，跳过UI更新回调注册", log_level="WARNING")
 
     # ================ 生命周期方法 ================
 

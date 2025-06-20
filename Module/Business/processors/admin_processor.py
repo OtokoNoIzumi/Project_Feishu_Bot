@@ -241,9 +241,10 @@ class AdminProcessor(BaseProcessor):
         """
         try:
             user_id = operation.operation_data.get('user_id')
+            # 注意：user_type=0 是合法的，这里不能用 if not user_type
             user_type = operation.operation_data.get('user_type')
 
-            if not user_id or not user_type:
+            if not user_id or user_type is None:
                 debug_utils.log_and_print("❌ 用户更新操作缺少必要参数", log_level="ERROR")
                 return False
 
@@ -288,26 +289,27 @@ class AdminProcessor(BaseProcessor):
         if not operation:
             return ProcessResult.error_result("操作不存在")
 
-        if action == "confirm_user_update":
+        match action:
+            case "confirm_user_update":
 
-            # 确认操作
-            success = pending_cache_service.confirm_operation(operation_id)
+                # 确认操作
+                success = pending_cache_service.confirm_operation(operation_id)
 
-            if success:
-                # 构建成功的卡片更新数据
-                result_data = operation.operation_data.copy()
-                result_data.update({
-                    'finished': True,
-                    'hold_time': '',
-                    'result': " | 已完成",
-                    'result_type': 'success'
-                })
+                if success:
+                    # 构建成功的卡片更新数据
+                    result_data = operation.operation_data.copy()
+                    result_data.update({
+                        'finished': True,
+                        'hold_time': '',
+                        'result': " | 已完成",
+                        'result_type': 'success'
+                    })
 
-                return ProcessResult.success_result(
-                    "admin_card_update",
-                    result_data
-                )
-            else:
+                    return ProcessResult.success_result(
+                        "admin_card_update",
+                        result_data
+                    )
+
                 # 构建失败的卡片更新数据
                 result_data = operation.operation_data.copy()
                 result_data.update({
@@ -320,38 +322,35 @@ class AdminProcessor(BaseProcessor):
                     "admin_card_update",
                     result_data
                 )
+            case "cancel_user_update":
+                # 取消操作
+                success = pending_cache_service.cancel_operation(operation_id)
 
-        elif action == "cancel_user_update":
-            # 取消操作
-            success = pending_cache_service.cancel_operation(operation_id)
+                # 构建取消的卡片更新数据
+                result_data = operation.operation_data.copy()
+                result_data.update({
+                    'finished': True,
+                    'hold_time': '',
+                    'result': " | 操作取消",
+                    'result_type': 'info'
+                })
 
-            # 构建取消的卡片更新数据
-            result_data = operation.operation_data.copy()
-            result_data.update({
-                'finished': True,
-                'hold_time': '',
-                'result': " | 操作取消",
-                'result_type': 'info'
-            })
+                return ProcessResult.success_result(
+                    "admin_card_update",
+                    result_data
+                )
+            case "update_data":
+                # 更新操作数据
+                new_data = action_value.get('new_data', {})
+                pending_cache_service.update_operation_data(operation_id, new_data)
 
-            return ProcessResult.success_result(
-                "admin_card_update",
-                result_data
-            )
-
-        elif action == "update_data":
-            # 更新操作数据
-            new_data = action_value.get('new_data', {})
-            pending_cache_service.update_operation_data(operation_id, new_data)
-
-            # 返回简单成功响应（不需要更新卡片）
-            return ProcessResult.success_result("toast", {
-                "message": "数据已更新",
-                "type": "success"
-            })
-
-        else:
-            return ProcessResult.error_result(f"未知的操作类型: {action}")
+                # 返回简单成功响应（不需要更新卡片）
+                return ProcessResult.success_result("toast", {
+                    "message": "数据已更新",
+                    "type": "success"
+                })
+            case _:
+                return ProcessResult.error_result(f"未知的操作类型: {action}")
 
     @require_service('image', "图像服务不可用")
     @safe_execute("配置更新失败")

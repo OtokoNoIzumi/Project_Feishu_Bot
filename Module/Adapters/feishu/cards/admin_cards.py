@@ -83,7 +83,7 @@ class AdminCardManager(BaseCardManager):
         self.templates = {
             "admin_user_update_confirm": {
                 "template_id": "AAqdbwJ2cflOp",
-                "template_version": "1.0.9"
+                "template_version": "1.1.0"
             }
         }
 

@@ -134,12 +134,12 @@ class MessageSender:
             match reply_mode:
                 case "new":
                     # 模式1: 新消息
-                    return self._send_create_message(user_id, content_json, result.response_type, "open_id")
+                    return self._send_create_message(user_id, content_json, result.response_type, "open_id")[0]
 
                 case "reply" | "thread":
                     # 模式2&3: 回复消息 (含新话题)
                     message_id = original_data.event.message.message_id
-                    return self._send_reply_message(message_id, content_json, result.response_type, reply_mode == "thread")
+                    return self._send_reply_message(message_id, content_json, result.response_type, reply_mode == "thread")[0]
 
                 case _:
                     debug_utils.log_and_print(f"❌ 未知的回复模式: {reply_mode}", log_level="ERROR")
@@ -169,8 +169,12 @@ class MessageSender:
         chat_type = original_data.event.message.chat_type
         return "reply" if chat_type == "group" else "new"
 
-    def _send_create_message(self, receive_id: str, content: str, msg_type: str, receive_id_type: str = "open_id") -> bool:
-        """发送新消息（支持用户ID和聊天ID）"""
+    def _send_create_message(self, receive_id: str, content: str, msg_type: str, receive_id_type: str = "open_id") -> Tuple[bool, Optional[str]]:
+        """发送新消息（支持用户ID和聊天ID）
+
+        Returns:
+            Tuple[bool, Optional[str]]: (是否成功, 消息ID)
+        """
         request = CreateMessageRequest.builder().receive_id_type(receive_id_type).request_body(
             CreateMessageRequestBody.builder()
             .receive_id(receive_id)
@@ -182,11 +186,18 @@ class MessageSender:
         response = self.client.im.v1.message.create(request)
         if not response.success():
             debug_utils.log_and_print(f"❌ 新消息发送失败: {response.code} - {response.msg}", log_level="ERROR")
-            return False
-        return True
+            return False, None
 
-    def _send_reply_message(self, message_id: str, content: str, msg_type: str, reply_in_thread: bool = False) -> bool:
-        """发送回复消息"""
+        # 获取消息ID
+        message_id = response.data.message_id if response.data else None
+        return True, message_id
+
+    def _send_reply_message(self, message_id: str, content: str, msg_type: str, reply_in_thread: bool = False) -> Tuple[bool, Optional[str]]:
+        """发送回复消息
+
+        Returns:
+            Tuple[bool, Optional[str]]: (是否成功, 回复消息ID)
+        """
         builder = ReplyMessageRequestBody.builder() \
             .msg_type(msg_type) \
             .content(content)
@@ -202,8 +213,11 @@ class MessageSender:
         response = self.client.im.v1.message.reply(request)
         if not response.success():
             debug_utils.log_and_print(f"❌ 回复消息发送失败: {response.code} - {response.msg}", log_level="ERROR")
-            return False
-        return True
+            return False, None
+
+        # 获取回复消息ID
+        reply_message_id = response.data.message_id if response.data else None
+        return True, reply_message_id
 
     @feishu_sdk_safe("发送飞书直接消息失败", return_value=False)
     def send_direct_message(self, user_id: str, result: ProcessResult) -> bool:
@@ -215,9 +229,9 @@ class MessageSender:
         content_json = json.dumps(result.response_content)
 
         # 复用_send_create_message方法，避免代码重复
-        return self._send_create_message(user_id, content_json, result.response_type, "open_id")
+        return self._send_create_message(user_id, content_json, result.response_type, "open_id")[0]
 
-    @feishu_sdk_safe("发送交互式卡片失败", return_value=False)
+    @feishu_sdk_safe("发送交互式卡片失败", return_value=(False, None))
     def send_interactive_card(
         self,
         chat_id: str = None,
@@ -225,7 +239,7 @@ class MessageSender:
         card_content: Dict[str, Any] = None,
         reply_mode: str = "new",
         message_id: str = None
-    ) -> bool:
+    ) -> Tuple[bool, Optional[str]]:
         """
         统一的交互式卡片发送方法
 
@@ -242,7 +256,7 @@ class MessageSender:
             message_id: 回复的消息ID (reply/thread模式必需)
 
         Returns:
-            bool: 是否发送成功
+            Tuple[bool, Optional[str]]: (是否发送成功, 消息ID)
         """
         # 参数验证
         validation_result = self._validate_card_send_params(
@@ -250,7 +264,7 @@ class MessageSender:
         )
         if not validation_result["valid"]:
             debug_utils.log_and_print(f"❌ {validation_result['error']}", log_level="ERROR")
-            return False
+            return False, None
 
         # 将卡片内容转换为JSON字符串
         content_json = json.dumps(card_content, ensure_ascii=False)
@@ -272,7 +286,7 @@ class MessageSender:
 
             case _:
                 debug_utils.log_and_print(f"❌ 不支持的发送模式: {reply_mode}", log_level="ERROR")
-                return False
+                return False, None
 
     def _validate_card_send_params(
         self, card_content, reply_mode: str, chat_id: str, user_id: str, message_id: str
@@ -295,20 +309,21 @@ class MessageSender:
 
         return {"valid": True}
 
-    @feishu_sdk_safe("发送新交互式卡片失败", return_value=False)
-    def _send_new_interactive_card(self, chat_id: str, user_id: str, content_json: str) -> bool:
-        """发送新的交互式卡片消息"""
+    @feishu_sdk_safe("发送新交互式卡片失败", return_value=(False, None))
+    def _send_new_interactive_card(self, chat_id: str, user_id: str, content_json: str) -> Tuple[bool, Optional[str]]:
+        """发送新的交互式卡片消息
+
+        Returns:
+            Tuple[bool, Optional[str]]: (是否成功, 消息ID)
+        """
         # 确定接收者信息
         receive_id = chat_id or user_id
         receive_id_type = "chat_id" if chat_id else "open_id"
 
         # 复用_send_create_message方法，避免代码重复
-        success = self._send_create_message(receive_id, content_json, "interactive", receive_id_type)
+        success, message_id = self._send_create_message(receive_id, content_json, "interactive", receive_id_type)
 
-        if success:
-            debug_utils.log_and_print("✅ 交互式卡片发送成功 (模式:new)", log_level="INFO")
-
-        return success
+        return success, message_id
 
     @feishu_sdk_safe("获取图像资源失败", return_value=None)
     def get_image_resource(self, original_data) -> Optional[Tuple[str, str, str, int]]:
@@ -567,7 +582,7 @@ class MessageSender:
         response = self.client.im.v1.message.patch(request)
 
         if response.success():
-            debug_utils.log_and_print("✅ 交互式卡片更新成功", log_level="INFO")
+            # 移除成功日志，减少噪音
             return True
 
         debug_utils.log_and_print(f"❌ 交互式卡片更新失败: {response.code} - {response.msg}", log_level="ERROR")

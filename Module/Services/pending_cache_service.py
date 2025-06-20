@@ -38,10 +38,14 @@ class PendingOperation:
     hold_time_text: str        # 倒计时显示文本
     status: OperationStatus    # 操作状态
     default_action: str = "confirm"  # 默认操作 (confirm/cancel)
-    # 新增字段：卡片更新相关
-    card_message_id: Optional[str] = None  # 关联的卡片消息ID
-    update_count: int = 0      # 更新次数
-    last_update_time: float = 0  # 最后更新时间
+    # UI绑定相关字段 - 支持多种前端
+    ui_message_id: Optional[str] = None  # 关联的UI消息ID（卡片、页面等）
+    ui_type: str = "card"       # UI类型 ("card", "page", "dialog"等)
+    update_count: int = 0       # 更新次数
+    last_update_time: float = 0 # 最后更新时间
+    # 重试相关字段
+    update_retry_count: int = 0 # 更新重试次数
+    max_update_retries: int = 3 # 最大重试次数
 
     def to_dict(self) -> Dict[str, Any]:
         """转换为字典"""
@@ -53,37 +57,67 @@ class PendingOperation:
     def from_dict(cls, data: Dict[str, Any]) -> 'PendingOperation':
         """从字典创建"""
         data['status'] = OperationStatus(data['status'])
+
+        # 为旧数据设置默认的ui_type
+        if 'ui_type' not in data:
+            data['ui_type'] = 'card'
+
+        # 为旧数据设置默认的重试相关字段
+        if 'update_retry_count' not in data:
+            data['update_retry_count'] = 0
+        if 'max_update_retries' not in data:
+            data['max_update_retries'] = 3
+
         return cls(**data)
 
     def is_expired(self) -> bool:
         """检查是否已过期"""
-        return time.time() > self.expire_time
+        return self.get_remaining_time() <= 0
 
     def get_remaining_time(self) -> int:
-        """获取剩余时间（秒）"""
+        """获取剩余时间（秒）- 使用固定间隔计算避免时间跳跃"""
         remaining = self.expire_time - time.time()
         return max(0, int(remaining))
 
     def get_remaining_time_text(self) -> str:
-        """获取剩余时间文本"""
+        """获取剩余时间文本 - 按用户规则优化显示"""
         remaining = self.get_remaining_time()
         if remaining <= 0:
             return "已过期"
 
-        minutes = remaining // 60
-        seconds = remaining % 60
-        if minutes > 0:
-            return f"({minutes}m{seconds}s)"
+        # 按用户要求的显示规则
+        if remaining <= 5:
+            return "(即将执行)"
         else:
-            return f"({seconds}s)"
+            # 超过5秒时，显示最接近的5秒倍数
+            display_seconds = ((remaining + 4) // 5) * 5  # 向上取整到5的倍数
+            minutes = display_seconds // 60
+            seconds = display_seconds % 60
+            if minutes > 0:
+                return f"({minutes}时{seconds}分)"
+            else:
+                return f"({seconds}s)"
 
-    def needs_card_update(self, interval_seconds: int = 1) -> bool:
-        """检查是否需要更新卡片"""
+    def needs_ui_update(self, interval_seconds: int = 1) -> bool:
+        """检查是否需要更新UI"""
         if self.status != OperationStatus.PENDING:
             return False
-        if not self.card_message_id:
+        if not self.ui_message_id:
             return False
-        return time.time() - self.last_update_time >= interval_seconds
+
+        # 简化更新逻辑 - 统一5秒间隔，确保用户体验
+        actual_interval = 5
+
+        # 使用创建时间作为基准，计算应该更新的时间点
+        elapsed_since_creation = time.time() - self.created_time
+        expected_updates = int(elapsed_since_creation / actual_interval)
+
+        # 检查是否到了下一个更新时间点
+        return self.update_count < expected_updates
+
+    def can_retry_update(self) -> bool:
+        """检查是否可以重试更新"""
+        return self.update_retry_count < self.max_update_retries
 
 
 class PendingCacheService:
@@ -106,8 +140,8 @@ class PendingCacheService:
         self.timers: Dict[str, threading.Timer] = {}
         self.executor_callbacks: Dict[str, Callable] = {}  # operation_type -> callback
 
-        # 卡片更新相关
-        self.card_update_callback: Optional[Callable] = None
+        # UI更新推送相关 - 支持多种前端
+        self.ui_update_callbacks: Dict[str, Callable] = {}  # ui_type -> callback
         self.auto_update_enabled: bool = True
         self.update_interval: int = 1
         self.max_updates: int = 60
@@ -239,7 +273,7 @@ class PendingCacheService:
         # 保存到磁盘
         self._save_operations()
 
-        debug_utils.log_and_print(f"✅ 创建缓存操作: {operation_id}", log_level="INFO")
+        debug_utils.log_and_print(f"✅ 添加新操作到缓存，id: {operation_id}", log_level="INFO")
         return operation_id
 
     def get_operation(self, operation_id: str) -> Optional[PendingOperation]:
@@ -265,12 +299,13 @@ class PendingCacheService:
 
         return operations
 
-    def confirm_operation(self, operation_id: str) -> bool:
+    def confirm_operation(self, operation_id: str, force_execute: bool = False) -> bool:
         """
         确认操作
 
         Args:
             operation_id: 操作ID
+            force_execute: 是否强制执行（用于自动确认，跳过过期检查）
 
         Returns:
             bool: 是否成功
@@ -282,7 +317,8 @@ class PendingCacheService:
         if operation.status != OperationStatus.PENDING:
             return False
 
-        if operation.is_expired():
+        # 只有在非强制执行时才检查过期
+        if operation.is_expired() and not force_execute:
             operation.status = OperationStatus.EXPIRED
             self._save_operations()
             return False
@@ -295,19 +331,27 @@ class PendingCacheService:
 
         if success:
             operation.status = OperationStatus.EXECUTED
+
+            # 更新UI显示最终状态
+            self._update_ui_for_completed_operation(operation, "已完成", "success")
         else:
             operation.status = OperationStatus.CONFIRMED  # 标记为确认但执行失败
-            debug_utils.log_and_print(f"❌ 操作确认但执行失败: {operation_id}", log_level="ERROR")
+            debug_utils.log_and_print(f"❌ 操作确认但执行失败: [{operation_id[:20]}...]", log_level="ERROR")
 
+            # 更新UI显示失败状态
+            self._update_ui_for_completed_operation(operation, "❌ 执行失败", "error")
+
+        # 在UI更新完成后保存操作状态
         self._save_operations()
         return success
 
-    def cancel_operation(self, operation_id: str) -> bool:
+    def cancel_operation(self, operation_id: str, force_execute: bool = False) -> bool:
         """
         取消操作
 
         Args:
             operation_id: 操作ID
+            force_execute: 是否强制执行（用于自动取消，跳过过期检查）
 
         Returns:
             bool: 是否成功
@@ -319,14 +363,23 @@ class PendingCacheService:
         if operation.status != OperationStatus.PENDING:
             return False
 
+        # 只有在非强制执行时才检查过期
+        if operation.is_expired() and not force_execute:
+            operation.status = OperationStatus.EXPIRED
+            self._save_operations()
+            return False
+
         # 取消定时器
         self._cancel_timer(operation_id)
 
         # 更新状态
         operation.status = OperationStatus.CANCELLED
-        self._save_operations()
 
-        debug_utils.log_and_print(f"✅ 操作已取消: {operation_id}", log_level="INFO")
+        # 更新UI显示取消状态
+        self._update_ui_for_completed_operation(operation, "操作取消", "info")
+
+        # 在UI更新完成后保存操作状态
+        self._save_operations()
         return True
 
     def update_operation_data(self, operation_id: str, new_data: Dict[str, Any]) -> bool:
@@ -358,9 +411,9 @@ class PendingCacheService:
             oldest_op = min(user_ops, key=lambda op: op.created_time)
 
             if oldest_op.default_action == "confirm":
-                self.confirm_operation(oldest_op.operation_id)
+                self.confirm_operation(oldest_op.operation_id, force_execute=True)
             else:
-                self.cancel_operation(oldest_op.operation_id)
+                self.cancel_operation(oldest_op.operation_id, force_execute=True)
 
             # 重新获取用户操作
             user_ops = self.get_user_operations(user_id, OperationStatus.PENDING)
@@ -387,9 +440,9 @@ class PendingCacheService:
         def on_expire():
             if operation.operation_id in self.pending_operations:
                 if operation.default_action == "confirm":
-                    self.confirm_operation(operation.operation_id)
+                    self.confirm_operation(operation.operation_id, force_execute=True)
                 else:
-                    self.cancel_operation(operation.operation_id)
+                    self.cancel_operation(operation.operation_id, force_execute=True)
 
         timer = threading.Timer(remaining_time, on_expire)
         timer.start()
@@ -619,50 +672,71 @@ class PendingCacheService:
             return
 
         def auto_update():
-            debug_utils.log_and_print("🔄 启动卡片自动更新线程", log_level="INFO")
+            debug_utils.log_and_print("🔄 启动UI自动更新线程", log_level="INFO")
             while not self._stop_update_flag:
                 try:
                     updated_count = 0
+                    retry_count = 0
+
+                    # 第一步：独立的过期检测 - 优先处理所有过期操作
+                    expired_operations = []
                     for op_id, operation in list(self.pending_operations.items()):
-                        if operation.needs_card_update(self.update_interval):
-                            if self.card_update_callback and operation.update_count < self.max_updates:
-                                # 更新操作数据中的倒计时文本
-                                operation.operation_data['hold_time'] = operation.get_remaining_time_text()
+                        if operation.status == OperationStatus.PENDING and operation.is_expired():
+                            expired_operations.append((op_id, operation))
 
-                                # 调用卡片更新回调
-                                success = self.card_update_callback(operation)
-                                if success:
-                                    operation.last_update_time = time.time()
-                                    operation.update_count += 1
-                                    updated_count += 1
+                    # 处理所有过期操作
+                    for op_id, operation in expired_operations:
+                        debug_utils.log_and_print(f"⏰ 倒计时结束，执行默认操作: {operation.default_action} [{op_id[:20]}...]", log_level="INFO")
+                        if operation.default_action == "confirm":
+                            self.confirm_operation(op_id, force_execute=True)
+                        else:
+                            self.cancel_operation(op_id, force_execute=True)
 
-                                    # 检查是否已过期，结束更新
-                                    if operation.is_expired():
-                                        debug_utils.log_and_print(f"⏰ 操作 {op_id} 倒计时结束", log_level="INFO")
-                                        break
+                    # 第二步：收集需要UI更新的操作（排除已过期的）
+                    operations_to_update = []
+                    max_batch_size = 10
 
-                    if updated_count > 0:
-                        debug_utils.log_and_print(f"🔄 更新了 {updated_count} 个卡片", log_level="DEBUG")
+                    for op_id, operation in list(self.pending_operations.items()):
+                        if operation.needs_ui_update(self.update_interval):
+                            if len(operations_to_update) < max_batch_size:
+                                operations_to_update.append((op_id, operation))
+                            else:
+                                break
+
+                    # 移除之前的专项检测（已经在第一步处理了）
+
+                    # 第三步：处理UI更新
+                    for op_id, operation in operations_to_update:
+                        ui_callback = self.ui_update_callbacks.get(operation.ui_type)
+
+                        if ui_callback and operation.update_count < self.max_updates:
+                            # 更新操作数据中的倒计时文本
+                            old_time_text = operation.operation_data.get('hold_time', '')
+                            operation.operation_data['hold_time'] = operation.get_remaining_time_text()
+                            new_time_text = operation.operation_data['hold_time']
+
+                            # 调用UI更新回调
+                            success = ui_callback(operation)
+
+                            if success:
+                                operation.last_update_time = time.time()
+                                operation.update_count += 1
+                                operation.update_retry_count = 0  # 重置重试计数
+                                updated_count += 1
+                            else:
+                                # 更新失败，进行重试逻辑
+                                operation.update_retry_count += 1
+                                retry_count += 1
 
                 except Exception as e:
-                    debug_utils.log_and_print(f"❌ 卡片自动更新异常: {e}", log_level="ERROR")
+                    debug_utils.log_and_print(f"❌ UI自动更新异常: {e}", log_level="ERROR")
 
                 time.sleep(self.update_interval)
 
-            debug_utils.log_and_print("⏹️ 卡片自动更新线程已停止", log_level="INFO")
+            debug_utils.log_and_print("⏹️ UI自动更新线程已停止", log_level="INFO")
 
         self._update_thread = threading.Thread(target=auto_update, daemon=True)
         self._update_thread.start()
-
-    def register_card_update_callback(self, callback: Callable[[PendingOperation], bool]) -> None:
-        """
-        注册卡片更新回调函数
-
-        Args:
-            callback: 回调函数，接收PendingOperation，返回bool表示是否更新成功
-        """
-        self.card_update_callback = callback
-        debug_utils.log_and_print("✅ 注册卡片更新回调成功", log_level="INFO")
 
     def configure_auto_update(self, enabled: bool = True, interval: int = 1, max_updates: int = 60) -> None:
         """
@@ -676,34 +750,11 @@ class PendingCacheService:
         self.auto_update_enabled = enabled
         self.update_interval = interval
         self.max_updates = max_updates
-        debug_utils.log_and_print(f"⚙️ 卡片自动更新配置: enabled={enabled}, interval={interval}s, max_updates={max_updates}", log_level="INFO")
-
-    def bind_card_message(self, operation_id: str, message_id: str) -> bool:
-        """
-        绑定操作和卡片消息ID
-
-        Args:
-            operation_id: 操作ID
-            message_id: 卡片消息ID
-
-        Returns:
-            bool: 是否绑定成功
-        """
-        operation = self.pending_operations.get(operation_id)
-        if not operation:
-            return False
-
-        operation.card_message_id = message_id
-        operation.last_update_time = time.time()
-        self._save_operations()
-
-        debug_utils.log_and_print(f"🔗 操作 {operation_id} 绑定卡片消息 {message_id}", log_level="INFO")
-        return True
 
     def stop_auto_update(self) -> None:
         """停止自动更新线程"""
         if self._update_thread and self._update_thread.is_alive():
-            debug_utils.log_and_print("⏹️ 正在停止卡片自动更新线程...", log_level="INFO")
+            debug_utils.log_and_print("⏹️ 正在停止UI自动更新线程...", log_level="INFO")
             self._stop_update_flag = True
             self._update_thread.join(timeout=5)  # 5秒超时
 
@@ -711,3 +762,68 @@ class PendingCacheService:
                 debug_utils.log_and_print("⚠️ 自动更新线程未能正常停止", log_level="WARNING")
             else:
                 debug_utils.log_and_print("✅ 自动更新线程已停止", log_level="INFO")
+
+    def register_ui_update_callback(self, ui_type: str, callback: Callable[[PendingOperation], bool]) -> None:
+        """
+        注册UI更新回调函数（支持多种前端）
+
+        Args:
+            ui_type: UI类型 ("card", "page", "dialog"等)
+            callback: 回调函数，接收PendingOperation，返回bool表示是否更新成功
+        """
+        self.ui_update_callbacks[ui_type] = callback
+        debug_utils.log_and_print(f"✅ 注册UI更新回调: {ui_type}", log_level="INFO")
+
+    def bind_ui_message(self, operation_id: str, message_id: str, ui_type: str = "card") -> bool:
+        """
+        绑定操作和UI消息ID
+
+        Args:
+            operation_id: 操作ID
+            message_id: UI消息ID
+            ui_type: UI类型
+
+        Returns:
+            bool: 是否绑定成功
+        """
+        operation = self.pending_operations.get(operation_id)
+        if not operation:
+            debug_utils.log_and_print(f"❌ 绑定UI消息失败: 操作不存在 {operation_id}", log_level="ERROR")
+            return False
+
+        operation.ui_message_id = message_id
+        operation.ui_type = ui_type
+        operation.last_update_time = time.time()
+        self._save_operations()
+
+        debug_utils.log_and_print(f"🔗 UI消息绑定成功, ui_type={ui_type}", log_level="INFO")
+        return True
+
+    def _update_ui_for_completed_operation(self, operation, result_text: str, result_type: str):
+        """为已完成的操作更新UI显示最终状态"""
+        try:
+            if not operation.ui_message_id:
+                debug_utils.log_and_print(f"❌ 最终状态UI更新跳过: 缺少ui_message_id [{operation.operation_id[:20]}...]", log_level="WARNING")
+                return
+
+            if operation.ui_type not in self.ui_update_callbacks:
+                debug_utils.log_and_print(f"❌ 最终状态UI更新跳过: 未找到{operation.ui_type}回调 [{operation.operation_id[:20]}...]", log_level="WARNING")
+                return
+
+            # 更新操作数据以显示最终状态
+            operation.operation_data.update({
+                'finished': True,
+                'hold_time': '',
+                'result': f" | {result_text}",
+                'result_type': result_type
+            })
+
+            # 调用UI更新
+            ui_callback = self.ui_update_callbacks[operation.ui_type]
+            success = ui_callback(operation)
+
+            if not success:
+                debug_utils.log_and_print(f"❌ 最终状态UI更新失败: [{operation.operation_id[:20]}...]", log_level="ERROR")
+
+        except Exception as e:
+            debug_utils.log_and_print(f"❌ 最终状态UI更新异常: {e} [{operation.operation_id[:20]}...]", log_level="ERROR")

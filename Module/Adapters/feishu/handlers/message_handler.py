@@ -30,11 +30,14 @@ class MessageHandler:
             message_processor: 业务消息处理器
             sender: 消息发送器实例
             user_name_getter: 用户名获取函数
-            debug_functions: 调试函数字典，包含debug_p2im_object和debug_parent_id_analysis
+            debug_functions: 调试函数字典，包含debug_p2im_object等
         """
         self.message_processor = message_processor
         self.sender = sender
         self._get_user_name = user_name_getter
+
+        # 获取应用控制器以访问服务
+        self.app_controller = getattr(message_processor, 'app_controller', None)
 
         # 设置调试函数
         if debug_functions:
@@ -273,13 +276,31 @@ class MessageHandler:
                 user_id = context.user_id
                 chat_id = data.event.message.chat_id
                 message_id = data.event.message.message_id
-                success = self.sender.handle_admin_card_operation(
-                    result.response_content,
+                operation_data = result.response_content
+                operation_id = operation_data.get('operation_id', '')
+
+                success, sent_message_id = self.sender.handle_admin_card_operation(
+                    operation_data,
                     operation_type="send",
                     user_id=user_id,
                     chat_id=chat_id,
                     message_id=message_id
                 )
+
+                if success and sent_message_id and operation_id:
+                    # 绑定操作ID和卡片消息ID
+                    # 调用pending_cache_service绑定UI消息
+                    if self.app_controller:
+                        pending_cache_service = self.app_controller.get_service('pending_cache')
+                        if pending_cache_service:
+                            bind_success = pending_cache_service.bind_ui_message(operation_id, sent_message_id, "card")
+                            if not bind_success:
+                                debug_utils.log_and_print(f"❌ UI消息绑定失败: operation_id={operation_id}", log_level="ERROR")
+                        else:
+                            debug_utils.log_and_print("❌ pending_cache_service不可用", log_level="ERROR")
+                    else:
+                        debug_utils.log_and_print("❌ app_controller不可用", log_level="ERROR")
+
                 if not success:
                     error_result = ProcessResult.error_result("管理员卡片发送失败")
                     self.sender.send_feishu_reply(data, error_result, force_reply_mode="reply")
