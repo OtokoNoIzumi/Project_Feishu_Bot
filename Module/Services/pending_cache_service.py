@@ -209,7 +209,7 @@ class PendingCacheService:
             callback: 执行回调函数，返回bool表示是否成功
         """
         self.executor_callbacks[operation_type] = callback
-        debug_utils.log_and_print(f"✅ 注册操作执行器: {operation_type}", log_level="INFO")
+        debug_utils.log_and_print(f"✅ 注册功能: {operation_type}", log_level="INFO")
 
     def create_operation(self,
                         user_id: str,

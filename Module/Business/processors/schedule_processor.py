@@ -465,46 +465,379 @@ class ScheduleProcessor(BaseProcessor):
             }
         ])
 
-        # 如果有API结果数据，添加详细信息
-        if api_result and isinstance(api_result, dict):
-            success = api_result.get('success', False)
+        # 添加分隔线
+        card["elements"].append({
+            "tag": "hr"
+        })
 
-            if success:
-                # 成功情况：显示处理统计
-                stats = api_result.get('stats', {})
-                if stats:
-                    content = "\n\n✅ **处理结果：**"
+        # 如果有API结果数据，展示详细统计
+        if api_result and api_result.get('success') and api_result.get('data'):
+            data = api_result['data']
 
-                    # 添加各种统计信息
-                    for key, value in stats.items():
-                        if isinstance(value, (int, float)):
-                            content += f"\n• {key}: {value}"
-                        elif isinstance(value, str):
-                            content += f"\n• {key}: {value}"
+            # 处理统计信息
+            if 'processing_stats' in data:
+                stats = data['processing_stats']
+                total_videos = data.get('total_videos', 0)
+                total_minutes = stats.get('total_minutes', 0)
 
-                    card["elements"].append({
-                        "tag": "div",
-                        "text": {
-                            "content": content,
-                            "tag": "lark_md"
-                        }
-                    })
-            else:
-                # 失败情况：显示错误信息
-                error_msg = api_result.get('error', '未知错误')
+                # 总体统计
+                hours = total_minutes // 60
+                minutes = total_minutes % 60
+                time_display = f"{hours}小时{minutes}分钟" if hours > 0 else f"{minutes}分钟"
+
                 card["elements"].append({
                     "tag": "div",
                     "text": {
-                        "content": f"\n\n❌ **处理失败：** {error_msg}",
+                        "content": f"📊 **总体统计：** {total_videos} 个视频，总时长 {time_display}",
                         "tag": "lark_md"
                     }
                 })
+
+                # 优先级分布（使用饼图）
+                if 'priority_stats' in stats and total_videos > 0:
+                    priority_stats = stats['priority_stats']
+
+                    # 定义优先级排序（确保按High→Medium→Low→None顺序显示）
+                    priority_order = ['😍高', '😜中', '😐低', '😶无']
+                    # 也支持英文优先级名
+                    priority_order_en = ['High', 'Medium', 'Low', 'None']
+
+                    # 构建饼图数据（官方格式，按优先级排序）
+                    chart_data = []
+
+                    # 按照定义的顺序处理优先级
+                    all_priorities = list(priority_stats.keys())
+                    ordered_priorities = []
+
+                    # 先添加预定义顺序中存在的优先级
+                    for priority in priority_order + priority_order_en:
+                        if priority in all_priorities:
+                            ordered_priorities.append(priority)
+                            all_priorities.remove(priority)
+
+                    # 再添加其他未预定义的优先级
+                    ordered_priorities.extend(all_priorities)
+
+                    for priority in ordered_priorities:
+                        if priority in priority_stats:
+                            info = priority_stats[priority]
+                            count = info.get('count', 0)
+                            total_mins = info.get('total_minutes', 0)
+                            percentage = round((count / total_videos) * 100, 1) if total_videos > 0 else 0
+
+                            # 时长格式化
+                            p_hours = total_mins // 60
+                            p_minutes = total_mins % 60
+                            p_time_display = f"{p_hours}h{p_minutes}m" if p_hours > 0 else f"{p_minutes}m"
+
+                            chart_data.append({
+                                "type": f"{priority} {percentage}%",
+                                "value": str(count)
+                            })
+
+                    # 添加优先级分布饼图
+                    card["elements"].extend([
+                        {
+                            "tag": "hr"
+                        },
+                        {
+                            "tag": "div",
+                            "text": {
+                                "content": "🎯 **优先级分布**",
+                                "tag": "lark_md"
+                            }
+                        },
+                        {
+                            "tag": "chart",
+                            "aspect_ratio": "4:3",
+                            "chart_spec": {
+                                "type": "pie",
+                                "title": {
+                                    "text": "优先级分布"
+                                },
+                                "data": {
+                                    "values": chart_data
+                                },
+                                "valueField": "value",
+                                "categoryField": "type",
+                                "outerRadius": 0.7,
+                                "legends": {
+                                    "visible": True,
+                                    "orient": "bottom",
+                                    "maxRow": 3,
+                                    "itemWidth": 80,
+                                    "itemGap": 8
+                                },
+                                "label": {
+                                    "visible": True
+                                },
+                                "padding": {
+                                    "left": 10,
+                                    "top": 10,
+                                    "bottom": 80,
+                                    "right": 10
+                                }
+                            }
+                        }
+                    ])
+
+                # 类型分布（使用环状图）
+                if 'category_stats' in stats and total_videos > 0:
+                    category_stats = stats['category_stats']
+
+                    # 构建环状图数据（官方格式，添加百分比）
+                    category_chart_data = []
+                    for category, info in category_stats.items():
+                        count = info.get('count', 0)
+                        total_mins = info.get('total_minutes', 0)
+                        percentage = round((count / total_videos) * 100, 1) if total_videos > 0 else 0
+
+                        c_hours = total_mins // 60
+                        c_minutes = total_mins % 60
+                        c_time_display = f"{c_hours}h{c_minutes}m" if c_hours > 0 else f"{c_minutes}m"
+
+                        category_chart_data.append({
+                            "type": f"{category} {percentage}%",
+                            "value": str(count)
+                        })
+
+                    card["elements"].extend([
+                        {
+                            "tag": "hr"
+                        },
+                        {
+                            "tag": "div",
+                            "text": {
+                                "content": "📂 **类型分布**",
+                                "tag": "lark_md"
+                            }
+                        },
+                        {
+                            "tag": "chart",
+                            "aspect_ratio": "4:3",
+                            "chart_spec": {
+                                "type": "pie",
+                                "title": {
+                                    "text": "类型分布"
+                                },
+                                "data": {
+                                    "values": category_chart_data
+                                },
+                                "valueField": "value",
+                                "categoryField": "type",
+                                "outerRadius": 0.7,
+                                "innerRadius": 0.3,
+                                "legends": {
+                                    "visible": True,
+                                    "orient": "bottom",
+                                    "maxRow": 3,
+                                    "itemWidth": 80,
+                                    "itemGap": 8
+                                },
+                                "label": {
+                                    "visible": True
+                                },
+                                "padding": {
+                                    "left": 10,
+                                    "top": 10,
+                                    "bottom": 80,
+                                    "right": 10
+                                }
+                            }
+                        }
+                    ])
+
+                # 新旧视频分布（使用对比饼图）
+                if 'new_old_stats' in stats:
+                    new_old = stats['new_old_stats']
+                    new_count = new_old.get('new_videos', 0)
+                    old_count = new_old.get('old_videos', 0)
+                    new_minutes = new_old.get('new_total_minutes', 0)
+                    old_minutes = new_old.get('old_total_minutes', 0)
+
+                    if new_count + old_count > 0:
+                        total_count = new_count + old_count
+                        new_percentage = round((new_count / total_count) * 100, 1) if total_count > 0 else 0
+                        old_percentage = round((old_count / total_count) * 100, 1) if total_count > 0 else 0
+
+                        new_old_data = [
+                            {
+                                "type": f"新视频(48h内) {new_percentage}%",
+                                "value": str(new_count)
+                            },
+                            {
+                                "type": f"旧视频(48h外) {old_percentage}%",
+                                "value": str(old_count)
+                            }
+                        ]
+
+                        card["elements"].extend([
+                            {
+                                "tag": "hr"
+                            },
+                            {
+                                "tag": "div",
+                                "text": {
+                                    "content": "🕒 **新旧视频分布**",
+                                    "tag": "lark_md"
+                                }
+                            },
+                            {
+                                "tag": "chart",
+                                "aspect_ratio": "4:3",
+                                "chart_spec": {
+                                    "type": "pie",
+                                    "title": {
+                                        "text": "新旧视频分布"
+                                    },
+                                    "data": {
+                                        "values": new_old_data
+                                    },
+                                    "valueField": "value",
+                                    "categoryField": "type",
+                                    "outerRadius": 0.7,
+                                    "legends": {
+                                        "visible": True,
+                                        "orient": "bottom",
+                                        "maxRow": 3,
+                                        "itemWidth": 80,
+                                        "itemGap": 8
+                                    },
+                                    "label": {
+                                        "visible": True
+                                    },
+                                    "padding": {
+                                        "left": 10,
+                                        "top": 10,
+                                        "bottom": 80,
+                                        "right": 10
+                                    }
+                                }
+                            }
+                        ])
+
+                # 广告检测统计（使用对比饼图）
+                if 'ad_timestamp_stats' in stats:
+                    ad_stats = stats['ad_timestamp_stats']
+                    ad_count = ad_stats.get('videos_with_ads', 0)
+                    no_ad_count = ad_stats.get('videos_without_ads', 0)
+                    ad_percentage_global = ad_stats.get('ads_percentage', 0)
+                    avg_ad_duration = ad_stats.get('avg_ad_duration_seconds', 0)
+
+                    if ad_count + no_ad_count > 0:
+                        total_ad_count = ad_count + no_ad_count
+                        ad_percentage = round((ad_count / total_ad_count) * 100, 1) if total_ad_count > 0 else 0
+                        no_ad_percentage = round((no_ad_count / total_ad_count) * 100, 1) if total_ad_count > 0 else 0
+
+                        ad_data = [
+                            {"type": f"含广告 {ad_percentage}%", "value": str(ad_count)},
+                            {"type": f"无广告 {no_ad_percentage}%", "value": str(no_ad_count)}
+                        ]
+
+                        card["elements"].extend([
+                            {
+                                "tag": "hr"
+                            },
+                            {
+                                "tag": "div",
+                                "text": {
+                                    "content": f"📺 **广告检测** (检测到{ad_percentage_global:.1f}%包含广告)",
+                                    "tag": "lark_md"
+                                }
+                            },
+                            {
+                                "tag": "chart",
+                                "aspect_ratio": "4:3",
+                                "chart_spec": {
+                                    "type": "pie",
+                                    "title": {
+                                        "text": "广告检测分布"
+                                    },
+                                    "data": {
+                                        "values": ad_data
+                                    },
+                                    "valueField": "value",
+                                    "categoryField": "type",
+                                    "outerRadius": 0.7,
+                                    "legends": {
+                                        "visible": True,
+                                        "orient": "bottom",
+                                        "maxRow": 3,
+                                        "itemWidth": 80,
+                                        "itemGap": 8
+                                    },
+                                    "label": {
+                                        "visible": True
+                                    },
+                                    "padding": {
+                                        "left": 10,
+                                        "top": 10,
+                                        "bottom": 80,
+                                        "right": 10
+                                    }
+                                }
+                            }
+                        ])
+
+                        if avg_ad_duration > 0:
+                            card["elements"].append({
+                                "tag": "div",
+                                "text": {
+                                    "content": f"💡 平均广告时长: {int(avg_ad_duration)}秒",
+                                    "tag": "lark_md"
+                                }
+                            })
+
+                # 作者排行（文本显示，图表对名字太长不友好）
+                if 'author_stats' in stats and stats['author_stats']:
+                    author_stats = stats['author_stats'][:5]  # 只显示前5名
+                    if author_stats:
+                        card["elements"].extend([
+                            {
+                                "tag": "hr"
+                            },
+                            {
+                                "tag": "div",
+                                "text": {
+                                    "content": "👤 **作者排行** (前5名)",
+                                    "tag": "lark_md"
+                                }
+                            }
+                        ])
+
+                        for i, author in enumerate(author_stats, 1):
+                            name = author.get('name', '未知')
+                            count = author.get('count', 0)
+                            total_mins = author.get('total_minutes', 0)
+                            a_time_display = f"{total_mins//60}h{total_mins%60}m" if total_mins//60 > 0 else f"{total_mins}m"
+
+                            card["elements"].append({
+                                "tag": "div",
+                                "text": {
+                                    "content": f"{i}. **{name}:** {count}个视频 ({a_time_display})",
+                                    "tag": "lark_md"
+                                }
+                            })
+
+            # 显示处理结果概要
+            card["elements"].extend([
+                {
+                    "tag": "hr"
+                },
+                {
+                    "tag": "div",
+                    "text": {
+                        "content": "💡 点击菜单中的\"B站\"获取最新无广告的视频",
+                        "tag": "lark_md"
+                    }
+                }
+            ])
         else:
-            # 没有详细结果，显示基本完成信息
+            # 没有详细数据时的简化显示
             card["elements"].append({
                 "tag": "div",
                 "text": {
-                    "content": "\n\n✅ **数据处理已完成**",
+                    "content": "**📋 处理完成**\n\n系统已自动处理B站数据源，新内容已添加到数据库。",
                     "tag": "lark_md"
                 }
             })
