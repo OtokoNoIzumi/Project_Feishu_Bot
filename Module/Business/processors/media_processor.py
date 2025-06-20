@@ -184,6 +184,12 @@ class MediaProcessor(BaseProcessor):
                             {"tag": "a", "href": "https://open.feishu.cn", "text": "飞书开放平台", "style": ["italic"]},
                             {"tag": "at", "user_id": "all", "style": ["lineThrough"]}
                         ],
+                        [{"tag": "text", "text": "🔍 飞书URL解析规律发现："}],
+                        [{"tag": "text", "text": "✅ B站视频BV号会自动解析为卡片: https://www.bilibili.com/video/BV1eG411C755"}],
+                        [{"tag": "text", "text": "❌ 个人网站保持文本格式: https://otokonoizumi.github.io/"}],
+                        [{"tag": "text", "text": "❌ B站番剧链接也仅显示文本: https://www.bilibili.com/bangumi/play/ss28747"}],
+                        [{"tag": "text", "text": "💡 规律：多链接时需悬停查看预览，单链接时直接显示卡片。普通文本类型的消息规律一致。"}],
+                        [{"tag": "hr"}],
                         [{"tag": "text", "text": "代码示例:"}],
                         [{"tag": "code_block", "language": "PYTHON", "text": "print('Hello World')"}],
                         [{"tag": "hr"}],
