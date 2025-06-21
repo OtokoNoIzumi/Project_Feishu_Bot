@@ -82,7 +82,6 @@ def setup_application():
                 else:
                     debug_utils.log_and_print(f"未知定时任务类型: {message_type}", log_level="WARNING")
                     return
-                # print('test-result', result.__dict__)
                 if result.success:
                     feishu_adapter.sender.send_direct_message(admin_id, result)
                     debug_utils.log_and_print(f"✅ 定时消息已发送: {message_type}", log_level="INFO")

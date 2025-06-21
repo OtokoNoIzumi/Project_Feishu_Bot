@@ -293,6 +293,7 @@ class MessageHandler:
                     if self.app_controller:
                         pending_cache_service = self.app_controller.get_service('pending_cache')
                         if pending_cache_service:
+                            # 这里的"card"不是card_type，而是pending_cache_service的ui类型
                             bind_success = pending_cache_service.bind_ui_message(operation_id, sent_message_id, "card")
                             if not bind_success:
                                 debug_utils.log_and_print(f"❌ UI消息绑定失败: operation_id={operation_id}", log_level="ERROR")

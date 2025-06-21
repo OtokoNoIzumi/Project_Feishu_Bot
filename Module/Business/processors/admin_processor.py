@@ -74,6 +74,11 @@ class AdminProcessor(BaseProcessor):
                     "update_user",
                     self._execute_user_update_operation
                 )
+                # 注册广告更新操作执行器
+                pending_cache_service.register_executor(
+                    "update_ads",
+                    self._execute_ads_update_operation
+                )
 
     def is_admin_command(self, user_msg: str) -> bool:
         """检查是否是管理员指令"""
@@ -138,32 +143,34 @@ class AdminProcessor(BaseProcessor):
     @safe_execute("更新广告命令解析失败")
     def handle_update_ads_command(self, context: MessageContext, user_msg: str) -> ProcessResult:
         """处理更新广告命令"""
-        # 解析命令: "更新广告 BV1phM1zMEdK 04:50-06:05"
+        # 解析命令: "更新广告 BVID1122 06:55 - 07:57, 14:53 - 15:05" 或 "更新广告 BVID1122 " (清除广告)
         parts = user_msg.split(maxsplit=2)
-        if len(parts) != 3:
+        if len(parts) < 2:
             return ProcessResult.error_result(
-                "格式错误，请使用：更新广告 <BVID> <广告时间戳>\n"
-                "例如：更新广告 BV1phM1zMEdK 04:50-06:05"
+                "格式错误，请使用：更新广告 <BVID> [广告时间戳]\n"
+                "例如：更新广告 BVID1122 06:55 - 07:57, 14:53 - 15:05\n"
+                "或：更新广告 BVID1122 (不写时间戳，清除广告区间)"
             )
 
         bvid = parts[1]
-        ad_timestamps = parts[2]
+        # 支持空字符串时间戳（清除广告区间）
+        adtime_stamps = parts[2] if len(parts) == 3 else ""
 
-        # 验证BVID格式
-        if not bvid.startswith('BV'):
-            return ProcessResult.error_result("BVID格式错误，应以'BV'开头")
+        # 验证BVID格式（简单验证）
+        if not bvid.strip():
+            return ProcessResult.error_result("BVID不能为空")
 
-        # 验证时间戳格式（简单检查）
-        if not re.match(r'^\d{2}:\d{2}[\s]*-[\s]*\d{2}:\d{2}$', ad_timestamps):
-            return ProcessResult.error_result(
-                "时间戳格式错误，请使用格式：MM:SS-MM:SS\n"
-                "例如：04:50-06:05"
-            )
+        # 数据预处理
+        # 1. 全角逗号转换
+        if adtime_stamps:
+            adtime_stamps = adtime_stamps.replace('，', ',').strip()
 
-        # 通过卡片管理器生成确认卡片
-        card_content = self._create_update_ads_confirmation_card(bvid, ad_timestamps)
+        # 2. 合规化预检验——先不实现，后续看情况改成自动化处理，不要拒绝操作
 
-        return ProcessResult.success_result("interactive", card_content, parent_id=context.message_id)
+        # 使用新的缓存服务创建确认操作
+        return self._create_pending_ads_update_operation(
+            context, bvid.strip(), adtime_stamps, user_msg
+        )
 
     def handle_cancel_admin_operation(self, context: MessageContext) -> ProcessResult:
         """处理取消管理员操作"""
@@ -205,13 +212,67 @@ class AdminProcessor(BaseProcessor):
             'admin_input': admin_input,
             'finished': False,
             'result': '确认⏰',
-            'hold_time': timeout_text
+            'hold_time': timeout_text,
+            'operation_type': 'update_user'
         }
 
         # 创建缓存操作
         operation_id = pending_cache_service.create_operation(
             user_id=context.user_id,  # 管理员用户ID
             operation_type="update_user",
+            operation_data=operation_data,
+            admin_input=admin_input,
+            hold_time_seconds=timeout_seconds,
+            default_action="confirm"
+        )
+
+        # 添加操作ID到数据中
+        operation_data['operation_id'] = operation_id
+
+        # 使用admin卡片管理器生成卡片
+        return ProcessResult.success_result(
+            "admin_card_send",
+            operation_data,
+            parent_id=context.message_id
+        )
+
+    @require_app_controller("应用控制器不可用")
+    @require_service('pending_cache', "缓存业务服务不可用")
+    @safe_execute("创建待处理广告更新操作失败")
+    def _create_pending_ads_update_operation(self, context: MessageContext, bvid: str, adtime_stamps: str, admin_input: str) -> ProcessResult:
+        """
+        创建待处理的广告更新操作
+
+        Args:
+            context: 消息上下文
+            bvid: B站视频ID
+            adtime_stamps: 广告时间戳
+            admin_input: 管理员原始输入
+
+        Returns:
+            ProcessResult: 处理结果
+        """
+        pending_cache_service = self.app_controller.get_service('pending_cache')
+
+        # 从配置获取超时时间
+        timeout_seconds = self.get_operation_timeout("update_ads")
+        timeout_text = self._format_timeout_text(timeout_seconds)
+
+        # 准备操作数据
+        operation_data = {
+            'bvid': bvid,
+            'adtime_stamps': adtime_stamps,
+            'admin_input': admin_input,
+            'finished': False,
+            'result': '确认⏰',
+            'hold_time': timeout_text,
+            'operation_type': 'update_ads'
+        }
+
+        # 创建缓存操作
+        operation_id = pending_cache_service.create_operation(
+            user_id=context.user_id,  # 管理员用户ID
+            operation_type="update_ads",
             operation_data=operation_data,
             admin_input=admin_input,
             hold_time_seconds=timeout_seconds,
@@ -261,6 +322,41 @@ class AdminProcessor(BaseProcessor):
 
         except Exception as e:
             debug_utils.log_and_print(f"❌ 执行用户更新操作异常: {e}", log_level="ERROR")
+            return False
+
+    @safe_execute("执行广告更新操作失败")
+    def _execute_ads_update_operation(self, operation) -> bool:
+        """
+        执行广告更新操作（缓存服务回调）
+
+        Args:
+            operation: PendingOperation对象
+
+        Returns:
+            bool: 是否执行成功
+        """
+        try:
+            bvid = operation.operation_data.get('bvid')
+            adtime_stamps = operation.operation_data.get('adtime_stamps', '')
+
+            # 注意：adtime_stamps 可以为空字符串（清除广告区间）
+            if not bvid:
+                debug_utils.log_and_print("❌ 广告更新操作缺少BVID参数", log_level="ERROR")
+                return False
+
+            # 调用B站API
+            success, response_data = self._call_update_ads_api(bvid, adtime_stamps)
+
+            if success:
+                debug_utils.log_and_print(f"✅ 广告 {bvid} 时间戳更新成功 {response_data.get('message', '')}", log_level="INFO")
+                return True
+            else:
+                error_msg = response_data.get("message", "未知错误") if response_data else "API调用失败"
+                debug_utils.log_and_print(f"❌ 广告 {bvid} 时间戳更新失败: {error_msg}", log_level="ERROR")
+                return False
+
+        except Exception as e:
+            debug_utils.log_and_print(f"❌ 执行广告更新操作异常: {e}", log_level="ERROR")
             return False
 
     @require_app_controller("应用控制器不可用")
@@ -339,6 +435,73 @@ class AdminProcessor(BaseProcessor):
                     "admin_card_update",
                     result_data
                 )
+            case "confirm_ads_update":
+                # 确认广告更新操作
+                success = pending_cache_service.confirm_operation(operation_id)
+
+                if success:
+                    # 构建成功的卡片更新数据
+                    result_data = operation.operation_data.copy()
+                    result_data.update({
+                        'finished': True,
+                        'hold_time': '',
+                        'result': " | 已完成",
+                        'result_type': 'success'
+                    })
+
+                    return ProcessResult.success_result(
+                        "admin_card_update",
+                        result_data
+                    )
+
+                # 构建失败的卡片更新数据
+                result_data = operation.operation_data.copy()
+                result_data.update({
+                    'finished': True,
+                    'result': " | ❌ 执行失败",
+                    'result_type': 'error'
+                })
+
+                return ProcessResult.success_result(
+                    "admin_card_update",
+                    result_data
+                )
+            case "cancel_ads_update":
+                # 取消广告更新操作
+                success = pending_cache_service.cancel_operation(operation_id)
+
+                # 构建取消的卡片更新数据
+                result_data = operation.operation_data.copy()
+                result_data.update({
+                    'finished': True,
+                    'hold_time': '',
+                    'result': " | 操作取消",
+                    'result_type': 'info'
+                })
+
+                return ProcessResult.success_result(
+                    "admin_card_update",
+                    result_data
+                )
+            case "adtime_editor_change":
+                # 处理广告时间戳编辑器变更
+                new_adtime_stamps = action_value.get('value', '')
+
+                # 全角逗号转换处理
+                if new_adtime_stamps:
+                    new_adtime_stamps = new_adtime_stamps.replace('，', ',').strip()
+
+                # 更新操作数据
+                success = pending_cache_service.update_operation_data(
+                    operation_id,
+                    {'adtime_stamps': new_adtime_stamps}
+                )
+
+                if success:
+                    # 返回静默成功响应（编辑器交互不需要Toast）
+                    return ProcessResult.no_reply_result()
+                else:
+                    return ProcessResult.error_result("时间戳更新失败")
             case "update_data":
                 # 更新操作数据
                 new_data = action_value.get('new_data', {})
@@ -493,10 +656,14 @@ class AdminProcessor(BaseProcessor):
                 "Content-Type": "application/json",
                 "Connection": "close"
             }
+
+            # 合规化处理：确保空字符串正确传递（清除广告区间）
+            processed_timestamps = ad_timestamps.strip() if ad_timestamps else ""
+
             data = {
                 "admin_secret_key": self.bili_admin_secret,
                 "bvid": bvid,
-                "ad_timestamps": ad_timestamps
+                "ad_timestamps": processed_timestamps  # 支持空字符串（清除广告）
             }
             response = requests.post(url, headers=headers, data=json.dumps(data), timeout=10)
 

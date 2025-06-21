@@ -117,7 +117,7 @@ class CardHandler:
 
         action_tag = action.tag if hasattr(action, 'tag') else 'button'
 
-        # 处理select_static类型的特殊情况
+        # 处理不同类型的卡片交互事件
         if action_tag == 'select_static':
             # 对于select_static，action.option包含选中的值
             action_option = action.option if hasattr(action, 'option') else '0'
@@ -127,6 +127,19 @@ class CardHandler:
                 'tag': action_tag
             })
             content = 'select_change'
+        elif action_tag == 'input':
+            # 对于input类型，action.input_value包含用户输入的值
+            input_value = action.input_value if hasattr(action, 'input_value') else ''
+
+            # 处理空输入：单空格" "代替空字符串
+            if input_value == ' ':
+                input_value = ''
+                debug_utils.log_and_print("🔄 检测到单空格输入，转换为空字符串", log_level="INFO")
+            action_value.update({
+                'value': input_value,  # 将输入值添加到action_value中
+                'tag': action_tag
+            })
+            content = action_value.get('action', 'unknown_input_action')
         else:
             # 普通按钮动作
             content = action_value.get('action', 'unknown_action')
@@ -200,13 +213,26 @@ class CardHandler:
                 debug_utils.log_and_print("❌ 发送管理员卡片缺少chat_id或message_id", log_level="ERROR")
                 return False
 
+        # 动态选择卡片构建方法 - 修复硬编码问题
+        card_type = operation_data.get('operation_type', '')
+        if card_type:
+            # 根据操作类型动态选择构建方法
+            build_method_mapping = {
+                "update_user": "build_user_update_confirm_card",
+                "update_ads": "build_ads_update_confirm_card",
+            }
+            build_method_name = build_method_mapping.get(card_type, "build_user_update_confirm_card")
+        else:
+            debug_utils.log_and_print("⚠️ 缺少card_type，使用默认构建方法", log_level="WARNING")
+            build_method_name = "build_user_update_confirm_card"
+
         # 使用通用卡片操作处理
         return self._handle_card_operation_common(
             card_manager=self.admin_card_manager,
-            build_method_name="build_user_update_confirm_card",
+            build_method_name=build_method_name,
             data=operation_data,
             operation_type=operation_type,
-            card_config_type="admin_cards",
+            card_config_type=card_type,
             **kwargs
         )
 
@@ -252,7 +278,6 @@ class CardHandler:
                     debug_utils.log_and_print(f"❌ {card_config_type}卡片发送失败", log_level="ERROR")
                     return False, None
 
-                debug_utils.log_and_print(f"✅ {card_config_type}卡片发送成功", log_level="INFO")
                 return success, message_id
 
             case "update_response":
@@ -305,6 +330,9 @@ class CardHandler:
                 if operation.operation_type == "update_user":
                     card_manager = self.admin_card_manager
                     build_method_name = "build_user_update_confirm_card"
+                elif operation.operation_type == "update_ads":
+                    card_manager = self.admin_card_manager
+                    build_method_name = "build_ads_update_confirm_card"
                 else:
                     debug_utils.log_and_print(f"❌ 卡片更新失败: 未知操作类型 {operation.operation_type}", log_level="ERROR")
                     return False

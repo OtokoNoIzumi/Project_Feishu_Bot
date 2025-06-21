@@ -56,6 +56,43 @@ class AdminCardInteractionComponents:
         }
 
     @staticmethod
+    def get_ads_update_confirm_components(operation_id: str, bvid: str, adtime_stamps: str) -> Dict[str, Any]:
+        """
+        获取广告更新确认卡片的交互组件
+
+        Args:
+            operation_id: 操作ID
+            bvid: B站视频ID
+            adtime_stamps: 广告时间戳
+
+        Returns:
+            Dict[str, Any]: 包含所有交互组件的定义
+        """
+        return {
+            # 确认按钮组件
+            "confirm_action": {
+                "action": "confirm_ads_update",
+                "operation_id": operation_id,
+                "bvid": bvid,
+                "adtime_stamps": adtime_stamps
+            },
+
+            # 取消按钮组件
+            "cancel_action": {
+                "action": "cancel_ads_update",
+                "operation_id": operation_id
+            },
+
+            # 广告时间戳编辑器组件
+            "adtime_editor": {
+                "action": "adtime_editor_change",
+                "operation_id": operation_id,
+                "target_field": "adtime_stamps",  # 明确指定要更新的字段
+                "current_value": adtime_stamps or ""  # 当前时间戳值
+            }
+        }
+
+    @staticmethod
     def get_operation_type_mapping() -> Dict[str, str]:
         """
         获取操作类型映射 - 用于识别不同业务的交互组件
@@ -65,8 +102,8 @@ class AdminCardInteractionComponents:
         """
         return {
             "update_user": "get_user_update_confirm_components",
+            "update_ads": "get_ads_update_confirm_components",
             # 未来扩展:
-            # "update_ads": "get_ads_update_confirm_components",
             # "system_config": "get_system_config_components"
         }
 
@@ -84,6 +121,10 @@ class AdminCardManager(BaseCardManager):
             "admin_user_update_confirm": {
                 "template_id": "AAqdbwJ2cflOp",
                 "template_version": "1.1.0"
+            },
+            "admin_ads_update_confirm": {
+                "template_id": "AAqdJvEYwMDQ3",
+                "template_version": "1.0.0"
             }
         }
 
@@ -108,6 +149,28 @@ class AdminCardManager(BaseCardManager):
         """
         template_params = self._format_user_update_params(operation_data)
         content = self._build_template_content("admin_user_update_confirm", template_params)
+        return content
+
+    @card_build_safe("广告时间戳修改确认卡片构建失败")
+    def build_ads_update_confirm_card(self, operation_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        构建广告时间戳修改确认卡片内容
+
+        Args:
+            operation_data: 操作数据，包含以下字段：
+                - bvid: B站视频ID
+                - adtime_stamps: 广告时间戳
+                - admin_input: 管理员原始输入
+                - hold_time: 倒计时文本
+                - finished: 是否完成操作
+                - result: 业务完成状态文本
+                - operation_id: 操作ID（用于回调）
+
+        Returns:
+            Dict[str, Any]: 卡片内容
+        """
+        template_params = self._format_ads_update_params(operation_data)
+        content = self._build_template_content("admin_ads_update_confirm", template_params)
         return content
 
     # 参数格式化方法组
@@ -148,6 +211,46 @@ class AdminCardManager(BaseCardManager):
 
         return template_params
 
+    @card_build_safe("格式化广告更新参数失败")
+    def _format_ads_update_params(self, operation_data: Dict[str, Any]) -> Dict[str, Any]:
+        """将广告操作数据格式化为模板参数"""
+
+        # 获取基本数据
+        bvid = operation_data.get('bvid', '')
+        adtime_stamps = operation_data.get('adtime_stamps', '')
+        admin_input = operation_data.get('admin_input', '')
+        hold_time = operation_data.get('hold_time', '(30s)')
+        finished = operation_data.get('finished', False)
+        result = operation_data.get('result', '')
+        operation_id = operation_data.get('operation_id', '')
+
+        # 处理全角逗号转换 - 在显示时确保格式正确
+        processed_adtime_stamps = adtime_stamps.replace('，', ',') if adtime_stamps else ''
+
+        # 使用交互组件定义系统
+        interaction_components = AdminCardInteractionComponents.get_ads_update_confirm_components(
+            operation_id, bvid, processed_adtime_stamps
+        )
+
+        # 构建模板参数
+        template_params = {
+            "bvid": str(bvid),
+            "adtime_str": processed_adtime_stamps,  # 使用处理后的时间戳
+            "admin_input": admin_input,
+            "hold_time": hold_time,
+            "result": result,
+            "finished": finished,
+
+            # 1.0.0版本：标准化交互组件
+            "confirm_action_data": interaction_components["confirm_action"],
+            "cancel_action_data": interaction_components["cancel_action"],
+            "ad_stamps_data": interaction_components["adtime_editor"],
+
+            "extra_functions": []
+        }
+
+        return template_params
+
     @card_build_safe("更新卡片状态失败")
     def update_card_status(
         self, operation_data: Dict[str, Any], new_status: str, result_message: str = ""
@@ -181,119 +284,3 @@ class AdminCardManager(BaseCardManager):
 
         return self.build_user_update_confirm_card(updated_data)
 
-    # 回调处理方法组
-    @card_build_safe("处理卡片回调失败")
-    def handle_card_callback(self, action_data: Dict[str, Any], form_data: Dict[str, Any] = None) -> Dict[str, Any]:
-        """
-        处理卡片回调
-
-        Args:
-            action_data: 动作数据
-            form_data: 表单数据（可选）
-
-        Returns:
-            Dict[str, Any]: 处理结果
-        """
-        action = action_data.get('action', '')
-        operation_id = action_data.get('operation_id', '')
-
-        if not operation_id:
-            return {"success": False, "message": "缺少操作ID"}
-
-        match action:
-            case "confirm_user_update":
-                return self._handle_confirm_action(action_data, form_data)
-            case "cancel_user_update":
-                return self._handle_cancel_action(action_data)
-            case "update_user_type":
-                return self._handle_user_type_update(action_data, form_data)
-            case _:
-                return {"success": False, "message": f"未知操作: {action}"}
-
-    def _handle_confirm_action(self, action_data: Dict[str, Any], form_data: Dict[str, Any] = None) -> Dict[str, Any]:
-        """处理确认操作"""
-        # 这里返回需要传递给业务层的数据
-        result = {
-            "success": True,
-            "action": "confirm",
-            "operation_id": action_data.get('operation_id'),
-            "user_id": action_data.get('user_id'),
-            "user_type": action_data.get('user_type')
-        }
-
-        # 如果有表单数据，优先使用表单数据
-        if form_data:
-            if 'user_id_input' in form_data:
-                result['user_id'] = form_data['user_id_input']
-            if 'user_type_select' in form_data:
-                result['user_type'] = int(form_data['user_type_select'])
-
-        return result
-
-    def _handle_cancel_action(self, action_data: Dict[str, Any]) -> Dict[str, Any]:
-        """处理取消操作"""
-        return {
-            "success": True,
-            "action": "cancel",
-            "operation_id": action_data.get('operation_id')
-        }
-
-    def _handle_user_type_update(self, action_data: Dict[str, Any], form_data: Dict[str, Any] = None) -> Dict[str, Any]:
-        """处理用户类型更新（用于选择器变更）"""
-        new_user_type = action_data.get('selected_value')
-        if form_data and 'user_type_select' in form_data:
-            new_user_type = form_data['user_type_select']
-
-        return {
-            "success": True,
-            "action": "update_data",
-            "operation_id": action_data.get('operation_id'),
-            "new_data": {
-                "user_type": int(new_user_type) if new_user_type else 1
-            }
-        }
-
-    # 实用方法
-    def create_toast_response(self, message: str, toast_type: str = "success") -> Dict[str, Any]:
-        """
-        创建Toast响应
-
-        Args:
-            message: 提示消息
-            toast_type: 提示类型 ('success', 'error', 'warning', 'info')
-
-        Returns:
-            Dict[str, Any]: Toast响应数据
-        """
-        return {
-            "toast": {
-                "type": toast_type,
-                "content": message
-            }
-        }
-
-    def create_card_update_response(self, card_content: Dict[str, Any], toast_message: str = "") -> Dict[str, Any]:
-        """
-        创建卡片更新响应
-
-        Args:
-            card_content: 新的卡片内容
-            toast_message: Toast消息（可选）
-
-        Returns:
-            Dict[str, Any]: 卡片更新响应数据
-        """
-        response = {
-            "card": {
-                "type": "raw",
-                "data": card_content
-            }
-        }
-
-        if toast_message:
-            response["toast"] = {
-                "type": "success",
-                "content": toast_message
-            }
-
-        return response

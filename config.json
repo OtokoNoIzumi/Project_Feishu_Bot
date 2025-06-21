@@ -8,7 +8,7 @@
     "max_operations_per_user": 2,
     "operation_timeouts": {
       "update_user": 30,
-      "update_ads": 45,
+      "update_ads": 30,
       "system_config": 60,
       "delete_operation": 120
     },
@@ -16,7 +16,8 @@
   },
   "cards": {
     "reply_modes": {
-      "admin_cards": "reply",
+      "update_user": "reply",
+      "update_ads": "reply",
       "bilibili_cards": "new",
       "default": "reply"
     },

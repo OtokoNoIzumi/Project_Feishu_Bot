@@ -59,6 +59,9 @@ class MessageProcessor(BaseProcessor):
             "confirm_user_update": self._handle_pending_admin_card_action,
             "cancel_user_update": self._handle_pending_admin_card_action,
             "update_user_type": self._handle_pending_admin_card_action,
+            "confirm_ads_update": self._handle_pending_admin_card_action,
+            "cancel_ads_update": self._handle_pending_admin_card_action,
+            "adtime_editor_change": self._handle_pending_admin_card_action,
 
             # 卡片选择器动作
             "select_change": self._handle_select_action,
@@ -441,6 +444,8 @@ class MessageProcessor(BaseProcessor):
             )
             return False
 
+        pending_cache_service = self.app_controller.get_service('pending_cache')
+
         # 获取交互组件定义
         if component_getter == "get_user_update_confirm_components":
             components = AdminCardInteractionComponents.get_user_update_confirm_components(
@@ -460,7 +465,6 @@ class MessageProcessor(BaseProcessor):
                 old_value = operation.operation_data.get(target_field)
 
                 # 更新操作数据
-                pending_cache_service = self.app_controller.get_service('pending_cache')
                 success = pending_cache_service.update_operation_data(
                     operation.operation_id,
                     {target_field: new_value}
@@ -476,6 +480,22 @@ class MessageProcessor(BaseProcessor):
 
             debug_utils.log_and_print(f"⚠️ 无效的选项映射: {selected_option}", log_level="WARNING")
             return False
+
+        elif component_getter == "get_ads_update_confirm_components":
+            # 处理广告更新操作的选择器变更
+            components = AdminCardInteractionComponents.get_ads_update_confirm_components(
+                operation.operation_id,
+                operation.operation_data.get('bvid', ''),
+                operation.operation_data.get('adtime_stamps', '')
+            )
+
+            # 目前广告操作主要使用编辑器而非选择器
+            # 如果未来需要添加广告相关的选择器，可以在这里扩展
+            debug_utils.log_and_print(
+                f"ℹ️ 广告操作暂不支持选择器变更: {selected_option}",
+                log_level="INFO"
+            )
+            return True  # 静默处理，不报错
 
         # 未来可扩展其他操作类型的处理
         debug_utils.log_and_print(f"⚠️ 未实现的组件获取方法: {component_getter}", log_level="WARNING")

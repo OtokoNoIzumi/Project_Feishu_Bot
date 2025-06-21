@@ -70,9 +70,18 @@ class PendingOperation:
 
         return cls(**data)
 
-    def is_expired(self) -> bool:
-        """检查是否已过期"""
-        return self.get_remaining_time() <= 0
+    def is_expired(self, tolerance_seconds: int = 5) -> bool:
+        """
+        检查是否已过期
+
+        Args:
+            tolerance_seconds: 容忍度（秒），避免API延迟导致过早清理
+
+        Returns:
+            bool: 是否已过期
+        """
+        remaining = self.expire_time - time.time()
+        return remaining <= -tolerance_seconds  # 负容忍度，给API执行留时间
 
     def get_remaining_time(self) -> int:
         """获取剩余时间（秒）- 使用固定间隔计算避免时间跳跃"""
@@ -82,7 +91,7 @@ class PendingOperation:
     def get_remaining_time_text(self) -> str:
         """获取剩余时间文本 - 按用户规则优化显示"""
         remaining = self.get_remaining_time()
-        if remaining <= 0:
+        if remaining <= -10:  # 容忍度10秒
             return "已过期"
 
         # 按用户要求的显示规则
@@ -168,8 +177,8 @@ class PendingCacheService:
             for op_id, op_data in data.items():
                 operation = PendingOperation.from_dict(op_data)
 
-                # 检查是否已过期
-                if operation.is_expired():
+                # 检查是否已过期 - 使用宽容度避免API延迟导致误清理
+                if operation.is_expired(tolerance_seconds=5):
                     operation.status = OperationStatus.EXPIRED
                     continue
 
@@ -317,8 +326,8 @@ class PendingCacheService:
         if operation.status != OperationStatus.PENDING:
             return False
 
-        # 只有在非强制执行时才检查过期
-        if operation.is_expired() and not force_execute:
+        # 只有在非强制执行时才检查过期 - 使用宽容度避免API延迟导致误判
+        if operation.is_expired(tolerance_seconds=3) and not force_execute:
             operation.status = OperationStatus.EXPIRED
             self._save_operations()
             return False
@@ -363,8 +372,8 @@ class PendingCacheService:
         if operation.status != OperationStatus.PENDING:
             return False
 
-        # 只有在非强制执行时才检查过期
-        if operation.is_expired() and not force_execute:
+        # 只有在非强制执行时才检查过期 - 使用宽容度避免API延迟导致误判
+        if operation.is_expired(tolerance_seconds=1) and not force_execute:
             operation.status = OperationStatus.EXPIRED
             self._save_operations()
             return False
@@ -476,8 +485,8 @@ class PendingCacheService:
                 current_time = time.time()
 
                 for op_id, operation in list(self.pending_operations.items()):
-                    # 清理1：过期但未处理的操作
-                    if operation.status == OperationStatus.PENDING and operation.is_expired():
+                    # 清理1：过期但未处理的操作 - 使用较大的宽容度
+                    if operation.status == OperationStatus.PENDING and operation.is_expired(tolerance_seconds=30):
                         expired_ops.append(op_id)
                         debug_utils.log_and_print(f"⏰ 操作 {op_id} 已过期", log_level="INFO")
 
@@ -568,7 +577,7 @@ class PendingCacheService:
         to_remove = []
 
         for op_id, operation in self.pending_operations.items():
-            if operation.status == OperationStatus.PENDING and operation.is_expired():
+            if operation.status == OperationStatus.PENDING and operation.is_expired(tolerance_seconds=10):
                 to_remove.append((op_id, "expired"))
             elif operation.status in [OperationStatus.EXECUTED, OperationStatus.CANCELLED, OperationStatus.EXPIRED]:
                 to_remove.append((op_id, "completed"))
@@ -678,10 +687,10 @@ class PendingCacheService:
                     updated_count = 0
                     retry_count = 0
 
-                    # 第一步：独立的过期检测 - 优先处理所有过期操作
+                    # 第一步：独立的过期检测 - 优先处理所有过期操作，使用标准宽容度
                     expired_operations = []
                     for op_id, operation in list(self.pending_operations.items()):
-                        if operation.status == OperationStatus.PENDING and operation.is_expired():
+                        if operation.status == OperationStatus.PENDING and operation.is_expired(tolerance_seconds=5):
                             expired_operations.append((op_id, operation))
 
                     # 处理所有过期操作
