@@ -310,7 +310,6 @@ class MessageProcessor(BaseProcessor):
         """
         try:
             card_type = action_value.get("card_type", "menu")
-
             match card_type:
                 case "daily":
                     # 定时卡片由ScheduleProcessor处理
@@ -366,9 +365,9 @@ class MessageProcessor(BaseProcessor):
 
     # ================ 定时任务方法（供SchedulerService调用）================
 
-    def create_scheduled_message(self, message_type: str, **kwargs) -> ProcessResult:
+    def create_scheduled_message(self, scheduler_type: str, **kwargs) -> ProcessResult:
         """创建定时任务消息（供SchedulerService调用）"""
-        return self.schedule_processor.create_scheduled_message(message_type, **kwargs)
+        return self.schedule_processor.create_scheduled_message(scheduler_type, **kwargs)
 
     # ================ 状态查询方法 ================
 

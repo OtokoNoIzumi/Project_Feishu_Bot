@@ -23,7 +23,7 @@ from pathlib import Path
 
 from Module.Common.scripts.common import debug_utils
 from ..service_decorators import service_operation_safe, scheduler_operation_safe, external_api_safe, config_operation_safe
-from Module.Services.constants import ServiceNames, SchedulerTaskTypes
+from Module.Services.constants import ServiceNames, SchedulerTaskTypes, SchedulerConstKeys
 
 class ScheduledEvent:
     """定时任务事件"""
@@ -455,7 +455,7 @@ class SchedulerService:
         # 发布轻量级事件，数据生成交给MessageProcessor
         event = ScheduledEvent("daily_schedule_reminder", {
             "admin_id": admin_id,
-            "message_type": SchedulerTaskTypes.DAILY_SCHEDULE,
+            SchedulerConstKeys.SCHEDULER_TYPE: SchedulerTaskTypes.DAILY_SCHEDULE,
             "services_status": services_status  # 添加服务状态信息
         })
 
@@ -505,7 +505,7 @@ class SchedulerService:
             "admin_id": admin_id,
             "sources": sources,
             "api_result": api_result,
-            "message_type": SchedulerTaskTypes.BILI_UPDATES
+            SchedulerConstKeys.SCHEDULER_TYPE: SchedulerTaskTypes.BILI_UPDATES
         })
 
         self._publish_event(event)

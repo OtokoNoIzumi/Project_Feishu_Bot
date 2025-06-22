@@ -9,7 +9,7 @@ from typing import Dict, Any, List, Optional
 from datetime import datetime
 from .base_processor import BaseProcessor, MessageContext, ProcessResult, require_service, safe_execute
 from Module.Common.scripts.common import debug_utils
-from Module.Services.constants import SchedulerTaskTypes, ServiceNames
+from Module.Services.constants import SchedulerTaskTypes, ServiceNames, ResponseTypes
 
 
 class ScheduleProcessor(BaseProcessor):
@@ -20,18 +20,18 @@ class ScheduleProcessor(BaseProcessor):
     """
 
     @safe_execute("创建定时消息失败")
-    def create_scheduled_message(self, message_type: str, **kwargs) -> ProcessResult:
+    def create_scheduled_message(self, scheduler_type: str, **kwargs) -> ProcessResult:
         """
         创建定时任务消息（供SchedulerService调用）
 
         Args:
-            message_type: 消息类型 ('daily_schedule', 'bilibili_updates')
+            scheduler_type: 定时任务类型 ('daily_schedule', 'bilibili_updates')
             **kwargs: 消息相关参数
 
         Returns:
             ProcessResult: 包含富文本卡片的处理结果
         """
-        match message_type:
+        match scheduler_type:
             case SchedulerTaskTypes.DAILY_SCHEDULE:
                 services_status = kwargs.get('services_status', None)
                 return self.create_daily_schedule_message(services_status)
@@ -40,7 +40,7 @@ class ScheduleProcessor(BaseProcessor):
                 api_result = kwargs.get('api_result', None)
                 return self.create_bilibili_updates_message(sources, api_result)
             case _:
-                return ProcessResult.error_result(f"不支持的定时消息类型: {message_type}")
+                return ProcessResult.error_result(f"不支持的定时消息类型: {scheduler_type}")
 
     @safe_execute("创建每日信息汇总失败")
     def create_daily_schedule_message(self, services_status: Dict[str, Any] = None) -> ProcessResult:
@@ -869,7 +869,7 @@ class ScheduleProcessor(BaseProcessor):
                 # 使用原始数据重新生成卡片，已读状态会自动更新
                 updated_card = self.create_daily_summary_card(original_analysis_data)
 
-                return ProcessResult.success_result("card_action_response", {
+                return ProcessResult.success_result(ResponseTypes.SCHEDULER_CARD_UPDATE_BILI_BUTTON, {
                     "toast": {
                         "type": "success",
                         "content": f"已标记第{video_index + 1}个推荐为已读"
@@ -881,7 +881,7 @@ class ScheduleProcessor(BaseProcessor):
                 })
             else:
                 # 如果没有原始数据，降级处理
-                return ProcessResult.success_result("card_action_response", {
+                return ProcessResult.success_result(ResponseTypes.SCHEDULER_CARD_UPDATE_BILI_BUTTON, {
                     "toast": {
                         "type": "success",
                         "content": f"已标记第{video_index + 1}个推荐为已读"
@@ -890,7 +890,7 @@ class ScheduleProcessor(BaseProcessor):
         except Exception as e:
             # 如果重新生成失败，只返回toast
             debug_utils.log_and_print(f"❌ 重新生成定时卡片失败: {str(e)}", log_level="ERROR")
-            return ProcessResult.success_result("card_action_response", {
+            return ProcessResult.success_result(ResponseTypes.SCHEDULER_CARD_UPDATE_BILI_BUTTON, {
                 "toast": {
                     "type": "success",
                     "content": f"已标记第{video_index + 1}个推荐为已读"

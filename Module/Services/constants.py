@@ -60,8 +60,8 @@ class ResponseTypes:
     ADMIN_CARD_SEND = "admin_card_send"
     ADMIN_CARD_UPDATE = "admin_card_update"
     BILI_CARD_UPDATE = "bili_card_update"
+    SCHEDULER_CARD_UPDATE_BILI_BUTTON = "scheduler_card_update_bili_button"
 
-    CARD_ACTION_RESPONSE = "card_action_response"
     RICH_TEXT = "rich_text"
     IMAGE_LIST = "image_list"
     BILI_VIDEO_DATA = "bili_video_data"
@@ -226,3 +226,6 @@ class BusinessConstants:
 class SchedulerTaskTypes:
     DAILY_SCHEDULE = "daily_schedule"
     BILI_UPDATES = "bili_updates"
+
+class SchedulerConstKeys:
+    SCHEDULER_TYPE = "scheduler_type"

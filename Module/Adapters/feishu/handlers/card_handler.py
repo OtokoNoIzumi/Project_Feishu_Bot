@@ -73,7 +73,6 @@ class CardHandler:
 
         # 调用业务处理器，由业务层判断处理类型
         result = self.message_processor.process_message(context)
-
         # 统一处理成功和失败的响应，减少分支嵌套
         if result.success:
             # 特殊类型处理
@@ -89,6 +88,8 @@ class CardHandler:
                         result.response_content,
                         operation_type=CardOperationTypes.UPDATE_RESPONSE
                     )
+                case ResponseTypes.SCHEDULER_CARD_UPDATE_BILI_BUTTON:
+                    return P2CardActionTriggerResponse(result.response_content)
                 case _:
                     # 默认成功响应
                     return P2CardActionTriggerResponse({

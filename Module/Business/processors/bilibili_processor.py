@@ -9,7 +9,7 @@ import json
 from typing import Dict, Any, List
 from .base_processor import BaseProcessor, MessageContext, ProcessResult, require_service, safe_execute
 from Module.Common.scripts.common import debug_utils
-
+from Module.Services.constants import ServiceNames, ResponseTypes
 
 class BilibiliProcessor(BaseProcessor):
     """
@@ -68,7 +68,7 @@ class BilibiliProcessor(BaseProcessor):
             ProcessResult: 处理结果，包含格式化后的视频数据
         """
         # 尝试获取notion服务
-        notion_service = self.app_controller.get_service('notion')
+        notion_service = self.app_controller.get_service(ServiceNames.NOTION)
 
         # 判断数据来源：缓存 vs Notion
         if cached_data:
@@ -77,7 +77,6 @@ class BilibiliProcessor(BaseProcessor):
         else:
             # 调用notion服务获取多个B站视频推荐（1+3模式）
             videos_data = notion_service.get_bili_videos_multiple()
-            print('test-',videos_data)
 
             if not videos_data.get("success", False):
                 # debug_utils.log_and_print("⚠️ 未获取到有效的B站视频", log_level="WARNING")
@@ -114,7 +113,7 @@ class BilibiliProcessor(BaseProcessor):
             'additional_videos': additional_videos
         }
 
-        return ProcessResult.success_result("bili_video_data", video_data)
+        return ProcessResult.success_result(ResponseTypes.BILI_VIDEO_DATA, video_data)
 
     def convert_to_bili_app_link(self, web_url: str) -> str:
         """
@@ -165,7 +164,7 @@ class BilibiliProcessor(BaseProcessor):
             ProcessResult: 包含更新后卡片数据的处理结果
         """
         # 1. 校验依赖服务
-        notion_service = self.app_controller.get_service('notion')
+        notion_service = self.app_controller.get_service(ServiceNames.NOTION)
 
         # 2. 先获取video_index，驱动后续参数
         video_index = action_value.get("video_index", "0")
@@ -195,10 +194,10 @@ class BilibiliProcessor(BaseProcessor):
                 debug_utils.log_and_print(f"⚠️ 更新缓存数据已读状态失败: {e}", log_level="WARNING")
 
             result = self.process_bili_video_async(cached_video_data)
-            if result.success and result.response_type == "bili_video_data":
+            if result.success and result.response_type == ResponseTypes.BILI_VIDEO_DATA:
                 video_data = result.response_content
                 return ProcessResult.success_result(
-                    "bili_card_update",
+                    ResponseTypes.BILI_CARD_UPDATE,
                     {
                         'main_video': video_data['main_video'],
                         'additional_videos': video_data['additional_videos']
@@ -210,10 +209,10 @@ class BilibiliProcessor(BaseProcessor):
         # 6. 缓存不可用或处理失败，重新获取
         debug_utils.log_and_print("🔄 重新获取B站视频数据", log_level="INFO")
         result = self.process_bili_video_async()
-        if result.success and result.response_type == "bili_video_data":
+        if result.success and result.response_type == ResponseTypes.BILI_VIDEO_DATA:
             video_data = result.response_content
             return ProcessResult.success_result(
-                "bili_card_update",
+                ResponseTypes.BILI_CARD_UPDATE,
                 {
                     'main_video': video_data['main_video'],
                     'additional_videos': video_data['additional_videos']

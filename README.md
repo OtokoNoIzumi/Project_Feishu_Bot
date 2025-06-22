@@ -257,3 +257,71 @@ Project_Feishu_Bot/
 ## 许可证
 
 MIT License
+
+## 一些备忘
+
+检查富文本的消息？—message_type为post，感觉可以先不去解析
+2025-06-22 15:46:32,661 DEBUG { 'challenge': None,
+  'event': { 'message': { 'chat_id': 'oc_00da7eba51fbc1fdcf5cf40ab332bf7e',
+                          'chat_type': 'p2p',
+                          'content': '{"title":"写个小作文","content":[[{"tag":"text","text":"重新刷新prompt","style":[]}],[{"tag":"img","image_key":"img_v3_02ng_f530c621-511e-4155-885f-84327da9255g","width":850,"height":1188}]]}',
+                          'create_time': '1750578393311',
+                          'mentions': None,
+                          'message_id': 'om_x100b4a4f035f60b80f37721ad0ea286',
+                          'message_type': 'post',
+                          'parent_id': None,
+                          'root_id': None,
+                          'thread_id': None,
+                          'update_time': '1750578393311',
+                          'user_agent': None},
+             'sender': { 'sender_id': { 'open_id': 'ou_08158e2f511912a18063fc6072ce42da',
+                                        'union_id': 'on_f30d6f403ec60cad71c6c9c1e1da1ce0',
+                                        'user_id': None},
+                         'sender_type': 'user',
+                         'tenant_key': '101c4da96edf975e'}},
+  'header': { 'app_id': 'cli_a6bf8e1105de900b',
+              'create_time': '1750578393583',
+              'event_id': 'e076931bdbe7eda2f26c0bafe475c7c7',
+              'event_type': 'im.message.receive_v1',
+              'tenant_key': '101c4da96edf975e',
+              'token': ''},
+  'schema': '2.0',
+  'token': None,
+  'ts': None,
+  'type': None,
+  'uuid': None}
+
+pin和置顶没消息
+
+任务是一个消息，点击完成任务不是消息
+2025-06-22 15:53:30,857 DEBUG 🔍 P2ImMessageReceiveV1对象详细信息 (pprint):
+2025-06-22 15:53:30,857 DEBUG { 'challenge': None,
+  'event': { 'message': { 'chat_id': 'oc_00da7eba51fbc1fdcf5cf40ab332bf7e',
+                          'chat_type': 'p2p',
+                          'content': '{"task_id":"96dba4b6-1fe7-4ce4-abd5-fbdf7344671a","summary":{"title":"","content":[[{"tag":"text","text":"增加卡片导入","style":[]}]]},"due_time":"1750550400000"}',
+                          'create_time': '1750578811485',
+                          'mentions': None,
+                          'message_id': 'om_x100b4a4f29785fe40f38a30d3d08f8e',
+                          'message_type': 'todo',
+                          'parent_id': None,
+                          'root_id': None,
+                          'thread_id': None,
+                          'update_time': '1750578811485',
+                          'user_agent': None},
+             'sender': { 'sender_id': { 'open_id': 'ou_08158e2f511912a18063fc6072ce42da',
+                                        'union_id': 'on_f30d6f403ec60cad71c6c9c1e1da1ce0',
+                                        'user_id': None},
+                         'sender_type': 'user',
+                         'tenant_key': '101c4da96edf975e'}},
+  'header': { 'app_id': 'cli_a6bf8e1105de900b',
+              'create_time': '1750578811799',
+              'event_id': 'bb8c2ecdde189373ecb4d0d04c97fbbc',
+              'event_type': 'im.message.receive_v1',
+              'tenant_key': '101c4da96edf975e',
+              'token': ''},
+  'schema': '2.0',
+  'token': None,
+  'ts': None,
+  'type': None,
+  'uuid': None}
+2025-06-22 15:53:30,857 DEBUG   - 关键信息: 此消息非回复消息 (parent_id is None or empty)
