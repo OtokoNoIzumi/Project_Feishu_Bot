@@ -14,7 +14,7 @@ class TextProcessor(BaseProcessor):
     处理基础的文本指令和默认回复
     """
 
-    def handle_help_command(self, context: MessageContext) -> ProcessResult:
+    def get_help(self, context: MessageContext) -> ProcessResult:
         """处理帮助指令"""
         help_text = """<b>🤖 飞书机器人助手 v3.1</b>
 
@@ -79,13 +79,13 @@ class TextProcessor(BaseProcessor):
 
         return ProcessResult.success_result("text", {"text": help_text}, parent_id=context.message_id)
 
-    def handle_greeting_command(self, context: MessageContext) -> ProcessResult:
+    def greeting(self, context: MessageContext) -> ProcessResult:
         """处理问候指令"""
         return ProcessResult.success_result("text", {
             "text": f"你好，{context.user_name}！有什么我可以帮你的吗？"
         }, parent_id=context.message_id)
 
-    def handle_default_message(self, context: MessageContext) -> ProcessResult:
+    def default_reply(self, context: MessageContext) -> ProcessResult:
         """处理默认消息（未匹配到特定指令的文本）"""
         user_msg = context.content
         # 限制长度避免过长

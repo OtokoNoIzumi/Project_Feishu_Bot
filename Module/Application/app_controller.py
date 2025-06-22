@@ -6,9 +6,9 @@
 """
 
 import os
-import sys
 from typing import Dict, Any, Optional, Tuple
 from Module.Common.scripts.common import debug_utils
+from Module.Services import AVAILABLE_SERVICES
 from Module.Services.constants import ServiceNames, SchedulerTaskTypes
 
 
@@ -126,7 +126,7 @@ class AppController:
 
             service_info['instance'] = instance
             service_info['status'] = 'initialized'
-            self.initialized_services.add(service_name) # 延迟到post_init后标记
+            self.initialized_services.add(service_name)  # 延迟到post_init后标记
 
             return True
 
@@ -218,21 +218,21 @@ class AppController:
                     pass
 
             return status
-        else:
-            # 返回所有服务状态
-            all_status = {
-                "controller": {
-                    "project_root": self.project_root_path,
-                    "total_services": len(self.services),
-                    "initialized_services": sum(1 for name, info in self.services.items() if info.get("status") == 'initialized')
-                },
-                "services": {}
-            }
 
-            for name in self.services:
-                all_status["services"][name] = self.get_service_status(name)
+        # 返回所有服务状态
+        all_status = {
+            "controller": {
+                "project_root": self.project_root_path,
+                "total_services": len(self.services),
+                "initialized_services": sum(1 for name, info in self.services.items() if info.get("status") == 'initialized')
+            },
+            "services": {}
+        }
 
-            return all_status
+        for name in self.services:
+            all_status["services"][name] = self.get_service_status(name)
+
+        return all_status
 
     def initialize_all_services(self) -> Dict[str, bool]:
         """
@@ -263,9 +263,6 @@ class AppController:
         results = {}
 
         try:
-            # 导入服务注册表
-            from Module.Services import AVAILABLE_SERVICES
-
             for service_name, service_class in AVAILABLE_SERVICES.items():
                 # 根据服务类型设置默认配置
                 match service_name:
@@ -419,8 +416,8 @@ class AppController:
                     "audio_data": audio_data,
                     "text": text
                 }
-            else:
-                return {"success": False, "error": error_msg}
+
+            return {"success": False, "error": error_msg}
 
         except Exception as e:
             return {"success": False, "error": str(e)}
@@ -445,20 +442,23 @@ class AppController:
 
             if image_paths is None:
                 return {"success": False, "error": "图像生成故障"}
-            elif len(image_paths) == 0:
+
+            if len(image_paths) == 0:
                 return {"success": False, "error": "图像生成失败"}
-            else:
-                return {
-                    "success": True,
-                    "image_paths": image_paths,
-                    "prompt": prompt
-                }
+
+            return {
+                "success": True,
+                "image_paths": image_paths,
+                "prompt": prompt
+            }
 
         except Exception as e:
             return {"success": False, "error": str(e)}
 
-    def api_process_image(self, image_base64: str, mime_type: str = "image/jpeg",
-                         file_name: str = "image.jpg", file_size: int = 0) -> Dict[str, Any]:
+    def api_process_image(
+            self, image_base64: str, mime_type: str = "image/jpeg",
+            file_name: str = "image.jpg", file_size: int = 0
+    ) -> Dict[str, Any]:
         """
         API: 处理图像转换
         独立接口，可被任何前端调用
@@ -483,14 +483,15 @@ class AppController:
 
             if image_paths is None:
                 return {"success": False, "error": "图像处理故障"}
-            elif len(image_paths) == 0:
+
+            if len(image_paths) == 0:
                 return {"success": False, "error": "图像处理失败"}
-            else:
-                return {
-                    "success": True,
-                    "image_paths": image_paths,
-                    "original_file": file_name
-                }
+
+            return {
+                "success": True,
+                "image_paths": image_paths,
+                "original_file": file_name
+            }
 
         except Exception as e:
             return {"success": False, "error": str(e)}
@@ -575,12 +576,12 @@ class AppController:
                     "message": f"任务 '{task_name}' 已移除",
                     "data": {"task_name": task_name}
                 }
-            else:
-                return {
-                    "success": False,
-                    "error": f"移除任务失败: {result}",
-                    "data": None
-                }
+
+            return {
+                "success": False,
+                "error": f"移除任务失败: {result}",
+                "data": None
+            }
         except Exception as e:
             debug_utils.log_and_print(f"API移除定时任务失败: {e}", log_level="ERROR")
             return {
@@ -607,12 +608,12 @@ class AppController:
                     "message": "成功获取B站视频推荐",
                     "data": result
                 }
-            else:
-                return {
-                    "success": False,
-                    "error": "获取B站视频推荐失败",
-                    "data": None
-                }
+
+            return {
+                "success": False,
+                "error": "获取B站视频推荐失败",
+                "data": None
+            }
         except Exception as e:
             debug_utils.log_and_print(f"API获取B站视频失败: {e}", log_level="ERROR")
             return {
@@ -637,12 +638,12 @@ class AppController:
                     "message": f"成功获取B站视频推荐：1个主推荐+{len(result.get('additional_videos', []))}个额外推荐",
                     "data": result
                 }
-            else:
-                return {
-                    "success": False,
-                    "error": "获取B站视频推荐失败",
-                    "data": None
-                }
+
+            return {
+                "success": False,
+                "error": "获取B站视频推荐失败",
+                "data": None
+            }
         except Exception as e:
             debug_utils.log_and_print(f"API获取B站视频列表失败: {e}", log_level="ERROR")
             return {
@@ -668,12 +669,12 @@ class AppController:
                     "message": f"成功获取B站视频统计：共{total_count}个未读视频",
                     "data": result
                 }
-            else:
-                return {
-                    "success": False,
-                    "error": "获取B站视频统计失败",
-                    "data": None
-                }
+
+            return {
+                "success": False,
+                "error": "获取B站视频统计失败",
+                "data": None
+            }
         except Exception as e:
             debug_utils.log_and_print(f"API获取B站视频统计失败: {e}", log_level="ERROR")
             return {
@@ -698,15 +699,15 @@ class AppController:
             if success and result:
                 return {
                     "success": True,
-                    "message": f"视频已标记为已读",
+                    "message": "视频已标记为已读",
                     "data": {"pageid": pageid, "read_status": True}
                 }
-            else:
-                return {
-                    "success": False,
-                    "error": f"标记视频已读失败: {result}",
-                    "data": None
-                }
+
+            return {
+                "success": False,
+                "error": f"标记视频已读失败: {result}",
+                "data": None
+            }
         except Exception as e:
             debug_utils.log_and_print(f"API标记视频已读失败: {e}", log_level="ERROR")
             return {

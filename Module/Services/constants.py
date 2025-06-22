@@ -54,6 +54,10 @@ class MessageTypes:
     AUDIO = "audio"
     MENU_CLICK = "menu_click"
     CARD_ACTION = "card_action"
+
+class MenuClickTypes:
+    GET_BILI_URL = "get_bili_url"
+
 # ---------- Buisiness层常量--------------
 # ========== ProcessResult类型常量 ==========
 class ResponseTypes:
@@ -72,6 +76,15 @@ class ResponseTypes:
     TEXT = "text"
     AUDIO = "audio"
     IMAGE = "image"
+
+class ProcessResultConstKeys:
+    NEXT_ACTION = "next_action"
+
+class ProcessResultNextAction:
+    PROCESS_TTS = "process_tts"
+    PROCESS_IMAGE_GENERATION = "process_image_generation"
+    PROCESS_IMAGE_CONVERSION = "process_image_conversion"
+    PROCESS_BILI_VIDEO = "process_bili_video"
 
 # ========== 卡片动作名称常量 ==========
 class CardActions:

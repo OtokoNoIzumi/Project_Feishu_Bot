@@ -9,7 +9,7 @@ from typing import Dict, Any, List, Optional
 from datetime import datetime
 from .base_processor import BaseProcessor, MessageContext, ProcessResult, require_service, safe_execute
 from Module.Common.scripts.common import debug_utils
-from Module.Services.constants import SchedulerTaskTypes, ServiceNames, ResponseTypes
+from Module.Services.constants import SchedulerTaskTypes, ServiceNames, ResponseTypes, SchedulerConstKeys
 
 
 class ScheduleProcessor(BaseProcessor):
@@ -20,30 +20,36 @@ class ScheduleProcessor(BaseProcessor):
     """
 
     @safe_execute("创建定时消息失败")
-    def create_scheduled_message(self, scheduler_type: str, **kwargs) -> ProcessResult:
+    def create_task(self, event_data: Dict[str, Any]) -> ProcessResult:
         """
-        创建定时任务消息（供SchedulerService调用）
+        创建定时消息（统一入口，路由逻辑封装在内部）
 
         Args:
-            scheduler_type: 定时任务类型 ('daily_schedule', 'bilibili_updates')
-            **kwargs: 消息相关参数
+            scheduler_type: 定时任务类型
+            event_data: 事件数据
 
         Returns:
-            ProcessResult: 包含富文本卡片的处理结果
+            ProcessResult: 处理结果
         """
-        match scheduler_type:
-            case SchedulerTaskTypes.DAILY_SCHEDULE:
-                services_status = kwargs.get('services_status', None)
-                return self.create_daily_schedule_message(services_status)
-            case SchedulerTaskTypes.BILI_UPDATES:
-                sources = kwargs.get('sources', None)
-                api_result = kwargs.get('api_result', None)
-                return self.create_bilibili_updates_message(sources, api_result)
-            case _:
-                return ProcessResult.error_result(f"不支持的定时消息类型: {scheduler_type}")
+
+        scheduler_type = event_data.get(SchedulerConstKeys.SCHEDULER_TYPE)
+        try:
+            match scheduler_type:
+                case SchedulerTaskTypes.DAILY_SCHEDULE:
+                    services_status = event_data.get('services_status')
+                    return self.daily_summary(services_status)
+                case SchedulerTaskTypes.BILI_UPDATES:
+                    sources = event_data.get('sources')
+                    api_result = event_data.get('api_result')
+                    return self.bili_notification(sources, api_result)
+                case _:
+                    return ProcessResult.error_result(f"不支持的定时任务类型: {scheduler_type}")
+        except Exception as e:
+            debug_utils.log_and_print(f"创建定时消息失败: {e}", log_level="ERROR")
+            return ProcessResult.error_result(f"创建定时消息失败: {str(e)}")
 
     @safe_execute("创建每日信息汇总失败")
-    def create_daily_schedule_message(self, services_status: Dict[str, Any] = None) -> ProcessResult:
+    def daily_summary(self, services_status: Dict[str, Any] = None) -> ProcessResult:
         """创建每日信息汇总消息（7:30定时卡片容器）"""
         # 构建B站信息cache分析数据
         analysis_data = self.build_bilibili_cache_analysis()
@@ -424,7 +430,7 @@ class ScheduleProcessor(BaseProcessor):
         return content
 
     @safe_execute("创建B站更新提醒失败")
-    def create_bilibili_updates_message(self, sources: Optional[List[str]] = None, api_result: Dict[str, Any] = None) -> ProcessResult:
+    def bili_notification(self, sources: Optional[List[str]] = None, api_result: Dict[str, Any] = None) -> ProcessResult:
         """创建B站更新提醒消息"""
         # 生成B站更新通知卡片，传入API结果数据
         card_content = self.create_bilibili_updates_card(sources, api_result)

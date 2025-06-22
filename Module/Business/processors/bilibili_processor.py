@@ -9,7 +9,7 @@ import json
 from typing import Dict, Any, List
 from .base_processor import BaseProcessor, MessageContext, ProcessResult, require_service, safe_execute
 from Module.Common.scripts.common import debug_utils
-from Module.Services.constants import ServiceNames, ResponseTypes
+from Module.Services.constants import ServiceNames, ResponseTypes, ProcessResultConstKeys, ProcessResultNextAction
 
 class BilibiliProcessor(BaseProcessor):
     """
@@ -31,20 +31,20 @@ class BilibiliProcessor(BaseProcessor):
                     # 检查缓存是否需要更新
                     if not notion_service._is_cache_valid() or not notion_service.cache_data.get(notion_service.bili_cache_key):
                         need_cache_sync = True
-                        cache_status_msg = "正在从Notion同步最新数据，首次获取可能需要较长时间，请稍候..."
+                        cache_status_msg = "正在从Notion同步最新数据，获取可能需要十秒左右，请稍候..."
 
             # 只有在需要同步缓存时才发送提示消息
             if need_cache_sync:
                 result = ProcessResult.success_result("text", {
                     "text": cache_status_msg,
-                    "next_action": "process_bili_video",
+                    ProcessResultConstKeys.NEXT_ACTION: ProcessResultNextAction.PROCESS_BILI_VIDEO,
                     "user_id": context.user_id
                 })
             else:
                 # 直接返回异步处理指令，不发送提示消息
                 result = ProcessResult.success_result("text", {
                     "text": "",  # 空文本，不显示
-                    "next_action": "process_bili_video",
+                    ProcessResultConstKeys.NEXT_ACTION: ProcessResultNextAction.PROCESS_BILI_VIDEO,
                     "user_id": context.user_id
                 })
 
@@ -220,7 +220,7 @@ class BilibiliProcessor(BaseProcessor):
             )
         return ProcessResult.error_result("获取更新数据失败")
 
-    def handle_bili_text_command(self, context: MessageContext) -> ProcessResult:
+    def video_menu(self, context: MessageContext) -> ProcessResult:
         """处理B站/视频文本指令（等同于菜单点击get_bili_url）"""
         try:
             # 直接复用菜单点击的B站处理逻辑
@@ -228,17 +228,3 @@ class BilibiliProcessor(BaseProcessor):
 
         except Exception as e:
             return ProcessResult.error_result(f"B站视频指令处理失败: {str(e)}")
-
-    def handle_menu_click(self, context: MessageContext) -> ProcessResult:
-        """处理菜单点击"""
-        event_key = context.content
-
-        # 根据菜单键处理不同功能
-        if event_key == "get_bili_url":
-            debug_utils.log_and_print(f"📺 B站视频推荐 by [{context.user_name}]", log_level="INFO")
-            return self.handle_bili_video_request(context)
-        else:
-            debug_utils.log_and_print(f"❓ 未知菜单键: {event_key}", log_level="INFO")
-            return ProcessResult.success_result("text", {
-                "text": f"收到菜单点击：{event_key}，功能开发中..."
-            }, parent_id=context.message_id)

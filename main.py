@@ -17,8 +17,8 @@ import asyncio
 import threading
 import time
 from pathlib import Path
-from dotenv import load_dotenv
 import argparse
+from dotenv import load_dotenv
 
 # 添加项目根目录到Python路径
 current_dir = Path(__file__).parent
@@ -27,7 +27,7 @@ sys.path.insert(0, str(current_dir))
 from Module.Application.app_controller import AppController
 from Module.Business.message_processor import MessageProcessor
 from Module.Adapters import FeishuAdapter
-from Module.Services.constants import ServiceNames, SchedulerTaskTypes, SchedulerConstKeys
+from Module.Services.constants import ServiceNames, SchedulerConstKeys
 from Module.Common.scripts.common import debug_utils
 
 
@@ -65,29 +65,17 @@ def setup_application():
         def handle_scheduled_event(event):
             try:
                 admin_id = event.data.get(SchedulerConstKeys.ADMIN_ID)
-                scheduler_type = event.data.get(SchedulerConstKeys.SCHEDULER_TYPE)
 
                 if not admin_id:
                     debug_utils.log_and_print("没找到管理员ID，无法启动定时任务", log_level="WARNING")
                     return
 
-                match scheduler_type:
-                    case SchedulerTaskTypes.DAILY_SCHEDULE:
-                        services_status = event.data.get('services_status')
-                        result = message_processor.create_scheduled_message(scheduler_type, services_status=services_status)
-                    case SchedulerTaskTypes.BILI_UPDATES:
-                        sources = event.data.get('sources')
-                        api_result = event.data.get('api_result')
-                        result = message_processor.create_scheduled_message(
-                            scheduler_type, sources=sources, api_result=api_result
-                        )
-                    case _:
-                        debug_utils.log_and_print(f"未知定时任务类型: {scheduler_type}", log_level="WARNING")
-                        return
+                # 调用定时处理器的统一接口
+                result = message_processor.schedule.create_task(event.data)
 
                 if result.success:
                     feishu_adapter.sender.send_direct_message(admin_id, result)
-                    debug_utils.log_and_print(f"✅ 定时消息已发送: {scheduler_type}", log_level="INFO")
+                    debug_utils.log_and_print(f"✅ 定时任务消息已发送: {event.data.get(SchedulerConstKeys.SCHEDULER_TYPE)}", log_level="INFO")
                 else:
                     debug_utils.log_and_print(f"❌ 消息生成失败: {result.error_message}", log_level="ERROR")
 
@@ -104,7 +92,7 @@ def setup_application():
 
 def setup_scheduled_tasks(app_controller):
     """配置定时任务"""
-    scheduler_service = app_controller.get_service('scheduler')
+    scheduler_service = app_controller.get_service(ServiceNames.SCHEDULER)
     if not scheduler_service:
         debug_utils.log_and_print("❌ 调度器服务不可用，跳过定时任务配置", log_level="WARNING")
         return
@@ -149,7 +137,7 @@ def check_system_status(app_controller):
                     print(f"  - {service_name}: {service_info['status']}")
 
         # 特别检查图像服务的认证状态
-        image_service = app_controller.get_service('image')
+        image_service = app_controller.get_service(ServiceNames.IMAGE)
         if image_service and image_service.is_available():
             try:
                 auth_status = image_service.get_auth_status()
@@ -174,10 +162,7 @@ def check_system_status(app_controller):
 
 def run_scheduler_loop(app_controller):
     """运行调度器主循环"""
-    scheduler_service = app_controller.get_service('scheduler')
-    if not scheduler_service:
-        debug_utils.log_and_print("❌ 调度器服务不可用，无法启动定时任务", log_level="ERROR")
-        return
+    scheduler_service = app_controller.get_service(ServiceNames.SCHEDULER)
 
     try:
         while True:
@@ -219,8 +204,9 @@ def main():
             def start_http_api():
                 try:
                     from http_api_server import start_http_server
-                    start_http_server(shared_controller=app_controller,
-                                    host="127.0.0.1", port=args.http_port)
+                    start_http_server(
+                        shared_controller=app_controller,
+                        host="127.0.0.1", port=args.http_port)
                 except ImportError:
                     debug_utils.log_and_print("❌ 无法导入HTTP API服务器模块", log_level="ERROR")
                 except Exception as e:

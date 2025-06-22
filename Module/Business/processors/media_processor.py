@@ -6,6 +6,7 @@
 
 import os
 from .base_processor import BaseProcessor, MessageContext, ProcessResult, require_service, safe_execute
+from Module.Services.constants import ResponseTypes, ProcessResultConstKeys, ProcessResultNextAction, ServiceNames
 
 
 class MediaProcessor(BaseProcessor):
@@ -25,9 +26,9 @@ class MediaProcessor(BaseProcessor):
             return ProcessResult.error_result("配音文本不能为空，请使用格式：配音 文本内容")
 
         # 先发送处理中提示
-        return ProcessResult.success_result("text", {
+        return ProcessResult.success_result(ResponseTypes.TEXT, {
             "text": "正在生成配音，请稍候...",
-            "next_action": "process_tts",
+            ProcessResultConstKeys.NEXT_ACTION: ProcessResultNextAction.PROCESS_TTS,
             "tts_text": tts_text
         })
 
@@ -44,7 +45,7 @@ class MediaProcessor(BaseProcessor):
             ProcessResult: 处理结果
         """
         # 获取音频服务
-        audio_service = self.app_controller.get_service('audio')
+        audio_service = self.app_controller.get_service(ServiceNames.AUDIO)
 
         # 生成TTS音频
         success, audio_data, error_msg = audio_service.process_tts_request(tts_text)
@@ -53,7 +54,7 @@ class MediaProcessor(BaseProcessor):
             return ProcessResult.error_result(f"TTS生成失败: {error_msg}")
 
         # 返回音频数据，由适配器处理上传
-        return ProcessResult.success_result("audio", {
+        return ProcessResult.success_result(ResponseTypes.AUDIO, {
             "audio_data": audio_data,
             "text": tts_text[:50] + ("..." if len(tts_text) > 50 else "")
         })
@@ -74,9 +75,9 @@ class MediaProcessor(BaseProcessor):
             return ProcessResult.error_result("图像生成文本不能为空，请使用格式：生图 描述内容 或 AI画图 描述内容")
 
         # 先发送处理中提示
-        return ProcessResult.success_result("text", {
+        return ProcessResult.success_result(ResponseTypes.TEXT, {
             "text": "正在生成图片，请稍候...",
-            "next_action": "process_image_generation",
+            ProcessResultConstKeys.NEXT_ACTION: ProcessResultNextAction.PROCESS_IMAGE_GENERATION,
             "generation_prompt": prompt
         })
 
@@ -93,7 +94,7 @@ class MediaProcessor(BaseProcessor):
             ProcessResult: 处理结果
         """
         # 获取图像服务
-        image_service = self.app_controller.get_service('image')
+        image_service = self.app_controller.get_service(ServiceNames.IMAGE)
 
         # 生成图像
         image_paths = image_service.process_text_to_image(prompt)
@@ -104,7 +105,7 @@ class MediaProcessor(BaseProcessor):
             return ProcessResult.error_result("图片生成失败了，建议您换个提示词再试试")
 
         # 返回图像路径列表，由适配器处理上传
-        return ProcessResult.success_result("image_list", {
+        return ProcessResult.success_result(ResponseTypes.IMAGE_LIST, {
             "image_paths": image_paths,
             "prompt": prompt[:50] + ("..." if len(prompt) > 50 else "")
         })
@@ -115,14 +116,14 @@ class MediaProcessor(BaseProcessor):
         """处理图片消息 - 图像风格转换"""
         # 检查图像服务是否可用（包含特殊的首次初始化逻辑）
         first_init = 'image' in self.app_controller.initialized_services # 根据启动特征，避免首次启动时双倍初始化
-        image_service = self.app_controller.get_service('image')
+        image_service = self.app_controller.get_service(ServiceNames.IMAGE)
         if not image_service.is_available(need_reinit=first_init):
             return ProcessResult.error_result("图像处理服务未启动或不可用")
 
         # 先发送处理中提示
-        return ProcessResult.success_result("text", {
+        return ProcessResult.success_result(ResponseTypes.TEXT, {
             "text": "正在转换图片风格，请稍候...",
-            "next_action": "process_image_conversion",
+            ProcessResultConstKeys.NEXT_ACTION: ProcessResultNextAction.PROCESS_IMAGE_CONVERSION,
             "image_data": context.content  # 图像数据将由适配器传递
         })
 
@@ -143,7 +144,7 @@ class MediaProcessor(BaseProcessor):
             ProcessResult: 处理结果
         """
         # 获取图像服务
-        image_service = self.app_controller.get_service('image')
+        image_service = self.app_controller.get_service(ServiceNames.IMAGE)
 
         # 处理图像转换
         image_paths = image_service.process_image_to_image(
@@ -156,12 +157,12 @@ class MediaProcessor(BaseProcessor):
             return ProcessResult.error_result("图片处理失败了，请尝试使用其他图片")
 
         # 返回处理后的图像路径列表
-        return ProcessResult.success_result("image_list", {
+        return ProcessResult.success_result(ResponseTypes.IMAGE_LIST, {
             "image_paths": image_paths,
             "original_file": file_name
         })
 
-    def handle_rich_text_command(self, context: MessageContext) -> ProcessResult:
+    def sample_rich_text(self, context: MessageContext) -> ProcessResult:
         """处理富文本指令"""
         try:
             # 获取示例图片路径
@@ -198,7 +199,7 @@ class MediaProcessor(BaseProcessor):
                 }
             }
 
-            return ProcessResult.success_result("rich_text", {
+            return ProcessResult.success_result(ResponseTypes.RICH_TEXT, {
                 "rich_text_content": rich_text_content,
                 "sample_image_data": image_data,
                 "sample_image_name": os.path.basename(sample_pic_path)
@@ -207,7 +208,7 @@ class MediaProcessor(BaseProcessor):
         except Exception as e:
             return ProcessResult.error_result(f"富文本指令处理失败: {str(e)}")
 
-    def handle_sample_image_command(self, context: MessageContext) -> ProcessResult:
+    def sample_image(self, context: MessageContext) -> ProcessResult:
         """处理图片/壁纸指令"""
         try:
             # 获取示例图片路径
@@ -220,7 +221,7 @@ class MediaProcessor(BaseProcessor):
             with open(sample_pic_path, "rb") as f:
                 image_data = f.read()
 
-            return ProcessResult.success_result("image", {
+            return ProcessResult.success_result(ResponseTypes.IMAGE, {
                 "image_data": image_data,
                 "image_name": os.path.basename(sample_pic_path)
             }, parent_id=context.message_id)
@@ -230,6 +231,6 @@ class MediaProcessor(BaseProcessor):
 
     def handle_audio_message(self, context: MessageContext) -> ProcessResult:
         """处理音频消息"""
-        return ProcessResult.success_result("text", {
+        return ProcessResult.success_result(ResponseTypes.TEXT, {
             "text": "收到音频消息，音频处理功能将在后续版本实现"
         })

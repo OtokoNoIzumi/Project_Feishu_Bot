@@ -18,7 +18,7 @@ from ..decorators import (
     feishu_event_handler_safe, message_conversion_safe, async_operation_safe
 )
 from Module.Services.constants import (
-    ServiceNames, UITypes, ResponseTypes, Messages, CardOperationTypes, MessageTypes
+    ServiceNames, UITypes, ResponseTypes, Messages, CardOperationTypes, MessageTypes, ProcessResultConstKeys, ProcessResultNextAction
 )
 
 
@@ -118,16 +118,16 @@ class MessageHandler:
         if not (result.success and result.response_content):
             return False
 
-        next_action = result.response_content.get("next_action")
+        next_action = result.response_content.get(ProcessResultConstKeys.NEXT_ACTION)
         if not next_action:
             return False
 
         # 异步操作映射表，直接映射到处理逻辑
         action_handlers = {
-            "process_tts": lambda: self._handle_tts_async(data, result.response_content.get("tts_text", "")),
-            "process_image_generation": lambda: self._handle_image_generation_async(data, result.response_content.get("generation_prompt", "")),
-            "process_image_conversion": lambda: self._handle_image_conversion_async(data),
-            "process_bili_video": lambda: self._handle_bili_video_with_text_check(data, result)
+            ProcessResultNextAction.PROCESS_TTS: lambda: self._handle_tts_async(data, result.response_content.get("tts_text", "")),
+            ProcessResultNextAction.PROCESS_IMAGE_GENERATION: lambda: self._handle_image_generation_async(data, result.response_content.get("generation_prompt", "")),
+            ProcessResultNextAction.PROCESS_IMAGE_CONVERSION: lambda: self._handle_image_conversion_async(data),
+            ProcessResultNextAction.PROCESS_BILI_VIDEO: lambda: self._handle_bili_video_with_text_check(data, result)
         }
 
         handler = action_handlers.get(next_action)
@@ -151,24 +151,20 @@ class MessageHandler:
         """异步处理TTS任务"""
         def process_in_background():
             # 调用业务处理器的异步TTS方法
-            if hasattr(self.message_processor, 'process_tts_async'):
-                result = self.message_processor.process_tts_async(tts_text)
+            result = self.message_processor.media.process_tts_async(tts_text)
 
-                if result.success and result.response_type == ResponseTypes.AUDIO:
-                    # 上传并发送音频
-                    audio_data = result.response_content.get("audio_data")
-                    if audio_data:
-                        self.sender.upload_and_send_audio(original_data, audio_data)
-                    else:
-                        # 音频数据为空，发送错误提示
-                        error_result = ProcessResult.error_result("音频生成失败，数据为空")
-                        self.sender.send_feishu_reply(original_data, error_result)
+            if result.success and result.response_type == ResponseTypes.AUDIO:
+                # 上传并发送音频
+                audio_data = result.response_content.get("audio_data")
+                if audio_data:
+                    self.sender.upload_and_send_audio(original_data, audio_data)
                 else:
-                    # TTS处理失败，发送错误信息
-                    self.sender.send_feishu_reply(original_data, result)
+                    # 音频数据为空，发送错误提示
+                    error_result = ProcessResult.error_result("音频生成失败，数据为空")
+                    self.sender.send_feishu_reply(original_data, error_result)
             else:
-                error_result = ProcessResult.error_result("TTS功能暂不可用")
-                self.sender.send_feishu_reply(original_data, error_result)
+                # TTS处理失败，发送错误信息
+                self.sender.send_feishu_reply(original_data, result)
 
         self._execute_async(process_in_background)
 
@@ -181,24 +177,20 @@ class MessageHandler:
             self.sender.send_feishu_reply(original_data, processing_result)
 
             # 调用业务处理器的异步图像生成方法
-            if hasattr(self.message_processor, 'process_image_generation_async'):
-                result = self.message_processor.process_image_generation_async(prompt)
+            result = self.message_processor.media.process_image_generation_async(prompt)
 
-                if result.success and result.response_type == ResponseTypes.IMAGE_LIST:
-                    # 上传并发送图像
-                    image_paths = result.response_content.get("image_paths", [])
-                    if image_paths:
-                        self.sender.upload_and_send_images(original_data, image_paths)
-                    else:
-                        # 图像列表为空，发送错误提示
-                        error_result = ProcessResult.error_result("图像生成失败，结果为空")
-                        self.sender.send_feishu_reply(original_data, error_result)
+            if result.success and result.response_type == ResponseTypes.IMAGE_LIST:
+                # 上传并发送图像
+                image_paths = result.response_content.get("image_paths", [])
+                if image_paths:
+                    self.sender.upload_and_send_images(original_data, image_paths)
                 else:
-                    # 图像生成失败，发送错误信息
-                    self.sender.send_feishu_reply(original_data, result)
+                    # 图像列表为空，发送错误提示
+                    error_result = ProcessResult.error_result("图像生成失败，结果为空")
+                    self.sender.send_feishu_reply(original_data, error_result)
             else:
-                error_result = ProcessResult.error_result("图像生成功能暂不可用")
-                self.sender.send_feishu_reply(original_data, error_result)
+                # 图像生成失败，发送错误信息
+                self.sender.send_feishu_reply(original_data, result)
 
         self._execute_async(process_in_background)
 
@@ -220,26 +212,22 @@ class MessageHandler:
             image_base64, mime_type, file_name, file_size = image_resource
 
             # 调用业务处理器的异步图像转换方法
-            if hasattr(self.message_processor, 'process_image_conversion_async'):
-                result = self.message_processor.process_image_conversion_async(
-                    image_base64, mime_type, file_name, file_size
-                )
+            result = self.message_processor.media.process_image_conversion_async(
+                image_base64, mime_type, file_name, file_size
+            )
 
-                if result.success and result.response_type == "image_list":
-                    # 上传并发送图像
-                    image_paths = result.response_content.get("image_paths", [])
-                    if image_paths:
-                        self.sender.upload_and_send_images(original_data, image_paths)
-                    else:
-                        # 图像列表为空，发送错误提示
-                        error_result = ProcessResult.error_result("图像转换失败，结果为空")
-                        self.sender.send_feishu_reply(original_data, error_result)
+            if result.success and result.response_type == "image_list":
+                # 上传并发送图像
+                image_paths = result.response_content.get("image_paths", [])
+                if image_paths:
+                    self.sender.upload_and_send_images(original_data, image_paths)
                 else:
-                    # 图像转换失败，发送错误信息
-                    self.sender.send_feishu_reply(original_data, result)
+                    # 图像列表为空，发送错误提示
+                    error_result = ProcessResult.error_result("图像转换失败，结果为空")
+                    self.sender.send_feishu_reply(original_data, error_result)
             else:
-                error_result = ProcessResult.error_result("图像转换功能暂不可用")
-                self.sender.send_feishu_reply(original_data, error_result)
+                # 图像转换失败，发送错误信息
+                self.sender.send_feishu_reply(original_data, result)
 
         self._execute_async(process_in_background)
 
@@ -248,7 +236,7 @@ class MessageHandler:
         """异步处理B站视频推荐任务"""
         def process_in_background():
             # 调用业务处理器获取原始数据
-            result = self.message_processor.process_bili_video_async()
+            result = self.message_processor.bili.process_bili_video_async()
 
             if result.success and result.response_type == ResponseTypes.BILI_VIDEO_DATA:
                 # 使用统一的卡片处理方法

@@ -73,7 +73,7 @@ def process_bili_video_async(self, user_id: str) -> ProcessResult:
 ### FeishuAdapter层 - 调用卡片管理器
 ```python
 def _handle_bili_video_async(self, original_data, user_id: str):
-    result = self.message_processor.process_bili_video_async(user_id)
+    result = self.message_processor.bilibili.process_bili_video_async(user_id)
     if result.success and result.response_type == "bili_video_data":
         video_data = result.response_content
         user_open_id = self._get_user_open_id_from_data(original_data, user_id)

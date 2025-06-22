@@ -3,6 +3,11 @@
 
 处理各种类型的消息，包括文本、图片、音频、菜单点击、卡片动作等
 通过action_dispatchers分发卡片动作到相应的处理方法
+
+重构说明：
+- 采用语义化的直接方法暴露，去除中间路由层
+- 方法名称直接表达业务意图，提升代码可读性
+- 移除冗余的路由逻辑，实现真正的业务分层
 """
 
 import time
@@ -11,15 +16,15 @@ from typing import Dict, Any
 from Module.Common.scripts.common import debug_utils
 from Module.Services.router.card_builder import CardBuilder
 from Module.Adapters.feishu.cards.admin_cards import AdminCardInteractionComponents
+from Module.Services.constants import (
+    ServiceNames, MenuClickTypes, ResponseTypes,
+    MessageTypes, CardActions, Messages
+)
 from .processors import (
     BaseProcessor, MessageContext, ProcessResult,
     TextProcessor, MediaProcessor, BilibiliProcessor,
     AdminProcessor, ScheduleProcessor,
     require_app_controller, safe_execute
-)
-from Module.Services.constants import (
-    ServiceNames,
-    MessageTypes, CardActions, Messages
 )
 
 
@@ -27,17 +32,18 @@ class MessageProcessor(BaseProcessor):
     """
     业务消息处理器
 
-    处理各种类型的消息，分发到相应的子处理器
+    作为业务层的统一入口，直接暴露具体的业务功能
+    方法名称直接表达业务意图，避免中间路由层
     """
     def __init__(self, app_controller=None):
         super().__init__(app_controller)
 
-        # 初始化子处理器
-        self.text_processor = TextProcessor(app_controller)
-        self.media_processor = MediaProcessor(app_controller)
-        self.bilibili_processor = BilibiliProcessor(app_controller)
-        self.admin_processor = AdminProcessor(app_controller)
-        self.schedule_processor = ScheduleProcessor(app_controller)
+        # 暴露语义化的处理节点
+        self.text = TextProcessor(app_controller)
+        self.media = MediaProcessor(app_controller)
+        self.bili = BilibiliProcessor(app_controller)
+        self.admin = AdminProcessor(app_controller)
+        self.schedule = ScheduleProcessor(app_controller)
 
         # 初始化Action分发表
         self._init_action_dispatchers()
@@ -48,39 +54,6 @@ class MessageProcessor(BaseProcessor):
         if self.app_controller:
             return self.app_controller.get_service(ServiceNames.CARD_BUSINESS_MAPPING)
         return None
-
-    @safe_execute("消息分发器初始化失败")
-    def _init_action_dispatchers(self):
-        """初始化Action分发表，映射卡片动作到处理方法"""
-        # 基础动作映射（非配置化的固定动作）
-        self.action_dispatchers = {
-            # AI路由卡片动作
-            CardActions.CANCEL: self._handle_ai_card_action,
-            CardActions.EDIT_CONTENT: self._handle_ai_card_action,
-
-            # B站视频卡片动作
-            CardActions.MARK_BILI_READ: self._handle_mark_bili_read,
-
-            # 用户类型选择动作（特殊处理）
-            CardActions.UPDATE_USER_TYPE: self._handle_user_type_select_action,
-        }
-
-        # 注册配置化的卡片动作
-        self._register_card_actions_from_config()
-
-    def _register_card_actions_from_config(self):
-        """从配置文件注册卡片动作到分发器"""
-        all_mappings = self.card_mapping_service.get_all_mappings()
-
-        for business_id, config in all_mappings.items():
-            actions = config.get("actions", [])
-            for action in actions:
-                # 根据业务类型确定处理器
-                if action in [CardActions.CONFIRM_USER_UPDATE, CardActions.CANCEL_USER_UPDATE,
-                             CardActions.CONFIRM_ADS_UPDATE, CardActions.CANCEL_ADS_UPDATE,
-                             CardActions.ADTIME_EDITOR_CHANGE]:
-                    # 管理员卡片动作
-                    self.action_dispatchers[action] = self._handle_pending_admin_card_action
 
     @require_app_controller("系统服务不可用")
     @safe_execute("消息处理失败")
@@ -127,6 +100,7 @@ class MessageProcessor(BaseProcessor):
             case MessageTypes.CARD_ACTION:
                 return self._process_card_action(context)
             case _:
+                # 目前已知的有post（文章）和todo（待办）两种类型
                 return ProcessResult.error_result(f"不支持的消息类型: {context.message_type}")
 
     @safe_execute("文本消息处理失败")
@@ -135,38 +109,38 @@ class MessageProcessor(BaseProcessor):
         user_msg = context.content
 
         # 1. 检查管理员命令
-        if self.admin_processor.is_admin_command(user_msg):
-            return self.admin_processor.handle_admin_command(context, user_msg)
+        if self.admin.is_admin_command(user_msg):
+            return self.admin.handle_admin_command(context, user_msg)
 
         # TTS配音指令，改成startwith
         if user_msg.startswith(Messages.TTS_PREFIX):
             content = self._extract_command_content(user_msg, [Messages.TTS_PREFIX])
             self._log_command(context.user_name, "🎤", "触发TTS配音指令", content)
-            return self.media_processor.handle_tts_command(context, user_msg)
+            return self.media.handle_tts_command(context, user_msg)
 
         # 图像生成指令
         if user_msg.startswith(Messages.IMAGE_GEN_PREFIX) or user_msg.startswith(Messages.AI_DRAW_PREFIX):
             content = self._extract_command_content(user_msg, [Messages.IMAGE_GEN_PREFIX, Messages.AI_DRAW_PREFIX])
             self._log_command(context.user_name, "🎨", "触发图像生成指令", content)
-            return self.media_processor.handle_image_generation_command(context, user_msg)
+            return self.media.handle_image_generation_command(context, user_msg)
 
         # 基础指令处理 - 使用 match case 优化
         match user_msg:
             case Messages.HELP_COMMAND:
                 self._log_command(context.user_name, "❓", "查看帮助")
-                return self.text_processor.handle_help_command(context)
+                return self.text.get_help(context)
             case Messages.GREETING_COMMAND:
                 self._log_command(context.user_name, "👋", "发送问候")
-                return self.text_processor.handle_greeting_command(context)
+                return self.text.greeting(context)
             case Messages.RICH_TEXT_COMMAND:
                 self._log_command(context.user_name, "📄", "触发富文本指令")
-                return self.media_processor.handle_rich_text_command(context)
+                return self.media.sample_rich_text(context)
             case Messages.IMAGE_COMMAND | Messages.WALLPAPER_COMMAND:
                 self._log_command(context.user_name, "🖼️", "触发图片指令")
-                return self.media_processor.handle_sample_image_command(context)
+                return self.media.sample_image(context)
             case Messages.BILI_COMMAND | Messages.VIDEO_COMMAND:
                 self._log_command(context.user_name, "📺", "触发B站视频指令")
-                return self.bilibili_processor.handle_bili_text_command(context)
+                return self.bili.video_menu(context)
 
         # AI智能路由（新增 - 在原有指令之前）
         router_service = self.app_controller.get_service(ServiceNames.ROUTER) if self.app_controller else None
@@ -179,23 +153,28 @@ class MessageProcessor(BaseProcessor):
                 return self._handle_ai_route_result(context, route_result)
 
         # 默认回复
-        return self.text_processor.handle_default_message(context)
+        return self.text.default_reply(context)
 
     def _process_image_message(self, context: MessageContext) -> ProcessResult:
         """处理图片消息"""
-        return self.media_processor.handle_image_message(context)
+        return self.media.handle_image_message(context)
 
     def _process_audio_message(self, context: MessageContext) -> ProcessResult:
         """处理音频消息"""
-        return self.media_processor.handle_audio_message(context)
+        return self.media.handle_audio_message(context)
 
     def _process_menu_click(self, context: MessageContext) -> ProcessResult:
         """处理菜单点击"""
         event_key = context.content
-        if event_key == "get_bili_url":
-            return self.bilibili_processor.handle_menu_click(context)
-
-        return self.bilibili_processor.handle_menu_click(context)
+        match event_key:
+            case MenuClickTypes.GET_BILI_URL:
+                debug_utils.log_and_print(f"📺 B站视频推荐 by [{context.user_name}]", log_level="INFO")
+                return self.bili.video_menu(context)
+            case _:
+                debug_utils.log_and_print(f"❓ 未知菜单键: {event_key}", log_level="INFO")
+                return ProcessResult.success_result(ResponseTypes.TEXT, {
+                    "text": f"收到菜单点击：{event_key}，功能开发中..."
+                }, parent_id=context.message_id)
 
     @safe_execute("卡片动作处理失败")
     def _process_card_action(self, context: MessageContext) -> ProcessResult:
@@ -208,6 +187,39 @@ class MessageProcessor(BaseProcessor):
         if handler:
             return handler(context, action_value)
         return ProcessResult.error_result(f"未知的卡片动作: {action}")
+
+    @safe_execute("消息分发器初始化失败")
+    def _init_action_dispatchers(self):
+        """初始化Action分发表，映射卡片动作到处理方法"""
+        # 基础动作映射（非配置化的固定动作）
+        self.action_dispatchers = {
+            # AI路由卡片动作
+            CardActions.CANCEL: self._handle_ai_card_action,
+            CardActions.EDIT_CONTENT: self._handle_ai_card_action,
+
+            # B站视频卡片动作
+            CardActions.MARK_BILI_READ: self._handle_mark_bili_read,
+
+            # 用户类型选择动作（特殊处理）
+            CardActions.UPDATE_USER_TYPE: self._handle_user_type_select_action,
+        }
+
+        # 注册配置化的卡片动作
+        self._register_card_actions_from_config()
+
+    def _register_card_actions_from_config(self):
+        """从配置文件注册卡片动作到分发器"""
+        all_mappings = self.card_mapping_service.get_all_mappings()
+
+        for business_id, config in all_mappings.items():
+            actions = config.get("actions", [])
+            for action in actions:
+                # 根据业务类型确定处理器
+                if action in [CardActions.CONFIRM_USER_UPDATE, CardActions.CANCEL_USER_UPDATE,
+                             CardActions.CONFIRM_ADS_UPDATE, CardActions.CANCEL_ADS_UPDATE,
+                             CardActions.ADTIME_EDITOR_CHANGE]:
+                    # 管理员卡片动作
+                    self.action_dispatchers[action] = self._handle_pending_admin_card_action
 
     def _handle_ai_route_result(self, context: MessageContext, route_result: Dict[str, Any]) -> ProcessResult:
         """
@@ -313,10 +325,10 @@ class MessageProcessor(BaseProcessor):
             match card_type:
                 case "daily":
                     # 定时卡片由ScheduleProcessor处理
-                    return self.schedule_processor.handle_mark_bili_read(context, action_value)
+                    return self.schedule.handle_mark_bili_read(context, action_value)
                 case _:
                     # 菜单卡片由BilibiliProcessor处理
-                    return self.bilibili_processor.handle_mark_bili_read(context, action_value)
+                    return self.bili.handle_mark_bili_read(context, action_value)
 
         except Exception as e:
             debug_utils.log_and_print(f"❌ 标记B站视频为已读失败: {str(e)}", log_level="ERROR")
@@ -337,37 +349,8 @@ class MessageProcessor(BaseProcessor):
         Returns:
             ProcessResult: 处理结果
         """
-        # 直接调用admin_processor的缓存操作处理方法
-        return self.admin_processor.handle_pending_operation_action(action_value)
-
-    # ================ 异步处理方法（供适配器调用）================
-
-    def process_bili_video_async(self, cached_data: Dict[str, Any] = None) -> ProcessResult:
-        """异步处理B站视频推荐（由FeishuAdapter调用）"""
-        return self.bilibili_processor.process_bili_video_async(cached_data)
-
-    def process_tts_async(self, tts_text: str) -> ProcessResult:
-        """异步处理TTS生成（由FeishuAdapter调用）"""
-        return self.media_processor.process_tts_async(tts_text)
-
-    def process_image_generation_async(self, prompt: str) -> ProcessResult:
-        """异步处理图像生成（由FeishuAdapter调用）"""
-        return self.media_processor.process_image_generation_async(prompt)
-
-    def process_image_conversion_async(
-        self, image_base64: str, mime_type: str,
-        file_name: str, file_size: int
-    ) -> ProcessResult:
-        """异步处理图像风格转换（由FeishuAdapter调用）"""
-        return self.media_processor.process_image_conversion_async(
-            image_base64, mime_type, file_name, file_size
-        )
-
-    # ================ 定时任务方法（供SchedulerService调用）================
-
-    def create_scheduled_message(self, scheduler_type: str, **kwargs) -> ProcessResult:
-        """创建定时任务消息（供SchedulerService调用）"""
-        return self.schedule_processor.create_scheduled_message(scheduler_type, **kwargs)
+        # 直接调用admin处理器的缓存操作处理方法
+        return self.admin.handle_pending_operation_action(action_value)
 
     # ================ 状态查询方法 ================
 
