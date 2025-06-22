@@ -7,8 +7,9 @@
 
 import os
 import sys
-from typing import Dict, Any, Optional, Tuple, Union
+from typing import Dict, Any, Optional, Tuple
 from Module.Common.scripts.common import debug_utils
+from Module.Services.constants import ServiceNames, SchedulerTaskTypes
 
 
 class AppController:
@@ -98,28 +99,30 @@ class AppController:
             config = self.service_configs[service_name]
 
             # 根据服务类型进行特定初始化
-            if service_name == 'config':
-                instance = service_class(
-                    project_root_path=self.project_root_path,
-                    **config
-                )
-            elif service_name == 'cache':
-                # 确保缓存目录存在
-                cache_dir = config.get('cache_dir', os.path.join(self.project_root_path, "cache"))
-                os.makedirs(cache_dir, exist_ok=True)
-                instance = service_class(cache_dir)
-            elif service_name in ['audio', 'scheduler', 'llm', 'router']:
-                # 这些服务需要传入应用控制器引用
-                instance = service_class(app_controller=self)
-            elif service_name == 'notion':
-                # notion服务需要cache服务作为依赖
-                cache_service = self.get_service('cache')
-                if not cache_service:
-                    raise Exception("notion服务需要cache服务，但cache服务初始化失败")
-                instance = service_class(cache_service)
-            else:
-                # 通用初始化
-                instance = service_class(**config)
+            match service_name:
+                case ServiceNames.CONFIG:
+                    instance = service_class(
+                        project_root_path=self.project_root_path,
+                        **config
+                    )
+                case ServiceNames.CACHE:
+                    cache_dir = config.get('cache_dir', os.path.join(self.project_root_path, "cache"))
+                    os.makedirs(cache_dir, exist_ok=True)
+                    instance = service_class(cache_dir)
+                case ServiceNames.AUDIO | ServiceNames.SCHEDULER | ServiceNames.LLM | ServiceNames.ROUTER:
+                    instance = service_class(app_controller=self)
+                case ServiceNames.NOTION:
+                    cache_service = self.get_service(ServiceNames.CACHE)
+                    if not cache_service:
+                        raise Exception("notion服务需要cache服务，但cache服务初始化失败")
+                    instance = service_class(cache_service)
+                case ServiceNames.CARD_BUSINESS_MAPPING:
+                    config_service = self.get_service(ServiceNames.CONFIG)
+                    if not config_service:
+                        raise Exception("card_business_mapping服务需要config服务，但config服务初始化失败")
+                    instance = service_class(config_service)
+                case _:
+                    instance = service_class(**config)
 
             service_info['instance'] = instance
             service_info['status'] = 'initialized'
@@ -265,21 +268,24 @@ class AppController:
 
             for service_name, service_class in AVAILABLE_SERVICES.items():
                 # 根据服务类型设置默认配置
-                if service_name == 'config':
-                    config = {
-                        'static_config_file_path': 'config.json'
-                    }
-                elif service_name == 'cache':
-                    config = {
-                        'cache_dir': os.path.join(self.project_root_path, 'cache')
-                    }
-                elif service_name == 'pending_cache':
-                    config = {
-                        'cache_dir': os.path.join(self.project_root_path, 'cache'),
-                        'max_operations_per_user': 2
-                    }
-                else:
-                    config = {}
+                match service_name:
+                    case ServiceNames.CONFIG:
+                        config = {
+                            'static_config_file_path': 'config.json'
+                        }
+                    case ServiceNames.CACHE:
+                        config = {
+                            'cache_dir': os.path.join(self.project_root_path, 'cache')
+                        }
+                    case ServiceNames.PENDING_CACHE:
+                        config = {
+                            'cache_dir': os.path.join(self.project_root_path, 'cache'),
+                            'max_operations_per_user': 2
+                        }
+                    case ServiceNames.CARD_BUSINESS_MAPPING:
+                        config = {}
+                    case _:
+                        config = {}
 
                 results[service_name] = self.register_service(service_name, service_class, config)
 
@@ -358,7 +364,7 @@ class AppController:
             Dict[str, Any]: 日程数据或错误信息
         """
         try:
-            scheduler_service = self.get_service('scheduler')
+            scheduler_service = self.get_service(ServiceNames.SCHEDULER)
             if not scheduler_service:
                 return {"success": False, "error": "调度器服务不可用"}
 
@@ -381,7 +387,7 @@ class AppController:
             Dict[str, Any]: 处理结果
         """
         try:
-            scheduler_service = self.get_service('scheduler')
+            scheduler_service = self.get_service(ServiceNames.SCHEDULER)
             if not scheduler_service:
                 return {"success": False, "error": "调度器服务不可用"}
 
@@ -401,7 +407,7 @@ class AppController:
             Dict[str, Any]: 音频数据或错误信息
         """
         try:
-            audio_service = self.get_service('audio')
+            audio_service = self.get_service(ServiceNames.AUDIO)
             if not audio_service:
                 return {"success": False, "error": "音频服务不可用"}
 
@@ -431,7 +437,7 @@ class AppController:
             Dict[str, Any]: 图像路径列表或错误信息
         """
         try:
-            image_service = self.get_service('image')
+            image_service = self.get_service(ServiceNames.IMAGE)
             if not image_service or not image_service.is_available():
                 return {"success": False, "error": "图像服务不可用"}
 
@@ -467,7 +473,7 @@ class AppController:
             Dict[str, Any]: 处理后的图像路径列表或错误信息
         """
         try:
-            image_service = self.get_service('image')
+            image_service = self.get_service(ServiceNames.IMAGE)
             if not image_service or not image_service.is_available():
                 return {"success": False, "error": "图像服务不可用"}
 
@@ -498,7 +504,7 @@ class AppController:
             Dict[str, Any]: 任务列表或错误信息
         """
         try:
-            scheduler_service = self.get_service('scheduler')
+            scheduler_service = self.get_service(ServiceNames.SCHEDULER)
             if not scheduler_service:
                 return {"success": False, "error": "调度器服务不可用"}
 
@@ -525,22 +531,23 @@ class AppController:
             Dict[str, Any]: 添加结果
         """
         try:
-            scheduler_service = self.get_service('scheduler')
+            scheduler_service = self.get_service(ServiceNames.SCHEDULER)
             if not scheduler_service:
                 return {"success": False, "error": "调度器服务不可用"}
 
             # 根据任务类型选择对应的处理函数
-            if task_type == "daily_schedule":
-                task_func = scheduler_service.trigger_daily_schedule_reminder
-                success = scheduler_service.add_daily_task(task_name, time_str, task_func)
-            elif task_type == "bilibili_updates":
-                task_func = scheduler_service.trigger_bilibili_updates_reminder
-                sources = kwargs.get('sources')
-                success = scheduler_service.add_daily_task(
-                    task_name, time_str, task_func, sources=sources
-                )
-            else:
-                return {"success": False, "error": f"不支持的任务类型: {task_type}"}
+            match task_type:
+                case SchedulerTaskTypes.DAILY_SCHEDULE:
+                    task_func = scheduler_service.trigger_daily_schedule_reminder
+                    success = scheduler_service.add_daily_task(task_name, time_str, task_func)
+                case SchedulerTaskTypes.BILI_UPDATES:
+                    task_func = scheduler_service.trigger_bilibili_updates_reminder
+                    sources = kwargs.get('sources')
+                    success = scheduler_service.add_daily_task(
+                        task_name, time_str, task_func, sources=sources
+                    )
+                case _:
+                    return {"success": False, "error": f"不支持的任务类型: {task_type}"}
 
             return {
                 "success": success,
@@ -560,7 +567,7 @@ class AppController:
             Dict[str, Any]: API响应
         """
         try:
-            success, result = self.call_service('scheduler', 'remove_task', task_name)
+            success, result = self.call_service(ServiceNames.SCHEDULER, 'remove_task', task_name)
 
             if success and result:
                 return {
@@ -592,7 +599,7 @@ class AppController:
             Dict[str, Any]: API响应
         """
         try:
-            success, result = self.call_service('notion', 'get_bili_video')
+            success, result = self.call_service(ServiceNames.NOTION, 'get_bili_video')
 
             if success and result and result.get("success", False):
                 return {
@@ -622,7 +629,7 @@ class AppController:
             Dict[str, Any]: API响应
         """
         try:
-            success, result = self.call_service('notion', 'get_bili_videos_multiple')
+            success, result = self.call_service(ServiceNames.NOTION, 'get_bili_videos_multiple')
 
             if success and result and result.get("success", False):
                 return {
@@ -652,7 +659,7 @@ class AppController:
             Dict[str, Any]: API响应
         """
         try:
-            success, result = self.call_service('notion', 'get_bili_videos_statistics')
+            success, result = self.call_service(ServiceNames.NOTION, 'get_bili_videos_statistics')
 
             if success and result and result.get("success", False):
                 total_count = result.get("总未读数", 0)
@@ -686,7 +693,7 @@ class AppController:
             Dict[str, Any]: API响应
         """
         try:
-            success, result = self.call_service('notion', 'mark_video_read', pageid)
+            success, result = self.call_service(ServiceNames.NOTION, 'mark_video_read', pageid)
 
             if success and result:
                 return {

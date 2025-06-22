@@ -23,7 +23,7 @@ from pathlib import Path
 
 from Module.Common.scripts.common import debug_utils
 from ..service_decorators import service_operation_safe, scheduler_operation_safe, external_api_safe, config_operation_safe
-
+from Module.Services.constants import ServiceNames, SchedulerTaskTypes
 
 class ScheduledEvent:
     """定时任务事件"""
@@ -222,7 +222,7 @@ class SchedulerService:
         }
 
         # 获取配置服务
-        config_service = self.app_controller.get_service('config') if self.app_controller else None
+        config_service = self.app_controller.get_service(ServiceNames.CONFIG) if self.app_controller else None
 
         # 检查B站API服务
         services_status["services"]["bilibili_api"] = self._check_bilibili_api_status(config_service)
@@ -455,7 +455,7 @@ class SchedulerService:
         # 发布轻量级事件，数据生成交给MessageProcessor
         event = ScheduledEvent("daily_schedule_reminder", {
             "admin_id": admin_id,
-            "message_type": "daily_schedule",
+            "message_type": SchedulerTaskTypes.DAILY_SCHEDULE,
             "services_status": services_status  # 添加服务状态信息
         })
 
@@ -477,7 +477,7 @@ class SchedulerService:
         # 获取夜间静默配置（默认开启）
         night_silent_enabled = True
         if self.app_controller:
-            config_service = self.app_controller.get_service('config')
+            config_service = self.app_controller.get_service(ServiceNames.CONFIG)
             if config_service:
                 try:
                     night_silent_enabled = config_service.get_env("BILI_NIGHT_SILENT", "true").lower() == "true"
@@ -505,7 +505,7 @@ class SchedulerService:
             "admin_id": admin_id,
             "sources": sources,
             "api_result": api_result,
-            "message_type": "bilibili_updates"
+            "message_type": SchedulerTaskTypes.BILI_UPDATES
         })
 
         self._publish_event(event)

@@ -77,6 +77,7 @@ class BilibiliProcessor(BaseProcessor):
         else:
             # 调用notion服务获取多个B站视频推荐（1+3模式）
             videos_data = notion_service.get_bili_videos_multiple()
+            print('test-',videos_data)
 
             if not videos_data.get("success", False):
                 # debug_utils.log_and_print("⚠️ 未获取到有效的B站视频", log_level="WARNING")

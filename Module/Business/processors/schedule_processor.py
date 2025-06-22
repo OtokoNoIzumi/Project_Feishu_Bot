@@ -4,10 +4,12 @@
 处理每日汇总、B站更新等定时任务相关功能
 """
 
+import re
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 from .base_processor import BaseProcessor, MessageContext, ProcessResult, require_service, safe_execute
 from Module.Common.scripts.common import debug_utils
+from Module.Services.constants import SchedulerTaskTypes, ServiceNames
 
 
 class ScheduleProcessor(BaseProcessor):
@@ -29,17 +31,16 @@ class ScheduleProcessor(BaseProcessor):
         Returns:
             ProcessResult: 包含富文本卡片的处理结果
         """
-        if message_type == "daily_schedule":
-            services_status = kwargs.get('services_status', None)
-            return self.create_daily_schedule_message(services_status)
-
-        elif message_type == "bilibili_updates":
-            sources = kwargs.get('sources', None)
-            api_result = kwargs.get('api_result', None)
-            return self.create_bilibili_updates_message(sources, api_result)
-
-        else:
-            return ProcessResult.error_result(f"不支持的定时消息类型: {message_type}")
+        match message_type:
+            case SchedulerTaskTypes.DAILY_SCHEDULE:
+                services_status = kwargs.get('services_status', None)
+                return self.create_daily_schedule_message(services_status)
+            case SchedulerTaskTypes.BILI_UPDATES:
+                sources = kwargs.get('sources', None)
+                api_result = kwargs.get('api_result', None)
+                return self.create_bilibili_updates_message(sources, api_result)
+            case _:
+                return ProcessResult.error_result(f"不支持的定时消息类型: {message_type}")
 
     @safe_execute("创建每日信息汇总失败")
     def create_daily_schedule_message(self, services_status: Dict[str, Any] = None) -> ProcessResult:
@@ -63,7 +64,7 @@ class ScheduleProcessor(BaseProcessor):
 
         # 尝试从notion服务获取B站视频统计数据
         if self.app_controller:
-            notion_service = self.app_controller.get_service('notion')
+            notion_service = self.app_controller.get_service(ServiceNames.NOTION)
             if notion_service:
                 try:
                     # 调用统计方法获取B站数据分析
@@ -90,7 +91,6 @@ class ScheduleProcessor(BaseProcessor):
                             "timestamp": now.isoformat()
                         }
                 except Exception as e:
-                    from Module.Common.scripts.common import debug_utils
                     debug_utils.log_and_print(f"获取notion B站统计数据失败: {e}", log_level="WARNING")
 
         # 基础状态信息作为fallback
@@ -241,9 +241,6 @@ class ScheduleProcessor(BaseProcessor):
         """
         将B站网页链接转换为B站应用链接
         """
-        import re
-        from Module.Common.scripts.common import debug_utils
-
         try:
             # 输入验证
             if not web_url or not isinstance(web_url, str):
@@ -851,7 +848,7 @@ class ScheduleProcessor(BaseProcessor):
         处理定时卡片中的标记B站视频为已读
         """
         # 获取notion服务
-        notion_service = self.app_controller.get_service('notion')
+        notion_service = self.app_controller.get_service(ServiceNames.NOTION)
 
         # 获取参数
         pageid = action_value.get("pageid", "")

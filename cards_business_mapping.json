@@ -1,0 +1,33 @@
+{
+  "business_mappings": {
+    "update_user": {
+      "response_type": "admin_card_send",
+      "card_template": "admin_user_update_confirm",
+      "card_builder_method": "build_user_update_confirm_card",
+      "timeout_seconds": 30,
+      "actions": ["confirm_user_update", "cancel_user_update", "update_user_type_selector"],
+      "business_processor": "AdminProcessor",
+      "description": "管理员用户状态更新确认卡片"
+    },
+    "update_ads": {
+      "response_type": "admin_card_send",
+      "card_template": "admin_ads_update_confirm",
+      "card_builder_method": "build_ads_update_confirm_card",
+      "timeout_seconds": 30,
+      "actions": ["confirm_ads_update", "cancel_ads_update", "adtime_editor_change"],
+      "business_processor": "AdminProcessor",
+      "description": "B站广告时间戳更新确认卡片"
+    },
+    "bili_video_menu": {
+      "response_type": "bili_card_send",
+      "card_template": "bili_video_menu",
+      "card_builder_method": "build_video_menu_card",
+      "timeout_seconds": 30,
+      "actions": ["mark_bili_read"],
+      "business_processor": "BilibiliProcessor",
+      "description": "B站视频推荐菜单卡片"
+    }
+  },
+  "config_version": "2.2.0",
+  "last_updated": "2025-06-22"
+}

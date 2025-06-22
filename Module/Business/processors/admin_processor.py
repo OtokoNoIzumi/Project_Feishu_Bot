@@ -13,7 +13,7 @@ from .base_processor import BaseProcessor, MessageContext, ProcessResult, requir
 from Module.Common.scripts.common import debug_utils
 from Module.Services.constants import (
     ServiceNames, OperationTypes, DefaultActions, EnvVars,
-    ConfigKeys, DefaultValues, BusinessConstants
+    ConfigKeys, DefaultValues, BusinessConstants, CardActions
 )
 
 
@@ -29,6 +29,13 @@ class AdminProcessor(BaseProcessor):
         super().__init__(app_controller)
         self._load_config()
         self._register_pending_operations()
+
+    @property
+    def card_mapping_service(self):
+        """获取卡片业务映射服务"""
+        if self.app_controller:
+            return self.app_controller.get_service(ServiceNames.CARD_BUSINESS_MAPPING)
+        return None
 
     def _load_config(self):
         """加载配置"""
@@ -143,9 +150,13 @@ class AdminProcessor(BaseProcessor):
 
         account_type = account_type_map[account_type_input]
 
-        # 使用新的缓存服务创建确认操作
-        return self._create_pending_user_update_operation(
-            context, uid, account_type, ' '.join(parts[1:])  # 转换为0-2的用户类型
+        # 使用配置化的缓存服务创建确认操作
+        return self._create_pending_operation(
+            context, OperationTypes.UPDATE_USER, {
+                'user_id': uid,
+                'user_type': account_type,
+                'admin_input': ' '.join(parts[1:])
+            }
         )
 
     @safe_execute("更新广告命令解析失败")
@@ -175,9 +186,13 @@ class AdminProcessor(BaseProcessor):
 
         # 2. 合规化预检验——先不实现，后续看情况改成自动化处理，不要拒绝操作
 
-        # 使用新的缓存服务创建确认操作
-        return self._create_pending_ads_update_operation(
-            context, bvid.strip(), adtime_stamps, user_msg
+        # 使用配置化的缓存服务创建确认操作
+        return self._create_pending_operation(
+            context, OperationTypes.UPDATE_ADS, {
+                'bvid': bvid.strip(),
+                'adtime_stamps': adtime_stamps,
+                'admin_input': user_msg
+            }
         )
 
     def handle_cancel_admin_operation(self, context: MessageContext) -> ProcessResult:
@@ -193,109 +208,86 @@ class AdminProcessor(BaseProcessor):
 
     @require_app_controller("应用控制器不可用")
     @require_service(ServiceNames.PENDING_CACHE, "缓存业务服务不可用")
-    @safe_execute("创建待处理用户更新操作失败")
-    def _create_pending_user_update_operation(self, context: MessageContext, user_id: str, user_type: int, admin_input: str) -> ProcessResult:
+    @safe_execute("创建待处理操作失败")
+    def _create_pending_operation(self, context: MessageContext, business_id: str, operation_data: Dict[str, Any]) -> ProcessResult:
         """
-        创建待处理的用户更新操作
+        创建待处理操作（配置化通用方法）
 
         Args:
             context: 消息上下文
-            user_id: 用户ID
-            user_type: 用户类型 (1-3)
-            admin_input: 管理员原始输入
+            business_id: 业务标识 (如 'update_user', 'update_ads')
+            operation_data: 操作数据
 
         Returns:
             ProcessResult: 处理结果
         """
         pending_cache_service = self.app_controller.get_service(ServiceNames.PENDING_CACHE)
 
-        # 从配置获取超时时间
-        timeout_seconds = self.get_operation_timeout(OperationTypes.UPDATE_USER)
+        # 从卡片业务映射配置获取配置信息
+        config = self.card_mapping_service.get_business_config(business_id)
+        if not config:
+            return ProcessResult.error_result(f"未找到业务配置: {business_id}")
+
+        # 从配置获取超时时间和响应类型
+        timeout_seconds = config.get("timeout_seconds", 30)
+        response_type = config.get("response_type", "")
+
+        if not response_type:
+            return ProcessResult.error_result(f"业务 {business_id} 缺少响应类型配置")
+
         timeout_text = self._format_timeout_text(timeout_seconds)
 
-        # 准备操作数据
-        operation_data = {
-            'user_id': user_id,
-            'user_type': user_type,
-            'admin_input': admin_input,
+        # 准备完整的操作数据
+        full_operation_data = {
+            **operation_data,  # 合并传入的操作数据
             'finished': False,
             'result': '确认⏰',
             'hold_time': timeout_text,
-            'operation_type': OperationTypes.UPDATE_USER
+            'operation_type': business_id
         }
 
         # 创建缓存操作
         operation_id = pending_cache_service.create_operation(
             user_id=context.user_id,
-            operation_type=OperationTypes.UPDATE_USER,
-            operation_data=operation_data,
-            admin_input=admin_input,
+            operation_type=business_id,
+            operation_data=full_operation_data,
+            admin_input=operation_data.get('admin_input', ''),
             hold_time_seconds=timeout_seconds,
             default_action=DefaultActions.CONFIRM
         )
 
         # 添加操作ID到数据中
-        operation_data['operation_id'] = operation_id
+        full_operation_data['operation_id'] = operation_id
 
-        # 使用admin卡片管理器生成卡片
+        # 使用配置化的响应类型返回结果
         return ProcessResult.success_result(
-            "admin_card_send",
-            operation_data,
+            response_type,
+            full_operation_data,
             parent_id=context.message_id
         )
 
-    @require_app_controller("应用控制器不可用")
-    @require_service(ServiceNames.PENDING_CACHE, "缓存业务服务不可用")
-    @safe_execute("创建待处理广告更新操作失败")
-    def _create_pending_ads_update_operation(self, context: MessageContext, bvid: str, adtime_stamps: str, admin_input: str) -> ProcessResult:
-        """
-        创建待处理的广告更新操作
+    def _get_card_update_response_type(self, business_id: str) -> str:
+        """获取卡片更新的响应类型，目前是废弃内容，因为配置和设定还没处理好【待处理
 
         Args:
-            context: 消息上下文
-            bvid: B站视频ID
-            adtime_stamps: 广告时间戳
-            admin_input: 管理员原始输入
+            business_id: 业务ID
 
         Returns:
-            ProcessResult: 处理结果
+            str: 卡片更新响应类型，默认为 admin_card_update
         """
-        pending_cache_service = self.app_controller.get_service(ServiceNames.PENDING_CACHE)
+        config = self.card_mapping_service.get_business_config(business_id)
+        response_type = config.get("response_type", "")
 
-        # 从配置获取超时时间
-        timeout_seconds = self.get_operation_timeout(OperationTypes.UPDATE_ADS)
-        timeout_text = self._format_timeout_text(timeout_seconds)
-
-        # 准备操作数据
-        operation_data = {
-            'bvid': bvid,
-            'adtime_stamps': adtime_stamps,
-            'admin_input': admin_input,
-            'finished': False,
-            'result': '确认⏰',
-            'hold_time': timeout_text,
-            'operation_type': OperationTypes.UPDATE_ADS
-        }
-
-        # 创建缓存操作
-        operation_id = pending_cache_service.create_operation(
-            user_id=context.user_id,
-            operation_type=OperationTypes.UPDATE_ADS,
-            operation_data=operation_data,
-            admin_input=admin_input,
-            hold_time_seconds=timeout_seconds,
-            default_action=DefaultActions.CONFIRM
-        )
-
-        # 添加操作ID到数据中
-        operation_data['operation_id'] = operation_id
-
-        # 使用admin卡片管理器生成卡片
-        return ProcessResult.success_result(
-            "admin_card_send",
-            operation_data,
-            parent_id=context.message_id
-        )
+        # 将发送响应类型转换为更新响应类型
+        if response_type == "admin_card_send":
+            return "admin_card_update"
+        elif response_type == "admin_ads_send":
+            return "admin_ads_update"
+        elif response_type == "bili_card_send":
+            return "bili_card_update"
+        else:
+            # 默认返回admin_card_update保持向后兼容
+            return "admin_card_update"
 
     @safe_execute("执行用户更新操作失败")
     def _execute_user_update_operation(self, operation) -> bool:
@@ -392,11 +384,11 @@ class AdminProcessor(BaseProcessor):
         operation = pending_cache_service.get_operation(operation_id)
         if not operation:
             return ProcessResult.error_result("操作不存在")
+        card_update_response_type = action_value.get('process_result_type', '')
 
         match action:
-            case "confirm_user_update":
-
-                # 确认操作
+            case CardActions.CONFIRM_USER_UPDATE | CardActions.CONFIRM_ADS_UPDATE:
+                # 确认操作（统一处理）
                 success = pending_cache_service.confirm_operation(operation_id)
 
                 if success:
@@ -410,7 +402,7 @@ class AdminProcessor(BaseProcessor):
                     })
 
                     return ProcessResult.success_result(
-                        "admin_card_update",
+                        card_update_response_type,
                         result_data
                     )
 
@@ -423,11 +415,11 @@ class AdminProcessor(BaseProcessor):
                 })
 
                 return ProcessResult.success_result(
-                    "admin_card_update",
+                    card_update_response_type,
                     result_data
                 )
-            case "cancel_user_update":
-                # 取消操作
+            case CardActions.CANCEL_USER_UPDATE | CardActions.CANCEL_ADS_UPDATE:
+                # 取消操作（统一处理）
                 success = pending_cache_service.cancel_operation(operation_id)
 
                 # 构建取消的卡片更新数据
@@ -440,58 +432,10 @@ class AdminProcessor(BaseProcessor):
                 })
 
                 return ProcessResult.success_result(
-                    "admin_card_update",
+                    card_update_response_type,
                     result_data
                 )
-            case "confirm_ads_update":
-                # 确认广告更新操作
-                success = pending_cache_service.confirm_operation(operation_id)
-
-                if success:
-                    # 构建成功的卡片更新数据
-                    result_data = operation.operation_data.copy()
-                    result_data.update({
-                        'finished': True,
-                        'hold_time': '',
-                        'result': " | 已完成",
-                        'result_type': 'success'
-                    })
-
-                    return ProcessResult.success_result(
-                        "admin_card_update",
-                        result_data
-                    )
-
-                # 构建失败的卡片更新数据
-                result_data = operation.operation_data.copy()
-                result_data.update({
-                    'finished': True,
-                    'result': " | ❌ 执行失败",
-                    'result_type': 'error'
-                })
-
-                return ProcessResult.success_result(
-                    "admin_card_update",
-                    result_data
-                )
-            case "cancel_ads_update":
-                # 取消广告更新操作
-                success = pending_cache_service.cancel_operation(operation_id)
-
-                # 构建取消的卡片更新数据
-                result_data = operation.operation_data.copy()
-                result_data.update({
-                    'finished': True,
-                    'hold_time': '',
-                    'result': " | 操作取消",
-                    'result_type': 'info'
-                })
-
-                return ProcessResult.success_result(
-                    "admin_card_update",
-                    result_data
-                )
-            case "adtime_editor_change":
+            case CardActions.ADTIME_EDITOR_CHANGE:
                 # 处理广告时间戳编辑器变更
                 new_adtime_stamps = action_value.get('value', '')
 
@@ -511,7 +455,7 @@ class AdminProcessor(BaseProcessor):
                 else:
                     return ProcessResult.error_result("时间戳更新失败")
             case "update_data":
-                # 更新操作数据
+                # 更新操作数据，占位的无效内容【待清理
                 new_data = action_value.get('new_data', {})
                 pending_cache_service.update_operation_data(operation_id, new_data)
 

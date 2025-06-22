@@ -15,6 +15,7 @@ class ServiceNames:
     ROUTER = "router"
     LLM = "llm"
     CACHE = "cache"
+    CARD_BUSINESS_MAPPING = "card_business_mapping"
 
 # ========== UI类型常量 ==========
 class UITypes:
@@ -33,6 +34,7 @@ class OperationTypes:
     """业务操作类型，用于区分不同的业务逻辑"""
     UPDATE_USER = "update_user"
     UPDATE_ADS = "update_ads"
+    BILI_VIDEO = "bili_video_menu"
     SYSTEM_CONFIG = "system_config"
 
 # ========== 默认动作常量 ==========
@@ -52,12 +54,13 @@ class MessageTypes:
     AUDIO = "audio"
     MENU_CLICK = "menu_click"
     CARD_ACTION = "card_action"
-
-# ========== 响应类型常量 ==========
+# ---------- Buisiness层常量--------------
+# ========== ProcessResult类型常量 ==========
 class ResponseTypes:
     ADMIN_CARD_SEND = "admin_card_send"
     ADMIN_CARD_UPDATE = "admin_card_update"
     BILI_CARD_UPDATE = "bili_card_update"
+
     CARD_ACTION_RESPONSE = "card_action_response"
     RICH_TEXT = "rich_text"
     IMAGE_LIST = "image_list"
@@ -68,6 +71,7 @@ class ResponseTypes:
     ERROR = "error"
     TEXT = "text"
     AUDIO = "audio"
+    IMAGE = "image"
 
 # ========== 卡片动作名称常量 ==========
 class CardActions:
@@ -214,8 +218,11 @@ class BusinessConstants:
         2: "受邀用户"
     }
 
-    # 操作超时时间 (秒)
-    DEFAULT_OPERATION_TIMEOUT = 30
-    USER_UPDATE_TIMEOUT = 30
-    ADS_UPDATE_TIMEOUT = 30
-    SYSTEM_CONFIG_TIMEOUT = 60
+    # 操作超时时间 (秒) - 注意：具体业务超时时间已移至配置化管理
+    DEFAULT_OPERATION_TIMEOUT = 30  # 仅作为配置缺失时的备用默认值
+
+# ---------- 服务层常量 ----------
+# ========== Scheduler常量 ==========
+class SchedulerTaskTypes:
+    DAILY_SCHEDULE = "daily_schedule"
+    BILI_UPDATES = "bili_updates"

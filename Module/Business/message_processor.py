@@ -42,9 +42,17 @@ class MessageProcessor(BaseProcessor):
         # 初始化Action分发表
         self._init_action_dispatchers()
 
+    @property
+    def card_mapping_service(self):
+        """获取卡片业务映射服务"""
+        if self.app_controller:
+            return self.app_controller.get_service(ServiceNames.CARD_BUSINESS_MAPPING)
+        return None
+
     @safe_execute("消息分发器初始化失败")
     def _init_action_dispatchers(self):
         """初始化Action分发表，映射卡片动作到处理方法"""
+        # 基础动作映射（非配置化的固定动作）
         self.action_dispatchers = {
             # AI路由卡片动作
             CardActions.CANCEL: self._handle_ai_card_action,
@@ -53,16 +61,26 @@ class MessageProcessor(BaseProcessor):
             # B站视频卡片动作
             CardActions.MARK_BILI_READ: self._handle_mark_bili_read,
 
-            # 管理员卡片动作
-            CardActions.CONFIRM_USER_UPDATE: self._handle_pending_admin_card_action,
-            CardActions.CANCEL_USER_UPDATE: self._handle_pending_admin_card_action,
+            # 用户类型选择动作（特殊处理）
             CardActions.UPDATE_USER_TYPE: self._handle_user_type_select_action,
-            CardActions.CONFIRM_ADS_UPDATE: self._handle_pending_admin_card_action,
-            CardActions.CANCEL_ADS_UPDATE: self._handle_pending_admin_card_action,
-            CardActions.ADTIME_EDITOR_CHANGE: self._handle_pending_admin_card_action,
-
-            # 卡片选择器动作
         }
+
+        # 注册配置化的卡片动作
+        self._register_card_actions_from_config()
+
+    def _register_card_actions_from_config(self):
+        """从配置文件注册卡片动作到分发器"""
+        all_mappings = self.card_mapping_service.get_all_mappings()
+
+        for business_id, config in all_mappings.items():
+            actions = config.get("actions", [])
+            for action in actions:
+                # 根据业务类型确定处理器
+                if action in [CardActions.CONFIRM_USER_UPDATE, CardActions.CANCEL_USER_UPDATE,
+                             CardActions.CONFIRM_ADS_UPDATE, CardActions.CANCEL_ADS_UPDATE,
+                             CardActions.ADTIME_EDITOR_CHANGE]:
+                    # 管理员卡片动作
+                    self.action_dispatchers[action] = self._handle_pending_admin_card_action
 
     @require_app_controller("系统服务不可用")
     @safe_execute("消息处理失败")

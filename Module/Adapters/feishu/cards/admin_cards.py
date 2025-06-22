@@ -8,7 +8,7 @@
 from typing import Dict, Any
 from .card_registry import BaseCardManager
 from ..decorators import card_build_safe
-from Module.Services.constants import CardActions, OperationTypes
+from Module.Services.constants import CardActions, OperationTypes, ResponseTypes
 
 
 class AdminCardInteractionComponents:
@@ -31,6 +31,7 @@ class AdminCardInteractionComponents:
             # 确认按钮组件
             "confirm_action": {
                 "action": CardActions.CONFIRM_USER_UPDATE,
+                "process_result_type": ResponseTypes.ADMIN_CARD_UPDATE,
                 "operation_id": operation_id,
                 "user_id": user_id,
                 "user_type": user_type
@@ -39,6 +40,7 @@ class AdminCardInteractionComponents:
             # 取消按钮组件
             "cancel_action": {
                 "action": CardActions.CANCEL_USER_UPDATE,
+                "process_result_type": ResponseTypes.ADMIN_CARD_UPDATE,
                 "operation_id": operation_id
             },
 
@@ -73,6 +75,7 @@ class AdminCardInteractionComponents:
             # 确认按钮组件
             "confirm_action": {
                 "action": CardActions.CONFIRM_ADS_UPDATE,
+                "process_result_type": ResponseTypes.ADMIN_CARD_UPDATE,
                 "operation_id": operation_id,
                 "bvid": bvid,
                 "adtime_stamps": adtime_stamps
@@ -81,6 +84,7 @@ class AdminCardInteractionComponents:
             # 取消按钮组件
             "cancel_action": {
                 "action": CardActions.CANCEL_ADS_UPDATE,
+                "process_result_type": ResponseTypes.ADMIN_CARD_UPDATE,
                 "operation_id": operation_id
             },
 

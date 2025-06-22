@@ -18,7 +18,7 @@ from ..decorators import (
     feishu_event_handler_safe, message_conversion_safe, async_operation_safe
 )
 from Module.Services.constants import (
-    ServiceNames, UITypes, ResponseTypes, Messages
+    ServiceNames, UITypes, ResponseTypes, Messages, CardOperationTypes, MessageTypes
 )
 
 
@@ -49,6 +49,13 @@ class MessageHandler:
         else:
             self.debug_p2im_object = self._noop_debug
             self.debug_parent_id_analysis = self._noop_debug
+
+    @property
+    def card_mapping_service(self):
+        """获取卡片业务映射服务"""
+        if self.app_controller:
+            return self.app_controller.get_service(ServiceNames.CARD_BUSINESS_MAPPING)
+        return None
 
     def _execute_async(self, func):
         """执行异步操作的通用方法"""
@@ -241,27 +248,24 @@ class MessageHandler:
         """异步处理B站视频推荐任务"""
         def process_in_background():
             # 调用业务处理器获取原始数据
-            if hasattr(self.message_processor, 'process_bili_video_async'):
-                result = self.message_processor.process_bili_video_async()
+            result = self.message_processor.process_bili_video_async()
 
-                if result.success and result.response_type == "bili_video_data":
-                    # 使用统一的卡片处理方法
-                    success = self.sender.handle_bili_card_operation(
-                        result.response_content,
-                        operation_type="send",
-                        user_id=user_id
-                    )
+            if result.success and result.response_type == ResponseTypes.BILI_VIDEO_DATA:
+                # 使用统一的卡片处理方法
+                success = self.sender.handle_bili_card_operation(
+                    result.response_content,
+                    operation_type=CardOperationTypes.SEND,
+                    user_id=user_id
+                )
 
-                    if not success:
-                        # 发送失败，使用降级方案
-                        error_result = ProcessResult.error_result("B站视频卡片发送失败")
-                        self.sender.send_direct_message(user_id, error_result)
-                else:
-                    debug_utils.log_and_print(f"❌ B站视频获取失败: {result.error_message}", log_level="ERROR")
-                    # B站视频获取失败，发送错误信息
-                    self.sender.send_direct_message(user_id, result)
+                if not success:
+                    # 发送失败，使用降级方案
+                    error_result = ProcessResult.error_result("B站视频卡片发送失败")
+                    self.sender.send_direct_message(user_id, error_result)
             else:
-                debug_utils.log_and_print("❌ B站视频推荐功能不可用", log_level="ERROR")
+                debug_utils.log_and_print(f"❌ B站视频获取失败: {result.error_message}", log_level="ERROR")
+                # B站视频获取失败，发送错误信息
+                self.sender.send_direct_message(user_id, result)
 
         self._execute_async(process_in_background)
 
@@ -270,12 +274,23 @@ class MessageHandler:
         if not result.success:
             return False
 
-        match result.response_type:
-            case "rich_text":
+        response_type = result.response_type
+
+        match response_type:
+            case ResponseTypes.RICH_TEXT:
                 self.sender.upload_and_send_rich_text(data, result)
                 return True
 
-            case "admin_card_send":
+            case ResponseTypes.IMAGE:
+                image_data = result.response_content.get("image_data")
+                if image_data:
+                    self.sender.upload_and_send_single_image_data(data, image_data)
+                else:
+                    error_result = ProcessResult.error_result("图片数据为空")
+                    self.sender.send_feishu_reply(data, error_result)
+                return True
+
+            case ResponseTypes.ADMIN_CARD_SEND:
                 user_id = context.user_id
                 chat_id = data.event.message.chat_id
                 message_id = data.event.message.message_id
@@ -284,7 +299,7 @@ class MessageHandler:
 
                 success, sent_message_id = self.sender.handle_admin_card_operation(
                     operation_data,
-                    operation_type="send",
+                    operation_type=CardOperationTypes.SEND,
                     user_id=user_id,
                     chat_id=chat_id,
                     message_id=message_id
@@ -307,15 +322,6 @@ class MessageHandler:
                 if not success:
                     error_result = ProcessResult.error_result("管理员卡片发送失败")
                     self.sender.send_feishu_reply(data, error_result, force_reply_mode="reply")
-                return True
-
-            case "image":
-                image_data = result.response_content.get("image_data")
-                if image_data:
-                    self.sender.upload_and_send_single_image_data(data, image_data)
-                else:
-                    error_result = ProcessResult.error_result("图片数据为空")
-                    self.sender.send_feishu_reply(data, error_result)
                 return True
 
             case _:

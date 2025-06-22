@@ -15,7 +15,7 @@ from lark_oapi.event.callback.model.p2_card_action_trigger import P2CardActionTr
 from Module.Common.scripts.common import debug_utils
 from Module.Business.processors import MessageContext
 from Module.Services.constants import (
-    CardOperationTypes, CardConfigTypes, OperationTypes, ResponseTypes,
+    ServiceNames, CardOperationTypes, CardConfigTypes, OperationTypes, ResponseTypes,
     Messages, CardActions, UIElements, FieldNames, DefaultValues, MessageTypes
 )
 from ..decorators import (
@@ -43,11 +43,21 @@ class CardHandler:
         self.bili_card_manager = card_managers.get('bili')
         self.admin_card_manager = card_managers.get('admin')
 
+        # 获取应用控制器以访问服务
+        self.app_controller = getattr(message_processor, 'app_controller', None)
+
         # 设置调试函数
         if debug_functions:
             self.debug_p2im_object = debug_functions.get('debug_p2im_object', self._noop_debug)
         else:
             self.debug_p2im_object = self._noop_debug
+
+    @property
+    def card_mapping_service(self):
+        """获取卡片业务映射服务"""
+        if self.app_controller:
+            return self.app_controller.get_service(ServiceNames.CARD_BUSINESS_MAPPING)
+        return None
 
     @card_operation_safe("飞书卡片处理失败")
     def handle_feishu_card(self, data) -> P2CardActionTriggerResponse:
@@ -218,16 +228,21 @@ class CardHandler:
             case _:
                 pass
 
-        # 动态选择卡片构建方法 - 修复硬编码问题
-        card_type = operation_data.get('operation_type', '')
-        match card_type:
-            case OperationTypes.UPDATE_USER:
+        # 从配置获取卡片构建方法 - 配置化解决方案
+        operation_type_value = operation_data.get('operation_type', '')
+
+        # 获取卡片业务映射服务
+        card_mapping_service = self.card_mapping_service
+        if card_mapping_service:
+            if operation_type_value:
+                config = card_mapping_service.get_business_config(operation_type_value)
+                build_method_name = config.get("card_builder_method", "build_user_update_confirm_card")
+            else:
+                debug_utils.log_and_print(f"⚠️ 未知的操作类型，使用默认构建方法: {operation_type_value}", log_level="WARNING")
                 build_method_name = "build_user_update_confirm_card"
-            case OperationTypes.UPDATE_ADS:
-                build_method_name = "build_ads_update_confirm_card"
-            case _:
-                debug_utils.log_and_print(f"⚠️ 未知的操作类型，使用默认构建方法: {card_type}", log_level="WARNING")
-                build_method_name = "build_user_update_confirm_card"
+        else:
+            debug_utils.log_and_print("⚠️ 卡片映射服务不可用，使用默认构建方法", log_level="WARNING")
+            build_method_name = "build_user_update_confirm_card"
 
         # 使用通用卡片操作处理
         return self._handle_card_operation_common(

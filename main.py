@@ -27,6 +27,7 @@ sys.path.insert(0, str(current_dir))
 from Module.Application.app_controller import AppController
 from Module.Business.message_processor import MessageProcessor
 from Module.Adapters import FeishuAdapter
+from Module.Services.constants import ServiceNames, SchedulerTaskTypes
 from Module.Common.scripts.common import debug_utils
 
 
@@ -59,7 +60,7 @@ def setup_application():
     )
 
     # 建立定时任务事件监听
-    scheduler_service = app_controller.get_service('scheduler')
+    scheduler_service = app_controller.get_service(ServiceNames.SCHEDULER)
     if scheduler_service:
         def handle_scheduled_event(event):
             try:
@@ -70,18 +71,20 @@ def setup_application():
                     debug_utils.log_and_print("定时任务事件缺少admin_id", log_level="WARNING")
                     return
 
-                if message_type == "daily_schedule":
-                    services_status = event.data.get('services_status')
-                    result = message_processor.create_scheduled_message("daily_schedule", services_status=services_status)
-                elif message_type == "bilibili_updates":
-                    sources = event.data.get('sources')
-                    api_result = event.data.get('api_result')
-                    result = message_processor.create_scheduled_message(
-                        "bilibili_updates", sources=sources, api_result=api_result
-                    )
-                else:
-                    debug_utils.log_and_print(f"未知定时任务类型: {message_type}", log_level="WARNING")
-                    return
+                match message_type:
+                    case SchedulerTaskTypes.DAILY_SCHEDULE:
+                        services_status = event.data.get('services_status')
+                        result = message_processor.create_scheduled_message(message_type, services_status=services_status)
+                    case SchedulerTaskTypes.BILI_UPDATES:
+                        sources = event.data.get('sources')
+                        api_result = event.data.get('api_result')
+                        result = message_processor.create_scheduled_message(
+                            message_type, sources=sources, api_result=api_result
+                        )
+                    case _:
+                        debug_utils.log_and_print(f"未知定时任务类型: {message_type}", log_level="WARNING")
+                        return
+
                 if result.success:
                     feishu_adapter.sender.send_direct_message(admin_id, result)
                     debug_utils.log_and_print(f"✅ 定时消息已发送: {message_type}", log_level="INFO")

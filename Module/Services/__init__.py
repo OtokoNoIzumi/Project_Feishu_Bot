@@ -13,6 +13,7 @@ from .notion import NotionService
 from .llm import LLMService
 from .router import RouterService
 from .pending_cache_service import PendingCacheService
+from .card_business_mapping_service import CardBusinessMappingService
 from .constants import ServiceNames
 
 __all__ = [
@@ -24,7 +25,8 @@ __all__ = [
     'NotionService',
     'LLMService',
     'RouterService',
-    'PendingCacheService'
+    'PendingCacheService',
+    'CardBusinessMappingService'
 ]
 
 # 服务注册表（用于应用控制器）
@@ -37,5 +39,6 @@ AVAILABLE_SERVICES = {
     ServiceNames.NOTION: NotionService,
     ServiceNames.LLM: LLMService,
     ServiceNames.ROUTER: RouterService,
-    ServiceNames.PENDING_CACHE: PendingCacheService
+    ServiceNames.PENDING_CACHE: PendingCacheService,
+    ServiceNames.CARD_BUSINESS_MAPPING: CardBusinessMappingService
 }

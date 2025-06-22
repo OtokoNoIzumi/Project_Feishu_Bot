@@ -17,6 +17,7 @@ from .cards import initialize_card_managers, get_card_manager
 from .handlers import MessageHandler, CardHandler, MenuHandler
 from .senders import MessageSender
 from Module.Services.constants import UITypes, EnvVars
+from Module.Services.constants import ServiceNames
 
 # P2ImMessageReceiveV1对象调试开关 - 开发调试用
 DEBUG_P2IM_OBJECTS = False  # 设置为True启用详细调试输出
@@ -215,9 +216,9 @@ class FeishuAdapter:
     def _register_ui_update_callbacks(self):
         """注册UI更新回调到缓存服务"""
         if self.app_controller:
-            pending_cache_service = self.app_controller.get_service('pending_cache')
+            pending_cache_service = self.app_controller.get_service(ServiceNames.PENDING_CACHE)
             if pending_cache_service:
-                # 注册卡片UI更新回调
+                # 注册卡片UI更新回调，用来做定时的卡片更新
                 card_ui_callback = self.card_handler.create_card_ui_update_callback()
                 pending_cache_service.register_ui_update_callback(UITypes.INTERACTIVE_CARD, card_ui_callback)
                 debug_utils.log_and_print("✅ 卡片UI更新回调注册成功", log_level="INFO")
