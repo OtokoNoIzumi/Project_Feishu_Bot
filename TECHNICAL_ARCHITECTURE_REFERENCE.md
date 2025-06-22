@@ -2,9 +2,10 @@
 
 ## 📋 项目状态
 
-**当前版本：生产版本 ✅**
-**架构状态：✅ 四层架构完全实现，所有功能验证通过**
-**最新更新：2024年12月 - 卡片业务流架构分析与优化**
+**当前版本：配置化关联架构 v2.1 ✅**
+**架构状态：✅ 四层架构 + 配置化卡片关联完全实现**
+**重构方向：卡片业务解耦，配置文件桥接，快速插拔支持**
+**最新更新：2025年6月 - 配置化关联架构实施**
 
 ---
 
@@ -17,6 +18,7 @@ Project_Feishu_Bot/
 ├── test_runtime_api.py                  # 🧪 API验证工具
 ├── start.bat                            # 🔧 Windows启动脚本
 ├── config.json                          # ⚙️ 静态配置文件
+├── cards_business_mapping.json          # 🃏 卡片业务映射配置 [NEW]
 ├── requirements.txt                     # 📦 依赖包清单
 ├── README.md                            # 📖 项目说明文档
 ├── TECHNICAL_ARCHITECTURE_REFERENCE.md  # 📚 技术架构参考文档
@@ -52,6 +54,7 @@ Project_Feishu_Bot/
     │           └── card_registry.py     # 卡片注册器基类
     ├── Services/                        # 服务层
     │   ├── config_service.py            # 配置服务
+    │   ├── constants.py                 # 系统常量定义 [UPDATED]
     │   ├── cache_service.py             # 基础缓存服务
     │   ├── pending_cache_service.py     # 待处理操作缓存服务
     │   ├── service_decorators.py        # 服务装饰器
@@ -65,7 +68,6 @@ Project_Feishu_Bot/
     │   ├── notion/                      # Notion服务模块
     │   │   └── notion_service.py        # B站数据管理
     │   ├── llm/                         # LLM服务模块
-    │   └── router/                      # 智能路由服务模块
     └── Common/                          # 公共模块库
         └── scripts/                     # 工具脚本
             └── common/                  # 通用工具
@@ -102,347 +104,261 @@ Project_Feishu_Bot/
 
 ---
 
-## 🎯 卡片业务流设计与架构分析
+## 🃏 配置化关联卡片架构 v2.1
 
-### 📊 **管理员卡片业务完整堆栈**
+### 🎯 **核心架构理念**
 
-#### **Update_User业务流（9层架构）**
+#### **分离原则**
+- **卡片定位**: 飞书Adapter的附属特性，负责消息接收、格式化、展示和传递
+- **业务解耦**: 业务层与卡片层通过配置文件桥接，避免硬编码依赖关系
+- **依赖方向**: 卡片可以向下调用业务层，业务层不能反向依赖卡片
 
-| 层级 | 位置 | 方法/功能 | 说明 |
-|------|------|----------|------|
-| **L1: 文本输入** | `AdminProcessor.handle_admin_command()` | 解析"更新用户 UID TYPE"命令 | 入口层 |
-| **L2: 创建缓存操作** | `AdminProcessor._create_pending_user_update_operation()` | 创建30s倒计时确认操作 | 业务封装 |
-| **L3: 注册执行器** | `AdminProcessor._register_pending_operations()` | 注册`update_user`执行器映射 | 服务注册 |
-| **L4: 发送卡片** | 返回`ProcessResult("admin_card_send")` | 触发卡片发送指令 | 结果指令 |
-| **L5: 前端交互映射** | `MessageProcessor.action_dispatchers` | 映射按钮/选择器到处理方法 | 前端路由 |
-| **L6: 处理卡片动作** | `MessageProcessor._handle_pending_admin_card_action()` | 统一处理卡片交互事件 | 交互分发 |
-| **L7: 业务逻辑处理** | `AdminProcessor.handle_pending_operation_action()` | case匹配具体业务逻辑 | 业务执行 |
-| **L8: 执行API调用** | `AdminProcessor._execute_user_update_operation()` | 调用B站API更新用户状态 | API集成 |
-| **L9: UI更新回调** | `CardHandler.create_card_ui_update_callback()` | 实时更新卡片显示状态 | UI反馈 |
+#### **3个独立卡片业务完整架构**
 
-#### **交互组件系统架构**
+| 卡片业务 | 模板标识 | 业务功能 | 交互组件 |
+|---------|---------|----------|----------|
+| **用户更新确认卡片** | `admin_user_update_confirm` | 管理员用户状态管理 | 类型选择器 + 确认/取消按钮 |
+| **广告更新确认卡片** | `admin_ads_update_confirm` | B站广告时间戳编辑 | 时间戳编辑器 + 确认/取消按钮 |
+| **B站视频菜单卡片** | `bili_video_menu` | B站视频推荐交互 | 已读标记 + 更多推荐按钮 |
 
-```python
-# 标准化交互组件定义
-AdminCardInteractionComponents.get_user_update_confirm_components()
-├── confirm_action: "confirm_user_update"
-├── cancel_action: "cancel_user_update"
-└── user_type_selector: "select_change" (映射到update_user_type)
+### 📋 **配置化关联实施方案**
 
-# 组件到处理器的映射
-MessageProcessor.action_dispatchers = {
-    "confirm_user_update": _handle_pending_admin_card_action,
-    "cancel_user_update": _handle_pending_admin_card_action,
-    "select_change": _handle_select_action,
+#### **1. 核心配置文件架构**
+
+```json
+// cards_business_mapping.json - 业务卡片映射配置
+{
+  "business_mappings": {
+    "update_user": {
+      "response_type": "admin_card_send",
+      "card_template": "admin_user_update_confirm",
+      "card_builder_method": "build_user_update_confirm_card",
+      "timeout_seconds": 30,
+      "actions": ["confirm_user_update", "cancel_user_update", "update_user_type_selector"],
+      "business_processor": "AdminProcessor",
+      "description": "管理员用户状态更新确认卡片"
+    },
+    "update_ads": {
+      "response_type": "admin_ads_send",
+      "card_template": "admin_ads_update_confirm",
+      "card_builder_method": "build_ads_update_confirm_card",
+      "timeout_seconds": 45,
+      "actions": ["confirm_ads_update", "cancel_ads_update", "adtime_editor_change"],
+      "business_processor": "AdminProcessor",
+      "description": "B站广告时间戳更新确认卡片"
+    },
+    "bili_video_menu": {
+      "response_type": "bili_card_send",
+      "card_template": "bili_video_menu",
+      "card_builder_method": "build_video_menu_card",
+      "timeout_seconds": 300,
+      "actions": ["mark_bili_read", "get_more_bili"],
+      "business_processor": "BilibiliProcessor",
+      "description": "B站视频推荐菜单卡片"
+    }
+  },
+  "config_version": "2.1.0",
+  "last_updated": "2025-06-20"
 }
 ```
 
-### 🔧 **Update_Ads架构问题分析**
+#### **2. 变量分层管理架构**
 
-#### **现状问题清单**
+##### **Step 1: Business层配置解耦**
+```python
+# 原问题：硬编码超时时间和响应类型
+operation_timeouts = {"update_user": 30, "update_ads": 45}  # ❌
+return ProcessResult("admin_card_send")  # ❌
 
-| 问题类型 | 具体描述 | 位置 | 影响等级 |
-|---------|---------|------|---------|
-| **🔴 硬编码构建方法** | `_handle_admin_card_operation`固定调用用户卡片构建方法 | `card_handler.py:196` | Critical |
-| **🔴 缺少交互组件** | 未实现`get_ads_update_confirm_components`方法 | `admin_cards.py:68` | Critical |
-| **🔴 映射被注释** | `get_operation_type_mapping`中广告映射被禁用 | `admin_cards.py:68` | High |
-| **🔴 缺少编辑器处理** | `handle_pending_operation_action`缺少`adtime_editor_change` | `admin_processor.py:450+` | High |
-| **🟡 选择器不支持** | `_apply_select_change`仅支持用户类型选择器 | `message_processor.py:440+` | Medium |
+# 方案A解决：通过业务ID从配置获取
+config = CardBusinessMapping.get_business_config(business_id)
+timeout = config.get("timeout_seconds", 30)  # ✅
+response_type = config.get("response_type")   # ✅
+return ProcessResult(response_type)           # ✅
+```
 
-#### **修复策略**
+##### **Step 2: Adapter层路由解耦**
+```python
+# 原问题：硬编码响应类型检测和方法映射
+if response_type == "admin_card_send":        # ❌
+    method_name = "build_user_update_confirm_card"  # ❌
 
-1. **架构级修复**: 实现动态卡片构建方法选择
-2. **组件级修复**: 补全广告交互组件定义系统
-3. **业务级修复**: 添加`adtime_editor_change`处理逻辑
-4. **集成级修复**: 扩展选择器支持多操作类型
+# 方案A解决：配置驱动的自动路由
+config = CardBusinessMapping.get_config_by_response_type(response_type)
+method_name = config.get("card_builder_method")  # ✅
+card_manager = self._get_card_manager(config.get("card_template"))  # ✅
+```
+
+##### **Step 3: 交互动作配置化**
+```python
+# 原问题：硬编码动作名称和响应类型映射
+action_dispatchers = {
+    "confirm_user_update": _handle_pending_admin_card_action,  # ❌
+    "cancel_user_update": _handle_pending_admin_card_action,   # ❌
+}
+
+# 方案A解决：配置驱动的动作注册
+for business_id, config in CardBusinessMapping.get_all_mappings().items():
+    for action in config.get("actions", []):
+        action_dispatchers[action] = self._get_action_handler(config)  # ✅
+```
+
+### 🔄 **4层架构完整调用链路**
+
+#### **用户更新确认卡片业务流（配置化版本）**
+
+| 层级 | 位置 | 方法/功能 | 配置化改进 |
+|------|------|----------|-----------|
+| **L1: Application层** | `AdminProcessor.handle_update_user_command()` | 解析命令，业务ID="update_user" | 通过业务ID获取配置 |
+| **L2: Business层** | `AdminProcessor._create_pending_operation()` | 创建缓存操作 | timeout从配置读取 |
+| **L3: Business层** | `AdminProcessor._register_operations()` | 注册执行器 | processor从配置映射 |
+| **L4: Business层** | 返回`ProcessResult(response_type)` | 触发卡片发送 | response_type从配置获取 |
+| **L5: Adapter层** | `MessageProcessor.handle_message()` | 路由到卡片处理 | 响应类型配置化路由 |
+| **L6: Adapter层** | `CardHandler._handle_card_operation()` | 卡片构建调用 | 方法名从配置获取 |
+| **L7: Adapter层** | `AdminCardManager.build_*_card()` | 构建具体卡片 | 模板从配置读取 |
+| **L8: 交互处理** | `CardHandler._convert_card_to_context()` | 处理用户交互 | 动作列表配置化验证 |
+
+### 🚀 **快速插拔实施方案**
+
+#### **1. 新增卡片插拔流程**
+```json
+// 步骤1: 仅需在配置文件添加新业务映射
+{
+  "new_business": {
+    "response_type": "new_card_send",
+    "card_template": "new_template_name",
+    "card_builder_method": "build_new_card",
+    "timeout_seconds": 60,
+    "actions": ["confirm_new", "cancel_new"],
+    "business_processor": "NewProcessor"
+  }
+}
+
+// 步骤2: 系统自动加载，无需修改现有代码
+// 步骤3: 实现对应的卡片构建方法和处理器即可
+```
+
+#### **2. 最小入侵验证**
+- ✅ **业务层**: 仅需将硬编码字符串替换为配置读取
+- ✅ **适配器层**: 仅需实现配置驱动的路由逻辑
+- ✅ **新卡片**: 仅需添加配置项和实现对应方法
+- ✅ **现有功能**: 零影响，完全向后兼容
 
 ---
 
-## 🔧 核心类和方法清单
+## 🔧 配置化关联核心类和方法清单
 
-### AppController (Module/Application/app_controller.py)
+### CardBusinessMappingService (Module/Services/card_business_mapping_service.py) [NEW]
 
-#### ✅ 实际存在的方法：
 ```python
-class AppController:
+class CardBusinessMappingService:
     def __init__(self, project_root_path: str)
 
-    # 服务管理
-    def auto_register_services() -> Dict[str, bool]          # ✅ 自动注册所有服务
-    def get_service(self, service_name: str)                 # ✅ 获取服务实例
-    def call_service(self, service_name: str, method_name: str, *args, **kwargs)
+    # 配置加载与管理
+    def get_business_config(self, business_id: str) -> Dict[str, Any]
+    def get_config_by_response_type(self, response_type: str) -> Dict[str, Any]
+    def get_all_mappings() -> Dict[str, Dict[str, Any]]
+    def reload_mappings() -> bool
 
-    # 状态检查
-    def health_check() -> Dict[str, Any]                     # ✅ 系统健康检查
-    def get_status() -> Dict[str, Any]                       # ✅ 获取系统状态
+    # 配置验证
+    def validate_business_mapping(self, business_id: str) -> bool
+    def validate_all_mappings() -> Dict[str, bool]
 ```
 
-### AdminProcessor (Module/Business/processors/admin_processor.py)
+### AdminProcessor [UPDATED]
 
-#### ✅ 管理员操作处理方法：
 ```python
 class AdminProcessor:
-    # 核心业务流程
+    # 配置化业务流程
     def handle_admin_command(self, context: MessageContext, user_msg: str) -> ProcessResult
-    def handle_update_user_command(self, context: MessageContext, user_msg: str) -> ProcessResult
-    def handle_update_ads_command(self, context: MessageContext, user_msg: str) -> ProcessResult
+    def _create_pending_operation(self, business_id: str, ...) -> ProcessResult  # 统一方法
 
-    # 缓存操作创建
-    def _create_pending_user_update_operation(...) -> ProcessResult
-    def _create_pending_ads_update_operation(...) -> ProcessResult
-
-    # 执行器注册与回调
-    def _register_pending_operations()
-    def _execute_user_update_operation(self, operation) -> bool
-    def _execute_ads_update_operation(self, operation) -> bool
-
-    # 动作处理
-    def handle_pending_operation_action(self, action_value: Dict[str, Any]) -> ProcessResult
-
-    # API调用
-    def _call_update_user_api(self, uid: str, account_type: int) -> Tuple[bool, Dict[str, Any]]
-    def _call_update_ads_api(self, bvid: str, ad_timestamps: str) -> Tuple[bool, Dict[str, Any]]
+    # 配置驱动的超时和响应类型
+    def _get_operation_config(self, business_id: str) -> Dict[str, Any]
+    def _get_response_type(self, business_id: str) -> str
+    def _get_timeout_seconds(self, business_id: str) -> int
 ```
 
-### MessageProcessor (Module/Business/message_processor.py)
+### MessageProcessor [UPDATED]
 
-#### ✅ 消息处理与动作分发：
 ```python
 class MessageProcessor:
-    # 主处理流程
-    def process_message(self, context: MessageContext) -> ProcessResult
-    def _process_card_action(self, context: MessageContext) -> ProcessResult
+    # 配置驱动的动作分发器初始化
+    def _initialize_action_dispatchers(self) -> Dict[str, Callable]
+    def _get_action_handler(self, config: Dict[str, Any]) -> Callable
 
-    # 动作分发器
-    action_dispatchers = {
-        # 用户更新相关
-        "confirm_user_update": _handle_pending_admin_card_action,
-        "cancel_user_update": _handle_pending_admin_card_action,
-        "select_change": _handle_select_action,
-
-        # 广告更新相关
-        "confirm_ads_update": _handle_pending_admin_card_action,
-        "cancel_ads_update": _handle_pending_admin_card_action,
-        "adtime_editor_change": _handle_pending_admin_card_action,
-    }
-
-    # 动作处理方法
-    def _handle_pending_admin_card_action(...) -> ProcessResult
-    def _handle_select_action(...) -> ProcessResult
-    def _apply_select_change(self, operation, selected_option: str) -> bool
+    # 动态注册卡片动作
+    def _register_card_actions(self, mappings: Dict[str, Dict[str, Any]]) -> None
 ```
 
-### CardHandler (Module/Adapters/feishu/handlers/card_handler.py)
+### CardHandler [UPDATED]
 
-#### ✅ 卡片处理与UI更新：
 ```python
 class CardHandler:
-    # 卡片事件处理
-    def handle_feishu_card(self, data) -> P2CardActionTriggerResponse
+    # 配置驱动的卡片操作路由
+    def _handle_card_operation(self, response_type: str, ...) -> Any
+    def _get_card_manager(self, card_template: str) -> Any
+    def _get_card_builder_method(self, config: Dict[str, Any]) -> str
 
-    # 卡片操作处理
-    def _handle_admin_card_operation(...) -> Any  # ⚠️ 需要修复硬编码问题
-    def _handle_bili_card_operation(...) -> Any
-
-    # UI更新回调
-    def create_card_ui_update_callback(self) -> Callable
-```
-
-### AdminCardManager (Module/Adapters/feishu/cards/admin_cards.py)
-
-#### ✅ 卡片构建与交互组件：
-```python
-class AdminCardManager:
-    # 卡片构建方法
-    def build_user_update_confirm_card(self, operation_data: Dict[str, Any]) -> Dict[str, Any]
-    def build_ads_update_confirm_card(self, operation_data: Dict[str, Any]) -> Dict[str, Any]
-
-    # 参数格式化
-    def _format_user_update_params(self, operation_data: Dict[str, Any]) -> Dict[str, Any]
-    def _format_ads_update_params(self, operation_data: Dict[str, Any]) -> Dict[str, Any]
-
-class AdminCardInteractionComponents:
-    # 交互组件定义
-    @staticmethod
-    def get_user_update_confirm_components(...) -> Dict[str, Any]
-    # ⚠️ 缺少: get_ads_update_confirm_components
-
-    @staticmethod
-    def get_operation_type_mapping() -> Dict[str, str]  # ⚠️ 广告映射被注释
+    # 动态方法调用
+    def _call_card_builder_dynamically(self, manager: Any, method_name: str, ...) -> Dict[str, Any]
 ```
 
 ---
 
-## 📋 卡片业务流优化建议
+## 🚀 配置化关联实施建议
 
-### 🎯 **架构优化建议**
+### **Phase 1: 配置文件与服务创建（Critical）**
+1. 🆕 创建`cards_business_mapping.json`配置文件
+2. 🆕 实现`CardBusinessMappingService`配置管理服务
+3. 🆕 集成配置服务到`AppController`自动注册
+4. ✅ 验证配置加载和读取功能
 
-#### **1. 动态卡片构建方法选择**
-```python
-# 当前问题：硬编码构建方法
-build_method_name="build_user_update_confirm_card"  # ❌ 固定
+### **Phase 2: Business层配置化改造（High Priority）**
+1. 🔄 重构`AdminProcessor`使用配置驱动的超时和响应类型
+2. 🔄 统一`_create_pending_operation`方法，基于business_id
+3. 🔄 替换所有硬编码操作超时时间为配置读取
+4. ✅ 确保业务层完全不依赖具体卡片实现
 
-# 建议改进：基于操作类型动态选择
-method_mapping = {
-    "update_user": "build_user_update_confirm_card",
-    "update_ads": "build_ads_update_confirm_card"
-}
-build_method_name = method_mapping.get(operation_type, "default_method")  # ✅ 动态
-```
+### **Phase 3: Adapter层路由配置化（High Priority）**
+1. 🔄 重构`CardHandler._handle_card_operation`实现动态路由
+2. 🔄 实现配置驱动的卡片构建方法选择
+3. 🔄 重构`MessageProcessor`动作分发器为配置化注册
+4. ✅ 验证卡片构建和交互的配置化路由
 
-#### **2. 统一交互组件架构**
-```python
-# 建议：标准化交互组件定义接口
-class AdminCardInteractionComponents:
-    @staticmethod
-    def get_operation_components(operation_type: str, **params) -> Dict[str, Any]:
-        """统一的组件获取接口"""
-        component_getters = {
-            "update_user": cls.get_user_update_confirm_components,
-            "update_ads": cls.get_ads_update_confirm_components,
-        }
-        getter = component_getters.get(operation_type)
-        return getter(**params) if getter else {}
-```
-
-#### **3. 编辑器交互处理标准化**
-```python
-# 建议：扩展选择器系统支持编辑器
-def _apply_interaction_change(self, operation, change_type: str, new_value: Any) -> bool:
-    """统一处理选择器和编辑器变更"""
-    if change_type == "select":
-        return self._apply_select_change(operation, new_value)
-    elif change_type == "editor":
-        return self._apply_editor_change(operation, new_value)
-    return False
-```
-
-### 🔄 **可扩展性设计**
-
-#### **操作类型注册系统**
-```python
-# 建议：可插拔的操作类型管理
-class AdminOperationRegistry:
-    operations = {
-        "update_user": {
-            "handler": "handle_update_user_command",
-            "card_builder": "build_user_update_confirm_card",
-            "component_getter": "get_user_update_confirm_components",
-            "timeout": 30,
-            "actions": ["confirm_user_update", "cancel_user_update", "select_change"]
-        },
-        "update_ads": {
-            "handler": "handle_update_ads_command",
-            "card_builder": "build_ads_update_confirm_card",
-            "component_getter": "get_ads_update_confirm_components",
-            "timeout": 45,
-            "actions": ["confirm_ads_update", "cancel_ads_update", "adtime_editor_change"]
-        }
-    }
-```
-
-#### **飞书卡片输入约定**
-```python
-# 约定：飞书卡片input组件空值处理
-# 问题：飞书input组件不支持空内容输入
-# 解决方案：使用单空格" "代表空字符串
-# 实现位置：card_handler.py _convert_card_to_context方法
-
-if input_value == ' ':
-    input_value = ''  # 单空格转换为空字符串
-    debug_utils.log_and_print("🔄 检测到单空格输入，转换为空字符串", log_level="INFO")
-```
+### **Phase 4: 扩展性验证与优化（Medium Priority）**
+1. 🧪 新增临时测试卡片验证插拔机制
+2. 🔄 实现配置热更新功能
+3. 📊 添加配置验证和错误处理机制
+4. 📈 优化配置缓存和性能
 
 ---
 
-## 🎯 **飞书卡片交互与缓存业务**
+## 💡 **配置化关联技术债务与里程碑**
 
-### **重构后的事件处理机制 (v1.1.0)**
+### **已解决债务**
+- ✅ **硬编码变量问题**: 通过`constants.py`系统性解决9大类硬编码
+- ✅ **卡片业务概念梳理**: 明确3个独立卡片业务和调用链路
+- ✅ **架构设计方案**: 确定配置化关联方案A为最终技术路线
 
-#### **细粒度事件处理**
-- **问题**: 原先所有selector都使用统一的`select_change`事件，缺乏区分性
-- **解决方案**: 实施细粒度事件命名约定
-  - `{原action}_selector`: 选择器事件 (如 `update_user_type_selector`)
-  - `{原action}_editor`: 编辑器事件 (如 `adtime_editor_change`)
-  - `{原action}`: 按钮事件 (保持原样)
+### **待实施债务**
 
-#### **支持多组件扩展**
-```python
-# 新的事件分发架构支持多selector和input
-self.action_dispatchers = {
-    # 兼容旧版
-    "select_change": self._handle_selector_action,
+| 债务类型 | 描述 | 优先级 | 预估工作量 | 实施阶段 |
+|---------|------|--------|---------|---------|
+| **配置文件创建** | 创建cards_business_mapping.json和配置服务 | Critical | 1天 | Phase 1 |
+| **Business层解耦** | AdminProcessor配置化改造 | High | 1-2天 | Phase 2 |
+| **Adapter层路由** | CardHandler和MessageProcessor配置化 | High | 2天 | Phase 3 |
+| **插拔机制验证** | 实现临时卡片测试插拔效果 | Medium | 1天 | Phase 4 |
+| **缺失测试覆盖** | 配置化关联机制单元测试 | Medium | 2-3天 | Phase 4+ |
+| **性能优化** | 配置缓存和热更新机制 | Low | 1-2天 | Phase 4+ |
 
-    # 细粒度事件处理
-    "update_user_type_selector": self._handle_selector_action,
-    "adtime_editor_change_editor": self._handle_editor_action,
-
-    # 预留6个selector和4个input的扩展空间
-    # "new_selector_1_selector": self._handle_selector_action,
-    # "new_input_1_editor": self._handle_editor_action,
-}
-```
-
-#### **UI类型重命名约定**
-- **问题**: `"card"`变量名太普遍，容易引起歧义
-- **解决方案**: 统一重命名为`"interactive_card"`
-  - `ui_type: str = "interactive_card"`
-  - `bind_ui_message(operation_id, message_id, "interactive_card")`
-  - `register_ui_update_callback("interactive_card", callback)`
-  - 响应结构: `"interactive_card": {"type": "raw", "data": card_content}`
-
-#### **代码风格优化**
-- **match/case替换**: 将适合的if/elif结构改为match/case
-  - 卡片事件类型处理: `action_tag` (select_static/input/button)
-  - 组件处理器选择: `component_getter`
-  - 操作类型映射: `operation_type` (update_user/update_ads)
-  - 卡片构建方法选择: 动态方法映射
-
-#### **飞书Input组件约定**
-- **问题**: 飞书input组件不支持空内容输入
-- **解决方案**: 使用单空格`" "`代表空字符串
-- **实现位置**: `card_handler.py` `_convert_card_to_context`方法
-- **处理逻辑**:
-  ```python
-  if input_value == ' ':
-      input_value = ''
-      debug_utils.log_and_print("🔄 检测到单空格输入，转换为空字符串")
-  ```
+### **技术里程碑**
+- 🎯 **v2.1.0 - 配置化关联基础**: 完成Phase 1-2，实现配置驱动的业务层
+- 🎯 **v2.2.0 - 完整配置化**: 完成Phase 3，实现端到端配置化关联
+- 🎯 **v2.3.0 - 快速插拔**: 完成Phase 4，验证新卡片插拔机制
 
 ---
 
-## 🚀 下一步开发建议
-
-### **短期修复（Critical）**
-1. ✅ 修复`card_handler.py`硬编码构建方法问题
-2. ✅ 实现`get_ads_update_confirm_components`交互组件
-3. ✅ 添加`adtime_editor_change`业务处理逻辑
-4. ✅ 扩展`_apply_select_change`支持广告操作
-
-### **中期重构（High Priority）**
-1. 🔄 实现动态卡片构建方法选择机制
-2. 🔄 统一交互组件架构接口
-3. 🔄 标准化编辑器交互处理流程
-4. 🔄 完善操作类型注册系统
-
-### **长期优化（Medium Priority）**
-1. 📈 实现卡片业务流可视化监控
-2. 📈 增加操作审计日志系统
-3. 📈 优化缓存操作生命周期管理
-4. 📈 实现卡片模板热更新机制
-
----
-
-## 💡 **技术债务记录**
-
-| 债务类型 | 描述 | 优先级 | 预估工作量 |
-|---------|------|--------|---------|
-| **硬编码问题** | 多处硬编码需要重构为配置驱动 | High | 2-3天 |
-| **缺失测试** | 卡片业务流缺少单元测试和集成测试 | Medium | 3-5天 |
-| **文档滞后** | 交互组件系统缺少开发者文档 | Medium | 1-2天 |
-| **监控盲区** | 卡片操作失败缺少告警机制 | Low | 2-3天 |
-
----
-
-*文档最后更新：2024年12月*
-*版本：v2.0 - 卡片业务流架构分析版*
+*文档最后更新：2025年6月*
+*版本：v2.1 - 配置化关联架构设计版*
+*下一版本：v2.2 - 配置化关联实施版*

@@ -20,6 +20,54 @@
 - **AppController**: 统一服务管理和API接口
 - **Services**: 功能服务（配置、缓存、音频、图像、定时任务、数据管理）
 
+### 🃏 卡片架构设计
+
+项目采用**配置化关联**的卡片架构，实现业务与卡片的彻底解耦：
+
+#### 核心理念
+- **卡片定位**: 卡片是飞书Adapter的附属特性，本质是消息的接收、标准格式化、展示和传递容器
+- **业务解耦**: 业务层与卡片层通过配置文件桥接，避免硬编码依赖
+- **依赖方向**: 卡片可以向下调用业务层，但业务层不能依赖卡片
+
+#### 3个独立卡片业务
+1. **用户更新确认卡片** (`admin_user_update_confirm`)
+   - 管理员用户状态管理的确认界面
+   - 支持用户类型选择和操作确认
+
+2. **广告更新确认卡片** (`admin_ads_update_confirm`)
+   - B站广告时间戳编辑的确认界面
+   - 支持时间戳编辑器和操作确认
+
+3. **B站视频菜单卡片** (`bili_video_menu`)
+   - B站视频推荐的交互界面
+   - 支持1+3推荐模式和已读管理
+
+#### 配置化关联机制
+```json
+// cards_business_mapping.json - 业务卡片映射配置
+{
+  "business_mappings": {
+    "update_user": {
+      "response_type": "admin_card_send",
+      "card_template": "admin_user_update_confirm",
+      "timeout_seconds": 30,
+      "actions": ["confirm_user_update", "cancel_user_update"]
+    },
+    "update_ads": {
+      "response_type": "admin_ads_send",
+      "card_template": "admin_ads_update_confirm",
+      "timeout_seconds": 45,
+      "actions": ["confirm_ads_update", "cancel_ads_update"]
+    }
+  }
+}
+```
+
+#### 快速插拔支持
+- **新增卡片**: 仅需在配置文件中添加映射关系，无需修改业务代码
+- **模板热更新**: 卡片模板和配置支持重启加载
+- **最小入侵**: 新卡片插拔对现有业务零影响
+
 ## ✨ 主要功能
 
 ### 📱 基础交互
@@ -134,11 +182,9 @@ await main_async()
 ## 🔧 配置说明
 
 ### 配置架构
-**认证配置**: 通过Gradio服务原生API处理（无需本地文件）
-**应用配置优先级**:
-1. 环境变量 (.env)
-2. 静态配置 (config.json)
-3. 服务默认值
+- **认证配置**: 通过Gradio服务原生API处理（无需本地文件）
+- **应用配置优先级**: 环境变量(.env) > 静态配置(config.json) > 服务默认值
+- **卡片配置**: 业务卡片映射配置(cards_business_mapping.json)
 
 ### 重要配置项
 - **飞书配置**: APP_ID、APP_SECRET、ADMIN_ID
@@ -146,31 +192,30 @@ await main_async()
 - **数据源**: Notion数据库配置、B站API配置
 - **安全设置**: ADMIN_SECRET_KEY、BILI_NIGHT_SILENT
 
-## 📚 API文档
-
-启动HTTP API服务器后，访问：
-- **API文档**: `http://localhost:8000/docs`
-- **健康检查**: `http://localhost:8000/health`
-- **日程数据**: `http://localhost:8000/api/schedule`
-
-### 主要API端点
-- `POST /api/audio/tts` - TTS语音生成
-- `POST /api/image/generate` - AI图像生成
-- `GET /api/bilibili/videos/multiple` - B站视频推荐（1+3模式）
-- `GET /api/scheduler/tasks` - 定时任务管理
-- `POST /api/bilibili/update` - 触发B站数据更新
-
 ## 🛠️ 开发指南
 
 ### 项目结构
 ```
-Module/
-├── Adapters/       # 适配器层（飞书平台交互）
-├── Business/       # 业务逻辑层（消息处理）
-├── Application/    # 应用控制层（服务管理）
-├── Services/       # 服务层（功能实现）
-└── Common/         # 公共工具和脚本
+Project_Feishu_Bot/
+├── Module/                              # 🏗️ 核心模块目录
+│   ├── Adapters/                        # 适配器层（飞书平台交互）
+│   ├── Business/                        # 业务逻辑层（消息处理）
+│   ├── Application/                     # 应用控制层（服务管理）
+│   ├── Services/                        # 服务层（功能实现）
+│   └── Common/                          # 公共工具和脚本
+├── config.json                          # ⚙️ 静态配置文件
+├── cards_business_mapping.json          # 🃏 卡片业务映射配置
+├── README.md                            # 📖 项目说明文档
+├── TECHNICAL_ARCHITECTURE_REFERENCE.md  # 📚 技术架构参考文档
+├── CHANGELOG.md                         # 📋 项目变更日志
+└── DEVELOPMENT_TIL.md                   # 💡 开发者今日学习
 ```
+
+### 文档说明
+- **README.md**: 项目概览、快速开始和使用指南
+- **TECHNICAL_ARCHITECTURE_REFERENCE.md**: 详细的技术架构设计和实施方案
+- **CHANGELOG.md**: 版本变更记录和项目发展历程
+- **DEVELOPMENT_TIL.md**: 开发过程中的每日学习和技术发现
 
 ### 添加新功能
 1. 在 `Services/` 下实现新服务，必须实现 `get_status()` 方法
@@ -180,7 +225,7 @@ Module/
 
 ### 开发规范
 - **理解优先**: 充分理解现有逻辑后再修改
-- **统一日志**: 正式功能使用 `debug_utils` 记录所有日志，开发阶段的功能需要给日志一些方便搜索定位的特殊标记，比如'test-',或者“⚠️⚠️⚠️”，在验收完成后把测试日志和新日志里的标记移除
+- **统一日志**: 正式功能使用 `debug_utils` 记录所有日志，开发阶段的功能需要给日志一些方便搜索定位的特殊标记，比如'test-',或者"⚠️⚠️⚠️"，在验收完成后把测试日志和新日志里的标记移除
 - **优雅异常**: 提供友好的错误信息和降级方案
 - **路径规范**: 所有配置文件路径基于项目根目录
 - **避免试错**: 验证失败时停止尝试，等待用户指导
