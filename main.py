@@ -64,11 +64,11 @@ def setup_application():
     if scheduler_service:
         def handle_scheduled_event(event):
             try:
-                admin_id = event.data.get('admin_id')
+                admin_id = event.data.get(SchedulerConstKeys.ADMIN_ID)
                 scheduler_type = event.data.get(SchedulerConstKeys.SCHEDULER_TYPE)
 
                 if not admin_id:
-                    debug_utils.log_and_print("定时任务事件缺少admin_id", log_level="WARNING")
+                    debug_utils.log_and_print("没找到管理员ID，无法启动定时任务", log_level="WARNING")
                     return
 
                 match scheduler_type:

@@ -229,3 +229,4 @@ class SchedulerTaskTypes:
 
 class SchedulerConstKeys:
     SCHEDULER_TYPE = "scheduler_type"
+    ADMIN_ID = "admin_id"

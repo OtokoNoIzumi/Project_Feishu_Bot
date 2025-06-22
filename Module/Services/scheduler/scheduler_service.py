@@ -454,7 +454,7 @@ class SchedulerService:
 
         # 发布轻量级事件，数据生成交给MessageProcessor
         event = ScheduledEvent("daily_schedule_reminder", {
-            "admin_id": admin_id,
+            SchedulerConstKeys.ADMIN_ID: admin_id,
             SchedulerConstKeys.SCHEDULER_TYPE: SchedulerTaskTypes.DAILY_SCHEDULE,
             "services_status": services_status  # 添加服务状态信息
         })
@@ -502,7 +502,7 @@ class SchedulerService:
 
         # 发布事件（非静默时间）
         event = ScheduledEvent("bilibili_updates_reminder", {
-            "admin_id": admin_id,
+            SchedulerConstKeys.ADMIN_ID: admin_id,
             "sources": sources,
             "api_result": api_result,
             SchedulerConstKeys.SCHEDULER_TYPE: SchedulerTaskTypes.BILI_UPDATES
@@ -578,18 +578,16 @@ class SchedulerService:
 
     @config_operation_safe("获取管理员ID失败", return_value=None)
     def _get_admin_id(self) -> Optional[str]:
-        """获取管理员ID"""
-        config_service = self.app_controller.get_service('config') if self.app_controller else None
+        """
+        获取管理员ID，优先级：环境变量 > 静态配置
+        """
+        config_service = self.app_controller.get_service(ServiceNames.CONFIG) if self.app_controller else None
         if not config_service:
             debug_utils.log_and_print("配置服务不可用，无法获取管理员ID", log_level="WARNING")
             return None
 
-        admin_id = ""
-        try:
-            admin_id = config_service.get_env("ADMIN_ID", "")
-        except:
-            admin_id = config_service.get("admin_id", "")
-
+        # 优先从环境变量获取，其次静态配置，最后返回None
+        admin_id = config_service.get("ADMIN_ID", None)
         if not admin_id:
             debug_utils.log_and_print("未配置ADMIN_ID，无法发送定时提醒", log_level="WARNING")
             return None
