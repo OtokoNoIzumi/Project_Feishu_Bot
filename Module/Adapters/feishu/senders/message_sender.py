@@ -30,6 +30,10 @@ from Module.Business.processors import ProcessResult
 from ..decorators import (
     feishu_sdk_safe, file_operation_safe
 )
+from Module.Services.constants import (
+    ServiceNames, ConfigKeys, ReplyModes, ChatTypes, ReceiverIdTypes,
+    Messages
+)
 
 
 class MessageSender:
@@ -59,11 +63,11 @@ class MessageSender:
         """
         # 先从缓存获取
         if self.app_controller:
-            success, cached_name = self.app_controller.call_service('cache', 'get_user_name', f"user:{open_id}")
+            success, cached_name = self.app_controller.call_service(ServiceNames.CACHE, 'get_user_name', f"user:{open_id}")
             if success and cached_name:
                 return cached_name
 
-        request = GetUserRequest.builder().user_id_type("open_id").user_id(open_id).build()
+        request = GetUserRequest.builder().user_id_type(ReceiverIdTypes.OPEN_ID).user_id(open_id).build()
         response = self.client.contact.v3.user.get(request)
         if response.success() and response.data and response.data.user:
             user = response.data.user
@@ -76,8 +80,8 @@ class MessageSender:
             )
             # 缓存用户名
             if self.app_controller:
-                self.app_controller.call_service('cache', 'update_user', f"user:{open_id}", name)
-                self.app_controller.call_service('cache', 'save_user_cache')
+                self.app_controller.call_service(ServiceNames.CACHE, 'update_user', f"user:{open_id}", name)
+                self.app_controller.call_service(ServiceNames.CACHE, 'save_user_cache')
             return name
 
         debug_utils.log_and_print(f"获取用户名失败: {response.code} - {response.msg}", log_level="WARNING")
@@ -89,18 +93,18 @@ class MessageSender:
         从配置获取卡片回复模式
 
         Args:
-            card_type: 卡片类型 ("admin_cards" | "bilibili_cards" | 等)
+            card_type: 卡片类型 (CardConfigTypes.ADMIN_CARDS | CardConfigTypes.BILIBILI_CARDS | 等)
 
         Returns:
             str: 回复模式 ("new" | "reply" | "thread")
         """
-        config_service = self.app_controller.get_service('config') if self.app_controller else None
+        config_service = self.app_controller.get_service(ServiceNames.CONFIG) if self.app_controller else None
         if config_service:
-            reply_modes = config_service.get("cards", {}).get("reply_modes", {})
-            return reply_modes.get(card_type, reply_modes.get("default", "reply"))
+            reply_modes = config_service.get(ConfigKeys.CARDS, {}).get(ConfigKeys.REPLY_MODES, {})
+            return reply_modes.get(card_type, reply_modes.get(ConfigKeys.DEFAULT, ReplyModes.REPLY))
 
         debug_utils.log_and_print("⚠️ 无法获取配置服务，使用默认回复模式", log_level="WARNING")
-        return "reply"
+        return ReplyModes.REPLY
 
     @feishu_sdk_safe("发送飞书回复失败", return_value=False)
     def send_feishu_reply(self, original_data, result: ProcessResult, force_reply_mode: str = None) -> bool:
@@ -132,14 +136,14 @@ class MessageSender:
 
         try:
             match reply_mode:
-                case "new":
+                case ReplyModes.NEW:
                     # 模式1: 新消息
-                    return self._send_create_message(user_id, content_json, result.response_type, "open_id")[0]
+                    return self._send_create_message(user_id, content_json, result.response_type, ReceiverIdTypes.OPEN_ID)[0]
 
-                case "reply" | "thread":
+                case ReplyModes.REPLY | ReplyModes.THREAD:
                     # 模式2&3: 回复消息 (含新话题)
                     message_id = original_data.event.message.message_id
-                    return self._send_reply_message(message_id, content_json, result.response_type, reply_mode == "thread")[0]
+                    return self._send_reply_message(message_id, content_json, result.response_type, reply_mode == ReplyModes.THREAD)[0]
 
                 case _:
                     debug_utils.log_and_print(f"❌ 未知的回复模式: {reply_mode}", log_level="ERROR")
@@ -167,9 +171,9 @@ class MessageSender:
 
         # 默认策略: 群聊回复，私聊新消息
         chat_type = original_data.event.message.chat_type
-        return "reply" if chat_type == "group" else "new"
+        return ReplyModes.REPLY if chat_type == ChatTypes.GROUP else ReplyModes.NEW
 
-    def _send_create_message(self, receive_id: str, content: str, msg_type: str, receive_id_type: str = "open_id") -> Tuple[bool, Optional[str]]:
+    def _send_create_message(self, receive_id: str, content: str, msg_type: str, receive_id_type: str = ReceiverIdTypes.OPEN_ID) -> Tuple[bool, Optional[str]]:
         """发送新消息（支持用户ID和聊天ID）
 
         Returns:
@@ -185,7 +189,7 @@ class MessageSender:
 
         response = self.client.im.v1.message.create(request)
         if not response.success():
-            debug_utils.log_and_print(f"❌ 新消息发送失败: {response.code} - {response.msg}", log_level="ERROR")
+            debug_utils.log_and_print(f"{Messages.NEW_MESSAGE_SEND_FAILED}: {response.code} - {response.msg}", log_level="ERROR")
             return False, None
 
         # 获取消息ID
@@ -431,7 +435,7 @@ class MessageSender:
                 debug_utils.log_and_print("应用控制器不可用", log_level="ERROR")
                 return False
 
-            audio_service = self.app_controller.get_service('audio')
+            audio_service = self.app_controller.get_service(ServiceNames.AUDIO)
             if not audio_service:
                 debug_utils.log_and_print("音频服务不可用", log_level="ERROR")
                 return False

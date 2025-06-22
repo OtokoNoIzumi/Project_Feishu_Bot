@@ -14,6 +14,10 @@ from lark_oapi.event.callback.model.p2_card_action_trigger import P2CardActionTr
 
 from Module.Common.scripts.common import debug_utils
 from Module.Business.processors import MessageContext
+from Module.Services.constants import (
+    CardOperationTypes, CardConfigTypes, OperationTypes, ResponseTypes,
+    Messages, CardActions, UIElements, FieldNames, DefaultValues, MessageTypes
+)
 from ..decorators import (
     card_operation_safe, message_conversion_safe
 )
@@ -64,25 +68,23 @@ class CardHandler:
         if result.success:
             # 特殊类型处理
             match result.response_type:
-                case "bili_card_update":
+                case ResponseTypes.BILI_CARD_UPDATE:
                     return self._handle_bili_card_operation(
                         result.response_content,
-                        operation_type="update_response",
-                        toast_message="视频成功设置为已读"
+                        operation_type=CardOperationTypes.UPDATE_RESPONSE,
+                        toast_message=Messages.VIDEO_MARKED_READ
                     )
-                case "admin_card_update":
+                case ResponseTypes.ADMIN_CARD_UPDATE:
                     return self._handle_admin_card_operation(
                         result.response_content,
-                        operation_type="update_response"
+                        operation_type=CardOperationTypes.UPDATE_RESPONSE
                     )
-                case "card_action_response":
-                    return P2CardActionTriggerResponse(result.response_content)
                 case _:
                     # 默认成功响应
                     return P2CardActionTriggerResponse({
                         "toast": {
                             "type": "success",
-                            "content": "操作成功"
+                            "content": Messages.OPERATION_SUCCESS
                         }
                     })
         else:
@@ -90,7 +92,7 @@ class CardHandler:
             return P2CardActionTriggerResponse({
                 "toast": {
                     "type": "error",
-                    "content": result.error_message or "操作失败"
+                    "content": result.error_message or Messages.OPERATION_FAILED
                 }
             })
 
@@ -118,36 +120,36 @@ class CardHandler:
         action_tag = action.tag if hasattr(action, 'tag') else 'button'
 
         # 处理不同类型的卡片交互事件
-        if action_tag == 'select_static':
+        if action_tag == UIElements.SELECT_STATIC:
             # 对于select_static，action.option包含选中的值
             action_option = action.option if hasattr(action, 'option') else '0'
             action_value.update({
-                'action': 'select_change',  # 统一的动作名
-                'option': action_option,
-                'tag': action_tag
+                FieldNames.ACTION: CardActions.UPDATE_USER_TYPE,  # 统一的动作名
+                FieldNames.OPTION: action_option,
+                FieldNames.TAG: action_tag
             })
-            content = 'select_change'
-        elif action_tag == 'input':
+            content = CardActions.UPDATE_USER_TYPE
+        elif action_tag == UIElements.INPUT:
             # 对于input类型，action.input_value包含用户输入的值
-            input_value = action.input_value if hasattr(action, 'input_value') else ''
+            input_value = action.input_value if hasattr(action, 'input_value') else DefaultValues.EMPTY_STRING
 
             # 处理空输入：单空格" "代替空字符串
-            if input_value == ' ':
-                input_value = ''
+            if input_value == DefaultValues.SINGLE_SPACE:
+                input_value = DefaultValues.EMPTY_STRING
                 debug_utils.log_and_print("🔄 检测到单空格输入，转换为空字符串", log_level="INFO")
             action_value.update({
-                'value': input_value,  # 将输入值添加到action_value中
-                'tag': action_tag
+                FieldNames.VALUE: input_value,  # 将输入值添加到action_value中
+                FieldNames.TAG: action_tag
             })
-            content = action_value.get('action', 'unknown_input_action')
+            content = action_value.get(FieldNames.ACTION, DefaultValues.UNKNOWN_INPUT_ACTION)
         else:
             # 普通按钮动作
-            content = action_value.get('action', 'unknown_action')
+            content = action_value.get(FieldNames.ACTION, DefaultValues.UNKNOWN_ACTION)
 
         return MessageContext(
             user_id=user_id,
             user_name=user_name,
-            message_type="card_action",  # 自定义类型
+            message_type=MessageTypes.CARD_ACTION,  # 自定义类型
             content=content,
             timestamp=timestamp,
             event_id=event_id,
@@ -155,8 +157,8 @@ class CardHandler:
                 'action_value': action_value,
                 'action_tag': action_tag,
                 'interaction_type': 'card',
-                'open_message_id': data.event.context.open_message_id if hasattr(data.event, 'context') and hasattr(data.event.context, 'open_message_id') else '',
-                'open_chat_id': data.event.context.open_chat_id if hasattr(data.event, 'context') and hasattr(data.event.context, 'open_chat_id') else ''
+                FieldNames.OPEN_MESSAGE_ID: data.event.context.open_message_id if hasattr(data.event, 'context') and hasattr(data.event.context, 'open_message_id') else DefaultValues.EMPTY_STRING,
+                FieldNames.OPEN_CHAT_ID: data.event.context.open_chat_id if hasattr(data.event, 'context') and hasattr(data.event.context, 'open_chat_id') else DefaultValues.EMPTY_STRING
             }
         )
 
@@ -175,8 +177,8 @@ class CardHandler:
             P2CardActionTriggerResponse: 更新响应操作的响应对象
         """
         # B站特有的参数验证
-        if operation_type == "send":
-            user_id = kwargs.get("user_id")
+        if operation_type == CardOperationTypes.SEND:
+            user_id = kwargs.get(FieldNames.USER_ID)
             if not user_id:
                 debug_utils.log_and_print("❌ 发送B站卡片缺少用户ID", log_level="ERROR")
                 return False
@@ -187,7 +189,7 @@ class CardHandler:
             build_method_name="build_bili_video_menu_card",
             data=video_data,
             operation_type=operation_type,
-            card_config_type="bilibili_cards",
+            card_config_type=CardConfigTypes.BILIBILI_CARDS,
             **kwargs
         )
 
@@ -206,25 +208,26 @@ class CardHandler:
             P2CardActionTriggerResponse: 更新响应操作的响应对象
         """
         # 管理员特有的参数验证
-        if operation_type == "send":
-            chat_id = kwargs.get("chat_id")
-            message_id = kwargs.get("message_id")
-            if not chat_id or not message_id:
-                debug_utils.log_and_print("❌ 发送管理员卡片缺少chat_id或message_id", log_level="ERROR")
-                return False
+        match operation_type:
+            case CardOperationTypes.SEND:
+                chat_id = kwargs.get("chat_id")
+                message_id = kwargs.get("message_id")
+                if not chat_id or not message_id:
+                    debug_utils.log_and_print("❌ 发送管理员卡片缺少chat_id或message_id", log_level="ERROR")
+                    return False
+            case _:
+                pass
 
         # 动态选择卡片构建方法 - 修复硬编码问题
         card_type = operation_data.get('operation_type', '')
-        if card_type:
-            # 根据操作类型动态选择构建方法
-            build_method_mapping = {
-                "update_user": "build_user_update_confirm_card",
-                "update_ads": "build_ads_update_confirm_card",
-            }
-            build_method_name = build_method_mapping.get(card_type, "build_user_update_confirm_card")
-        else:
-            debug_utils.log_and_print("⚠️ 缺少card_type，使用默认构建方法", log_level="WARNING")
-            build_method_name = "build_user_update_confirm_card"
+        match card_type:
+            case OperationTypes.UPDATE_USER:
+                build_method_name = "build_user_update_confirm_card"
+            case OperationTypes.UPDATE_ADS:
+                build_method_name = "build_ads_update_confirm_card"
+            case _:
+                debug_utils.log_and_print(f"⚠️ 未知的操作类型，使用默认构建方法: {card_type}", log_level="WARNING")
+                build_method_name = "build_user_update_confirm_card"
 
         # 使用通用卡片操作处理
         return self._handle_card_operation_common(
@@ -232,7 +235,7 @@ class CardHandler:
             build_method_name=build_method_name,
             data=operation_data,
             operation_type=operation_type,
-            card_config_type=card_type,
+            card_config_type=CardConfigTypes.ADMIN_CARDS,
             **kwargs
         )
 
@@ -265,7 +268,7 @@ class CardHandler:
         card_content = build_method(data)
 
         match operation_type:
-            case "send":
+            case CardOperationTypes.SEND:
                 # 从配置获取卡片的回复模式
                 reply_mode = self.sender.get_card_reply_mode(card_config_type)
 
@@ -280,7 +283,7 @@ class CardHandler:
 
                 return success, message_id
 
-            case "update_response":
+            case CardOperationTypes.UPDATE_RESPONSE:
                 # 构建卡片更新响应
                 toast_message = kwargs.get("toast_message", "操作完成")
                 result_type = data.get('result_type', 'success') if isinstance(data, dict) else 'success'
@@ -326,16 +329,17 @@ class CardHandler:
                     debug_utils.log_and_print(f"❌ 卡片更新失败: 缺少ui_message_id [{operation.operation_id[:20]}...]", log_level="ERROR")
                     return False
 
-                # 根据操作类型选择卡片管理器和构建方法
-                if operation.operation_type == "update_user":
-                    card_manager = self.admin_card_manager
-                    build_method_name = "build_user_update_confirm_card"
-                elif operation.operation_type == "update_ads":
-                    card_manager = self.admin_card_manager
-                    build_method_name = "build_ads_update_confirm_card"
-                else:
-                    debug_utils.log_and_print(f"❌ 卡片更新失败: 未知操作类型 {operation.operation_type}", log_level="ERROR")
-                    return False
+                # 用match替换if-elif-else结构
+                match operation.operation_type:
+                    case OperationTypes.UPDATE_USER:
+                        card_manager = self.admin_card_manager
+                        build_method_name = "build_user_update_confirm_card"
+                    case OperationTypes.UPDATE_ADS:
+                        card_manager = self.admin_card_manager
+                        build_method_name = "build_ads_update_confirm_card"
+                    case _:
+                        debug_utils.log_and_print(f"❌ 卡片更新失败: 未知操作类型 {operation.operation_type}", log_level="ERROR")
+                        return False
 
                 # 构建卡片内容
                 build_method = getattr(card_manager, build_method_name)

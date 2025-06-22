@@ -11,6 +11,10 @@ import json
 from typing import Tuple, Dict, Any, Optional
 from .base_processor import BaseProcessor, MessageContext, ProcessResult, require_service, safe_execute, require_app_controller
 from Module.Common.scripts.common import debug_utils
+from Module.Services.constants import (
+    ServiceNames, OperationTypes, DefaultActions, EnvVars,
+    ConfigKeys, DefaultValues, BusinessConstants
+)
 
 
 class AdminProcessor(BaseProcessor):
@@ -30,53 +34,57 @@ class AdminProcessor(BaseProcessor):
         """加载配置"""
         if self.app_controller:
             # 从配置服务获取配置
-            config_service = self.app_controller.get_service('config')
+            config_service = self.app_controller.get_service(ServiceNames.CONFIG)
             if config_service:
                 # 获取管理员ID - 优先从环境变量获取
-                self.admin_id = config_service.get_env("ADMIN_ID", "")
+                self.admin_id = config_service.get_env(EnvVars.ADMIN_ID, DefaultValues.EMPTY_STRING)
                 if not self.admin_id:
                     # 如果环境变量没有，尝试从配置文件获取
-                    self.admin_id = config_service.get("admin_id", "")
+                    self.admin_id = config_service.get(ConfigKeys.ADMIN_ID, DefaultValues.EMPTY_STRING)
 
                 # 获取更新触发器配置
-                self.update_config_trigger = config_service.get("update_config_trigger", "whisk令牌")
+                self.update_config_trigger = config_service.get(ConfigKeys.UPDATE_CONFIG_TRIGGER, DefaultValues.DEFAULT_UPDATE_TRIGGER)
 
                 # 获取B站API配置 - 修正环境变量名称
-                self.bili_api_base_url = config_service.get_env("BILI_API_BASE", "https://localhost:3000")
-                self.bili_admin_secret = config_service.get_env("ADMIN_SECRET_KEY", "izumi_the_beauty")
+                self.bili_api_base_url = config_service.get_env(EnvVars.BILI_API_BASE, DefaultValues.DEFAULT_BILI_API_BASE)
+                self.bili_admin_secret = config_service.get_env(EnvVars.ADMIN_SECRET_KEY, DefaultValues.DEFAULT_ADMIN_SECRET)
 
                 # 获取pending_cache配置
-                pending_cache_config = config_service.get("pending_cache", {})
-                self.operation_timeouts = pending_cache_config.get("operation_timeouts", {})
-                self.default_timeout = pending_cache_config.get("default_timeout", 30)
+                pending_cache_config = config_service.get(ConfigKeys.PENDING_CACHE, {})
+                self.operation_timeouts = pending_cache_config.get(ConfigKeys.OPERATION_TIMEOUTS, {})
+                self.default_timeout = pending_cache_config.get(ConfigKeys.DEFAULT_TIMEOUT, BusinessConstants.DEFAULT_OPERATION_TIMEOUT)
             else:
                 # 配置服务不可用，使用默认值
-                self.admin_id = ''
-                self.update_config_trigger = 'whisk令牌'
-                self.bili_api_base_url = 'https://localhost:3000'
-                self.bili_admin_secret = 'izumi_the_beauty'
-                self.operation_timeouts = {"update_user": 30, "update_ads": 45, "system_config": 60}
-                self.default_timeout = 30
+                self.admin_id = DefaultValues.EMPTY_STRING
+                self.update_config_trigger = DefaultValues.DEFAULT_UPDATE_TRIGGER
+                self.bili_api_base_url = DefaultValues.DEFAULT_BILI_API_BASE
+                self.bili_admin_secret = DefaultValues.DEFAULT_ADMIN_SECRET
+                self.operation_timeouts = {
+                    OperationTypes.UPDATE_USER: BusinessConstants.USER_UPDATE_TIMEOUT,
+                    OperationTypes.UPDATE_ADS: BusinessConstants.ADS_UPDATE_TIMEOUT,
+                    OperationTypes.SYSTEM_CONFIG: BusinessConstants.SYSTEM_CONFIG_TIMEOUT
+                }
+                self.default_timeout = BusinessConstants.DEFAULT_OPERATION_TIMEOUT
         else:
             # 默认配置
-            self.admin_id = ''
-            self.update_config_trigger = 'whisk令牌'
-            self.bili_api_base_url = 'https://localhost:3000'
-            self.bili_admin_secret = 'izumi_the_beauty'
+            self.admin_id = DefaultValues.EMPTY_STRING
+            self.update_config_trigger = DefaultValues.DEFAULT_UPDATE_TRIGGER
+            self.bili_api_base_url = DefaultValues.DEFAULT_BILI_API_BASE
+            self.bili_admin_secret = DefaultValues.DEFAULT_ADMIN_SECRET
 
     def _register_pending_operations(self):
         """注册缓存操作执行器"""
         if self.app_controller:
-            pending_cache_service = self.app_controller.get_service('pending_cache')
+            pending_cache_service = self.app_controller.get_service(ServiceNames.PENDING_CACHE)
             if pending_cache_service:
                 # 注册用户更新操作执行器
                 pending_cache_service.register_executor(
-                    "update_user",
+                    OperationTypes.UPDATE_USER,
                     self._execute_user_update_operation
                 )
                 # 注册广告更新操作执行器
                 pending_cache_service.register_executor(
-                    "update_ads",
+                    OperationTypes.UPDATE_ADS,
                     self._execute_ads_update_operation
                 )
 
@@ -184,7 +192,7 @@ class AdminProcessor(BaseProcessor):
         }, parent_id=context.message_id)
 
     @require_app_controller("应用控制器不可用")
-    @require_service('pending_cache', "缓存业务服务不可用")
+    @require_service(ServiceNames.PENDING_CACHE, "缓存业务服务不可用")
     @safe_execute("创建待处理用户更新操作失败")
     def _create_pending_user_update_operation(self, context: MessageContext, user_id: str, user_type: int, admin_input: str) -> ProcessResult:
         """
@@ -199,10 +207,10 @@ class AdminProcessor(BaseProcessor):
         Returns:
             ProcessResult: 处理结果
         """
-        pending_cache_service = self.app_controller.get_service('pending_cache')
+        pending_cache_service = self.app_controller.get_service(ServiceNames.PENDING_CACHE)
 
         # 从配置获取超时时间
-        timeout_seconds = self.get_operation_timeout("update_user")
+        timeout_seconds = self.get_operation_timeout(OperationTypes.UPDATE_USER)
         timeout_text = self._format_timeout_text(timeout_seconds)
 
         # 准备操作数据
@@ -213,17 +221,17 @@ class AdminProcessor(BaseProcessor):
             'finished': False,
             'result': '确认⏰',
             'hold_time': timeout_text,
-            'operation_type': 'update_user'
+            'operation_type': OperationTypes.UPDATE_USER
         }
 
         # 创建缓存操作
         operation_id = pending_cache_service.create_operation(
-            user_id=context.user_id,  # 管理员用户ID
-            operation_type="update_user",
+            user_id=context.user_id,
+            operation_type=OperationTypes.UPDATE_USER,
             operation_data=operation_data,
             admin_input=admin_input,
             hold_time_seconds=timeout_seconds,
-            default_action="confirm"
+            default_action=DefaultActions.CONFIRM
         )
 
         # 添加操作ID到数据中
@@ -237,7 +245,7 @@ class AdminProcessor(BaseProcessor):
         )
 
     @require_app_controller("应用控制器不可用")
-    @require_service('pending_cache', "缓存业务服务不可用")
+    @require_service(ServiceNames.PENDING_CACHE, "缓存业务服务不可用")
     @safe_execute("创建待处理广告更新操作失败")
     def _create_pending_ads_update_operation(self, context: MessageContext, bvid: str, adtime_stamps: str, admin_input: str) -> ProcessResult:
         """
@@ -252,10 +260,10 @@ class AdminProcessor(BaseProcessor):
         Returns:
             ProcessResult: 处理结果
         """
-        pending_cache_service = self.app_controller.get_service('pending_cache')
+        pending_cache_service = self.app_controller.get_service(ServiceNames.PENDING_CACHE)
 
         # 从配置获取超时时间
-        timeout_seconds = self.get_operation_timeout("update_ads")
+        timeout_seconds = self.get_operation_timeout(OperationTypes.UPDATE_ADS)
         timeout_text = self._format_timeout_text(timeout_seconds)
 
         # 准备操作数据
@@ -266,17 +274,17 @@ class AdminProcessor(BaseProcessor):
             'finished': False,
             'result': '确认⏰',
             'hold_time': timeout_text,
-            'operation_type': 'update_ads'
+            'operation_type': OperationTypes.UPDATE_ADS
         }
 
         # 创建缓存操作
         operation_id = pending_cache_service.create_operation(
-            user_id=context.user_id,  # 管理员用户ID
-            operation_type="update_ads",
+            user_id=context.user_id,
+            operation_type=OperationTypes.UPDATE_ADS,
             operation_data=operation_data,
             admin_input=admin_input,
             hold_time_seconds=timeout_seconds,
-            default_action="confirm"
+            default_action=DefaultActions.CONFIRM
         )
 
         # 添加操作ID到数据中
@@ -360,7 +368,7 @@ class AdminProcessor(BaseProcessor):
             return False
 
     @require_app_controller("应用控制器不可用")
-    @require_service('pending_cache', "缓存业务服务不可用")
+    @require_service(ServiceNames.PENDING_CACHE, "缓存业务服务不可用")
     @safe_execute("处理缓存操作确认失败")
     def handle_pending_operation_action(self, action_value: Dict[str, Any]) -> ProcessResult:
         """
@@ -373,7 +381,7 @@ class AdminProcessor(BaseProcessor):
         Returns:
             ProcessResult: 处理结果
         """
-        pending_cache_service = self.app_controller.get_service('pending_cache')
+        pending_cache_service = self.app_controller.get_service(ServiceNames.PENDING_CACHE)
 
         action = action_value.get('action', '')
         operation_id = action_value.get('operation_id', '')
@@ -515,7 +523,7 @@ class AdminProcessor(BaseProcessor):
             case _:
                 return ProcessResult.error_result(f"未知的操作类型: {action}")
 
-    @require_service('image', "图像服务不可用")
+    @require_service(ServiceNames.IMAGE, "图像服务不可用")
     @safe_execute("配置更新失败")
     def handle_config_update(self, context: MessageContext, user_msg: str) -> ProcessResult:
         """处理配置更新指令"""
@@ -538,7 +546,7 @@ class AdminProcessor(BaseProcessor):
             )
 
         # 使用图像服务的原生API更新配置
-        image_service = self.app_controller.get_service('image')
+        image_service = self.app_controller.get_service(ServiceNames.IMAGE)
 
         # 验证输入
         if variable_name == "cookies":

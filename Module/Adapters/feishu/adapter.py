@@ -16,6 +16,7 @@ from Module.Common.scripts.common import debug_utils
 from .cards import initialize_card_managers, get_card_manager
 from .handlers import MessageHandler, CardHandler, MenuHandler
 from .senders import MessageSender
+from Module.Services.constants import UITypes, EnvVars
 
 # P2ImMessageReceiveV1对象调试开关 - 开发调试用
 DEBUG_P2IM_OBJECTS = False  # 设置为True启用详细调试输出
@@ -175,17 +176,17 @@ class FeishuAdapter:
         """初始化飞书配置"""
         if self.app_controller:
             # 从配置服务获取
-            success, app_id = self.app_controller.call_service('config', 'get', 'FEISHU_APP_MESSAGE_ID')
-            success2, app_secret = self.app_controller.call_service('config', 'get', 'FEISHU_APP_MESSAGE_SECRET')
+            success, app_id = self.app_controller.call_service('config', 'get', EnvVars.FEISHU_APP_MESSAGE_ID)
+            success2, app_secret = self.app_controller.call_service('config', 'get', EnvVars.FEISHU_APP_MESSAGE_SECRET)
             success3, log_level_str = self.app_controller.call_service('config', 'get', 'log_level', 'INFO')
 
-            self.app_id = app_id if success else os.getenv("FEISHU_APP_MESSAGE_ID", "")
-            self.app_secret = app_secret if success2 else os.getenv("FEISHU_APP_MESSAGE_SECRET", "")
+            self.app_id = app_id if success else os.getenv(EnvVars.FEISHU_APP_MESSAGE_ID, "")
+            self.app_secret = app_secret if success2 else os.getenv(EnvVars.FEISHU_APP_MESSAGE_SECRET, "")
             self.log_level = getattr(lark.LogLevel, log_level_str) if success3 else lark.LogLevel.INFO
         else:
             # 从环境变量获取
-            self.app_id = os.getenv("FEISHU_APP_MESSAGE_ID", "")
-            self.app_secret = os.getenv("FEISHU_APP_MESSAGE_SECRET", "")
+            self.app_id = os.getenv(EnvVars.FEISHU_APP_MESSAGE_ID, "")
+            self.app_secret = os.getenv(EnvVars.FEISHU_APP_MESSAGE_SECRET, "")
             self.log_level = lark.LogLevel.INFO
 
         # 设置全局配置
@@ -218,7 +219,7 @@ class FeishuAdapter:
             if pending_cache_service:
                 # 注册卡片UI更新回调
                 card_ui_callback = self.card_handler.create_card_ui_update_callback()
-                pending_cache_service.register_ui_update_callback("card", card_ui_callback)
+                pending_cache_service.register_ui_update_callback(UITypes.INTERACTIVE_CARD, card_ui_callback)
                 debug_utils.log_and_print("✅ 卡片UI更新回调注册成功", log_level="INFO")
             else:
                 debug_utils.log_and_print("⚠️ pending_cache_service不可用，跳过UI更新回调注册", log_level="WARNING")

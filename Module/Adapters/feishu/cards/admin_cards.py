@@ -8,6 +8,7 @@
 from typing import Dict, Any
 from .card_registry import BaseCardManager
 from ..decorators import card_build_safe
+from Module.Services.constants import CardActions, OperationTypes
 
 
 class AdminCardInteractionComponents:
@@ -29,7 +30,7 @@ class AdminCardInteractionComponents:
         return {
             # 确认按钮组件
             "confirm_action": {
-                "action": "confirm_user_update",
+                "action": CardActions.CONFIRM_USER_UPDATE,
                 "operation_id": operation_id,
                 "user_id": user_id,
                 "user_type": user_type
@@ -37,13 +38,13 @@ class AdminCardInteractionComponents:
 
             # 取消按钮组件
             "cancel_action": {
-                "action": "cancel_user_update",
+                "action": CardActions.CANCEL_USER_UPDATE,
                 "operation_id": operation_id
             },
 
             # 用户类型选择器组件
             "user_type_selector": {
-                "action": "select_change",
+                "action": CardActions.UPDATE_USER_TYPE,
                 "operation_id": operation_id,
                 "target_field": "user_type",  # 明确指定要更新的字段
                 "value_mapping": {
@@ -71,7 +72,7 @@ class AdminCardInteractionComponents:
         return {
             # 确认按钮组件
             "confirm_action": {
-                "action": "confirm_ads_update",
+                "action": CardActions.CONFIRM_ADS_UPDATE,
                 "operation_id": operation_id,
                 "bvid": bvid,
                 "adtime_stamps": adtime_stamps
@@ -79,13 +80,13 @@ class AdminCardInteractionComponents:
 
             # 取消按钮组件
             "cancel_action": {
-                "action": "cancel_ads_update",
+                "action": CardActions.CANCEL_ADS_UPDATE,
                 "operation_id": operation_id
             },
 
             # 广告时间戳编辑器组件
             "adtime_editor": {
-                "action": "adtime_editor_change",
+                "action": CardActions.ADTIME_EDITOR_CHANGE,
                 "operation_id": operation_id,
                 "target_field": "adtime_stamps",  # 明确指定要更新的字段
                 "current_value": adtime_stamps or ""  # 当前时间戳值
@@ -101,10 +102,10 @@ class AdminCardInteractionComponents:
             Dict[str, str]: operation_type -> component_getter_method
         """
         return {
-            "update_user": "get_user_update_confirm_components",
-            "update_ads": "get_ads_update_confirm_components",
+            OperationTypes.UPDATE_USER: "get_user_update_confirm_components",
+            OperationTypes.UPDATE_ADS: "get_ads_update_confirm_components",
             # 未来扩展:
-            # "system_config": "get_system_config_components"
+            # OperationTypes.SYSTEM_CONFIG: "get_system_config_components"
         }
 
 

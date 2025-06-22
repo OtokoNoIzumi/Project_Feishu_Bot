@@ -13,7 +13,8 @@ from dataclasses import dataclass, asdict
 from enum import Enum
 
 from Module.Common.scripts.common import debug_utils
-from .service_decorators import service_operation_safe, cache_operation_safe
+from .service_decorators import cache_operation_safe
+from Module.Services.constants import UITypes, DefaultActions
 
 
 class OperationStatus(Enum):
@@ -37,10 +38,10 @@ class PendingOperation:
     expire_time: float         # 过期时间
     hold_time_text: str        # 倒计时显示文本
     status: OperationStatus    # 操作状态
-    default_action: str = "confirm"  # 默认操作 (confirm/cancel)
+    default_action: str = DefaultActions.CONFIRM  # 默认操作 (confirm/cancel)
     # UI绑定相关字段 - 支持多种前端
     ui_message_id: Optional[str] = None  # 关联的UI消息ID（卡片、页面等）
-    ui_type: str = "card"       # UI类型 ("card", "page", "dialog"等)
+    ui_type: str = UITypes.INTERACTIVE_CARD       # UI类型 ("interactive_card", "page", "dialog"等)
     update_count: int = 0       # 更新次数
     last_update_time: float = 0 # 最后更新时间
     # 重试相关字段
@@ -59,8 +60,8 @@ class PendingOperation:
         data['status'] = OperationStatus(data['status'])
 
         # 为旧数据设置默认的ui_type
-        if 'ui_type' not in data:
-            data['ui_type'] = 'card'
+        if data.get('ui_type') == "card":
+            data['ui_type'] = UITypes.INTERACTIVE_CARD
 
         # 为旧数据设置默认的重试相关字段
         if 'update_retry_count' not in data:
@@ -419,7 +420,7 @@ class PendingCacheService:
             # 按默认操作执行最旧的操作
             oldest_op = min(user_ops, key=lambda op: op.created_time)
 
-            if oldest_op.default_action == "confirm":
+            if oldest_op.default_action == DefaultActions.CONFIRM:
                 self.confirm_operation(oldest_op.operation_id, force_execute=True)
             else:
                 self.cancel_operation(oldest_op.operation_id, force_execute=True)
@@ -777,13 +778,13 @@ class PendingCacheService:
         注册UI更新回调函数（支持多种前端）
 
         Args:
-            ui_type: UI类型 ("card", "page", "dialog"等)
+            ui_type: UI类型 ("interactive_card", "page", "dialog"等)
             callback: 回调函数，接收PendingOperation，返回bool表示是否更新成功
         """
         self.ui_update_callbacks[ui_type] = callback
         debug_utils.log_and_print(f"✅ 注册UI更新回调: {ui_type}", log_level="INFO")
 
-    def bind_ui_message(self, operation_id: str, message_id: str, ui_type: str = "card") -> bool:
+    def bind_ui_message(self, operation_id: str, message_id: str, ui_type: str = UITypes.INTERACTIVE_CARD) -> bool:
         """
         绑定操作和UI消息ID
 

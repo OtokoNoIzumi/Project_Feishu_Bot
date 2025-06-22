@@ -75,7 +75,7 @@ class TextProcessor(BaseProcessor):
 • 🔊 语音识别和上下文管理
 • 🔗 链接读取和文档处理
 • 🎮 游戏版本数据同步
-• 📱 消息回复和评论识别优化</i>"""
+• 📱 消息回复和评论识别优化"""
 
         return ProcessResult.success_result("text", {"text": help_text}, parent_id=context.message_id)
 

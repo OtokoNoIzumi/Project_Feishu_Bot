@@ -1,0 +1,221 @@
+"""
+服务层常量定义
+
+集中管理所有硬编码字符串，避免分散在各处的字符串字面量
+"""
+
+# ========== 服务名称常量 ==========
+class ServiceNames:
+    CONFIG = "config"
+    PENDING_CACHE = "pending_cache"
+    IMAGE = "image"
+    AUDIO = "audio"
+    NOTION = "notion"
+    SCHEDULER = "scheduler"
+    ROUTER = "router"
+    LLM = "llm"
+    CACHE = "cache"
+
+# ========== UI类型常量 ==========
+class UITypes:
+    INTERACTIVE_CARD = "interactive_card"
+    PAGE = "page"
+    DIALOG = "dialog"
+
+# ========== 卡片配置类型常量 (card_config_type) ==========
+class CardConfigTypes:
+    """卡片配置类型，用于获取回复模式等配置"""
+    ADMIN_CARDS = "admin_cards"
+    BILIBILI_CARDS = "bilibili_cards"
+
+# ========== 操作类型常量 (operation_type) ==========
+class OperationTypes:
+    """业务操作类型，用于区分不同的业务逻辑"""
+    UPDATE_USER = "update_user"
+    UPDATE_ADS = "update_ads"
+    SYSTEM_CONFIG = "system_config"
+
+# ========== 默认动作常量 ==========
+class DefaultActions:
+    CONFIRM = "confirm"
+    CANCEL = "cancel"
+
+# ========== 卡片操作类型常量 ==========
+class CardOperationTypes:
+    SEND = "send"
+    UPDATE_RESPONSE = "update_response"
+
+# ========== 消息类型常量 ==========
+class MessageTypes:
+    TEXT = "text"
+    IMAGE = "image"
+    AUDIO = "audio"
+    MENU_CLICK = "menu_click"
+    CARD_ACTION = "card_action"
+
+# ========== 响应类型常量 ==========
+class ResponseTypes:
+    ADMIN_CARD_SEND = "admin_card_send"
+    ADMIN_CARD_UPDATE = "admin_card_update"
+    BILI_CARD_UPDATE = "bili_card_update"
+    CARD_ACTION_RESPONSE = "card_action_response"
+    RICH_TEXT = "rich_text"
+    IMAGE_LIST = "image_list"
+    BILI_VIDEO_DATA = "bili_video_data"
+    INTERACTIVE = "interactive"
+    TOAST = "toast"
+    NO_REPLY = "no_reply"
+    ERROR = "error"
+    TEXT = "text"
+    AUDIO = "audio"
+
+# ========== 卡片动作名称常量 ==========
+class CardActions:
+    """卡片按钮动作名称"""
+    # 通用动作
+    CANCEL = "cancel"
+    CONFIRM = "confirm"
+
+    # AI路由动作
+    EDIT_CONTENT = "edit_content"
+
+    # B站视频动作
+    MARK_BILI_READ = "mark_bili_read"
+
+    # 管理员动作 - 用户管理
+    CONFIRM_USER_UPDATE = "confirm_user_update"
+    CANCEL_USER_UPDATE = "cancel_user_update"
+    UPDATE_USER_TYPE = "update_user_type"
+
+    # 管理员动作 - 广告管理
+    CONFIRM_ADS_UPDATE = "confirm_ads_update"
+    CANCEL_ADS_UPDATE = "cancel_ads_update"
+    ADTIME_EDITOR_CHANGE = "adtime_editor_change"
+
+# ========== 用户界面元素常量 ==========
+class UIElements:
+    """用户界面元素类型"""
+    BUTTON = "button"
+    SELECT_STATIC = "select_static"
+    INPUT = "input"
+
+# ========== 数据字段名常量 ==========
+class FieldNames:
+    """数据结构字段名称"""
+    USER_ID = "user_id"
+    USER_TYPE = "user_type"
+    ADMIN_INPUT = "admin_input"
+    HOLD_TIME = "hold_time"
+    FINISHED = "finished"
+    RESULT = "result"
+    OPERATION_TYPE = "operation_type"
+    ACTION = "action"
+    VALUE = "value"
+    OPTION = "option"
+    TAG = "tag"
+    OPEN_MESSAGE_ID = "open_message_id"
+    OPEN_CHAT_ID = "open_chat_id"
+
+# ========== 错误和提示消息常量 ==========
+class Messages:
+    """错误和提示消息"""
+    # 错误消息
+    NEW_MESSAGE_SEND_FAILED = "❌ 新消息发送失败"
+    IMAGE_GENERATING = "正在生成图片，请稍候..."
+    OPERATION_SUCCESS = "操作成功"
+    OPERATION_FAILED = "操作失败"
+    OPERATION_CANCELLED = "❌ 操作已取消"
+    VIDEO_MARKED_READ = "视频成功设置为已读"
+
+    # 命令提示
+    HELP_COMMAND = "帮助"
+    GREETING_COMMAND = "你好"
+    RICH_TEXT_COMMAND = "富文本"
+    IMAGE_COMMAND = "图片"
+    WALLPAPER_COMMAND = "壁纸"
+    BILI_COMMAND = "B站"
+    VIDEO_COMMAND = "视频"
+    TTS_PREFIX = "配音"
+    IMAGE_GEN_PREFIX = "生图"
+    AI_DRAW_PREFIX = "AI画图"
+
+# ========== 环境变量名常量 ==========
+class EnvVars:
+    """环境变量名称"""
+    FEISHU_APP_MESSAGE_ID = "FEISHU_APP_MESSAGE_ID"
+    FEISHU_APP_MESSAGE_SECRET = "FEISHU_APP_MESSAGE_SECRET"
+    ADMIN_ID = "ADMIN_ID"
+    BILI_API_BASE = "BILI_API_BASE"
+    ADMIN_SECRET_KEY = "ADMIN_SECRET_KEY"
+
+# ========== 配置键名常量 ==========
+class ConfigKeys:
+    """配置文件键名"""
+    ADMIN_ID = "admin_id"
+    UPDATE_CONFIG_TRIGGER = "update_config_trigger"
+    PENDING_CACHE = "pending_cache"
+    OPERATION_TIMEOUTS = "operation_timeouts"
+    DEFAULT_TIMEOUT = "default_timeout"
+    CARDS = "cards"
+    REPLY_MODES = "reply_modes"
+    DEFAULT = "default"
+
+# ========== 回复模式常量 ==========
+class ReplyModes:
+    """消息回复模式"""
+    NEW = "new"
+    REPLY = "reply"
+    THREAD = "thread"
+
+# ========== 聊天类型常量 ==========
+class ChatTypes:
+    """聊天类型"""
+    GROUP = "group"
+    PRIVATE = "p2p"
+
+# ========== 接收者ID类型常量 ==========
+class ReceiverIdTypes:
+    """接收者ID类型"""
+    OPEN_ID = "open_id"
+    CHAT_ID = "chat_id"
+
+# ========== Toast类型常量 ==========
+class ToastTypes:
+    """Toast提示类型"""
+    SUCCESS = "success"
+    ERROR = "error"
+    INFO = "info"
+    WARNING = "warning"
+
+# ========== 默认值常量 ==========
+class DefaultValues:
+    """默认值常量"""
+    UNKNOWN_USER = "用户_未知"
+    UNKNOWN_ACTION = "unknown_action"
+    UNKNOWN_INPUT_ACTION = "unknown_input_action"
+    DEFAULT_BILI_API_BASE = "https://localhost:3000"
+    DEFAULT_ADMIN_SECRET = "izumi_the_beauty"
+    DEFAULT_UPDATE_TRIGGER = "whisk令牌"
+    SINGLE_SPACE = " "
+    EMPTY_STRING = ""
+
+# ========== 业务常量 ==========
+class BusinessConstants:
+    """业务相关常量"""
+    # 用户类型
+    USER_TYPE_NORMAL = 0
+    USER_TYPE_SUPPORTER = 1
+    USER_TYPE_INVITED = 2
+
+    # 用户类型显示名称
+    USER_TYPE_NAMES = {
+        0: "普通用户",
+        1: "支持者",
+        2: "受邀用户"
+    }
+
+    # 操作超时时间 (秒)
+    DEFAULT_OPERATION_TIMEOUT = 30
+    USER_UPDATE_TIMEOUT = 30
+    ADS_UPDATE_TIMEOUT = 30
+    SYSTEM_CONFIG_TIMEOUT = 60

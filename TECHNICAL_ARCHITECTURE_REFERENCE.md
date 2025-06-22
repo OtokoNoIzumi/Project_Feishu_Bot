@@ -355,6 +355,62 @@ if input_value == ' ':
 
 ---
 
+## 🎯 **飞书卡片交互与缓存业务**
+
+### **重构后的事件处理机制 (v1.1.0)**
+
+#### **细粒度事件处理**
+- **问题**: 原先所有selector都使用统一的`select_change`事件，缺乏区分性
+- **解决方案**: 实施细粒度事件命名约定
+  - `{原action}_selector`: 选择器事件 (如 `update_user_type_selector`)
+  - `{原action}_editor`: 编辑器事件 (如 `adtime_editor_change`)
+  - `{原action}`: 按钮事件 (保持原样)
+
+#### **支持多组件扩展**
+```python
+# 新的事件分发架构支持多selector和input
+self.action_dispatchers = {
+    # 兼容旧版
+    "select_change": self._handle_selector_action,
+
+    # 细粒度事件处理
+    "update_user_type_selector": self._handle_selector_action,
+    "adtime_editor_change_editor": self._handle_editor_action,
+
+    # 预留6个selector和4个input的扩展空间
+    # "new_selector_1_selector": self._handle_selector_action,
+    # "new_input_1_editor": self._handle_editor_action,
+}
+```
+
+#### **UI类型重命名约定**
+- **问题**: `"card"`变量名太普遍，容易引起歧义
+- **解决方案**: 统一重命名为`"interactive_card"`
+  - `ui_type: str = "interactive_card"`
+  - `bind_ui_message(operation_id, message_id, "interactive_card")`
+  - `register_ui_update_callback("interactive_card", callback)`
+  - 响应结构: `"interactive_card": {"type": "raw", "data": card_content}`
+
+#### **代码风格优化**
+- **match/case替换**: 将适合的if/elif结构改为match/case
+  - 卡片事件类型处理: `action_tag` (select_static/input/button)
+  - 组件处理器选择: `component_getter`
+  - 操作类型映射: `operation_type` (update_user/update_ads)
+  - 卡片构建方法选择: 动态方法映射
+
+#### **飞书Input组件约定**
+- **问题**: 飞书input组件不支持空内容输入
+- **解决方案**: 使用单空格`" "`代表空字符串
+- **实现位置**: `card_handler.py` `_convert_card_to_context`方法
+- **处理逻辑**:
+  ```python
+  if input_value == ' ':
+      input_value = ''
+      debug_utils.log_and_print("🔄 检测到单空格输入，转换为空字符串")
+  ```
+
+---
+
 ## 🚀 下一步开发建议
 
 ### **短期修复（Critical）**

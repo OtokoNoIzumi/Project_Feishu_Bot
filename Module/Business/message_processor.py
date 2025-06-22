@@ -1,8 +1,8 @@
 """
-新的消息处理器 (Message Processor)
+业务消息处理器
 
-重构后的核心业务逻辑，使用子处理器模式
-完全独立于前端平台，可以被任何适配器调用
+处理各种类型的消息，包括文本、图片、音频、菜单点击、卡片动作等
+通过action_dispatchers分发卡片动作到相应的处理方法
 """
 
 import time
@@ -17,25 +17,19 @@ from .processors import (
     AdminProcessor, ScheduleProcessor,
     require_app_controller, safe_execute
 )
+from Module.Services.constants import (
+    ServiceNames,
+    MessageTypes, CardActions, Messages
+)
 
 
 class MessageProcessor(BaseProcessor):
     """
-    重构后的消息处理器
+    业务消息处理器
 
-    职责：
-    1. 接收标准化的消息上下文
-    2. 分发到对应的子处理器
-    3. 返回标准化的处理结果
+    处理各种类型的消息，分发到相应的子处理器
     """
-
     def __init__(self, app_controller=None):
-        """
-        初始化消息处理器
-
-        Args:
-            app_controller: 应用控制器，用于访问各种服务
-        """
         super().__init__(app_controller)
 
         # 初始化子处理器
@@ -52,19 +46,22 @@ class MessageProcessor(BaseProcessor):
     def _init_action_dispatchers(self):
         """初始化Action分发表，映射卡片动作到处理方法"""
         self.action_dispatchers = {
-            # B站相关卡片动作
-            "mark_bili_read": self._handle_mark_bili_read,
+            # AI路由卡片动作
+            CardActions.CANCEL: self._handle_ai_card_action,
+            CardActions.EDIT_CONTENT: self._handle_ai_card_action,
 
-            # 管理员相关卡片动作（缓存业务，新版本）
-            "confirm_user_update": self._handle_pending_admin_card_action,
-            "cancel_user_update": self._handle_pending_admin_card_action,
-            "update_user_type": self._handle_pending_admin_card_action,
-            "confirm_ads_update": self._handle_pending_admin_card_action,
-            "cancel_ads_update": self._handle_pending_admin_card_action,
-            "adtime_editor_change": self._handle_pending_admin_card_action,
+            # B站视频卡片动作
+            CardActions.MARK_BILI_READ: self._handle_mark_bili_read,
+
+            # 管理员卡片动作
+            CardActions.CONFIRM_USER_UPDATE: self._handle_pending_admin_card_action,
+            CardActions.CANCEL_USER_UPDATE: self._handle_pending_admin_card_action,
+            CardActions.UPDATE_USER_TYPE: self._handle_user_type_select_action,
+            CardActions.CONFIRM_ADS_UPDATE: self._handle_pending_admin_card_action,
+            CardActions.CANCEL_ADS_UPDATE: self._handle_pending_admin_card_action,
+            CardActions.ADTIME_EDITOR_CHANGE: self._handle_pending_admin_card_action,
 
             # 卡片选择器动作
-            "select_change": self._handle_select_action,
         }
 
     @require_app_controller("系统服务不可用")
@@ -101,15 +98,15 @@ class MessageProcessor(BaseProcessor):
     def _dispatch_by_message_type(self, context: MessageContext) -> ProcessResult:
         """根据消息类型分发处理"""
         match context.message_type:
-            case "text":
+            case MessageTypes.TEXT:
                 return self._process_text_message(context)
-            case "image":
+            case MessageTypes.IMAGE:
                 return self._process_image_message(context)
-            case "audio":
+            case MessageTypes.AUDIO:
                 return self._process_audio_message(context)
-            case "menu_click":
+            case MessageTypes.MENU_CLICK:
                 return self._process_menu_click(context)
-            case "card_action":
+            case MessageTypes.CARD_ACTION:
                 return self._process_card_action(context)
             case _:
                 return ProcessResult.error_result(f"不支持的消息类型: {context.message_type}")
@@ -124,37 +121,37 @@ class MessageProcessor(BaseProcessor):
             return self.admin_processor.handle_admin_command(context, user_msg)
 
         # TTS配音指令，改成startwith
-        if user_msg.startswith("配音"):
-            content = self._extract_command_content(user_msg, ["配音"])
+        if user_msg.startswith(Messages.TTS_PREFIX):
+            content = self._extract_command_content(user_msg, [Messages.TTS_PREFIX])
             self._log_command(context.user_name, "🎤", "触发TTS配音指令", content)
             return self.media_processor.handle_tts_command(context, user_msg)
 
         # 图像生成指令
-        if user_msg.startswith("生图") or user_msg.startswith("AI画图"):
-            content = self._extract_command_content(user_msg, ["生图", "AI画图"])
+        if user_msg.startswith(Messages.IMAGE_GEN_PREFIX) or user_msg.startswith(Messages.AI_DRAW_PREFIX):
+            content = self._extract_command_content(user_msg, [Messages.IMAGE_GEN_PREFIX, Messages.AI_DRAW_PREFIX])
             self._log_command(context.user_name, "🎨", "触发图像生成指令", content)
             return self.media_processor.handle_image_generation_command(context, user_msg)
 
         # 基础指令处理 - 使用 match case 优化
         match user_msg:
-            case "帮助":
+            case Messages.HELP_COMMAND:
                 self._log_command(context.user_name, "❓", "查看帮助")
                 return self.text_processor.handle_help_command(context)
-            case "你好":
+            case Messages.GREETING_COMMAND:
                 self._log_command(context.user_name, "👋", "发送问候")
                 return self.text_processor.handle_greeting_command(context)
-            case "富文本":
+            case Messages.RICH_TEXT_COMMAND:
                 self._log_command(context.user_name, "📄", "触发富文本指令")
                 return self.media_processor.handle_rich_text_command(context)
-            case "图片" | "壁纸":
+            case Messages.IMAGE_COMMAND | Messages.WALLPAPER_COMMAND:
                 self._log_command(context.user_name, "🖼️", "触发图片指令")
                 return self.media_processor.handle_sample_image_command(context)
-            case "B站" | "视频":
+            case Messages.BILI_COMMAND | Messages.VIDEO_COMMAND:
                 self._log_command(context.user_name, "📺", "触发B站视频指令")
                 return self.bilibili_processor.handle_bili_text_command(context)
 
         # AI智能路由（新增 - 在原有指令之前）
-        router_service = self.app_controller.get_service('router') if self.app_controller else None
+        router_service = self.app_controller.get_service(ServiceNames.ROUTER) if self.app_controller else None
         if router_service:
             route_result = router_service.route_message(user_msg, context.user_id)
             route_success = route_result.get('success', False)
@@ -369,7 +366,10 @@ class MessageProcessor(BaseProcessor):
                 "schedule": "ScheduleProcessor"
             },
             "app_controller_available": self.app_controller is not None,
-            "supported_message_types": ["text", "image", "audio", "menu_click", "card_action"],
+            "supported_message_types": [
+                MessageTypes.TEXT, MessageTypes.IMAGE, MessageTypes.AUDIO,
+                MessageTypes.MENU_CLICK, MessageTypes.CARD_ACTION
+            ],
             "registered_actions": {
                 "count": len(self.action_dispatchers),
                 "actions": list(self.action_dispatchers.keys())
@@ -377,7 +377,7 @@ class MessageProcessor(BaseProcessor):
         }
 
     @safe_execute("下拉选择处理失败")
-    def _handle_select_action(
+    def _handle_user_type_select_action(
         self, unused_context: MessageContext,
         action_value: Dict[str, Any]
     ) -> ProcessResult:
@@ -401,7 +401,7 @@ class MessageProcessor(BaseProcessor):
             return ProcessResult.no_reply_result()
 
         # 获取pending操作
-        pending_cache_service = self.app_controller.get_service('pending_cache')
+        pending_cache_service = self.app_controller.get_service(ServiceNames.PENDING_CACHE)
         operation = pending_cache_service.get_operation(operation_id)
 
         if not operation:
@@ -444,59 +444,61 @@ class MessageProcessor(BaseProcessor):
             )
             return False
 
-        pending_cache_service = self.app_controller.get_service('pending_cache')
+        pending_cache_service = self.app_controller.get_service(ServiceNames.PENDING_CACHE)
 
         # 获取交互组件定义
-        if component_getter == "get_user_update_confirm_components":
-            components = AdminCardInteractionComponents.get_user_update_confirm_components(
-                operation.operation_id,
-                operation.operation_data.get('user_id', ''),
-                operation.operation_data.get('user_type', 1)
-            )
-
-            # 处理用户类型选择器更新
-            selector_config = components.get("user_type_selector", {})
-            target_field = selector_config.get("target_field")
-            value_mapping = selector_config.get("value_mapping", {})
-
-            if target_field and selected_option in value_mapping:
-                # 执行数据更新
-                new_value = value_mapping[selected_option]
-                old_value = operation.operation_data.get(target_field)
-
-                # 更新操作数据
-                success = pending_cache_service.update_operation_data(
+        match component_getter:
+            case "get_user_update_confirm_components":
+                components = AdminCardInteractionComponents.get_user_update_confirm_components(
                     operation.operation_id,
-                    {target_field: new_value}
+                    operation.operation_data.get('user_id', ''),
+                    operation.operation_data.get('user_type', 1)
                 )
 
-                if success:
-                    debug_utils.log_and_print(
-                        f"🔄 操作数据已更新: {target_field} {old_value}→{new_value}",
-                        log_level="INFO"
+                # 处理用户类型选择器更新
+                selector_config = components.get("user_type_selector", {})
+                target_field = selector_config.get("target_field")
+                value_mapping = selector_config.get("value_mapping", {})
+
+                if target_field and selected_option in value_mapping:
+                    # 执行数据更新
+                    new_value = value_mapping[selected_option]
+                    old_value = operation.operation_data.get(target_field)
+
+                    # 更新操作数据
+                    success = pending_cache_service.update_operation_data(
+                        operation.operation_id,
+                        {target_field: new_value}
                     )
 
-                return success
+                    if success:
+                        debug_utils.log_and_print(
+                            f"🔄 操作数据已更新: {target_field} {old_value}→{new_value}",
+                            log_level="INFO"
+                        )
 
-            debug_utils.log_and_print(f"⚠️ 无效的选项映射: {selected_option}", log_level="WARNING")
-            return False
+                    return success
 
-        elif component_getter == "get_ads_update_confirm_components":
-            # 处理广告更新操作的选择器变更
-            components = AdminCardInteractionComponents.get_ads_update_confirm_components(
-                operation.operation_id,
-                operation.operation_data.get('bvid', ''),
-                operation.operation_data.get('adtime_stamps', '')
-            )
+                debug_utils.log_and_print(f"⚠️ 无效的选项映射: {selected_option}", log_level="WARNING")
+                return False
 
-            # 目前广告操作主要使用编辑器而非选择器
-            # 如果未来需要添加广告相关的选择器，可以在这里扩展
-            debug_utils.log_and_print(
-                f"ℹ️ 广告操作暂不支持选择器变更: {selected_option}",
-                log_level="INFO"
-            )
-            return True  # 静默处理，不报错
+            case "get_ads_update_confirm_components":
+                # 处理广告更新操作的选择器变更
+                components = AdminCardInteractionComponents.get_ads_update_confirm_components(
+                    operation.operation_id,
+                    operation.operation_data.get('bvid', ''),
+                    operation.operation_data.get('adtime_stamps', '')
+                )
 
-        # 未来可扩展其他操作类型的处理
-        debug_utils.log_and_print(f"⚠️ 未实现的组件获取方法: {component_getter}", log_level="WARNING")
-        return False
+                # 目前广告操作主要使用编辑器而非选择器
+                # 如果未来需要添加广告相关的选择器，可以在这里扩展
+                debug_utils.log_and_print(
+                    f"ℹ️ 广告操作暂不支持选择器变更: {selected_option}",
+                    log_level="INFO"
+                )
+                return True  # 静默处理，不报错
+
+            case _:
+                # 未来可扩展其他操作类型的处理
+                debug_utils.log_and_print(f"⚠️ 未实现的组件获取方法: {component_getter}", log_level="WARNING")
+                return False

@@ -17,6 +17,9 @@ from Module.Business.processors import MessageContext, ProcessResult
 from ..decorators import (
     feishu_event_handler_safe, message_conversion_safe, async_operation_safe
 )
+from Module.Services.constants import (
+    ServiceNames, UITypes, ResponseTypes, Messages
+)
 
 
 class MessageHandler:
@@ -144,7 +147,7 @@ class MessageHandler:
             if hasattr(self.message_processor, 'process_tts_async'):
                 result = self.message_processor.process_tts_async(tts_text)
 
-                if result.success and result.response_type == "audio":
+                if result.success and result.response_type == ResponseTypes.AUDIO:
                     # 上传并发送音频
                     audio_data = result.response_content.get("audio_data")
                     if audio_data:
@@ -167,14 +170,14 @@ class MessageHandler:
         """异步处理图像生成任务"""
         def process_in_background():
             # 先发送处理中提示
-            processing_result = ProcessResult.success_result("text", {"text": "正在生成图片，请稍候..."})
+            processing_result = ProcessResult.success_result(ResponseTypes.TEXT, {"text": Messages.IMAGE_GENERATING})
             self.sender.send_feishu_reply(original_data, processing_result)
 
             # 调用业务处理器的异步图像生成方法
             if hasattr(self.message_processor, 'process_image_generation_async'):
                 result = self.message_processor.process_image_generation_async(prompt)
 
-                if result.success and result.response_type == "image_list":
+                if result.success and result.response_type == ResponseTypes.IMAGE_LIST:
                     # 上传并发送图像
                     image_paths = result.response_content.get("image_paths", [])
                     if image_paths:
@@ -291,10 +294,9 @@ class MessageHandler:
                     # 绑定操作ID和卡片消息ID
                     # 调用pending_cache_service绑定UI消息
                     if self.app_controller:
-                        pending_cache_service = self.app_controller.get_service('pending_cache')
+                        pending_cache_service = self.app_controller.get_service(ServiceNames.PENDING_CACHE)
                         if pending_cache_service:
-                            # 这里的"card"不是card_type，而是pending_cache_service的ui类型
-                            bind_success = pending_cache_service.bind_ui_message(operation_id, sent_message_id, "card")
+                            bind_success = pending_cache_service.bind_ui_message(operation_id, sent_message_id, UITypes.INTERACTIVE_CARD)
                             if not bind_success:
                                 debug_utils.log_and_print(f"❌ UI消息绑定失败: operation_id={operation_id}", log_level="ERROR")
                         else:
