@@ -259,8 +259,6 @@ def main():
         debug_utils.log_and_print(f"启动失败: {e}", log_level="ERROR")
         traceback.print_exc()
     finally:
-        if 'feishu_adapter' in locals():
-            feishu_adapter.stop()
         print("🔴 飞书机器人服务已停止")
 
 
@@ -295,7 +293,7 @@ async def main_async():
         debug_utils.log_and_print(f"程序启动失败: {e}", log_level="ERROR")
     finally:
         if 'feishu_adapter' in locals():
-            feishu_adapter.stop()
+            feishu_adapter.disconnect()
         print("🔴 飞书机器人服务已停止")
 
 

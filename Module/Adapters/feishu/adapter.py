@@ -15,6 +15,7 @@ import lark_oapi as lark
 from Module.Common.scripts.common import debug_utils
 from Module.Services.constants import UITypes, EnvVars
 from Module.Services.constants import ServiceNames
+from Module.Application.app_utils import custom_serializer
 from .cards import initialize_card_managers, get_card_manager
 from .handlers import MessageHandler, CardHandler, MenuHandler
 from .senders import MessageSender
@@ -23,53 +24,13 @@ from .senders import MessageSender
 DEBUG_P2IM_OBJECTS = False  # 设置为True启用详细调试输出
 
 
-def custom_serializer(obj):
-    """
-    自定义序列化函数，用于json.dumps。
-    它会尝试获取对象的__dict__，如果对象没有__dict__（例如内置类型或使用__slots__的对象），
-    或者__dict__中的某些值无法直接序列化，则回退到str(obj)。
-    """
-    # 处理特殊类型
-    if isinstance(obj, bytes):
-        return f"<bytes data len={len(obj)}>"
-
-    # 处理复合类型
-    if isinstance(obj, (list, tuple)):
-        return [custom_serializer(item) for item in obj]
-
-    if isinstance(obj, dict):
-        return {k: custom_serializer(v) for k, v in obj.items()}
-
-    # 处理有__dict__的对象
-    if hasattr(obj, '__dict__'):
-        return {
-            k: custom_serializer(v)
-            for k, v in vars(obj).items()
-            if not k.startswith('_')
-        }
-
-    # 尝试JSON序列化，失败则转为字符串
-    try:
-        json.dumps(obj)  # 测试是否可序列化
-        return obj
-    except TypeError:
-        return str(obj)
-
-
 def debug_p2im_object(data, object_type: str = "P2ImMessageReceiveV1"):
-    """
-    调试P2ImMessageReceiveV1对象的详细信息输出
-
-    Args:
-        data: 需要调试的对象
-        object_type: 对象类型名称（用于日志标识）
-    """
+    """调试P2ImMessageReceiveV1对象的详细信息输出"""
     if not DEBUG_P2IM_OBJECTS:
         return
 
     debug_utils.log_and_print(f"🔍 {object_type}对象详细信息 (JSON序列化):", log_level="DEBUG")
     try:
-        # 使用自定义序列化器进行转换
         serializable_data = custom_serializer(data)
         json_output = json.dumps(serializable_data, indent=2, ensure_ascii=False)
         debug_utils.log_and_print(json_output, log_level="DEBUG")
@@ -83,12 +44,7 @@ def debug_p2im_object(data, object_type: str = "P2ImMessageReceiveV1"):
 
 
 def debug_parent_id_analysis(data):
-    """
-    分析并调试parent_id相关信息
-
-    Args:
-        data: 需要分析的消息对象
-    """
+    """分析并调试parent_id相关信息"""
     if not DEBUG_P2IM_OBJECTS:
         return
 
@@ -134,8 +90,15 @@ class FeishuAdapter:
 
         # 导入并初始化新的卡片管理架构
         self.card_registry = initialize_card_managers()
+
+        # 【待优化
         self.bili_card_manager = get_card_manager("bilibili")
         self.admin_card_manager = get_card_manager("admin")
+        # 创建各种处理器，并注入依赖
+        card_managers = {
+            'bili': self.bili_card_manager,
+            'admin': self.admin_card_manager
+        }
 
         # 初始化飞书SDK配置
         self._init_feishu_config()
@@ -145,12 +108,6 @@ class FeishuAdapter:
 
         # 创建消息发送器
         self.sender = MessageSender(self.client, app_controller)
-
-        # 创建各种处理器，并注入依赖
-        card_managers = {
-            'bili': self.bili_card_manager,
-            'admin': self.admin_card_manager
-        }
 
         # 准备调试函数
         debug_functions = {
@@ -177,13 +134,20 @@ class FeishuAdapter:
         """初始化飞书配置"""
         if self.app_controller:
             # 从配置服务获取
-            success, app_id = self.app_controller.call_service('config', 'get', EnvVars.FEISHU_APP_MESSAGE_ID)
-            success2, app_secret = self.app_controller.call_service('config', 'get', EnvVars.FEISHU_APP_MESSAGE_SECRET)
-            success3, log_level_str = self.app_controller.call_service('config', 'get', 'log_level', 'INFO')
+            config_service = self.app_controller.get_service(ServiceNames.CONFIG)
+            if config_service:
+                app_id = config_service.get(EnvVars.FEISHU_APP_MESSAGE_ID)
+                app_secret = config_service.get(EnvVars.FEISHU_APP_MESSAGE_SECRET)
+                log_level_str = config_service.get('log_level', 'INFO')
+            else:
+                app_id = os.getenv(EnvVars.FEISHU_APP_MESSAGE_ID, "")
+                app_secret = os.getenv(EnvVars.FEISHU_APP_MESSAGE_SECRET, "")
+                log_level_str = os.getenv('log_level', 'INFO')
 
-            self.app_id = app_id if success else os.getenv(EnvVars.FEISHU_APP_MESSAGE_ID, "")
-            self.app_secret = app_secret if success2 else os.getenv(EnvVars.FEISHU_APP_MESSAGE_SECRET, "")
-            self.log_level = getattr(lark.LogLevel, log_level_str) if success3 else lark.LogLevel.INFO
+            self.app_id = app_id
+            self.app_secret = app_secret
+            self.log_level = getattr(lark.LogLevel, log_level_str)
+
         else:
             # 从环境变量获取
             self.app_id = os.getenv(EnvVars.FEISHU_APP_MESSAGE_ID, "")
@@ -234,13 +198,13 @@ class FeishuAdapter:
     async def start_async(self):
         """异步启动飞书WebSocket连接"""
         debug_utils.log_and_print("🚀 异步启动飞书适配器...", log_level="INFO")
-        await self.ws_client.start_async()
+        await self.ws_client._connect()
 
-    def stop(self):
-        """停止飞书WebSocket连接"""
+    def disconnect(self):
+        """断开飞书WebSocket连接"""
         if hasattr(self, 'ws_client') and self.ws_client:
-            debug_utils.log_and_print("🛑 停止飞书适配器...", log_level="INFO")
-            self.ws_client.stop()
+            debug_utils.log_and_print("🛑 断开飞书适配器...", log_level="INFO")
+            self.ws_client._disconnect()
 
     def get_status(self) -> dict:
         """

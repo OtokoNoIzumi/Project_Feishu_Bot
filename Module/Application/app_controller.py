@@ -225,25 +225,6 @@ class AppController:
 
         return all_status
 
-    def initialize_all_services(self) -> Dict[str, bool]:
-        """
-        初始化所有注册的服务
-
-        Returns:
-            Dict[str, bool]: 各服务初始化结果
-        """
-        results = {}
-
-        for service_name in self.services:
-            results[service_name] = self._initialize_service(service_name)
-
-        debug_utils.log_and_print(
-            f"批量初始化完成，成功: {sum(results.values())}/{len(results)}",
-            log_level="INFO"
-        )
-
-        return results
-
     def auto_register_services(self) -> Dict[str, bool]:
         """
         自动注册可用的服务

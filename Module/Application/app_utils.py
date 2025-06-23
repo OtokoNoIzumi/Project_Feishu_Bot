@@ -4,8 +4,10 @@
 集中管理应用层的工具函数和辅助方法
 """
 
+import json
 import os
 from datetime import datetime, timedelta
+from typing import Any
 
 
 class TimeUtils:
@@ -92,7 +94,47 @@ class PathUtils:
         return cache_dir
 
 
+def custom_serializer(obj: Any) -> Any:
+    """
+    自定义序列化函数，用于json.dumps
+
+    它会尝试获取对象的__dict__，如果对象没有__dict__（例如内置类型或使用__slots__的对象），
+    或者__dict__中的某些值无法直接序列化，则回退到str(obj)。
+
+    Args:
+        obj: 需要序列化的对象
+
+    Returns:
+        Any: 可序列化的对象
+    """
+    # 处理特殊类型
+    if isinstance(obj, bytes):
+        return f"<bytes data len={len(obj)}>"
+
+    # 处理复合类型
+    if isinstance(obj, (list, tuple)):
+        return [custom_serializer(item) for item in obj]
+
+    if isinstance(obj, dict):
+        return {k: custom_serializer(v) for k, v in obj.items()}
+
+    # 处理有__dict__的对象
+    if hasattr(obj, '__dict__'):
+        return {
+            k: custom_serializer(v)
+            for k, v in vars(obj).items()
+            if not k.startswith('_')
+        }
+
+    # 尝试JSON序列化，失败则转为字符串
+    try:
+        json.dumps(obj)  # 测试是否可序列化
+        return obj
+    except (TypeError, ValueError):
+        return str(obj)
+
+
 # 便捷导出
 __all__ = [
-    'TimeUtils', 'PathUtils'
+    'TimeUtils', 'PathUtils', 'custom_serializer'
 ]

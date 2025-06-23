@@ -662,7 +662,7 @@ class PendingCacheService:
 
         return stats
 
-    def get_service_status(self) -> Dict[str, Any]:
+    def get_status(self) -> Dict[str, Any]:
         """获取服务状态"""
         pending_count = len([op for op in self.pending_operations.values() if op.status == OperationStatus.PENDING])
 
