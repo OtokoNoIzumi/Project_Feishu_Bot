@@ -17,8 +17,9 @@ from Module.Business.processors import MessageContext, ProcessResult
 from ..decorators import (
     feishu_event_handler_safe, message_conversion_safe, async_operation_safe
 )
+from ..utils import extract_timestamp, noop_debug
 from Module.Services.constants import (
-    ServiceNames, UITypes, ResponseTypes, Messages, CardOperationTypes, MessageTypes, ProcessResultConstKeys, ProcessResultNextAction
+    ServiceNames, UITypes, ResponseTypes, Messages, CardOperationTypes, ProcessResultConstKeys, ProcessResultNextAction
 )
 
 
@@ -44,11 +45,11 @@ class MessageHandler:
 
         # 设置调试函数
         if debug_functions:
-            self.debug_p2im_object = debug_functions.get('debug_p2im_object', self._noop_debug)
-            self.debug_parent_id_analysis = debug_functions.get('debug_parent_id_analysis', self._noop_debug)
+            self.debug_p2im_object = debug_functions.get('debug_p2im_object', noop_debug)
+            self.debug_parent_id_analysis = debug_functions.get('debug_parent_id_analysis', noop_debug)
         else:
-            self.debug_p2im_object = self._noop_debug
-            self.debug_parent_id_analysis = self._noop_debug
+            self.debug_p2im_object = noop_debug
+            self.debug_parent_id_analysis = noop_debug
 
     @property
     def card_mapping_service(self):
@@ -62,27 +63,6 @@ class MessageHandler:
         thread = threading.Thread(target=func)
         thread.daemon = True
         thread.start()
-
-    def _extract_common_context_data(self, data, user_id: str) -> Dict[str, Any]:
-        """
-        提取通用的上下文数据（时间戳和用户名）
-
-        Args:
-            data: 飞书事件数据
-            user_id: 用户ID
-
-        Returns:
-            Dict: 包含timestamp和user_name的字典
-        """
-        # 将create_time（字符串毫秒时间戳）转换为datetime对象
-        create_time_ms = int(data.event.message.create_time)
-        timestamp = datetime.datetime.fromtimestamp(create_time_ms / 1000)
-        user_name = self._get_user_name(user_id)
-
-        return {
-            'timestamp': timestamp,
-            'user_name': user_name
-        }
 
     @feishu_event_handler_safe("处理飞书消息失败")
     def handle_feishu_message(self, data) -> None:
@@ -327,7 +307,8 @@ class MessageHandler:
         user_id = data.event.sender.sender_id.open_id
 
         # 提取通用数据（时间戳和用户名）
-        common_data = self._extract_common_context_data(data, user_id)
+        user_name = self._get_user_name(user_id)
+        message_timestamp = extract_timestamp(data)
 
         # 提取消息特定内容
         message_type = data.event.message.message_type
@@ -337,10 +318,10 @@ class MessageHandler:
 
         return MessageContext(
             user_id=user_id,
-            user_name=common_data['user_name'],
+            user_name=user_name,
             message_type=message_type,
             content=content,
-            timestamp=common_data['timestamp'],
+            timestamp=message_timestamp,
             event_id=event_id,
             message_id=message_id,
             parent_message_id=parent_message_id,
@@ -362,5 +343,4 @@ class MessageHandler:
             case _:
                 return message.content
 
-    def _noop_debug(self, *args, **kwargs):
-        """空操作调试函数，当没有注入调试功能时使用"""
+

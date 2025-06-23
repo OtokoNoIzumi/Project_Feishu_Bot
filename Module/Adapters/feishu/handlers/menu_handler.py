@@ -14,6 +14,7 @@ from Module.Business.processors import MessageContext
 from ..decorators import (
     feishu_event_handler_safe, message_conversion_safe
 )
+from Module.Services.constants import ProcessResultConstKeys, ProcessResultNextAction, MessageTypes
 
 
 class MenuHandler:
@@ -32,26 +33,7 @@ class MenuHandler:
         self.sender = sender
         self._get_user_name = user_name_getter
 
-    def _extract_common_context_data(self, data, user_id: str) -> dict:
-        """
-        提取通用的上下文数据（时间戳和用户名）
 
-        Args:
-            data: 飞书事件数据
-            user_id: 用户ID
-
-        Returns:
-            Dict: 包含timestamp和user_name的字典
-        """
-        # 对于菜单事件，使用事件时间
-        create_time_ms = int(data.header.create_time)
-        timestamp = datetime.datetime.fromtimestamp(create_time_ms / 1000)
-        user_name = self._get_user_name(user_id)
-
-        return {
-            'timestamp': timestamp,
-            'user_name': user_name
-        }
 
     @feishu_event_handler_safe("飞书菜单处理失败")
     def handle_feishu_menu(self, data) -> None:
@@ -73,7 +55,7 @@ class MenuHandler:
         if (
             result.success
             and result.response_content
-            and result.response_content.get("next_action") == "process_bili_video"
+            and result.response_content.get(ProcessResultConstKeys.NEXT_ACTION) == ProcessResultNextAction.PROCESS_BILI_VIDEO
         ):
 
             user_id = result.response_content.get("user_id", "")
@@ -99,17 +81,18 @@ class MenuHandler:
         user_id = data.event.operator.operator_id.open_id
 
         # 提取通用数据（时间戳和用户名）
-        common_data = self._extract_common_context_data(data, user_id)
+        user_name = self._get_user_name(user_id)
+        message_timestamp = datetime.datetime.now()
 
-        # 菜单事件的内容是event_key
+        # 菜单事件的内容是event_key，区分业务的核心参数
         event_key = data.event.event_key
 
         return MessageContext(
             user_id=user_id,
-            user_name=common_data['user_name'],
-            message_type="menu_click",  # 自定义类型
+            user_name=user_name,
+            message_type=MessageTypes.MENU_CLICK,  # 自定义类型
             content=event_key,
-            timestamp=common_data['timestamp'],
+            timestamp=message_timestamp,
             event_id=event_id,
             metadata={
                 'app_id': data.header.app_id,

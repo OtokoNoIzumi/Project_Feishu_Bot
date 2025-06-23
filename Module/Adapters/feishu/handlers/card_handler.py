@@ -21,6 +21,7 @@ from Module.Services.constants import (
 from ..decorators import (
     card_operation_safe, message_conversion_safe
 )
+from ..utils import noop_debug
 
 
 class CardHandler:
@@ -48,9 +49,9 @@ class CardHandler:
 
         # 设置调试函数
         if debug_functions:
-            self.debug_p2im_object = debug_functions.get('debug_p2im_object', self._noop_debug)
+            self.debug_p2im_object = debug_functions.get('debug_p2im_object', noop_debug)
         else:
-            self.debug_p2im_object = self._noop_debug
+            self.debug_p2im_object = noop_debug
 
     @property
     def card_mapping_service(self):
@@ -319,9 +320,6 @@ class CardHandler:
             case _:
                 debug_utils.log_and_print(f"❌ 未知的{card_config_type}卡片操作类型: {operation_type}", log_level="ERROR")
                 return False, None
-
-    def _noop_debug(self, *args, **kwargs):
-        """空操作调试函数，当没有注入调试功能时使用"""
 
     def create_card_ui_update_callback(self):
         """

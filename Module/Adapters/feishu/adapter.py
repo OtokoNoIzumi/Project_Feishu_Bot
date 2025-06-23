@@ -15,48 +15,10 @@ import lark_oapi as lark
 from Module.Common.scripts.common import debug_utils
 from Module.Services.constants import UITypes, EnvVars
 from Module.Services.constants import ServiceNames
-from Module.Application.app_utils import custom_serializer
 from .cards import initialize_card_managers, get_card_manager
 from .handlers import MessageHandler, CardHandler, MenuHandler
 from .senders import MessageSender
-
-# P2ImMessageReceiveV1对象调试开关 - 开发调试用
-DEBUG_P2IM_OBJECTS = False  # 设置为True启用详细调试输出
-
-
-def debug_p2im_object(data, object_type: str = "P2ImMessageReceiveV1"):
-    """调试P2ImMessageReceiveV1对象的详细信息输出"""
-    if not DEBUG_P2IM_OBJECTS:
-        return
-
-    debug_utils.log_and_print(f"🔍 {object_type}对象详细信息 (JSON序列化):", log_level="DEBUG")
-    try:
-        serializable_data = custom_serializer(data)
-        json_output = json.dumps(serializable_data, indent=2, ensure_ascii=False)
-        debug_utils.log_and_print(json_output, log_level="DEBUG")
-        debug_utils.log_and_print(f"🔍 {object_type}对象详细信息 (pprint):", log_level="DEBUG")
-        dict_representation = custom_serializer(data)
-        pretty_output = pprint.pformat(dict_representation, indent=2, width=120)
-        debug_utils.log_and_print(pretty_output, log_level="DEBUG")
-    except Exception as e:
-        debug_utils.log_and_print(f"  - 序列化失败: {e}", log_level="ERROR")
-        debug_utils.log_and_print(f"  - 尝试使用 repr(): {repr(data)}", log_level="DEBUG")
-
-
-def debug_parent_id_analysis(data):
-    """分析并调试parent_id相关信息"""
-    if not DEBUG_P2IM_OBJECTS:
-        return
-
-    # 特别关注回复消息的关键字段 parent_id
-    if hasattr(data, 'event') and hasattr(data.event, 'message') and hasattr(data.event.message, 'parent_id'):
-        parent_id = data.event.message.parent_id
-        if parent_id:
-            debug_utils.log_and_print(f"  - 关键信息: 此消息为回复消息, parent_id = {parent_id}", log_level="INFO")
-        else:
-            debug_utils.log_and_print("  - 关键信息: 此消息非回复消息 (parent_id is None or empty)", log_level="DEBUG")
-    else:
-        debug_utils.log_and_print("  - 关键信息: 未找到 parent_id 属性路径", log_level="DEBUG")
+from .utils import create_debug_functions
 
 
 class FeishuAdapter:
@@ -110,10 +72,7 @@ class FeishuAdapter:
         self.sender = MessageSender(self.client, app_controller)
 
         # 准备调试函数
-        debug_functions = {
-            'debug_p2im_object': debug_p2im_object,
-            'debug_parent_id_analysis': debug_parent_id_analysis
-        }
+        debug_functions = create_debug_functions()
 
         self.message_handler = MessageHandler(message_processor, self.sender, self.sender.get_user_name, debug_functions)
         self.card_handler = CardHandler(message_processor, self.sender, self.sender.get_user_name, card_managers, debug_functions)
