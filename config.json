@@ -14,6 +14,58 @@
     },
     "default_timeout": 30
   },
+    "scheduler": {
+    "tasks": [
+      {
+        "name": "daily_schedule_reminder",
+        "type": "daily_schedule",
+        "time": "07:30:00",
+        "enabled": true,
+        "debug": {
+          "force_latest_time": false,
+          "force_offset_seconds": 5
+        },
+        "params": {}
+      },
+      {
+        "name": "bili_updates_afternoon_debug",
+        "type": "bilibili_updates",
+        "time": "15:30:00",
+        "enabled": false,
+        "debug": {
+          "force_latest_time": true,
+          "force_offset_seconds": 5
+        },
+        "params": {
+          "sources": ["favorites"]
+        }
+      },
+      {
+        "name": "bili_updates_afternoon",
+        "type": "bilibili_updates",
+        "time": "15:30:00",
+        "enabled": true,
+        "debug": {
+          "force_latest_time": false,
+          "force_offset_seconds": 5
+        },
+        "params": {}
+      },
+      {
+        "name": "bili_updates_night",
+        "type": "bilibili_updates",
+        "time": "23:55:00",
+        "enabled": true,
+        "debug": {
+          "force_latest_time": false,
+          "force_offset_seconds": 5
+        },
+        "params": {
+          "sources": ["favorites", "dynamic"]
+        }
+      }
+    ]
+  },
   "cards": {
     "reply_modes": {
       "update_user": "reply",

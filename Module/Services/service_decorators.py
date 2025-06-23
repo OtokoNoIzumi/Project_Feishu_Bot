@@ -3,6 +3,19 @@ Services层专用装饰器
 
 为各种服务操作提供统一的异常处理和日志记录
 独立于其他模块，专门服务于Services层
+
+装饰器层级结构：
+1. Module/Services/decorator_base.py - 装饰器基础工厂（内部使用）
+2. Module/Services/service_decorators.py - Services层装饰器（本文件）
+3. Module/Adapters/feishu/decorators.py - 飞书适配器专用装饰器
+4. Module/Business/processors/base_processor.py - Business层装饰器
+
+通用装饰器：
+- require_service: 通用服务依赖检查，适用于Services层和main.py
+- service_operation_safe: 通用服务操作安全装饰器
+
+Business层专用：
+- Module.Business.processors.base_processor.require_service: 返回ProcessResult的版本
 """
 
 from functools import wraps
@@ -19,6 +32,51 @@ _file_decorator = create_exception_handler_decorator("📁", default_return_valu
 _config_decorator = create_exception_handler_decorator("⚙️", default_return_value=None)
 _cache_decorator = create_exception_handler_decorator("🗄️", default_return_value=None)
 _scheduler_decorator = create_exception_handler_decorator("⏰", default_return_value=None)
+
+
+def require_service(service_name: str, error_msg: Optional[str] = None, check_available: bool = False, return_value: Any = None):
+    """
+    通用装饰器：确保指定服务可用
+
+    适用于Services层和main.py等需要服务检查的场景
+
+    Args:
+        service_name: 服务名称
+        error_msg: 自定义错误消息，默认为"xxx服务不可用"
+        check_available: 是否检查服务的is_available()方法
+        return_value: 服务不可用时的返回值（默认None）
+    """
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            # 尝试从不同位置获取app_controller
+            app_controller = None
+
+            # 方法1：如果是类方法，从self获取
+            if args and hasattr(args[0], 'app_controller'):
+                app_controller = args[0].app_controller
+            # 方法2：如果是函数，从第一个参数获取（假设传入了app_controller）
+            elif args and hasattr(args[0], 'get_service'):
+                app_controller = args[0]
+
+            if not app_controller:
+                debug_utils.log_and_print("🔧 无法获取app_controller，服务检查失败", log_level="ERROR")
+                return return_value
+
+            service = app_controller.get_service(service_name)
+            if not service:
+                msg = error_msg or f"{service_name}服务不可用"
+                debug_utils.log_and_print(f"🔧 {msg}", log_level="ERROR")
+                return return_value
+
+            if check_available and hasattr(service, 'is_available') and not service.is_available():
+                msg = error_msg or f"{service_name}服务未启动或不可用"
+                debug_utils.log_and_print(f"🔧 {msg}", log_level="ERROR")
+                return return_value
+
+            return func(*args, **kwargs)
+        return wrapper
+    return decorator
 
 
 def service_operation_safe(error_message: str, return_value: Any = None, log_args: bool = False):

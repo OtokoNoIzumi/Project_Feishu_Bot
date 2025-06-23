@@ -19,6 +19,7 @@ import time
 from pathlib import Path
 import argparse
 from dotenv import load_dotenv
+from datetime import datetime, timedelta
 
 # 添加项目根目录到Python路径
 current_dir = Path(__file__).parent
@@ -29,6 +30,7 @@ from Module.Business.message_processor import MessageProcessor
 from Module.Adapters import FeishuAdapter
 from Module.Services.constants import ServiceNames, SchedulerConstKeys
 from Module.Common.scripts.common import debug_utils
+from Module.Services.service_decorators import require_service
 
 
 def setup_application():
@@ -90,35 +92,63 @@ def setup_application():
     return app_controller, feishu_adapter
 
 
+@require_service(ServiceNames.SCHEDULER, "调度器服务不可用，跳过定时任务配置")
+@require_service(ServiceNames.CONFIG, "配置服务不可用，跳过定时任务配置")
 def setup_scheduled_tasks(app_controller):
-    """配置定时任务"""
+    """配置定时任务（基于配置文件）"""
     scheduler_service = app_controller.get_service(ServiceNames.SCHEDULER)
-    if not scheduler_service:
-        debug_utils.log_and_print("❌ 调度器服务不可用，跳过定时任务配置", log_level="WARNING")
-        return
+    config_service = app_controller.get_service(ServiceNames.CONFIG)
+
+    scheduler_config = config_service.get("scheduler", {})
+    tasks_config = scheduler_config.get("tasks", [])
 
     tasks_configured = 0
 
-    # 配置定时任务
-    tasks = [
-        ("daily_schedule_reminder", "07:30", scheduler_service.trigger_daily_schedule_reminder, {}),
-        # ("bili_updates_afternoon", "09:48", scheduler_service.trigger_bilibili_updates_reminder, {"sources": ["favorites"]}),
-        ("bili_updates_afternoon", "15:30", scheduler_service.trigger_bilibili_updates_reminder, {}),
-        ("bili_updates_night", "23:55", scheduler_service.trigger_bilibili_updates_reminder,
-         {"sources": ["favorites", "dynamic"]})
-    ]
+    for task_config in tasks_config:
+        if not task_config.get("enabled", True):
+            continue
 
-    for task_name, time_str, task_func, kwargs in tasks:
+        task_name = task_config["name"]
+        task_type = task_config["type"]
+        time_str = task_config["time"]
+        task_params = task_config.get("params", {})
+        task_debug = task_config.get("debug", {})
+
+        # 处理单任务调试模式：force_latest_time
+        if task_debug.get("force_latest_time", False):
+            offset_seconds = task_debug.get("force_offset_seconds", 5)
+            time_str = _get_debug_time(offset_seconds)
+            debug_utils.log_and_print(f"🔧 调试模式：{task_name} 时间调整为 {time_str}", log_level="INFO")
+
+        # 根据任务类型选择触发函数
+        task_func = _get_task_function(scheduler_service, task_type)
+        if not task_func:
+            debug_utils.log_and_print(f"❌ 未知的任务类型: {task_type}", log_level="WARNING")
+            continue
+
         success = scheduler_service.add_daily_task(
             task_name=task_name,
             time_str=time_str,
             task_func=task_func,
-            **kwargs
+            **task_params
         )
         if success:
             tasks_configured += 1
 
     print(f"✅ 定时任务配置完成，共 {tasks_configured} 个任务")
+
+def _get_debug_time(offset_seconds: int = 5) -> str:
+    """获取调试时间：当前时间 + offset_seconds（精确到秒）"""
+    debug_time = datetime.now() + timedelta(seconds=offset_seconds)
+    return debug_time.strftime("%H:%M:%S")
+
+def _get_task_function(scheduler_service, task_type: str):
+    """根据任务类型获取对应的触发函数"""
+    task_functions = {
+        "daily_schedule": scheduler_service.trigger_daily_schedule_reminder,
+        "bilibili_updates": scheduler_service.trigger_bilibili_updates_reminder,
+    }
+    return task_functions.get(task_type)
 
 
 def check_system_status(app_controller):
@@ -160,6 +190,7 @@ def check_system_status(app_controller):
         debug_utils.log_and_print(f"系统状态检查失败: {e}", log_level="ERROR")
 
 
+@require_service(ServiceNames.SCHEDULER, "调度器服务不可用，无法启动调度循环")
 def run_scheduler_loop(app_controller):
     """运行调度器主循环"""
     scheduler_service = app_controller.get_service(ServiceNames.SCHEDULER)

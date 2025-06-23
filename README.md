@@ -1,24 +1,31 @@
 # 飞书机器人
 
-一个功能完整的飞书机器人项目，基于四层架构设计，支持多媒体处理、定时任务、HTTP API等功能。
+一个功能完整的飞书机器人项目，基于模块化语义架构设计，支持多媒体处理、定时任务、HTTP API等功能。
 
 ## 🏗️ 系统架构
 
-```
-前端交互层 (Adapters)
-    ↓
-核心业务层 (Business)
-    ↓
-应用控制层 (Application)
-    ↓
-服务层 (Services)
-```
+采用**语义化节点**的模块化架构，主要模块节点：
 
-### 核心组件
-- **FeishuAdapter**: 飞书平台交互和消息处理
-- **MessageProcessor**: 业务逻辑路由和处理
-- **AppController**: 统一服务管理和API接口
-- **Services**: 功能服务（配置、缓存、音频、图像、定时任务、数据管理）
+### 🎯 主模块节点
+- **`main`**: 应用入口，负责启动流程和定时任务配置化管理
+- **`app_controller`**: 服务协调器，统一管理所有服务生命周期和健康状态
+- **`feishu_adapter`**: 飞书平台适配器，处理消息接收、发送和格式转换
+
+### 🧩 业务处理节点
+**MessageProcessor**暴露的语义化处理节点：
+- **`message_processor.text`**: 文本处理 (`get_help`, `greeting`, `default_reply`)
+- **`message_processor.media`**: 多媒体处理 (`process_tts_async`, `sample_rich_text`, `sample_image`)
+- **`message_processor.bili`**: B站功能 (`video_menu`, `process_bili_video_async`)
+- **`message_processor.admin`**: 管理功能 (`handle_admin_command`, `handle_pending_operation_action`)
+- **`message_processor.schedule`**: 定时任务 (`create_task`, `daily_summary`, `bili_notification`)
+
+### 🔧 服务支撑层
+通过`ServiceNames`常量化访问：
+- **Config**: 配置管理，支持.env和config.json优先级
+- **Cache/PendingCache**: 缓存管理和待处理操作管理
+- **Audio/Image**: 多媒体处理服务
+- **Scheduler**: 配置化定时任务服务
+- **Notion**: 数据源集成
 
 ### 🃏 卡片架构设计
 
@@ -89,10 +96,11 @@
 - **API集成**: 支持外部B站API数据更新
 
 ### ⏰ 定时任务系统
-- **每日信息汇总**: 07:30 自动推送服务状态和B站数据分析
-- **B站更新推送**: 15:30 和 23:55 自动检查和推送
-- **夜间静默模式**: 23:00-07:00 只处理不通知
-- **事件驱动架构**: 完全解耦的任务调度系统
+- **配置化管理**: 基于config.json的任务配置，支持启用/禁用
+- **调试模式**: `force_latest_time`开关，自动调整任务时间为启动时间+5秒
+- **任务类型**: 支持`daily_schedule`（每日汇总）和`bilibili_updates`（B站更新）
+- **灵活参数**: 每个任务可配置独立的参数（如B站数据源）
+- **统一处理**: `schedule.create_task()`封装所有路由逻辑
 
 ### 🌐 HTTP API接口
 - **RESTful API**: 完整的HTTP接口支持
@@ -119,18 +127,21 @@ pip install -r requirements.txt
 ```
 
 ### 配置设置
-1. 复制 `.env.example` 为 `.env`
-2. 配置飞书机器人密钥：
-   - `FEISHU_APP_ID` - 飞书应用ID
-   - `FEISHU_APP_SECRET` - 飞书应用密钥
-   - `ADMIN_ID` - 管理员用户ID
-3. 配置服务集成：
-   - `GRADIO_BASE_URL` - 图像生成服务地址
-   - `COZE_API_KEY` - TTS服务密钥
-   - `NOTION_*` - Notion数据库配置
-4. 可选API配置：
+1. **环境变量配置** (`.env`)：
+   - `FEISHU_APP_ID` / `FEISHU_APP_SECRET` - 飞书机器人密钥
+   - `ADMIN_ID` - 管理员用户ID（必需）
+   - `GRADIO_BASE_URL` / `COZE_API_KEY` - 多媒体服务集成
+   - `NOTION_*` - 数据源配置
    - `ADMIN_SECRET_KEY` - HTTP API管理密钥
-   - `BILI_API_BASE` - B站外部API地址
+
+2. **应用配置** (`config.json`)：
+   - `scheduler.tasks[]` - 定时任务配置数组
+   - `pending_cache` - 操作超时和缓存配置
+   - `cards` - 卡片模板和回复模式配置
+
+3. **业务配置** (`cards_business_mapping.json`)：
+   - 卡片与业务的映射关系
+   - 支持热更新和插拔式配置
 
 ### 启动服务
 
