@@ -25,6 +25,28 @@ from Module.Common.scripts.common import debug_utils
 from ..service_decorators import service_operation_safe, scheduler_operation_safe, external_api_safe, config_operation_safe
 from Module.Services.constants import ServiceNames, SchedulerTaskTypes, SchedulerConstKeys
 
+class TaskUtils:
+    """任务相关工具函数"""
+
+    @staticmethod
+    def get_task_function(scheduler_service, task_type: str) -> Optional[Callable]:
+        """
+        根据任务类型获取对应的触发函数
+
+        Args:
+            scheduler_service: 调度器服务实例
+            task_type: 任务类型
+
+        Returns:
+            Optional[Callable]: 触发函数，如果找不到返回None
+        """
+        task_functions = {
+            SchedulerTaskTypes.DAILY_SCHEDULE: scheduler_service.trigger_daily_schedule_reminder,
+            SchedulerTaskTypes.BILI_UPDATES: scheduler_service.trigger_bilibili_updates_reminder,
+        }
+        return task_functions.get(task_type)
+
+
 class ScheduledEvent:
     """定时任务事件"""
     def __init__(self, event_type: str, data: Dict[str, Any]):
@@ -511,62 +533,6 @@ class SchedulerService:
         self._publish_event(event)
 
     # ================ 独立API方法 ================
-
-    @service_operation_safe("获取日程数据失败", return_value={"error": "数据获取失败"})
-    def get_schedule_data(self) -> Dict[str, Any]:
-        """
-        获取日程数据的独立API
-
-        返回调度器本身的状态信息和任务列表
-        """
-        now = datetime.datetime.now()
-
-        # 获取真实的定时任务列表
-        real_tasks = self.list_tasks()
-
-        # 转换为API格式的events
-        events = []
-        for task in real_tasks:
-            events.append({
-                "task_name": task["name"],
-                "time": task.get("time", "unknown"),
-                "title": self._get_task_title(task["name"]),
-                "type": self._get_task_type(task["name"]),
-                "status": "scheduled" if task["next_run"] else "inactive",
-                "next_run": task["next_run"].isoformat() if task["next_run"] else None,
-                "last_run": task["last_run"].isoformat() if task["last_run"] else None,
-                "function_name": task.get("function_name", "unknown")
-            })
-
-        # 返回调度器状态数据
-        schedule_data = {
-            "date": now.strftime("%Y年%m月%d日"),
-            "weekday": ["周一", "周二", "周三", "周四", "周五", "周六", "周日"][now.weekday()],
-            "events": events,  # 真实的任务列表
-            "scheduler_status": self.get_status(),
-            "timestamp": now.isoformat(),
-            "source": "scheduler_service"
-        }
-
-        return schedule_data
-
-    def _get_task_title(self, task_name: str) -> str:
-        """根据任务名获取任务标题"""
-        title_map = {
-            "daily_schedule_reminder": "每日信息汇总",
-            "bili_updates_afternoon": "B站内容更新检查",
-            "bili_updates_night": "B站夜间更新检查"
-        }
-        return title_map.get(task_name, task_name)
-
-    def _get_task_type(self, task_name: str) -> str:
-        """根据任务名获取任务类型"""
-        if "daily_schedule" in task_name:
-            return "daily_schedule_reminder"
-        elif "bili" in task_name:
-            return "bilibili_updates_reminder"
-        else:
-            return "unknown"
 
     @external_api_safe("B站更新检查失败", return_value={"success": False, "error": "检查失败"}, api_name="Bilibili")
     def trigger_bilibili_update_check(self, sources: Optional[List[str]] = None) -> Dict[str, Any]:

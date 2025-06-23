@@ -18,19 +18,23 @@ import threading
 import time
 from pathlib import Path
 import argparse
+import traceback
 from dotenv import load_dotenv
-from datetime import datetime, timedelta
 
 # 添加项目根目录到Python路径
 current_dir = Path(__file__).parent
 sys.path.insert(0, str(current_dir))
 
+from http_api_server import start_http_server
+from test_runtime_api import validate_with_shared_controller
 from Module.Application.app_controller import AppController
+from Module.Application.app_utils import TimeUtils
 from Module.Business.message_processor import MessageProcessor
 from Module.Adapters import FeishuAdapter
 from Module.Services.constants import ServiceNames, SchedulerConstKeys
 from Module.Common.scripts.common import debug_utils
 from Module.Services.service_decorators import require_service
+from Module.Services.scheduler.scheduler_service import TaskUtils
 
 
 def setup_application():
@@ -117,11 +121,11 @@ def setup_scheduled_tasks(app_controller):
         # 处理单任务调试模式：force_latest_time
         if task_debug.get("force_latest_time", False):
             offset_seconds = task_debug.get("force_offset_seconds", 5)
-            time_str = _get_debug_time(offset_seconds)
+            time_str = TimeUtils.get_debug_time(offset_seconds)
             debug_utils.log_and_print(f"🔧 调试模式：{task_name} 时间调整为 {time_str}", log_level="INFO")
 
         # 根据任务类型选择触发函数
-        task_func = _get_task_function(scheduler_service, task_type)
+        task_func = TaskUtils.get_task_function(scheduler_service, task_type)
         if not task_func:
             debug_utils.log_and_print(f"❌ 未知的任务类型: {task_type}", log_level="WARNING")
             continue
@@ -136,19 +140,6 @@ def setup_scheduled_tasks(app_controller):
             tasks_configured += 1
 
     print(f"✅ 定时任务配置完成，共 {tasks_configured} 个任务")
-
-def _get_debug_time(offset_seconds: int = 5) -> str:
-    """获取调试时间：当前时间 + offset_seconds（精确到秒）"""
-    debug_time = datetime.now() + timedelta(seconds=offset_seconds)
-    return debug_time.strftime("%H:%M:%S")
-
-def _get_task_function(scheduler_service, task_type: str):
-    """根据任务类型获取对应的触发函数"""
-    task_functions = {
-        "daily_schedule": scheduler_service.trigger_daily_schedule_reminder,
-        "bilibili_updates": scheduler_service.trigger_bilibili_updates_reminder,
-    }
-    return task_functions.get(task_type)
 
 
 def check_system_status(app_controller):
@@ -221,7 +212,6 @@ def main():
         # API验证
         if args.verify_api:
             try:
-                from test_runtime_api import validate_with_shared_controller
                 validate_with_shared_controller(app_controller)
                 print("✅ API验证完成")
             except ImportError:
@@ -234,7 +224,6 @@ def main():
         if args.http_api:
             def start_http_api():
                 try:
-                    from http_api_server import start_http_server
                     start_http_server(
                         shared_controller=app_controller,
                         host="127.0.0.1", port=args.http_port)
@@ -268,7 +257,6 @@ def main():
         print("\n正在停止服务...")
     except Exception as e:
         debug_utils.log_and_print(f"启动失败: {e}", log_level="ERROR")
-        import traceback
         traceback.print_exc()
     finally:
         if 'feishu_adapter' in locals():
