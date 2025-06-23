@@ -11,11 +11,12 @@
 """
 
 import time
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 from Module.Common.scripts.common import debug_utils
 from Module.Services.router.card_builder import CardBuilder
-from Module.Adapters.feishu.cards.admin_cards import AdminCardInteractionComponents
+from Module.Adapters.feishu.cards.user_update_cards import UserUpdateInteractionComponents
+from Module.Adapters.feishu.cards.ads_update_cards import AdsUpdateInteractionComponents
 from Module.Services.constants import (
     ServiceNames, MenuClickTypes, ResponseTypes,
     MessageTypes, CardActions, Messages
@@ -424,7 +425,7 @@ class MessageProcessor(BaseProcessor):
     def _apply_select_change(self, operation, selected_option: str) -> bool:
         """
         应用选择变更到操作数据
-        基于1.0.9版本交互组件架构的配置驱动更新
+        基于1.0.9版本交互组件架构的配置驱动更新【待处理，用按钮的标签来驱动
 
         Args:
             operation: 待处理操作对象
@@ -433,8 +434,10 @@ class MessageProcessor(BaseProcessor):
         Returns:
             bool: 是否更新成功
         """
-        # 获取操作类型映射
-        type_mapping = AdminCardInteractionComponents.get_operation_type_mapping()
+        # 获取操作类型映射 - 合并所有组件的映射
+        user_type_mapping = UserUpdateInteractionComponents.get_operation_type_mapping()
+        ads_type_mapping = AdsUpdateInteractionComponents.get_operation_type_mapping()
+        type_mapping = {**user_type_mapping, **ads_type_mapping}
         component_getter = type_mapping.get(operation.operation_type)
 
         if not component_getter:
@@ -449,7 +452,7 @@ class MessageProcessor(BaseProcessor):
         # 获取交互组件定义
         match component_getter:
             case "get_user_update_confirm_components":
-                components = AdminCardInteractionComponents.get_user_update_confirm_components(
+                components = UserUpdateInteractionComponents.get_user_update_confirm_components(
                     operation.operation_id,
                     operation.operation_data.get('user_id', ''),
                     operation.operation_data.get('user_type', 1)
@@ -484,7 +487,7 @@ class MessageProcessor(BaseProcessor):
 
             case "get_ads_update_confirm_components":
                 # 处理广告更新操作的选择器变更
-                components = AdminCardInteractionComponents.get_ads_update_confirm_components(
+                components = AdsUpdateInteractionComponents.get_ads_update_confirm_components(
                     operation.operation_id,
                     operation.operation_data.get('bvid', ''),
                     operation.operation_data.get('adtime_stamps', '')

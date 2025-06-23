@@ -93,11 +93,16 @@ class MessageSender:
         从配置获取卡片回复模式
 
         Args:
-            card_type: 卡片类型 (CardConfigTypes.ADMIN_CARDS | CardConfigTypes.BILIBILI_CARDS | 等)
+            改成了 card_definitions 的 key 值
 
         Returns:
             str: 回复模式 ("new" | "reply" | "thread")
         """
+        card_mapping_service = self.app_controller.get_service(ServiceNames.CARD_BUSINESS_MAPPING)
+        if card_mapping_service:
+            reply_modes = card_mapping_service.get_card_definition(card_type).get('reply_modes', ReplyModes.REPLY)
+            return reply_modes
+
         config_service = self.app_controller.get_service(ServiceNames.CONFIG) if self.app_controller else None
         if config_service:
             reply_modes = config_service.get(ConfigKeys.CARDS, {}).get(ConfigKeys.REPLY_MODES, {})

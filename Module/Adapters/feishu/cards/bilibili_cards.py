@@ -5,25 +5,51 @@ B站相关卡片管理器
 """
 
 from typing import Dict, Any
+from Module.Services.constants import ServiceNames, CardConfigTypes, CardActions
 from .card_registry import BaseCardManager
 from ..decorators import card_build_safe
 
 
 class BilibiliCardManager(BaseCardManager):
-    """B站卡片管理器"""
+    """B站卡片管理器 - 配置驱动"""
+
+    def __init__(self, app_controller=None):
+        """
+        初始化B站卡片管理器
+
+        Args:
+            app_controller: 配置服务实例，用于读取卡片配置
+        """
+        self.app_controller = app_controller
+        super().__init__()
 
     def get_card_type_name(self) -> str:
         """获取卡片类型名称"""
         return "B站"
 
     def _initialize_templates(self):
-        """初始化B站卡片模板配置"""
-        self.templates = {
-            "bili_video_menu": {
-                "template_id": "AAqBPdq4sxIy5",
-                "template_version": "1.0.9"
+        """初始化B站卡片模板配置 - 从配置文件读取"""
+        self.templates = {}
+
+        if not self.app_controller:
+            # 如果没有配置服务，使用默认配置（向后兼容）
+            self.templates = {
+                "bili_video_menu": {
+                    "template_id": "AAqBPdq4sxIy5",
+                    "template_version": "1.0.9"
+                }
             }
-        }
+            return
+
+        # 从配置服务获取卡片业务映射服务
+        card_mapping_service = self.app_controller.get_service(ServiceNames.CARD_BUSINESS_MAPPING)
+        if not card_mapping_service:
+            return
+
+        # 获取B站卡片定义的配置
+        card_definition = card_mapping_service.get_card_definition(CardConfigTypes.BILIBILI_VIDEO_INFO)
+        if card_definition and "templates" in card_definition:
+            self.templates = card_definition["templates"]
 
     # 卡片构建方法组（只负责数据格式化）
     @card_build_safe("B站视频菜单卡片构建失败")
@@ -47,7 +73,7 @@ class BilibiliCardManager(BaseCardManager):
         }
 
         cached_video_data = {
-            'action': 'mark_bili_read',
+            'action': CardActions.MARK_BILI_READ,
             'pageid': main_video.get('pageid', ''),
             'card_type': 'menu',
             'cached_video_data': cached_video_data

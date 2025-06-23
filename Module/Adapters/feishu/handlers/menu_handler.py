@@ -32,8 +32,11 @@ class MenuHandler:
         self.message_processor = message_processor
         self.sender = sender
         self._get_user_name = user_name_getter
+        self.message_handler = None  # 由adapter注入
 
-
+    def set_message_handler(self, message_handler):
+        """注入MessageHandler实例"""
+        self.message_handler = message_handler
 
     @feishu_event_handler_safe("飞书菜单处理失败")
     def handle_feishu_menu(self, data) -> None:
@@ -65,8 +68,10 @@ class MenuHandler:
             if text_content and text_content.strip():
                 self.sender.send_direct_message(context.user_id, result)
 
-            # 调用注入的message_handler方法处理B站视频异步操作
-            self.sender.handle_bili_video_async(user_id)
+            if self.message_handler:
+                self.message_handler._handle_bili_video_async(user_id)
+            else:
+                debug_utils.log_and_print("❌ MessageHandler未注入", log_level="ERROR")
             return
 
         # 发送回复（菜单点击通常需要主动发送消息）

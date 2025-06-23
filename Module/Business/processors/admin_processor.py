@@ -4,10 +4,9 @@
 处理所有需要管理员权限的命令和操作
 """
 
-import os
-import re
-import requests
-import json
+import asyncio
+import aiohttp
+from concurrent.futures import ThreadPoolExecutor
 from typing import Tuple, Dict, Any, Optional
 from .base_processor import BaseProcessor, MessageContext, ProcessResult, require_service, safe_execute, require_app_controller
 from Module.Common.scripts.common import debug_utils
@@ -66,10 +65,11 @@ class AdminProcessor(BaseProcessor):
                 self.update_config_trigger = DefaultValues.DEFAULT_UPDATE_TRIGGER
                 self.bili_api_base_url = DefaultValues.DEFAULT_BILI_API_BASE
                 self.bili_admin_secret = DefaultValues.DEFAULT_ADMIN_SECRET
+                # 从配置文件获取操作超时时间，使用默认备用值
                 self.operation_timeouts = {
-                    OperationTypes.UPDATE_USER: BusinessConstants.USER_UPDATE_TIMEOUT,
-                    OperationTypes.UPDATE_ADS: BusinessConstants.ADS_UPDATE_TIMEOUT,
-                    OperationTypes.SYSTEM_CONFIG: BusinessConstants.SYSTEM_CONFIG_TIMEOUT
+                    OperationTypes.UPDATE_USER: 30,  # 30秒，与配置文件保持一致
+                    OperationTypes.UPDATE_ADS: 30,   # 30秒，与配置文件保持一致
+                    OperationTypes.SYSTEM_CONFIG: 60  # 60秒
                 }
                 self.default_timeout = BusinessConstants.DEFAULT_OPERATION_TIMEOUT
         else:
@@ -309,8 +309,10 @@ class AdminProcessor(BaseProcessor):
                 debug_utils.log_and_print("❌ 用户更新操作缺少必要参数", log_level="ERROR")
                 return False
 
-            # 调用B站API
-            success, response_data = self._call_update_user_api(user_id, user_type)
+            # 在线程池中执行异步API调用
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(self._run_async_in_thread, self._call_update_user_api_async, user_id, user_type)
+                success, response_data = future.result(timeout=30)  # 30秒超时
 
             if success:
                 debug_utils.log_and_print(f"✅ 用户 {user_id} 状态更新成功 {response_data.get('message', '')}", log_level="INFO")
@@ -323,6 +325,16 @@ class AdminProcessor(BaseProcessor):
         except Exception as e:
             debug_utils.log_and_print(f"❌ 执行用户更新操作异常: {e}", log_level="ERROR")
             return False
+
+    async def _call_update_user_api_async(self, uid: str, account_type: int) -> Tuple[bool, Dict[str, Any]]:
+        """异步调用更新用户API，支持失败重试"""
+        url = f"{self.bili_api_base_url}/api/admin/update_user"
+        data = {
+            "admin_secret_key": self.bili_admin_secret,
+            "uid": uid,
+            "account_type": account_type
+        }
+        return await self._make_api_request_with_retry(url, data, "用户更新")
 
     @safe_execute("执行广告更新操作失败")
     def _execute_ads_update_operation(self, operation) -> bool:
@@ -344,8 +356,10 @@ class AdminProcessor(BaseProcessor):
                 debug_utils.log_and_print("❌ 广告更新操作缺少BVID参数", log_level="ERROR")
                 return False
 
-            # 调用B站API
-            success, response_data = self._call_update_ads_api(bvid, adtime_stamps)
+            # 在线程池中执行异步API调用
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(self._run_async_in_thread, self._call_update_ads_api_async, bvid, adtime_stamps)
+                success, response_data = future.result(timeout=30)  # 30秒超时
 
             if success:
                 debug_utils.log_and_print(f"✅ 广告 {bvid} 时间戳更新成功 {response_data.get('message', '')}", log_level="INFO")
@@ -358,6 +372,93 @@ class AdminProcessor(BaseProcessor):
         except Exception as e:
             debug_utils.log_and_print(f"❌ 执行广告更新操作异常: {e}", log_level="ERROR")
             return False
+
+    async def _call_update_ads_api_async(self, bvid: str, ad_timestamps: str) -> Tuple[bool, Dict[str, Any]]:
+        """异步调用更新广告API，支持失败重试"""
+        url = f"{self.bili_api_base_url}/api/admin/update_ads"
+
+        # 合规化处理：确保空字符串正确传递（清除广告区间）
+        processed_timestamps = ad_timestamps.strip() if ad_timestamps else ""
+
+        data = {
+            "admin_secret_key": self.bili_admin_secret,
+            "bvid": bvid,
+            "ad_timestamps": processed_timestamps  # 支持空字符串（清除广告）
+        }
+
+        # 广告API需要特殊的Connection头
+        extra_headers = {"Connection": "close"}
+        return await self._make_api_request_with_retry(url, data, "广告更新", extra_headers)
+
+    async def _make_api_request_with_retry(
+        self,
+        url: str,
+        data: Dict[str, Any],
+        operation_name: str,
+        extra_headers: Optional[Dict[str, str]] = None,
+        max_retries: int = 2,
+        retry_delay: float = 1.0
+    ) -> Tuple[bool, Dict[str, Any]]:
+        """
+        通用的异步API请求方法，支持重试机制
+
+        Args:
+            url: API端点URL
+            data: 请求数据
+            operation_name: 操作名称（用于日志）
+            extra_headers: 额外的请求头
+            max_retries: 最大重试次数
+            retry_delay: 重试间隔（秒）
+
+        Returns:
+            Tuple[bool, Dict[str, Any]]: (是否成功, 响应数据)
+        """
+        headers = {"Content-Type": "application/json"}
+        if extra_headers:
+            headers.update(extra_headers)
+
+        timeout = aiohttp.ClientTimeout(total=10)
+        last_error = None
+
+        for attempt in range(max_retries):
+            try:
+                async with aiohttp.ClientSession(timeout=timeout) as session:
+                    async with session.post(url, headers=headers, json=data) as response:
+                        if response.status == 200:
+                            response_data = await response.json()
+                            return response_data.get("success", False), response_data
+                        error_msg = f"HTTP错误: {response.status}"
+                        last_error = {"message": error_msg}
+            except asyncio.TimeoutError:
+                error_msg = "请求超时"
+                last_error = {"message": error_msg}
+            except aiohttp.ClientError as e:
+                error_msg = f"网络错误: {str(e)}"
+                last_error = {"message": error_msg}
+            except Exception as e:
+                error_msg = f"API调用异常: {str(e)}"
+                last_error = {"message": error_msg}
+
+            # 只有不是最后一次才重试并打印日志
+            if attempt < max_retries - 1:
+                debug_utils.log_and_print(
+                    f"⚠️ {operation_name}API第{attempt + 1}次调用失败: {last_error.get('message', '')}，{retry_delay}秒后重试",
+                    log_level="WARNING"
+                )
+                await asyncio.sleep(retry_delay)
+            else:
+                break
+
+        return False, last_error or {"message": "重试次数已用完"}
+
+    def _run_async_in_thread(self, async_func, *args):
+        """在新线程中运行异步函数"""
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            return loop.run_until_complete(async_func(*args))
+        finally:
+            loop.close()
 
     @require_app_controller("应用控制器不可用")
     @require_service(ServiceNames.PENDING_CACHE, "缓存业务服务不可用")
@@ -567,67 +668,3 @@ class AdminProcessor(BaseProcessor):
                 return f"({hours}时{remaining_minutes}分)"
             else:
                 return f"({hours}时)"
-
-    def _call_update_user_api(self, uid: str, account_type: int) -> Tuple[bool, Dict[str, Any]]:
-        """调用更新用户API"""
-        try:
-            if not self.bili_api_base_url or not self.bili_admin_secret:
-                return False, {"message": "B站API配置缺失"}
-
-            url = f"{self.bili_api_base_url}/api/admin/update_user"
-            headers = {"Content-Type": "application/json"}
-            data = {
-                "admin_secret_key": self.bili_admin_secret,
-                "uid": uid,
-                "account_type": account_type
-            }
-
-            response = requests.post(url, headers=headers, data=json.dumps(data), timeout=10)
-
-            if response.status_code == 200:
-                response_data = response.json()
-                return response_data.get("success", False), response_data
-            else:
-                return False, {"message": f"HTTP错误: {response.status_code}"}
-
-        except requests.exceptions.Timeout:
-            return False, {"message": "请求超时"}
-        except requests.exceptions.RequestException as e:
-            return False, {"message": f"网络错误: {str(e)}"}
-        except Exception as e:
-            return False, {"message": f"API调用异常: {str(e)}"}
-
-    def _call_update_ads_api(self, bvid: str, ad_timestamps: str) -> Tuple[bool, Dict[str, Any]]:
-        """调用更新广告API"""
-        try:
-            if not self.bili_api_base_url or not self.bili_admin_secret:
-                return False, {"message": "B站API配置缺失"}
-
-            url = f"{self.bili_api_base_url}/api/admin/update_ads"
-            headers = {
-                "Content-Type": "application/json",
-                "Connection": "close"
-            }
-
-            # 合规化处理：确保空字符串正确传递（清除广告区间）
-            processed_timestamps = ad_timestamps.strip() if ad_timestamps else ""
-
-            data = {
-                "admin_secret_key": self.bili_admin_secret,
-                "bvid": bvid,
-                "ad_timestamps": processed_timestamps  # 支持空字符串（清除广告）
-            }
-            response = requests.post(url, headers=headers, data=json.dumps(data), timeout=10)
-
-            if response.status_code == 200:
-                response_data = response.json()
-                return response_data.get("success", False), response_data
-            else:
-                return False, {"message": f"HTTP错误: {response.status_code}"}
-
-        except requests.exceptions.Timeout:
-            return False, {"message": "请求超时"}
-        except requests.exceptions.RequestException as e:
-            return False, {"message": f"网络错误: {str(e)}"}
-        except Exception as e:
-            return False, {"message": f"API调用异常: {str(e)}"}

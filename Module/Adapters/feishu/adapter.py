@@ -7,15 +7,12 @@
 3. 飞书特定的API调用
 """
 
-import json
-import pprint
 import os
 import lark_oapi as lark
 
 from Module.Common.scripts.common import debug_utils
-from Module.Services.constants import UITypes, EnvVars
-from Module.Services.constants import ServiceNames
-from .cards import initialize_card_managers, get_card_manager
+from Module.Services.constants import UITypes, EnvVars, ServiceNames
+from .cards import initialize_card_managers
 from .handlers import MessageHandler, CardHandler, MenuHandler
 from .senders import MessageSender
 from .utils import create_debug_functions
@@ -50,17 +47,8 @@ class FeishuAdapter:
         self.message_processor = message_processor
         self.app_controller = app_controller
 
-        # 导入并初始化新的卡片管理架构
-        self.card_registry = initialize_card_managers()
-
-        # 【待优化
-        self.bili_card_manager = get_card_manager("bilibili")
-        self.admin_card_manager = get_card_manager("admin")
-        # 创建各种处理器，并注入依赖
-        card_managers = {
-            'bili': self.bili_card_manager,
-            'admin': self.admin_card_manager
-        }
+        # 导入并初始化新的卡片管理架构 - 配置驱动
+        self.card_registry = initialize_card_managers(app_controller=app_controller)
 
         # 初始化飞书SDK配置
         self._init_feishu_config()
@@ -75,13 +63,12 @@ class FeishuAdapter:
         debug_functions = create_debug_functions()
 
         self.message_handler = MessageHandler(message_processor, self.sender, self.sender.get_user_name, debug_functions)
-        self.card_handler = CardHandler(message_processor, self.sender, self.sender.get_user_name, card_managers, debug_functions)
+        self.card_handler = CardHandler(message_processor, self.sender, self.sender.get_user_name, debug_functions, self.card_registry)
         self.menu_handler = MenuHandler(message_processor, self.sender, self.sender.get_user_name)
 
-        # 注入处理器方法到sender（避免循环依赖）
-        self.sender.handle_bili_card_operation = self.card_handler._handle_bili_card_operation
-        self.sender.handle_admin_card_operation = self.card_handler._handle_admin_card_operation
-        self.sender.handle_bili_video_async = self.message_handler._handle_bili_video_async
+        # 注入handler依赖，实现解耦
+        self.message_handler.set_card_handler(self.card_handler)
+        self.menu_handler.set_message_handler(self.message_handler)
 
         # 注册UI更新回调到pending_cache_service
         self._register_ui_update_callbacks()

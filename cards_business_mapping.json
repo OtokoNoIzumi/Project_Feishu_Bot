@@ -2,6 +2,7 @@
   "business_mappings": {
     "update_user": {
       "response_type": "admin_card_send",
+      "card_manager": "user_update",
       "card_template": "admin_user_update_confirm",
       "card_builder_method": "build_user_update_confirm_card",
       "timeout_seconds": 30,
@@ -11,6 +12,7 @@
     },
     "update_ads": {
       "response_type": "admin_card_send",
+      "card_manager": "ads_update",
       "card_template": "admin_ads_update_confirm",
       "card_builder_method": "build_ads_update_confirm_card",
       "timeout_seconds": 30,
@@ -20,14 +22,53 @@
     },
     "bili_video_menu": {
       "response_type": "bili_card_send",
+      "card_manager": "bilibili_video_info",
       "card_template": "bili_video_menu",
-      "card_builder_method": "build_video_menu_card",
+      "card_builder_method": "build_bili_video_menu_card",
       "timeout_seconds": 30,
       "actions": ["mark_bili_read"],
       "business_processor": "BilibiliProcessor",
       "description": "B站视频推荐菜单卡片"
     }
   },
-  "config_version": "2.2.0",
-  "last_updated": "2025-06-22"
+  "card_definitions": {
+    "user_update": {
+      "reply_modes": "reply",
+      "class_name": "UserUpdateCardManager",
+      "module_path": "Module.Adapters.feishu.cards.user_update_cards",
+      "manager_type": "用户更新",
+      "templates": {
+        "admin_user_update_confirm": {
+          "template_id": "AAqdbwJ2cflOp",
+          "template_version": "1.1.0"
+        }
+      }
+    },
+    "ads_update": {
+      "reply_modes": "reply",
+      "class_name": "AdsUpdateCardManager",
+      "module_path": "Module.Adapters.feishu.cards.ads_update_cards",
+      "manager_type": "广告更新",
+      "templates": {
+        "admin_ads_update_confirm": {
+          "template_id": "AAqdJvEYwMDQ3",
+          "template_version": "1.0.0"
+        }
+      }
+    },
+    "bilibili_video_info": {
+      "reply_modes": "new",
+      "class_name": "BilibiliCardManager",
+      "module_path": "Module.Adapters.feishu.cards.bilibili_cards",
+      "manager_type": "B站",
+      "templates": {
+        "bili_video_menu": {
+          "template_id": "AAqBPdq4sxIy5",
+          "template_version": "1.0.9"
+        }
+      }
+    }
+  },
+  "config_version": "3.0.0",
+  "last_updated": "2025-06-23"
 }

@@ -13,27 +13,31 @@ class CardBusinessMappingService:
     def __init__(self, config_service=None):
         self.config_service = config_service
         self._mappings_cache: Optional[Dict[str, Any]] = None
+        self._definitions_cache: Optional[Dict[str, Any]] = None
+        self._mappings_cache = {}
+        self._definitions_cache = {}
         self._load_mappings()
 
     def _load_mappings(self) -> None:
         """加载卡片业务映射配置"""
         try:
-            if self.config_service:
-                # 通过ConfigService读取配置
-                config_file_path = os.path.join(self.config_service.project_root_path, "cards_business_mapping.json")
-                if os.path.exists(config_file_path):
-                    with open(config_file_path, 'r', encoding='utf-8') as f:
-                        data = json.load(f)
-                        self._mappings_cache = data.get("business_mappings", {})
-                else:
-                    print(f"[CardBusinessMapping] 配置文件不存在: {config_file_path}")
-                    self._mappings_cache = {}
-            else:
+            if not self.config_service:
                 print(f"[CardBusinessMapping] ConfigService不可用，无法加载配置")
-                self._mappings_cache = {}
+                return
+
+            # 通过ConfigService读取配置
+            config_file_path = os.path.join(self.config_service.project_root_path, "cards_business_mapping.json")
+            if not os.path.exists(config_file_path):
+                print(f"[CardBusinessMapping] 配置文件不存在: {config_file_path}")
+                return
+
+            with open(config_file_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                self._mappings_cache = data.get("business_mappings", {})
+                self._definitions_cache = data.get("card_definitions", {})
+
         except Exception as e:
             print(f"[CardBusinessMapping] 加载配置失败: {e}")
-            self._mappings_cache = {}
 
     def get_business_config(self, business_id: str) -> Dict[str, Any]:
         """根据业务ID获取配置
@@ -175,3 +179,28 @@ class CardBusinessMappingService:
         """
         config = self.get_business_config(business_id)
         return config.get("actions", [])
+
+    def get_card_definition(self, manager_key: str) -> Dict[str, Any]:
+        """根据管理器键获取管理器配置
+
+        Args:
+            manager_key: 管理器标识 (如 'user_update', 'ads_update', 'bilibili')
+
+        Returns:
+            Dict[str, Any]: 管理器配置字典，不存在时返回空字典
+        """
+        if not hasattr(self, '_definitions_cache') or self._definitions_cache is None:
+            self._load_mappings()
+
+        return self._definitions_cache.get(manager_key, {})
+
+    def get_all_definition(self) -> Dict[str, Dict[str, Any]]:
+        """获取所有管理器配置
+
+        Returns:
+            Dict[str, Dict[str, Any]]: 完整的管理器配置字典
+        """
+        if not hasattr(self, '_definitions_cache') or self._definitions_cache is None:
+            self._load_mappings()
+
+        return self._definitions_cache.copy() if self._definitions_cache else {}

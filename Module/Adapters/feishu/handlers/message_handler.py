@@ -42,14 +42,9 @@ class MessageHandler:
 
         # 获取应用控制器以访问服务
         self.app_controller = getattr(message_processor, 'app_controller', None)
-
-        # 设置调试函数
-        if debug_functions:
-            self.debug_p2im_object = debug_functions.get('debug_p2im_object', noop_debug)
-            self.debug_parent_id_analysis = debug_functions.get('debug_parent_id_analysis', noop_debug)
-        else:
-            self.debug_p2im_object = noop_debug
-            self.debug_parent_id_analysis = noop_debug
+        self.debug_p2im_object = debug_functions.get('debug_p2im_object', noop_debug)
+        self.debug_parent_id_analysis = debug_functions.get('debug_parent_id_analysis', noop_debug)
+        self.card_handler = None  # 将由adapter注入
 
     @property
     def card_mapping_service(self):
@@ -57,6 +52,11 @@ class MessageHandler:
         if self.app_controller:
             return self.app_controller.get_service(ServiceNames.CARD_BUSINESS_MAPPING)
         return None
+
+    def set_card_handler(self, card_handler):
+        """注入CardHandler实例"""
+        self.card_handler = card_handler
+
 
     def _execute_async(self, func):
         """执行异步操作的通用方法"""
@@ -219,12 +219,15 @@ class MessageHandler:
             result = self.message_processor.bili.process_bili_video_async()
 
             if result.success and result.response_type == ResponseTypes.BILI_VIDEO_DATA:
-                # 使用统一的卡片处理方法
-                success = self.sender.handle_bili_card_operation(
-                    result.response_content,
-                    operation_type=CardOperationTypes.SEND,
-                    user_id=user_id
-                )
+                if self.card_handler:
+                    success = self.card_handler._handle_bili_card_operation(
+                        result.response_content,
+                        operation_type=CardOperationTypes.SEND,
+                        user_id=user_id
+                    )
+                else:
+                    success = False
+                    debug_utils.log_and_print("❌ CardHandler未注入", log_level="ERROR")
 
                 if not success:
                     # 发送失败，使用降级方案
@@ -265,13 +268,17 @@ class MessageHandler:
                 operation_data = result.response_content
                 operation_id = operation_data.get('operation_id', '')
 
-                success, sent_message_id = self.sender.handle_admin_card_operation(
-                    operation_data,
-                    operation_type=CardOperationTypes.SEND,
-                    user_id=user_id,
-                    chat_id=chat_id,
-                    message_id=message_id
-                )
+                if self.card_handler:
+                    # 发送管理员卡片
+                    success, sent_message_id = self.card_handler._handle_admin_card_operation(
+                        operation_data=operation_data,
+                        operation_type="send",
+                        chat_id=chat_id,
+                        message_id=message_id
+                    )
+                else:
+                    success, sent_message_id = False, None
+                    debug_utils.log_and_print("❌ CardHandler未注入", log_level="ERROR")
 
                 if success and sent_message_id and operation_id:
                     # 绑定操作ID和卡片消息ID

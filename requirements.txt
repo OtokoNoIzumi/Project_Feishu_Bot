@@ -3,3 +3,4 @@ schedule
 notion-client
 gradio_client
 google-generativeai
+aiohttp

@@ -23,11 +23,6 @@ class UITypes:
     PAGE = "page"
     DIALOG = "dialog"
 
-# ========== 卡片配置类型常量 (card_config_type) ==========
-class CardConfigTypes:
-    """卡片配置类型，用于获取回复模式等配置"""
-    ADMIN_CARDS = "admin_cards"
-    BILIBILI_CARDS = "bilibili_cards"
 
 # ========== 操作类型常量 (operation_type) ==========
 class OperationTypes:
@@ -41,11 +36,6 @@ class OperationTypes:
 class DefaultActions:
     CONFIRM = "confirm"
     CANCEL = "cancel"
-
-# ========== 卡片操作类型常量 ==========
-class CardOperationTypes:
-    SEND = "send"
-    UPDATE_RESPONSE = "update_response"
 
 # ========== 消息类型常量 ==========
 class MessageTypes:
@@ -85,29 +75,6 @@ class ProcessResultNextAction:
     PROCESS_IMAGE_GENERATION = "process_image_generation"
     PROCESS_IMAGE_CONVERSION = "process_image_conversion"
     PROCESS_BILI_VIDEO = "process_bili_video"
-
-# ========== 卡片动作名称常量 ==========
-class CardActions:
-    """卡片按钮动作名称"""
-    # 通用动作
-    CANCEL = "cancel"
-    CONFIRM = "confirm"
-
-    # AI路由动作
-    EDIT_CONTENT = "edit_content"
-
-    # B站视频动作
-    MARK_BILI_READ = "mark_bili_read"
-
-    # 管理员动作 - 用户管理
-    CONFIRM_USER_UPDATE = "confirm_user_update"
-    CANCEL_USER_UPDATE = "cancel_user_update"
-    UPDATE_USER_TYPE = "update_user_type"
-
-    # 管理员动作 - 广告管理
-    CONFIRM_ADS_UPDATE = "confirm_ads_update"
-    CANCEL_ADS_UPDATE = "cancel_ads_update"
-    ADTIME_EDITOR_CHANGE = "adtime_editor_change"
 
 # ========== 用户界面元素常量 ==========
 class UIElements:
@@ -243,3 +210,41 @@ class SchedulerTaskTypes:
 class SchedulerConstKeys:
     SCHEDULER_TYPE = "scheduler_type"
     ADMIN_ID = "admin_id"
+
+# ---------- 卡片模块常量 ----------
+# ========== 卡片配置类型常量 (card_config_type) ==========
+class CardConfigTypes:
+    """卡片配置类型，用于获取回复模式等配置"""
+    ADMIN_CARDS = "admin_cards"
+    BILIBILI_CARDS = "bilibili_cards"
+    BILIBILI_VIDEO_INFO = "bilibili_video_info"
+    USER_UPDATE = "user_update"
+    ADS_UPDATE = "ads_update"
+
+# ========== 卡片操作类型常量 ==========
+class CardOperationTypes:
+    SEND = "send"
+    UPDATE_RESPONSE = "update_response"
+
+# ========== 卡片动作名称常量 ==========
+class CardActions:
+    """卡片按钮动作名称"""
+    # 通用动作
+    CANCEL = "cancel"
+    CONFIRM = "confirm"
+
+    # AI路由动作
+    EDIT_CONTENT = "edit_content"
+
+    # B站视频动作
+    MARK_BILI_READ = "mark_bili_read"
+
+    # 管理员动作 - 用户管理
+    CONFIRM_USER_UPDATE = "confirm_user_update"
+    CANCEL_USER_UPDATE = "cancel_user_update"
+    UPDATE_USER_TYPE = "update_user_type"
+
+    # 管理员动作 - 广告管理
+    CONFIRM_ADS_UPDATE = "confirm_ads_update"
+    CANCEL_ADS_UPDATE = "cancel_ads_update"
+    ADTIME_EDITOR_CHANGE = "adtime_editor_change"

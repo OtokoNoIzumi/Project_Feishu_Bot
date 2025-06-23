@@ -15,7 +15,7 @@ from lark_oapi.event.callback.model.p2_card_action_trigger import P2CardActionTr
 from Module.Common.scripts.common import debug_utils
 from Module.Business.processors import MessageContext
 from Module.Services.constants import (
-    ServiceNames, CardOperationTypes, CardConfigTypes, OperationTypes, ResponseTypes,
+    ServiceNames, CardOperationTypes, CardConfigTypes, ResponseTypes,
     Messages, CardActions, UIElements, FieldNames, DefaultValues, MessageTypes
 )
 from ..decorators import (
@@ -27,7 +27,7 @@ from ..utils import noop_debug
 class CardHandler:
     """飞书卡片处理器"""
 
-    def __init__(self, message_processor, sender, user_name_getter, card_managers, debug_functions=None):
+    def __init__(self, message_processor, sender, user_name_getter, debug_functions=None, card_registry=None):
         """
         初始化卡片处理器
 
@@ -35,17 +35,17 @@ class CardHandler:
             message_processor: 业务消息处理器
             sender: 消息发送器实例
             user_name_getter: 用户名获取函数
-            card_managers: 卡片管理器字典
             debug_functions: 调试函数字典，包含debug_p2im_object等
         """
         self.message_processor = message_processor
         self.sender = sender
         self._get_user_name = user_name_getter
-        self.bili_card_manager = card_managers.get('bili')
-        self.admin_card_manager = card_managers.get('admin')
 
         # 获取应用控制器以访问服务
         self.app_controller = getattr(message_processor, 'app_controller', None)
+
+        # 获取配置驱动的卡片注册表
+        self.card_registry = card_registry
 
         # 设置调试函数
         if debug_functions:
@@ -195,20 +195,26 @@ class CardHandler:
                 debug_utils.log_and_print("❌ 发送B站卡片缺少用户ID", log_level="ERROR")
                 return False
 
+        # 使用配置驱动获取B站卡片管理器
+        bili_card_manager = self.card_registry.get_manager(CardConfigTypes.BILIBILI_VIDEO_INFO)
+        if not bili_card_manager:
+            debug_utils.log_and_print("❌ 未找到B站卡片管理器", log_level="ERROR")
+            return False
+
         # 使用通用卡片操作处理
         return self._handle_card_operation_common(
-            card_manager=self.bili_card_manager,
+            card_manager=bili_card_manager,
             build_method_name="build_bili_video_menu_card",
             data=video_data,
             operation_type=operation_type,
-            card_config_type=CardConfigTypes.BILIBILI_CARDS,
+            card_config_type=CardConfigTypes.BILIBILI_VIDEO_INFO,
             **kwargs
         )
 
     @card_operation_safe("管理员卡片操作失败")
     def _handle_admin_card_operation(self, operation_data: Dict[str, Any], operation_type: str, **kwargs) -> Any:
         """
-        统一处理管理员卡片的构建和操作
+        统一处理管理员卡片的构建和操作 - 配置驱动版本
 
         Args:
             operation_data: 业务层返回的操作数据
@@ -230,29 +236,34 @@ class CardHandler:
             case _:
                 pass
 
-        # 从配置获取卡片构建方法 - 配置化解决方案
-        operation_type_value = operation_data.get('operation_type', '')
+        # 从操作数据获取业务ID - 配置化解决方案
+        business_id = operation_data.get('operation_type', '')
+        if not business_id:
+            debug_utils.log_and_print("❌ 缺少业务ID (operation_type)", log_level="ERROR")
+            return False
 
-        # 获取卡片业务映射服务
+        # 使用配置驱动获取卡片管理器
+        card_manager = self.card_registry.get_manager_by_business_id(business_id, self.app_controller)
+        if not card_manager:
+            debug_utils.log_and_print(f"❌ 未找到业务ID对应的管理器: {business_id}", log_level="ERROR")
+            return False
+
+        # 获取卡片业务映射服务获取构建方法名
         card_mapping_service = self.card_mapping_service
         if card_mapping_service:
-            if operation_type_value:
-                config = card_mapping_service.get_business_config(operation_type_value)
-                build_method_name = config.get("card_builder_method", "build_user_update_confirm_card")
-            else:
-                debug_utils.log_and_print(f"⚠️ 未知的操作类型，使用默认构建方法: {operation_type_value}", log_level="WARNING")
-                build_method_name = "build_user_update_confirm_card"
+            config = card_mapping_service.get_business_config(business_id)
+            build_method_name = config.get("card_builder_method", "build_user_update_confirm_card")
         else:
             debug_utils.log_and_print("⚠️ 卡片映射服务不可用，使用默认构建方法", log_level="WARNING")
             build_method_name = "build_user_update_confirm_card"
 
         # 使用通用卡片操作处理
         return self._handle_card_operation_common(
-            card_manager=self.admin_card_manager,
+            card_manager=card_manager,  # 使用配置驱动获取的管理器
             build_method_name=build_method_name,
             data=operation_data,
             operation_type=operation_type,
-            card_config_type=CardConfigTypes.ADMIN_CARDS,
+            card_config_type=CardConfigTypes.USER_UPDATE,
             **kwargs
         )
 
@@ -343,17 +354,20 @@ class CardHandler:
                     debug_utils.log_and_print(f"❌ 卡片更新失败: 缺少ui_message_id [{operation.operation_id[:20]}...]", log_level="ERROR")
                     return False
 
-                # 用match替换if-elif-else结构
-                match operation.operation_type:
-                    case OperationTypes.UPDATE_USER:
-                        card_manager = self.admin_card_manager
-                        build_method_name = "build_user_update_confirm_card"
-                    case OperationTypes.UPDATE_ADS:
-                        card_manager = self.admin_card_manager
-                        build_method_name = "build_ads_update_confirm_card"
-                    case _:
-                        debug_utils.log_and_print(f"❌ 卡片更新失败: 未知操作类型 {operation.operation_type}", log_level="ERROR")
-                        return False
+                # 使用配置驱动获取卡片管理器和构建方法
+                card_manager = self.card_registry.get_manager_by_business_id(operation.operation_type, self.app_controller)
+                if not card_manager:
+                    debug_utils.log_and_print(f"❌ 卡片更新失败: 未找到操作类型对应的管理器 {operation.operation_type}", log_level="ERROR")
+                    return False
+
+                # 根据操作类型获取构建方法名
+                card_mapping_service = self.card_mapping_service
+                if card_mapping_service:
+                    config = card_mapping_service.get_business_config(operation.operation_type)
+                    build_method_name = config.get("card_builder_method", "build_user_update_confirm_card")
+                else:
+                    debug_utils.log_and_print("⚠️ 卡片映射服务不可用，使用默认构建方法", log_level="WARNING")
+                    build_method_name = "build_user_update_confirm_card"
 
                 # 构建卡片内容
                 build_method = getattr(card_manager, build_method_name)
