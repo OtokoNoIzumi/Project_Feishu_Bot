@@ -107,10 +107,10 @@ class AppController:
                     if not cache_service:
                         raise Exception("notion服务需要cache服务，但cache服务初始化失败")
                     instance = service_class(cache_service)
-                case ServiceNames.CARD_BUSINESS_MAPPING:
+                case ServiceNames.CARD_OPERATION_MAPPING:
                     config_service = self.get_service(ServiceNames.CONFIG)
                     if not config_service:
-                        raise Exception("card_business_mapping服务需要config服务，但config服务初始化失败")
+                        raise Exception("card_operation_mapping服务需要config服务，但config服务初始化失败")
                     instance = service_class(config_service)
                 case _:
                     instance = service_class(**config)
@@ -251,7 +251,7 @@ class AppController:
                             'cache_dir': os.path.join(self.project_root_path, 'cache'),
                             'max_operations_per_user': 2
                         }
-                    case ServiceNames.CARD_BUSINESS_MAPPING:
+                    case ServiceNames.CARD_OPERATION_MAPPING:
                         config = {}
                     case _:
                         config = {}

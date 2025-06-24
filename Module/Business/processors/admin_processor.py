@@ -33,7 +33,7 @@ class AdminProcessor(BaseProcessor):
     def card_mapping_service(self):
         """获取卡片业务映射服务"""
         if self.app_controller:
-            return self.app_controller.get_service(ServiceNames.CARD_BUSINESS_MAPPING)
+            return self.app_controller.get_service(ServiceNames.CARD_OPERATION_MAPPING)
         return None
 
     def _load_config(self):
@@ -152,7 +152,9 @@ class AdminProcessor(BaseProcessor):
 
         # 使用配置化的缓存服务创建确认操作
         return self._create_pending_operation(
-            context, OperationTypes.UPDATE_USER, {
+            context=context,
+            operation_type=OperationTypes.UPDATE_USER,
+            business_data={
                 'user_id': uid,
                 'user_type': account_type,
                 'admin_input': ' '.join(parts[1:])
@@ -188,7 +190,9 @@ class AdminProcessor(BaseProcessor):
 
         # 使用配置化的缓存服务创建确认操作
         return self._create_pending_operation(
-            context, OperationTypes.UPDATE_ADS, {
+            context=context,
+            operation_type=OperationTypes.UPDATE_ADS,
+            business_data={
                 'bvid': bvid.strip(),
                 'adtime_stamps': adtime_stamps,
                 'admin_input': user_msg
@@ -209,14 +213,17 @@ class AdminProcessor(BaseProcessor):
     @require_app_controller("应用控制器不可用")
     @require_service(ServiceNames.PENDING_CACHE, "缓存业务服务不可用")
     @safe_execute("创建待处理操作失败")
-    def _create_pending_operation(self, context: MessageContext, business_id: str, operation_data: Dict[str, Any]) -> ProcessResult:
+    def _create_pending_operation(
+        self, context: MessageContext,
+        operation_type: str, business_data: Dict[str, Any]
+    ) -> ProcessResult:
         """
         创建待处理操作（配置化通用方法）
 
         Args:
             context: 消息上下文
-            business_id: 业务标识 (如 'update_user', 'update_ads')
-            operation_data: 操作数据
+            operation_type: 业务标识 (如 'update_user', 'update_ads')
+            business_data: 操作数据
 
         Returns:
             ProcessResult: 处理结果
@@ -224,34 +231,34 @@ class AdminProcessor(BaseProcessor):
         pending_cache_service = self.app_controller.get_service(ServiceNames.PENDING_CACHE)
 
         # 从卡片业务映射配置获取配置信息
-        config = self.card_mapping_service.get_business_config(business_id)
+        config = self.card_mapping_service.get_operation_config(operation_type)
         if not config:
-            return ProcessResult.error_result(f"未找到业务配置: {business_id}")
+            return ProcessResult.error_result(f"未找到业务配置: {operation_type}")
 
         # 从配置获取超时时间和响应类型
         timeout_seconds = config.get("timeout_seconds", 30)
         response_type = config.get("response_type", "")
 
         if not response_type:
-            return ProcessResult.error_result(f"业务 {business_id} 缺少响应类型配置")
+            return ProcessResult.error_result(f"业务 {operation_type} 缺少响应类型配置")
 
         timeout_text = self._format_timeout_text(timeout_seconds)
 
         # 准备完整的操作数据
         full_operation_data = {
-            **operation_data,  # 合并传入的操作数据
+            **business_data,  # 合并传入的业务数据
             'finished': False,
             'result': '确认⏰',
             'hold_time': timeout_text,
-            'operation_type': business_id
+            'operation_type': operation_type
         }
 
         # 创建缓存操作
         operation_id = pending_cache_service.create_operation(
             user_id=context.user_id,
-            operation_type=business_id,
+            operation_type=operation_type,
             operation_data=full_operation_data,
-            admin_input=operation_data.get('admin_input', ''),
+            admin_input=full_operation_data.get('admin_input', ''),
             hold_time_seconds=timeout_seconds,
             default_action=DefaultActions.CONFIRM
         )

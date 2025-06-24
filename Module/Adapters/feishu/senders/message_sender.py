@@ -584,7 +584,7 @@ class MessageSender:
         Returns:
             str: 回复模式 ("new" | "reply" | "thread")
         """
-        card_mapping_service = self.app_controller.get_service(ServiceNames.CARD_BUSINESS_MAPPING)
+        card_mapping_service = self.app_controller.get_service(ServiceNames.CARD_OPERATION_MAPPING)
         if card_mapping_service:
             reply_modes = card_mapping_service.get_card_definition(card_type).get('reply_modes', ReplyModes.REPLY)
             return reply_modes

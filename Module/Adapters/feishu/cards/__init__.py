@@ -51,7 +51,7 @@ def initialize_card_managers(app_controller=None):
         return card_registry
 
     # 从配置服务获取卡片业务映射服务
-    card_mapping_service = app_controller.get_service(ServiceNames.CARD_BUSINESS_MAPPING)
+    card_mapping_service = app_controller.get_service(ServiceNames.CARD_OPERATION_MAPPING)
     if not card_mapping_service:
         debug_utils.log_and_print("⚠️ 卡片业务映射服务不可用，跳过注册", log_level="WARNING")
         return card_registry

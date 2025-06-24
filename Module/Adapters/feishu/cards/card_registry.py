@@ -47,7 +47,7 @@ class BaseCardManager(ABC):
             return
 
         # 从配置服务获取模板信息
-        card_mapping_service = self.app_controller.get_service(ServiceNames.CARD_BUSINESS_MAPPING)
+        card_mapping_service = self.app_controller.get_service(ServiceNames.CARD_OPERATION_MAPPING)
         if not card_mapping_service:
             debug_utils.log_and_print(f"❌ 卡片映射服务不可用", log_level="ERROR")
             return
@@ -130,28 +130,28 @@ class FeishuCardRegistry:
             if template_name in manager.templates:
                 manager.update_template_info(template_name, template_id, version)
 
-    def get_manager_by_business_id(self, business_id: str, config_service=None) -> Optional[BaseCardManager]:
+    def get_manager_by_operation_type(self, operation_type: str, config_service=None) -> Optional[BaseCardManager]:
         """根据业务ID获取对应的卡片管理器 - 配置驱动"""
         if not config_service:
             debug_utils.log_and_print("❌ 缺少配置服务，无法获取管理器映射", log_level="ERROR")
             return None
 
         # 从应用控制器获取业务映射服务
-        card_mapping_service = config_service.get_service(ServiceNames.CARD_BUSINESS_MAPPING)
+        card_mapping_service = config_service.get_service(ServiceNames.CARD_OPERATION_MAPPING)
         if not card_mapping_service:
             debug_utils.log_and_print("❌ 卡片业务映射服务不可用", log_level="ERROR")
             return None
 
         # 获取业务配置
-        business_config = card_mapping_service.get_business_config(business_id)
-        if not business_config:
-            debug_utils.log_and_print(f"❌ 未找到业务配置: {business_id}", log_level="WARNING")
+        operation_config = card_mapping_service.get_operation_config(operation_type)
+        if not operation_config:
+            debug_utils.log_and_print(f"❌ 未找到业务配置: {operation_type}", log_level="WARNING")
             return None
 
         # 获取管理器标识
-        manager_key = business_config.get('card_config_key')
+        manager_key = operation_config.get('card_config_key')
         if not manager_key:
-            debug_utils.log_and_print(f"❌ 业务配置缺少card_config_key字段: {business_id}", log_level="ERROR")
+            debug_utils.log_and_print(f"❌ 业务配置缺少card_config_key字段: {operation_type}", log_level="ERROR")
             return None
 
         return self.get_manager(manager_key)

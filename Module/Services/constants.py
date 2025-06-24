@@ -15,7 +15,7 @@ class ServiceNames:
     ROUTER = "router"
     LLM = "llm"
     CACHE = "cache"
-    CARD_BUSINESS_MAPPING = "card_business_mapping"
+    CARD_OPERATION_MAPPING = "card_operation_mapping"
 
 # ========== UI类型常量 ==========
 class UITypes:

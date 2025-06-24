@@ -1,5 +1,5 @@
 {
-  "business_mappings": {
+  "operation_mappings": {
     "update_user": {
       "response_type": "admin_card_send",
       "card_config_key": "user_update",

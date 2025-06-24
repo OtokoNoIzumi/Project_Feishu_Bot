@@ -57,7 +57,7 @@ class CardHandler:
     def card_mapping_service(self):
         """获取卡片业务映射服务"""
         if self.app_controller:
-            return self.app_controller.get_service(ServiceNames.CARD_BUSINESS_MAPPING)
+            return self.app_controller.get_service(ServiceNames.CARD_OPERATION_MAPPING)
         return None
 
     @card_operation_safe("飞书卡片处理失败")
@@ -229,15 +229,15 @@ class CardHandler:
                 pass
 
         # 从操作数据获取业务ID - 配置化解决方案
-        business_id = operation_data.get('operation_type', '')
-        if not business_id:
+        operation_type = operation_data.get('operation_type', '')
+        if not operation_type:
             debug_utils.log_and_print("❌ 缺少业务ID (operation_type)", log_level="ERROR")
             return False
 
         # 使用配置驱动获取卡片管理器
-        card_manager = self.card_registry.get_manager_by_business_id(business_id, self.app_controller)
+        card_manager = self.card_registry.get_manager_by_operation_type(operation_type, self.app_controller)
         if not card_manager:
-            debug_utils.log_and_print(f"❌ 未找到业务ID对应的管理器: {business_id}", log_level="ERROR")
+            debug_utils.log_and_print(f"❌ 未找到业务ID对应的管理器: {operation_type}", log_level="ERROR")
             return False
 
         # 使用通用卡片操作处理
@@ -333,7 +333,7 @@ class CardHandler:
                     return False
 
                 # 使用配置驱动获取卡片管理器和构建方法
-                card_manager = self.card_registry.get_manager_by_business_id(operation.operation_type, self.app_controller)
+                card_manager = self.card_registry.get_manager_by_operation_type(operation.operation_type, self.app_controller)
                 if not card_manager:
                     debug_utils.log_and_print(f"❌ 卡片更新失败: 未找到操作类型对应的管理器 {operation.operation_type}", log_level="ERROR")
                     return False

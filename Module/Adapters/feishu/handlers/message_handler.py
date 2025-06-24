@@ -50,7 +50,7 @@ class MessageHandler:
     def card_mapping_service(self):
         """获取卡片业务映射服务"""
         if self.app_controller:
-            return self.app_controller.get_service(ServiceNames.CARD_BUSINESS_MAPPING)
+            return self.app_controller.get_service(ServiceNames.CARD_OPERATION_MAPPING)
         return None
 
     def set_card_handler(self, card_handler):
