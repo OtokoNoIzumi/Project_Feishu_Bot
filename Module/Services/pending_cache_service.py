@@ -231,7 +231,6 @@ class PendingCacheService:
 
         Args:
             user_id: 用户ID
-            operation_type: 操作类型
             operation_data: 操作数据
             admin_input: 管理员原始输入
             hold_time_seconds: 缓存时间（秒）

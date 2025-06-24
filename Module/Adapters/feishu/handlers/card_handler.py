@@ -174,7 +174,7 @@ class CardHandler:
 
         Args:
             video_data: 业务层返回的视频数据
-            operation_type: 操作类型 ('send' | 'update_response')
+            card_operation_type: 操作类型 ('send' | 'update_response')
             **kwargs: 额外参数(user_id, toast_message等)
 
         Returns:
@@ -212,7 +212,7 @@ class CardHandler:
 
         Args:
             operation_data: 业务层返回的操作数据
-            operation_type: 操作类型 ('send' | 'update_response')
+            card_operation_type: 操作类型 ('send' | 'update_response')
             **kwargs: 额外参数(chat_id, user_id, message_id等)
 
         Returns:
@@ -269,7 +269,7 @@ class CardHandler:
 
         Args:
             card_content: 卡片内容
-            operation_type: 操作类型 ('send' | 'update_response')
+            card_operation_type: 操作类型 ('send' | 'update_response')
             card_info: 卡片信息
             update_toast_type: 更新提示类型
             **kwargs: 额外参数
@@ -338,7 +338,7 @@ class CardHandler:
                 operation_type = operation.operation_data.get('operation_type', '')
                 card_manager = self.card_registry.get_manager_by_operation_type(operation_type, self.app_controller)
                 if not card_manager:
-                    debug_utils.log_and_print(f"❌ 卡片更新失败: 未找到操作类型对应的管理器 {operation.operation_type}", log_level="ERROR")
+                    debug_utils.log_and_print(f"❌ 卡片更新失败: 未找到操作类型对应的管理器 {operation_type}", log_level="ERROR")
                     return False
 
                 # 构建卡片内容

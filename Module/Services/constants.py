@@ -30,7 +30,6 @@ class OperationTypes:
     UPDATE_USER = "update_user"
     UPDATE_ADS = "update_ads"
     BILI_VIDEO = "bili_video_menu"
-    SYSTEM_CONFIG = "system_config"
 
 # ========== 默认动作常量 ==========
 class DefaultActions:
@@ -137,9 +136,6 @@ class ConfigKeys:
     """配置文件键名"""
     ADMIN_ID = "admin_id"
     UPDATE_CONFIG_TRIGGER = "update_config_trigger"
-    PENDING_CACHE = "pending_cache"
-    OPERATION_TIMEOUTS = "operation_timeouts"
-    DEFAULT_TIMEOUT = "default_timeout"
     CARDS = "cards"
     DEFAULT = "default"
 

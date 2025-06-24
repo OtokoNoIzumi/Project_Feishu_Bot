@@ -38,46 +38,30 @@ class AdminProcessor(BaseProcessor):
 
     def _load_config(self):
         """加载配置"""
-        if self.app_controller:
-            # 从配置服务获取配置
-            config_service = self.app_controller.get_service(ServiceNames.CONFIG)
-            if config_service:
-                # 获取管理员ID - 优先从环境变量获取
-                self.admin_id = config_service.get_env(EnvVars.ADMIN_ID, DefaultValues.EMPTY_STRING)
-                if not self.admin_id:
-                    # 如果环境变量没有，尝试从配置文件获取
-                    self.admin_id = config_service.get(ConfigKeys.ADMIN_ID, DefaultValues.EMPTY_STRING)
+        # 统一默认值
+        self.admin_id = DefaultValues.EMPTY_STRING
+        self.update_config_trigger = DefaultValues.DEFAULT_UPDATE_TRIGGER
+        self.bili_api_base_url = DefaultValues.DEFAULT_BILI_API_BASE
+        self.bili_admin_secret = DefaultValues.DEFAULT_ADMIN_SECRET
 
-                # 获取更新触发器配置
-                self.update_config_trigger = config_service.get(ConfigKeys.UPDATE_CONFIG_TRIGGER, DefaultValues.DEFAULT_UPDATE_TRIGGER)
+        if not self.app_controller:
+            return
 
-                # 获取B站API配置 - 修正环境变量名称
-                self.bili_api_base_url = config_service.get_env(EnvVars.BILI_API_BASE, DefaultValues.DEFAULT_BILI_API_BASE)
-                self.bili_admin_secret = config_service.get_env(EnvVars.ADMIN_SECRET_KEY, DefaultValues.DEFAULT_ADMIN_SECRET)
+        config_service = self.app_controller.get_service(ServiceNames.CONFIG)
+        if not config_service:
+            return
 
-                # 获取pending_cache配置
-                pending_cache_config = config_service.get(ConfigKeys.PENDING_CACHE, {})
-                self.operation_timeouts = pending_cache_config.get(ConfigKeys.OPERATION_TIMEOUTS, {})
-                self.default_timeout = pending_cache_config.get(ConfigKeys.DEFAULT_TIMEOUT, BusinessConstants.DEFAULT_OPERATION_TIMEOUT)
-            else:
-                # 配置服务不可用，使用默认值
-                self.admin_id = DefaultValues.EMPTY_STRING
-                self.update_config_trigger = DefaultValues.DEFAULT_UPDATE_TRIGGER
-                self.bili_api_base_url = DefaultValues.DEFAULT_BILI_API_BASE
-                self.bili_admin_secret = DefaultValues.DEFAULT_ADMIN_SECRET
-                # 从配置文件获取操作超时时间，使用默认备用值
-                self.operation_timeouts = {
-                    OperationTypes.UPDATE_USER: 30,  # 30秒，与配置文件保持一致
-                    OperationTypes.UPDATE_ADS: 30,   # 30秒，与配置文件保持一致
-                    OperationTypes.SYSTEM_CONFIG: 60  # 60秒
-                }
-                self.default_timeout = BusinessConstants.DEFAULT_OPERATION_TIMEOUT
-        else:
-            # 默认配置
-            self.admin_id = DefaultValues.EMPTY_STRING
-            self.update_config_trigger = DefaultValues.DEFAULT_UPDATE_TRIGGER
-            self.bili_api_base_url = DefaultValues.DEFAULT_BILI_API_BASE
-            self.bili_admin_secret = DefaultValues.DEFAULT_ADMIN_SECRET
+        # 获取管理员ID - 优先从环境变量获取，否则用配置文件
+        self.admin_id = config_service.get_env(EnvVars.ADMIN_ID, self.admin_id)
+        if not self.admin_id:
+            self.admin_id = config_service.get(ConfigKeys.ADMIN_ID, self.admin_id)
+
+        # 获取更新触发器配置
+        self.update_config_trigger = config_service.get(ConfigKeys.UPDATE_CONFIG_TRIGGER, self.update_config_trigger)
+
+        # 获取B站API配置
+        self.bili_api_base_url = config_service.get_env(EnvVars.BILI_API_BASE, self.bili_api_base_url)
+        self.bili_admin_secret = config_service.get_env(EnvVars.ADMIN_SECRET_KEY, self.bili_admin_secret)
 
     def _register_pending_operations(self):
         """注册缓存操作执行器"""
@@ -613,18 +597,6 @@ class AdminProcessor(BaseProcessor):
     def get_update_trigger(self) -> str:
         """获取更新触发器"""
         return self.update_config_trigger
-
-    def get_operation_timeout(self, operation_type: str) -> int:
-        """
-        获取操作类型对应的超时时间
-
-        Args:
-            operation_type: 操作类型
-
-        Returns:
-            int: 超时时间（秒）
-        """
-        return self.operation_timeouts.get(operation_type, self.default_timeout)
 
     def _format_timeout_text(self, seconds: int) -> str:
         """

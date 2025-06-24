@@ -152,7 +152,7 @@ def file_processing_safe(error_message: str, return_value: Any = None, cleanup_f
     return _file_decorator(error_message, return_value, cleanup_files=cleanup_files)
 
 
-def config_operation_safe(error_message: str, return_value: Any = None, operation_type: str = ""):
+def config_operation_safe(error_message: str, return_value: Any = None, config_operation_type: str = ""):
     """
     ⚙️ 配置操作安全装饰器
 
@@ -164,18 +164,18 @@ def config_operation_safe(error_message: str, return_value: Any = None, operatio
     Args:
         error_message: 错误描述信息
         return_value: 配置操作失败时的返回值
-        operation_type: 操作类型（get/set/validate等）
+        config_operation_type: 操作类型（get/set/validate等）
     """
     def decorator(func: F) -> F:
         @wraps(func)
         def wrapper(*args, **kwargs):
             try:
                 result = func(*args, **kwargs)
-                if operation_type:
-                    debug_utils.log_and_print(f"⚙️ 配置{operation_type}操作成功", log_level="DEBUG")
+                if config_operation_type:
+                    debug_utils.log_and_print(f"⚙️ 配置{config_operation_type}操作成功", log_level="DEBUG")
                 return result
             except Exception as e:
-                op_info = f"[{operation_type}] " if operation_type else ""
+                op_info = f"[{config_operation_type}] " if config_operation_type else ""
                 debug_utils.log_and_print(f"⚙️ {op_info}{error_message}: {e}", log_level="ERROR")
                 return return_value
         return wrapper
