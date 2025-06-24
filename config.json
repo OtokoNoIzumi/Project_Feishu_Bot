@@ -67,12 +67,6 @@
     ]
   },
   "cards": {
-    "reply_modes": {
-      "update_user": "reply",
-      "update_ads": "reply",
-      "bilibili_cards": "new",
-      "default": "reply"
-    },
     "auto_update": {
       "enabled": true,
       "interval_seconds": 1,

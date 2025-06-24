@@ -5,14 +5,16 @@
       "card_config_key": "user_update",
       "processor": "AdminProcessor",
       "timeout_seconds": 30,
-      "description": "管理员用户状态更新确认"
+      "description": "管理员用户状态更新确认",
+      "default_action": "confirm"
     },
     "update_ads": {
       "response_type": "admin_card_send",
       "card_config_key": "ads_update",
       "processor": "AdminProcessor",
       "timeout_seconds": 30,
-      "description": "B站广告时间戳更新确认"
+      "description": "B站广告时间戳更新确认",
+      "default_action": "confirm"
     },
     "bili_video_menu": {
       "response_type": "bili_card_send",
@@ -25,21 +27,24 @@
 
   "card_configs": {
     "user_update": {
-      "reply_modes": "reply",
+      "reply_mode": "reply",
+      "card_name": "用户更新",
       "class_name": "UserUpdateCardManager",
       "module_path": "Module.Adapters.feishu.cards.user_update_cards",
       "template_id": "AAqdbwJ2cflOp",
       "template_version": "1.1.0"
     },
     "ads_update": {
-      "reply_modes": "reply",
+      "reply_mode": "reply",
+      "card_name": "广告更新",
       "class_name": "AdsUpdateCardManager",
       "module_path": "Module.Adapters.feishu.cards.ads_update_cards",
       "template_id": "AAqdJvEYwMDQ3",
       "template_version": "1.0.0"
     },
     "bilibili_video_info": {
-      "reply_modes": "new",
+      "reply_mode": "new",
+      "card_name": "B站",
       "class_name": "BilibiliCardManager",
       "module_path": "Module.Adapters.feishu.cards.bilibili_cards",
       "template_id": "AAqBPdq4sxIy5",

@@ -238,6 +238,7 @@ class AdminProcessor(BaseProcessor):
         # 从配置获取超时时间和响应类型
         timeout_seconds = config.get("timeout_seconds", 30)
         response_type = config.get("response_type", "")
+        default_action = config.get("default_action", DefaultActions.CONFIRM)
 
         if not response_type:
             return ProcessResult.error_result(f"业务 {operation_type} 缺少响应类型配置")
@@ -250,7 +251,10 @@ class AdminProcessor(BaseProcessor):
             'finished': False,
             'result': '确认⏰',
             'hold_time': timeout_text,
-            'operation_type': operation_type
+            'operation_type': operation_type,
+            '_config_cache': {
+                'operation_config': config
+            }
         }
 
         # 创建缓存操作
@@ -260,7 +264,7 @@ class AdminProcessor(BaseProcessor):
             operation_data=full_operation_data,
             admin_input=full_operation_data.get('admin_input', ''),
             hold_time_seconds=timeout_seconds,
-            default_action=DefaultActions.CONFIRM
+            default_action=default_action
         )
 
         # 添加操作ID到数据中

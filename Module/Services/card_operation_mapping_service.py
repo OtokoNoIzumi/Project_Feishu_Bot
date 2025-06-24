@@ -102,11 +102,11 @@ class CardOperationMappingService:
         config = self.get_operation_config(operation_type)
         return config.get("processor", "")
 
-    def get_card_definition(self, manager_key: str) -> Dict[str, Any]:
+    def get_card_definition(self, card_config_key: str) -> Dict[str, Any]:
         """根据管理器键获取管理器配置
 
         Args:
-            manager_key: 管理器标识 (如 'user_update', 'ads_update', 'bilibili_video_info')
+            card_config_key: 卡片配置键 (如 'user_update', 'ads_update', 'bilibili_video_info')
 
         Returns:
             Dict[str, Any]: 管理器配置字典，不存在时返回空字典
@@ -114,7 +114,7 @@ class CardOperationMappingService:
         if not hasattr(self, '_definitions_cache') or self._definitions_cache is None:
             self._load_mappings()
 
-        return self._definitions_cache.get(manager_key, {})
+        return self._definitions_cache.get(card_config_key, {})
 
     def get_card_config(self, card_config_key: str) -> Dict[str, Any]:
         """根据卡片配置键获取卡片配置

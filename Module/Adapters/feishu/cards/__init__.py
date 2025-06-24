@@ -74,7 +74,10 @@ def initialize_card_managers(app_controller=None):
             manager_class = getattr(module, class_name)
 
             # 创建管理器实例（传入配置服务）
-            manager_instance = manager_class(app_controller=app_controller)
+            manager_instance = manager_class(
+                app_controller=app_controller,
+                card_info=card_definition
+            )
 
             # 注册管理器
             card_registry.register_manager(card_type, manager_instance)

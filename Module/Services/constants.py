@@ -141,7 +141,6 @@ class ConfigKeys:
     OPERATION_TIMEOUTS = "operation_timeouts"
     DEFAULT_TIMEOUT = "default_timeout"
     CARDS = "cards"
-    REPLY_MODES = "reply_modes"
     DEFAULT = "default"
 
 # ========== 回复模式常量 ==========

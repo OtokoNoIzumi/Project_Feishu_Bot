@@ -13,12 +13,15 @@ from ..decorators import card_build_safe
 class AdsUpdateCardManager(BaseCardManager):
     """广告更新卡片管理器"""
 
-    def __init__(self, app_controller=None):
+    def __init__(self, app_controller=None, card_info=None):
         self.app_controller = app_controller
+        self.card_info = card_info
+        self.card_name = card_info.get('card_name')
+        self.card_config_key = card_info.get('card_config_key')
         super().__init__()
 
     def get_card_type_name(self) -> str:
-        return "广告更新"
+        return self.card_name
 
     def get_supported_actions(self) -> List[str]:
         """获取该卡片支持的所有动作"""

@@ -36,40 +36,13 @@ class BaseCardManager(ABC):
 
     def _initialize_templates(self):
         """统一的配置驱动模板初始化 - 基于子类的card_config_key"""
-        if not hasattr(self, 'app_controller') or not self.app_controller:
-            debug_utils.log_and_print(f"⚠️ {self.get_card_type_name()}卡片管理器缺少app_controller，跳过模板初始化", log_level="WARNING")
-            return
-
-        # 获取卡片配置键
-        card_config_key = self._get_card_config_key()
-        if not card_config_key:
-            debug_utils.log_and_print(f"❌ {self.get_card_type_name()}卡片管理器未定义card_config_key", log_level="ERROR")
-            return
-
-        # 从配置服务获取模板信息
-        card_mapping_service = self.app_controller.get_service(ServiceNames.CARD_OPERATION_MAPPING)
-        if not card_mapping_service:
-            debug_utils.log_and_print(f"❌ 卡片映射服务不可用", log_level="ERROR")
-            return
-
-        template_info = card_mapping_service.get_template_info(card_config_key)
-        if template_info.get('template_id'):
-            # 使用通用模板名，不再硬编码具体名称
-            self.templates = template_info
+        if self.card_info.get('template_id') and self.card_info.get('template_version'):
+            self.templates = {
+                "template_id": self.card_info.get('template_id'),
+                "template_version": self.card_info.get('template_version')
+            }
         else:
-            debug_utils.log_and_print(f"⚠️ 未找到{card_config_key}的模板配置", log_level="WARNING")
-
-    def _get_card_config_key(self) -> Optional[str]:
-        """获取当前卡片的配置键 - 子类可覆盖"""
-        # 基于类名自动推断配置键
-        class_name = self.__class__.__name__
-        if "UserUpdate" in class_name:
-            return "user_update"
-        elif "AdsUpdate" in class_name:
-            return "ads_update"
-        elif "Bilibili" in class_name:
-            return "bilibili_video_info"
-        return None
+            debug_utils.log_and_print(f"⚠️ 未找到{self.card_info.get('card_config_key')}的模板配置", log_level="WARNING")
 
     def _build_template_content(self, template_params: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -95,15 +68,6 @@ class BaseCardManager(ABC):
             }
         }
 
-    def update_template_info(self, template_name: str, template_id: str, version: str):
-        """更新模板信息"""
-        if template_name in self.templates:
-            self.templates[template_name].update({
-                "template_id": template_id,
-                "template_version": version
-            })
-            debug_utils.log_and_print(f"✅ 更新{self.get_card_type_name()}模板 {template_name}: {template_id}@{version}", log_level="INFO")
-
 
 class FeishuCardRegistry:
     """飞书卡片管理器注册表"""
@@ -123,12 +87,6 @@ class FeishuCardRegistry:
     def get_all_managers(self) -> Dict[str, BaseCardManager]:
         """获取所有已注册的管理器"""
         return self._managers.copy()
-
-    def update_all_template_info(self, template_name: str, template_id: str, version: str):
-        """批量更新所有管理器的模板信息"""
-        for card_type, manager in self._managers.items():
-            if template_name in manager.templates:
-                manager.update_template_info(template_name, template_id, version)
 
     def get_manager_by_operation_type(self, operation_type: str, config_service=None) -> Optional[BaseCardManager]:
         """根据业务ID获取对应的卡片管理器 - 配置驱动"""
