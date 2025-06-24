@@ -335,7 +335,8 @@ class CardHandler:
                     return False
 
                 # 使用配置驱动获取卡片管理器和构建方法
-                card_manager = self.card_registry.get_manager_by_operation_type(operation.operation_type, self.app_controller)
+                operation_type = operation.operation_data.get('operation_type', '')
+                card_manager = self.card_registry.get_manager_by_operation_type(operation_type, self.app_controller)
                 if not card_manager:
                     debug_utils.log_and_print(f"❌ 卡片更新失败: 未找到操作类型对应的管理器 {operation.operation_type}", log_level="ERROR")
                     return False

@@ -31,7 +31,6 @@ class PendingOperation:
     """待处理操作"""
     operation_id: str           # 操作ID
     user_id: str               # 用户ID
-    operation_type: str        # 操作类型
     operation_data: Dict[str, Any]  # 操作数据
     admin_input: str           # 管理员原始输入
     created_time: float        # 创建时间
@@ -223,7 +222,6 @@ class PendingCacheService:
 
     def create_operation(self,
                         user_id: str,
-                        operation_type: str,
                         operation_data: Dict[str, Any],
                         admin_input: str,
                         hold_time_seconds: int = 30,
@@ -246,7 +244,7 @@ class PendingCacheService:
         self._enforce_user_limit(user_id)
 
         # 生成操作ID
-        operation_id = f"{operation_type}_{user_id}_{int(time.time())}"
+        operation_id = f"{operation_data.get('operation_type')}_{user_id}_{int(time.time())}"
 
         # 计算过期时间
         current_time = time.time()
@@ -259,7 +257,6 @@ class PendingCacheService:
         operation = PendingOperation(
             operation_id=operation_id,
             user_id=user_id,
-            operation_type=operation_type,
             operation_data=operation_data,
             admin_input=admin_input,
             created_time=current_time,
@@ -430,9 +427,10 @@ class PendingCacheService:
 
     def _execute_operation(self, operation: PendingOperation) -> bool:
         """执行操作"""
-        executor = self.executor_callbacks.get(operation.operation_type)
+        operation_type = operation.operation_data.get('operation_type', '')
+        executor = self.executor_callbacks.get(operation_type)
         if not executor:
-            debug_utils.log_and_print(f"❌ 未找到操作执行器: {operation.operation_type}", log_level="ERROR")
+            debug_utils.log_and_print(f"❌ 未找到操作执行器: {operation_type}", log_level="ERROR")
             return False
 
         try:

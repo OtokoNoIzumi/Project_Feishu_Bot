@@ -257,7 +257,6 @@ class AdminProcessor(BaseProcessor):
         # 创建缓存操作
         operation_id = pending_cache_service.create_operation(
             user_id=context.user_id,
-            operation_type=operation_type,
             operation_data=full_operation_data,
             admin_input=full_operation_data.get('admin_input', ''),
             hold_time_seconds=timeout_seconds,
