@@ -132,31 +132,30 @@ class CardHandler:
         action_tag = action.tag if hasattr(action, 'tag') else 'button'
 
         # 处理不同类型的卡片交互事件
-        if action_tag == UIElements.SELECT_STATIC:
-            # 对于select_static，action.option包含选中的值
-            action_option = action.option if hasattr(action, 'option') else '0'
-            action_value.update({
-                FieldNames.ACTION: CardActions.UPDATE_USER_TYPE,  # 统一的动作名
-                FieldNames.OPTION: action_option,
-                FieldNames.TAG: action_tag
-            })
-            content = CardActions.UPDATE_USER_TYPE
-        elif action_tag == UIElements.INPUT:
-            # 对于input类型，action.input_value包含用户输入的值
-            input_value = action.input_value if hasattr(action, 'input_value') else DefaultValues.EMPTY_STRING
+        match action_tag:
+            case UIElements.SELECT_STATIC:
+                # 对于select_static，action.option包含选中的值
+                action_option = action.option if hasattr(action, 'option') else '0'
+                action_value.update({
+                    FieldNames.ACTION: CardActions.UPDATE_USER_TYPE,  # 统一的动作名
+                    FieldNames.OPTION: action_option,
+                    FieldNames.TAG: action_tag
+                })
+                content = CardActions.UPDATE_USER_TYPE
+            case UIElements.INPUT:
+                # 对于input类型，action.input_value包含用户输入的值
+                input_value = action.input_value if hasattr(action, 'input_value') else DefaultValues.EMPTY_STRING
+                action_value.update({
+                    FieldNames.VALUE: input_value,  # 将输入值添加到action_value中
+                    FieldNames.TAG: action_tag
+                })
+                content = action_value.get(FieldNames.ACTION, DefaultValues.UNKNOWN_INPUT_ACTION)
+            case _:
+                # 普通按钮动作
+                content = action_value.get(FieldNames.ACTION, DefaultValues.UNKNOWN_ACTION)
 
-            # 处理空输入：单空格" "代替空字符串
-            if input_value == DefaultValues.SINGLE_SPACE:
-                input_value = DefaultValues.EMPTY_STRING
-                debug_utils.log_and_print("🔄 检测到单空格输入，转换为空字符串", log_level="INFO")
-            action_value.update({
-                FieldNames.VALUE: input_value,  # 将输入值添加到action_value中
-                FieldNames.TAG: action_tag
-            })
-            content = action_value.get(FieldNames.ACTION, DefaultValues.UNKNOWN_INPUT_ACTION)
-        else:
-            # 普通按钮动作
-            content = action_value.get(FieldNames.ACTION, DefaultValues.UNKNOWN_ACTION)
+        open_message_id = data.event.context.open_message_id if hasattr(data.event, 'context') and hasattr(data.event.context, 'open_message_id') else DefaultValues.EMPTY_STRING
+        open_chat_id = data.event.context.open_chat_id if hasattr(data.event, 'context') and hasattr(data.event.context, 'open_chat_id') else DefaultValues.EMPTY_STRING
 
         return MessageContext(
             user_id=user_id,
@@ -169,8 +168,8 @@ class CardHandler:
                 'action_value': action_value,
                 'action_tag': action_tag,
                 'interaction_type': 'card',
-                FieldNames.OPEN_MESSAGE_ID: data.event.context.open_message_id if hasattr(data.event, 'context') and hasattr(data.event.context, 'open_message_id') else DefaultValues.EMPTY_STRING,
-                FieldNames.OPEN_CHAT_ID: data.event.context.open_chat_id if hasattr(data.event, 'context') and hasattr(data.event.context, 'open_chat_id') else DefaultValues.EMPTY_STRING
+                FieldNames.OPEN_MESSAGE_ID: open_message_id,
+                FieldNames.OPEN_CHAT_ID: open_chat_id
             }
         )
 
