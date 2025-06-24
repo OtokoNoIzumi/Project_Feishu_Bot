@@ -100,7 +100,6 @@ class MenuHandler:
             timestamp=message_timestamp,
             event_id=event_id,
             metadata={
-                'app_id': data.header.app_id,
-                'interaction_type': 'menu'
+                'app_id': data.header.app_id
             }
         )

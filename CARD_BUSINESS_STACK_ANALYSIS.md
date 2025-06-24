@@ -87,12 +87,9 @@
   - context.parent_message_id：parent_message_id值
   - context.metadata：【新增】dict对象，包含：
     - metadata['chat_id']：来自data.event.message.chat_id
-    - metadata['message_id']：message_id值重复存储
     - metadata['chat_type']：来自data.event.message.chat_type
-    - metadata['interaction_type']：硬编码字符串 'message'
 
 **评价**：
-- message_id在context.message_id和metadata['message_id']中重复存储
 - event_id和message_id两个ID概念并存，用途不明确
 - 协议转换完整，字段提取全面
 

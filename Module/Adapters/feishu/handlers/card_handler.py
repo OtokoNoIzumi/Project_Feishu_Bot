@@ -163,8 +163,7 @@ class CardHandler:
             event_id=event_id,
             metadata={
                 'action_value': action_value,
-                'action_tag': action_tag,
-                'interaction_type': 'card'
+                'action_tag': action_tag
             }
         )
 
