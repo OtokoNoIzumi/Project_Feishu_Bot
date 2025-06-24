@@ -80,13 +80,13 @@ class CardHandler:
             match result.response_type:
                 case ResponseTypes.BILI_CARD_UPDATE:
                     return self._handle_bili_card_operation(
-                        result.response_content,
+                        result_content=result.response_content,
                         card_operation_type=CardOperationTypes.UPDATE_RESPONSE,
                         toast_message=Messages.VIDEO_MARKED_READ
                     )
                 case ResponseTypes.ADMIN_CARD_UPDATE:
                     return self._handle_admin_card_operation(
-                        result.response_content,
+                        result_content=result.response_content,
                         card_operation_type=CardOperationTypes.UPDATE_RESPONSE
                     )
                 case ResponseTypes.SCHEDULER_CARD_UPDATE_BILI_BUTTON:
@@ -168,7 +168,7 @@ class CardHandler:
         )
 
     @card_operation_safe("B站卡片操作失败")
-    def _handle_bili_card_operation(self, video_data: Dict[str, Any], card_operation_type: str, **kwargs) -> Any:
+    def _handle_bili_card_operation(self, result_content: Dict[str, Any], card_operation_type: str, **kwargs) -> Any:
         """
         统一处理B站卡片的构建和操作
 
@@ -186,24 +186,27 @@ class CardHandler:
             user_id = kwargs.get(FieldNames.USER_ID)
             if not user_id:
                 debug_utils.log_and_print("❌ 发送B站卡片缺少用户ID", log_level="ERROR")
-                return False
+                return False, None
 
         # 使用配置驱动获取B站卡片管理器
         bili_card_manager = self.card_registry.get_manager(CardConfigKeys.BILIBILI_VIDEO_INFO)
         if not bili_card_manager:
             debug_utils.log_and_print("❌ 未找到B站卡片管理器", log_level="ERROR")
+            if card_operation_type == CardOperationTypes.SEND:
+                return False, None
             return False
+        update_toast_type = result_content.get('result_type', 'success') if isinstance(result_content, dict) else 'success'
         # 使用通用卡片操作处理
         return self._handle_card_operation_common(
-            card_content=bili_card_manager.build_card(video_data),
-            data=video_data,
+            card_content=bili_card_manager.build_card(video_data=result_content),
             card_operation_type=card_operation_type,
             card_info=bili_card_manager.card_info,
+            update_toast_type=update_toast_type,
             **kwargs
         )
 
     @card_operation_safe("管理员卡片操作失败")
-    def _handle_admin_card_operation(self, operation_data: Dict[str, Any], card_operation_type: str,**kwargs) -> Any:
+    def _handle_admin_card_operation(self, result_content: Dict[str, Any], card_operation_type: str,**kwargs) -> Any:
         """
         统一处理管理员卡片的构建和操作 - 配置驱动版本
 
@@ -223,48 +226,52 @@ class CardHandler:
                 message_id = kwargs.get("message_id")
                 if not chat_id or not message_id:
                     debug_utils.log_and_print("❌ 发送管理员卡片缺少chat_id或message_id", log_level="ERROR")
-                    return False
+                    return False, None
             case _:
                 pass
 
         # 从操作数据获取业务ID - 配置化解决方案
-        operation_type = operation_data.get('operation_type', '')
+        operation_type = result_content.get('operation_type', '')
         if not operation_type:
             debug_utils.log_and_print("❌ 缺少业务ID (operation_type)", log_level="ERROR")
+            if card_operation_type == CardOperationTypes.SEND:
+                return False, None
             return False
 
         # 使用配置驱动获取卡片管理器
         card_manager = self.card_registry.get_manager_by_operation_type(operation_type, self.app_controller)
         if not card_manager:
             debug_utils.log_and_print(f"❌ 未找到业务ID对应的管理器: {operation_type}", log_level="ERROR")
+            if card_operation_type == CardOperationTypes.SEND:
+                return False, None
             return False
+        update_toast_type = result_content.get('result_type', 'success') if isinstance(result_content, dict) else 'success'
 
         # 使用通用卡片操作处理
         return self._handle_card_operation_common(
-            card_content=card_manager.build_card(operation_data),
-            data=operation_data,
+            card_content=card_manager.build_card(admin_confirm_action_data=result_content),
             card_operation_type=card_operation_type,
             card_info=card_manager.card_info,
+            update_toast_type=update_toast_type,
             **kwargs
         )
 
     def _handle_card_operation_common(
         self,
         card_content,
-        data: Dict[str, Any],
         card_operation_type: str,
         card_info: Dict[str, Any],
+        update_toast_type: str,
         **kwargs
     ) -> Any:
         """
         通用卡片操作处理方法
 
         Args:
-            card_manager: 卡片管理器实例
-            build_method_name: 卡片构建方法名
-            data: 业务数据
+            card_content: 卡片内容
             operation_type: 操作类型 ('send' | 'update_response')
-            card_config_type: 卡片配置类型，用于获取回复模式
+            card_info: 卡片信息
+            update_toast_type: 更新提示类型
             **kwargs: 额外参数
 
         Returns:
@@ -288,11 +295,10 @@ class CardHandler:
             case CardOperationTypes.UPDATE_RESPONSE:
                 # 构建卡片更新响应
                 toast_message = kwargs.get("toast_message", "操作完成")
-                result_type = data.get('result_type', 'success') if isinstance(data, dict) else 'success'
 
                 response_data = {
                     "toast": {
-                        "type": result_type,
+                        "type": update_toast_type,
                         "content": toast_message
                     },
                     "card": {
@@ -333,7 +339,6 @@ class CardHandler:
                 if not card_manager:
                     debug_utils.log_and_print(f"❌ 卡片更新失败: 未找到操作类型对应的管理器 {operation.operation_type}", log_level="ERROR")
                     return False
-
 
                 # 构建卡片内容
                 card_content = card_manager.build_card(operation.operation_data)

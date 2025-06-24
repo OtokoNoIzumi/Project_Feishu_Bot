@@ -5,7 +5,7 @@
 """
 
 from typing import Dict, Any, List
-from Module.Services.constants import CardActions, OperationTypes, ResponseTypes
+from Module.Services.constants import CardActions, ResponseTypes
 from .card_registry import BaseCardManager
 from ..decorators import card_build_safe
 
@@ -55,22 +55,22 @@ class AdsUpdateCardManager(BaseCardManager):
         }
 
     @card_build_safe("广告时间戳修改确认卡片构建失败")
-    def build_card(self, operation_data: Dict[str, Any]) -> Dict[str, Any]:
+    def build_card(self, admin_confirm_action_data: Dict[str, Any]) -> Dict[str, Any]:
         """构建广告时间戳修改确认卡片内容"""
-        template_params = self._format_ads_update_params(operation_data)
+        template_params = self._format_ads_update_params(admin_confirm_action_data)
         return self._build_template_content(template_params)
 
     @card_build_safe("格式化广告更新参数失败")
-    def _format_ads_update_params(self, operation_data: Dict[str, Any]) -> Dict[str, Any]:
+    def _format_ads_update_params(self, card_data: Dict[str, Any]) -> Dict[str, Any]:
         """将广告操作数据格式化为模板参数"""
         # 获取基本数据
-        bvid = operation_data.get('bvid', '')
-        adtime_stamps = operation_data.get('adtime_stamps', '')
-        admin_input = operation_data.get('admin_input', '')
-        hold_time = operation_data.get('hold_time', '(30s)')
-        finished = operation_data.get('finished', False)
-        result = operation_data.get('result', '')
-        operation_id = operation_data.get('operation_id', '')
+        bvid = card_data.get('bvid', '')
+        adtime_stamps = card_data.get('adtime_stamps', '')
+        admin_input = card_data.get('admin_input', '')
+        hold_time = card_data.get('hold_time', '(30s)')
+        finished = card_data.get('finished', False)
+        result = card_data.get('result', '')
+        operation_id = card_data.get('operation_id', '')
 
         # 处理全角逗号转换
         processed_adtime_stamps = adtime_stamps.replace('，', ',') if adtime_stamps else ''

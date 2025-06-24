@@ -88,14 +88,14 @@ class FeishuCardRegistry:
         """获取所有已注册的管理器"""
         return self._managers.copy()
 
-    def get_manager_by_operation_type(self, operation_type: str, config_service=None) -> Optional[BaseCardManager]:
+    def get_manager_by_operation_type(self, operation_type: str, app_controller=None) -> Optional[BaseCardManager]:
         """根据业务ID获取对应的卡片管理器 - 配置驱动"""
-        if not config_service:
-            debug_utils.log_and_print("❌ 缺少配置服务，无法获取管理器映射", log_level="ERROR")
+        if not app_controller:
+            debug_utils.log_and_print("❌ 缺少应用控制器，无法获取管理器映射", log_level="ERROR")
             return None
 
         # 从应用控制器获取业务映射服务
-        card_mapping_service = config_service.get_service(ServiceNames.CARD_OPERATION_MAPPING)
+        card_mapping_service = app_controller.get_service(ServiceNames.CARD_OPERATION_MAPPING)
         if not card_mapping_service:
             debug_utils.log_and_print("❌ 卡片业务映射服务不可用", log_level="ERROR")
             return None
@@ -107,12 +107,12 @@ class FeishuCardRegistry:
             return None
 
         # 获取管理器标识
-        manager_key = operation_config.get('card_config_key')
-        if not manager_key:
+        card_config_key = operation_config.get('card_config_key')
+        if not card_config_key:
             debug_utils.log_and_print(f"❌ 业务配置缺少card_config_key字段: {operation_type}", log_level="ERROR")
             return None
 
-        return self.get_manager(manager_key)
+        return self.get_manager(card_config_key)
 
 
 # 全局注册表实例

@@ -28,16 +28,16 @@ class BilibiliCardManager(BaseCardManager):
         return [CardActions.MARK_BILI_READ]
 
     @card_build_safe("B站视频菜单卡片构建失败")
-    def build_card(self, bili_data: Dict[str, Any]) -> Dict[str, Any]:
+    def build_card(self, video_data: Dict[str, Any]) -> Dict[str, Any]:
         """构建B站视频菜单卡片内容"""
-        template_params = self._format_bili_video_params(bili_data)
+        template_params = self._format_bili_video_params(video_data)
         return self._build_template_content(template_params)
 
     @card_build_safe("格式化B站视频参数失败")
-    def _format_bili_video_params(self, bili_data: Dict[str, Any]) -> Dict[str, Any]:
+    def _format_bili_video_params(self, video_data: Dict[str, Any]) -> Dict[str, Any]:
         """将原始B站数据格式化为模板参数"""
-        main_video = bili_data.get('main_video', {})
-        additional_videos = bili_data.get('additional_videos', [])
+        main_video = video_data.get('main_video', {})
+        additional_videos = video_data.get('additional_videos', [])
 
         # 准备缓存数据（用于回调时传递）
         cached_video_data = {

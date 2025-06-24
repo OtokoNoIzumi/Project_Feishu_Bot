@@ -271,7 +271,7 @@ class MessageHandler:
                 if self.card_handler:
                     # 发送管理员卡片
                     success, sent_message_id = self.card_handler._handle_admin_card_operation(
-                        operation_data=operation_data,
+                        result_content=operation_data,
                         card_operation_type=CardOperationTypes.SEND,
                         chat_id=chat_id,
                         message_id=message_id

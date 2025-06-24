@@ -806,7 +806,6 @@ class PendingCacheService:
         operation.last_update_time = time.time()
         self._save_operations()
 
-        debug_utils.log_and_print(f"🔗 UI消息绑定成功, ui_type={ui_type}", log_level="INFO")
         return True
 
     def _update_ui_for_completed_operation(self, operation, result_text: str, result_type: str):

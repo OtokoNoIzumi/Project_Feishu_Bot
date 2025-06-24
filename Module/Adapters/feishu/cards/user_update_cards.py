@@ -5,7 +5,7 @@
 """
 
 from typing import Dict, Any, List
-from Module.Services.constants import CardActions, OperationTypes, ResponseTypes
+from Module.Services.constants import CardActions, ResponseTypes
 from .card_registry import BaseCardManager
 from ..decorators import card_build_safe
 
@@ -60,22 +60,22 @@ class UserUpdateCardManager(BaseCardManager):
         }
 
     @card_build_safe("用户状态修改确认卡片构建失败")
-    def build_card(self, operation_data: Dict[str, Any]) -> Dict[str, Any]:
+    def build_card(self, admin_confirm_action_data: Dict[str, Any]) -> Dict[str, Any]:
         """构建用户状态修改确认卡片内容"""
-        template_params = self._format_user_update_params(operation_data)
+        template_params = self._format_user_update_params(admin_confirm_action_data)
         return self._build_template_content(template_params)
 
     @card_build_safe("格式化用户更新参数失败")
-    def _format_user_update_params(self, operation_data: Dict[str, Any]) -> Dict[str, Any]:
+    def _format_user_update_params(self, card_data: Dict[str, Any]) -> Dict[str, Any]:
         """将操作数据格式化为模板参数"""
         # 获取基本数据
-        user_id = operation_data.get('user_id', '')
-        user_type = operation_data.get('user_type', 1)
-        admin_input = operation_data.get('admin_input', '')
-        hold_time = operation_data.get('hold_time', '(30s)')
-        finished = operation_data.get('finished', False)
-        result = operation_data.get('result', '')
-        operation_id = operation_data.get('operation_id', '')
+        user_id = card_data.get('user_id', '')
+        user_type = card_data.get('user_type', 1)
+        admin_input = card_data.get('admin_input', '')
+        hold_time = card_data.get('hold_time', '(30s)')
+        finished = card_data.get('finished', False)
+        result = card_data.get('result', '')
+        operation_id = card_data.get('operation_id', '')
 
         # 获取交互组件
         interaction_components = self.get_interaction_components(

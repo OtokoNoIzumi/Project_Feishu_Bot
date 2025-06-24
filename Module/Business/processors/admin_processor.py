@@ -251,10 +251,7 @@ class AdminProcessor(BaseProcessor):
             'finished': False,
             'result': '确认⏰',
             'hold_time': timeout_text,
-            'operation_type': operation_type,
-            '_config_cache': {
-                'operation_config': config
-            }
+            'operation_type': operation_type
         }
 
         # 创建缓存操作
