@@ -15,8 +15,6 @@ from typing import Dict, Any, Optional
 
 from Module.Common.scripts.common import debug_utils
 from Module.Services.router.card_builder import CardBuilder
-from Module.Adapters.feishu.cards.user_update_cards import UserUpdateInteractionComponents
-from Module.Adapters.feishu.cards.ads_update_cards import AdsUpdateInteractionComponents
 from Module.Services.constants import (
     ServiceNames, MenuClickTypes, ResponseTypes,
     MessageTypes, CardActions, Messages
@@ -182,7 +180,6 @@ class MessageProcessor(BaseProcessor):
         """处理卡片动作"""
         action = context.content
         action_value = context.metadata.get('action_value', {})
-
         # 使用分发表处理动作
         handler = self.action_dispatchers.get(action)
         if handler:
@@ -203,24 +200,12 @@ class MessageProcessor(BaseProcessor):
 
             # 用户类型选择动作（特殊处理）
             CardActions.UPDATE_USER_TYPE: self._handle_user_type_select_action,
+            CardActions.CONFIRM_USER_UPDATE: self._handle_pending_admin_card_action,
+            CardActions.CONFIRM_ADS_UPDATE: self._handle_pending_admin_card_action,
+            CardActions.ADTIME_EDITOR_CHANGE: self._handle_pending_admin_card_action,
+            CardActions.CANCEL_USER_UPDATE: self._handle_pending_admin_card_action,
+            CardActions.CANCEL_ADS_UPDATE: self._handle_pending_admin_card_action,
         }
-
-        # 注册配置化的卡片动作
-        self._register_card_actions_from_config()
-
-    def _register_card_actions_from_config(self):
-        """从配置文件注册卡片动作到分发器"""
-        all_mappings = self.card_mapping_service.get_all_mappings()
-
-        for business_id, config in all_mappings.items():
-            actions = config.get("actions", [])
-            for action in actions:
-                # 根据业务类型确定处理器
-                if action in [CardActions.CONFIRM_USER_UPDATE, CardActions.CANCEL_USER_UPDATE,
-                             CardActions.CONFIRM_ADS_UPDATE, CardActions.CANCEL_ADS_UPDATE,
-                             CardActions.ADTIME_EDITOR_CHANGE]:
-                    # 管理员卡片动作
-                    self.action_dispatchers[action] = self._handle_pending_admin_card_action
 
     def _handle_ai_route_result(self, context: MessageContext, route_result: Dict[str, Any]) -> ProcessResult:
         """
@@ -410,7 +395,7 @@ class MessageProcessor(BaseProcessor):
             return ProcessResult.no_reply_result()
 
         # 使用交互组件架构获取更新逻辑
-        update_success = self._apply_select_change(operation, selected_option)
+        update_success = self._apply_select_change(operation, selected_option, action_value)
 
         if not update_success:
             debug_utils.log_and_print(
@@ -422,86 +407,46 @@ class MessageProcessor(BaseProcessor):
         return ProcessResult.no_reply_result()
 
     @safe_execute("选择变更应用失败")
-    def _apply_select_change(self, operation, selected_option: str) -> bool:
+    def _apply_select_change(self, operation, selected_option: str, action_data: Dict[str, Any]) -> bool:
         """
-        应用选择变更到操作数据
-        基于1.0.9版本交互组件架构的配置驱动更新【待处理，用按钮的标签来驱动
+        应用选择变更到操作数据 - 基于action_data直接更新
 
         Args:
             operation: 待处理操作对象
             selected_option: 用户选择的选项值
+            action_data: 包含更新所需信息的动作数据
 
         Returns:
             bool: 是否更新成功
         """
-        # 获取操作类型映射 - 合并所有组件的映射
-        user_type_mapping = UserUpdateInteractionComponents.get_operation_type_mapping()
-        ads_type_mapping = AdsUpdateInteractionComponents.get_operation_type_mapping()
-        type_mapping = {**user_type_mapping, **ads_type_mapping}
-        component_getter = type_mapping.get(operation.operation_type)
+        # 从action_data中直接获取更新信息
+        target_field = action_data.get("target_field")
+        value_mapping = action_data.get("value_mapping", {})
 
-        if not component_getter:
-            debug_utils.log_and_print(
-                f"⚠️ 未支持的操作类型select_change: {operation.operation_type}",
-                log_level="WARNING"
-            )
+        if not target_field:
+            debug_utils.log_and_print(f"❌ action_data缺少target_field", log_level="ERROR")
             return False
 
+        if selected_option not in value_mapping:
+            debug_utils.log_and_print(f"⚠️ 无效的选项映射: {selected_option}", log_level="WARNING")
+            return False
+
+        # 执行数据更新
+        new_value = value_mapping[selected_option]
+        old_value = operation.operation_data.get(target_field)
+
         pending_cache_service = self.app_controller.get_service(ServiceNames.PENDING_CACHE)
+        success = pending_cache_service.update_operation_data(
+            operation.operation_id,
+            {target_field: new_value}
+        )
 
-        # 获取交互组件定义
-        match component_getter:
-            case "get_user_update_confirm_components":
-                components = UserUpdateInteractionComponents.get_user_update_confirm_components(
-                    operation.operation_id,
-                    operation.operation_data.get('user_id', ''),
-                    operation.operation_data.get('user_type', 1)
-                )
+        if success:
+            debug_utils.log_and_print(
+                f"🔄 操作数据已更新: {target_field} {old_value}→{new_value}",
+                log_level="INFO"
+            )
+        else:
+            debug_utils.log_and_print(f"❌ 操作数据更新失败", log_level="ERROR")
 
-                # 处理用户类型选择器更新
-                selector_config = components.get("user_type_selector", {})
-                target_field = selector_config.get("target_field")
-                value_mapping = selector_config.get("value_mapping", {})
-
-                if target_field and selected_option in value_mapping:
-                    # 执行数据更新
-                    new_value = value_mapping[selected_option]
-                    old_value = operation.operation_data.get(target_field)
-
-                    # 更新操作数据
-                    success = pending_cache_service.update_operation_data(
-                        operation.operation_id,
-                        {target_field: new_value}
-                    )
-
-                    if success:
-                        debug_utils.log_and_print(
-                            f"🔄 操作数据已更新: {target_field} {old_value}→{new_value}",
-                            log_level="INFO"
-                        )
-
-                    return success
-
-                debug_utils.log_and_print(f"⚠️ 无效的选项映射: {selected_option}", log_level="WARNING")
-                return False
-
-            case "get_ads_update_confirm_components":
-                # 处理广告更新操作的选择器变更
-                components = AdsUpdateInteractionComponents.get_ads_update_confirm_components(
-                    operation.operation_id,
-                    operation.operation_data.get('bvid', ''),
-                    operation.operation_data.get('adtime_stamps', '')
-                )
-
-                # 目前广告操作主要使用编辑器而非选择器
-                # 如果未来需要添加广告相关的选择器，可以在这里扩展
-                debug_utils.log_and_print(
-                    f"ℹ️ 广告操作暂不支持选择器变更: {selected_option}",
-                    log_level="INFO"
-                )
-                return True  # 静默处理，不报错
-
-            case _:
-                # 未来可扩展其他操作类型的处理
-                debug_utils.log_and_print(f"⚠️ 未实现的组件获取方法: {component_getter}", log_level="WARNING")
-                return False
+        return success

@@ -15,7 +15,7 @@ from lark_oapi.event.callback.model.p2_card_action_trigger import P2CardActionTr
 from Module.Common.scripts.common import debug_utils
 from Module.Business.processors import MessageContext
 from Module.Services.constants import (
-    ServiceNames, CardOperationTypes, CardConfigTypes, ResponseTypes,
+    ServiceNames, CardOperationTypes, CardConfigKeys, ResponseTypes,
     Messages, CardActions, UIElements, FieldNames, DefaultValues, MessageTypes
 )
 from ..decorators import (
@@ -81,13 +81,13 @@ class CardHandler:
                 case ResponseTypes.BILI_CARD_UPDATE:
                     return self._handle_bili_card_operation(
                         result.response_content,
-                        operation_type=CardOperationTypes.UPDATE_RESPONSE,
+                        card_operation_type=CardOperationTypes.UPDATE_RESPONSE,
                         toast_message=Messages.VIDEO_MARKED_READ
                     )
                 case ResponseTypes.ADMIN_CARD_UPDATE:
                     return self._handle_admin_card_operation(
                         result.response_content,
-                        operation_type=CardOperationTypes.UPDATE_RESPONSE
+                        card_operation_type=CardOperationTypes.UPDATE_RESPONSE
                     )
                 case ResponseTypes.SCHEDULER_CARD_UPDATE_BILI_BUTTON:
                     return P2CardActionTriggerResponse(result.response_content)
@@ -175,7 +175,7 @@ class CardHandler:
         )
 
     @card_operation_safe("B站卡片操作失败")
-    def _handle_bili_card_operation(self, video_data: Dict[str, Any], operation_type: str, **kwargs) -> Any:
+    def _handle_bili_card_operation(self, video_data: Dict[str, Any], card_operation_type: str, **kwargs) -> Any:
         """
         统一处理B站卡片的构建和操作
 
@@ -189,30 +189,29 @@ class CardHandler:
             P2CardActionTriggerResponse: 更新响应操作的响应对象
         """
         # B站特有的参数验证
-        if operation_type == CardOperationTypes.SEND:
+        if card_operation_type == CardOperationTypes.SEND:
             user_id = kwargs.get(FieldNames.USER_ID)
             if not user_id:
                 debug_utils.log_and_print("❌ 发送B站卡片缺少用户ID", log_level="ERROR")
                 return False
 
         # 使用配置驱动获取B站卡片管理器
-        bili_card_manager = self.card_registry.get_manager(CardConfigTypes.BILIBILI_VIDEO_INFO)
+        bili_card_manager = self.card_registry.get_manager(CardConfigKeys.BILIBILI_VIDEO_INFO)
         if not bili_card_manager:
             debug_utils.log_and_print("❌ 未找到B站卡片管理器", log_level="ERROR")
             return False
 
         # 使用通用卡片操作处理
         return self._handle_card_operation_common(
-            card_manager=bili_card_manager,
-            build_method_name="build_bili_video_menu_card",
+            card_content=bili_card_manager.build_card(video_data),
             data=video_data,
-            operation_type=operation_type,
-            card_config_type=CardConfigTypes.BILIBILI_VIDEO_INFO,
+            card_operation_type=card_operation_type,
+            card_config_type=CardConfigKeys.BILIBILI_VIDEO_INFO,
             **kwargs
         )
 
     @card_operation_safe("管理员卡片操作失败")
-    def _handle_admin_card_operation(self, operation_data: Dict[str, Any], operation_type: str, **kwargs) -> Any:
+    def _handle_admin_card_operation(self, operation_data: Dict[str, Any], card_operation_type: str,**kwargs) -> Any:
         """
         统一处理管理员卡片的构建和操作 - 配置驱动版本
 
@@ -226,7 +225,7 @@ class CardHandler:
             P2CardActionTriggerResponse: 更新响应操作的响应对象
         """
         # 管理员特有的参数验证
-        match operation_type:
+        match card_operation_type:
             case CardOperationTypes.SEND:
                 chat_id = kwargs.get("chat_id")
                 message_id = kwargs.get("message_id")
@@ -248,31 +247,20 @@ class CardHandler:
             debug_utils.log_and_print(f"❌ 未找到业务ID对应的管理器: {business_id}", log_level="ERROR")
             return False
 
-        # 获取卡片业务映射服务获取构建方法名
-        card_mapping_service = self.card_mapping_service
-        if card_mapping_service:
-            config = card_mapping_service.get_business_config(business_id)
-            build_method_name = config.get("card_builder_method", "build_user_update_confirm_card")
-        else:
-            debug_utils.log_and_print("⚠️ 卡片映射服务不可用，使用默认构建方法", log_level="WARNING")
-            build_method_name = "build_user_update_confirm_card"
-
         # 使用通用卡片操作处理
         return self._handle_card_operation_common(
-            card_manager=card_manager,  # 使用配置驱动获取的管理器
-            build_method_name=build_method_name,
+            card_content=card_manager.build_card(operation_data),
             data=operation_data,
-            operation_type=operation_type,
-            card_config_type=CardConfigTypes.USER_UPDATE,
+            card_operation_type=card_operation_type,
+            card_config_type=CardConfigKeys.USER_UPDATE,
             **kwargs
         )
 
     def _handle_card_operation_common(
         self,
-        card_manager,
-        build_method_name: str,
+        card_content,
         data: Dict[str, Any],
-        operation_type: str,
+        card_operation_type: str,
         card_config_type: str,
         **kwargs
     ) -> Any:
@@ -292,10 +280,7 @@ class CardHandler:
             更新响应操作: P2CardActionTriggerResponse (响应对象)
         """
         # 使用卡片管理器构建卡片内容
-        build_method = getattr(card_manager, build_method_name)
-        card_content = build_method(data)
-
-        match operation_type:
+        match card_operation_type:
             case CardOperationTypes.SEND:
                 # 从配置获取卡片的回复模式
                 reply_mode = self.sender.get_card_reply_mode(card_config_type)
@@ -329,7 +314,7 @@ class CardHandler:
                 return P2CardActionTriggerResponse(response_data)
 
             case _:
-                debug_utils.log_and_print(f"❌ 未知的{card_config_type}卡片操作类型: {operation_type}", log_level="ERROR")
+                debug_utils.log_and_print(f"❌ 未知的{card_config_type}卡片操作类型: {card_operation_type}", log_level="ERROR")
                 return False, None
 
     def create_card_ui_update_callback(self):
@@ -360,18 +345,9 @@ class CardHandler:
                     debug_utils.log_and_print(f"❌ 卡片更新失败: 未找到操作类型对应的管理器 {operation.operation_type}", log_level="ERROR")
                     return False
 
-                # 根据操作类型获取构建方法名
-                card_mapping_service = self.card_mapping_service
-                if card_mapping_service:
-                    config = card_mapping_service.get_business_config(operation.operation_type)
-                    build_method_name = config.get("card_builder_method", "build_user_update_confirm_card")
-                else:
-                    debug_utils.log_and_print("⚠️ 卡片映射服务不可用，使用默认构建方法", log_level="WARNING")
-                    build_method_name = "build_user_update_confirm_card"
 
                 # 构建卡片内容
-                build_method = getattr(card_manager, build_method_name)
-                card_content = build_method(operation.operation_data)
+                card_content = card_manager.build_card(operation.operation_data)
 
                 # 调用消息发送器的卡片更新方法
                 success = self.sender.update_interactive_card(operation.ui_message_id, card_content)

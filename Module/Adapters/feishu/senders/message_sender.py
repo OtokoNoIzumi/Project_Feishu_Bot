@@ -596,8 +596,3 @@ class MessageSender:
 
         debug_utils.log_and_print(f"❌ 交互式卡片更新失败: {response.code} - {response.msg}", log_level="ERROR")
         return False
-
-    # 以下方法由adapter进行依赖注入，将实际的handler方法绑定到这些占位符
-    # handle_bili_card_operation -> card_handler._handle_bili_card_operation
-    # handle_admin_card_operation -> card_handler._handle_admin_card_operation
-    # handle_bili_video_async -> message_handler._handle_bili_video_async

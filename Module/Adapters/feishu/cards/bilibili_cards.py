@@ -4,62 +4,32 @@ B站相关卡片管理器
 处理B站视频相关的飞书卡片发送、更新和回调
 """
 
-from typing import Dict, Any
-from Module.Services.constants import ServiceNames, CardConfigTypes, CardActions
+from typing import Dict, Any, List
+from Module.Services.constants import CardActions
 from .card_registry import BaseCardManager
 from ..decorators import card_build_safe
 
 
 class BilibiliCardManager(BaseCardManager):
-    """B站卡片管理器 - 配置驱动"""
+    """B站卡片管理器"""
 
     def __init__(self, app_controller=None):
-        """
-        初始化B站卡片管理器
-
-        Args:
-            app_controller: 配置服务实例，用于读取卡片配置
-        """
         self.app_controller = app_controller
         super().__init__()
 
     def get_card_type_name(self) -> str:
-        """获取卡片类型名称"""
         return "B站"
 
-    def _initialize_templates(self):
-        """初始化B站卡片模板配置 - 从配置文件读取"""
-        self.templates = {}
+    def get_supported_actions(self) -> List[str]:
+        """获取该卡片支持的所有动作"""
+        return [CardActions.MARK_BILI_READ]
 
-        if not self.app_controller:
-            # 如果没有配置服务，使用默认配置（向后兼容）
-            self.templates = {
-                "bili_video_menu": {
-                    "template_id": "AAqBPdq4sxIy5",
-                    "template_version": "1.0.9"
-                }
-            }
-            return
-
-        # 从配置服务获取卡片业务映射服务
-        card_mapping_service = self.app_controller.get_service(ServiceNames.CARD_BUSINESS_MAPPING)
-        if not card_mapping_service:
-            return
-
-        # 获取B站卡片定义的配置
-        card_definition = card_mapping_service.get_card_definition(CardConfigTypes.BILIBILI_VIDEO_INFO)
-        if card_definition and "templates" in card_definition:
-            self.templates = card_definition["templates"]
-
-    # 卡片构建方法组（只负责数据格式化）
     @card_build_safe("B站视频菜单卡片构建失败")
-    def build_bili_video_menu_card(self, bili_data: Dict[str, Any]) -> Dict[str, Any]:
+    def build_card(self, bili_data: Dict[str, Any]) -> Dict[str, Any]:
         """构建B站视频菜单卡片内容"""
         template_params = self._format_bili_video_params(bili_data)
-        content = self._build_template_content("bili_video_menu", template_params)
-        return content
+        return self._build_template_content(template_params)
 
-    # 参数格式化方法组
     @card_build_safe("格式化B站视频参数失败")
     def _format_bili_video_params(self, bili_data: Dict[str, Any]) -> Dict[str, Any]:
         """将原始B站数据格式化为模板参数"""
@@ -94,7 +64,7 @@ class BilibiliCardManager(BaseCardManager):
             "main_android_url": main_video.get('android_url', ''),
             "main_is_read_str": main_video.get('is_read_str', ''),
             "main_is_read": main_video.get('is_read', False),
-            "action_info": main_video_cached_data,  # 添加缓存数据
+            "action_info": main_video_cached_data,
             "addtional_videos": []
         }
 
@@ -112,7 +82,7 @@ class BilibiliCardManager(BaseCardManager):
                 "is_read": video.get('is_read', False),
                 "url": video.get('url', ''),
                 "android_url": video.get('android_url', ''),
-                "action_info": additional_videos_cached_data  # 每个按钮都添加缓存数据
+                "action_info": additional_videos_cached_data
             }
             template_params["addtional_videos"].append(video_item)
 

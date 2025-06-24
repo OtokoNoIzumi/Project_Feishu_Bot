@@ -222,7 +222,7 @@ class MessageHandler:
                 if self.card_handler:
                     success = self.card_handler._handle_bili_card_operation(
                         result.response_content,
-                        operation_type=CardOperationTypes.SEND,
+                        card_operation_type=CardOperationTypes.SEND,
                         user_id=user_id
                     )
                 else:
@@ -272,7 +272,7 @@ class MessageHandler:
                     # 发送管理员卡片
                     success, sent_message_id = self.card_handler._handle_admin_card_operation(
                         operation_data=operation_data,
-                        operation_type="send",
+                        card_operation_type=CardOperationTypes.SEND,
                         chat_id=chat_id,
                         message_id=message_id
                     )

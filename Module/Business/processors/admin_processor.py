@@ -266,29 +266,6 @@ class AdminProcessor(BaseProcessor):
             parent_id=context.message_id
         )
 
-    def _get_card_update_response_type(self, business_id: str) -> str:
-        """获取卡片更新的响应类型，目前是废弃内容，因为配置和设定还没处理好【待处理
-
-        Args:
-            business_id: 业务ID
-
-        Returns:
-            str: 卡片更新响应类型，默认为 admin_card_update
-        """
-        config = self.card_mapping_service.get_business_config(business_id)
-        response_type = config.get("response_type", "")
-
-        # 将发送响应类型转换为更新响应类型
-        if response_type == "admin_card_send":
-            return "admin_card_update"
-        elif response_type == "admin_ads_send":
-            return "admin_ads_update"
-        elif response_type == "bili_card_send":
-            return "bili_card_update"
-        else:
-            # 默认返回admin_card_update保持向后兼容
-            return "admin_card_update"
-
     @safe_execute("执行用户更新操作失败")
     def _execute_user_update_operation(self, operation) -> bool:
         """
@@ -489,7 +466,7 @@ class AdminProcessor(BaseProcessor):
 
         match action:
             case CardActions.CONFIRM_USER_UPDATE | CardActions.CONFIRM_ADS_UPDATE:
-                # 确认操作（统一处理）
+                # 确认操作（统一处理，出于敏捷考虑是不是应该先响应前端？）
                 success = pending_cache_service.confirm_operation(operation_id)
 
                 if success:

@@ -2,71 +2,48 @@
   "business_mappings": {
     "update_user": {
       "response_type": "admin_card_send",
-      "card_manager": "user_update",
-      "card_template": "admin_user_update_confirm",
-      "card_builder_method": "build_user_update_confirm_card",
+      "card_config_key": "user_update",
+      "processor": "AdminProcessor",
       "timeout_seconds": 30,
-      "actions": ["confirm_user_update", "cancel_user_update", "update_user_type_selector"],
-      "business_processor": "AdminProcessor",
-      "description": "管理员用户状态更新确认卡片"
+      "description": "管理员用户状态更新确认"
     },
     "update_ads": {
       "response_type": "admin_card_send",
-      "card_manager": "ads_update",
-      "card_template": "admin_ads_update_confirm",
-      "card_builder_method": "build_ads_update_confirm_card",
+      "card_config_key": "ads_update",
+      "processor": "AdminProcessor",
       "timeout_seconds": 30,
-      "actions": ["confirm_ads_update", "cancel_ads_update", "adtime_editor_change"],
-      "business_processor": "AdminProcessor",
-      "description": "B站广告时间戳更新确认卡片"
+      "description": "B站广告时间戳更新确认"
     },
     "bili_video_menu": {
       "response_type": "bili_card_send",
-      "card_manager": "bilibili_video_info",
-      "card_template": "bili_video_menu",
-      "card_builder_method": "build_bili_video_menu_card",
+      "card_config_key": "bilibili_video_info",
+      "processor": "BilibiliProcessor",
       "timeout_seconds": 30,
-      "actions": ["mark_bili_read"],
-      "business_processor": "BilibiliProcessor",
-      "description": "B站视频推荐菜单卡片"
+      "description": "B站视频推荐菜单"
     }
   },
-  "card_definitions": {
+
+  "card_configs": {
     "user_update": {
       "reply_modes": "reply",
       "class_name": "UserUpdateCardManager",
       "module_path": "Module.Adapters.feishu.cards.user_update_cards",
-      "manager_type": "用户更新",
-      "templates": {
-        "admin_user_update_confirm": {
-          "template_id": "AAqdbwJ2cflOp",
-          "template_version": "1.1.0"
-        }
-      }
+      "template_id": "AAqdbwJ2cflOp",
+      "template_version": "1.1.0"
     },
     "ads_update": {
       "reply_modes": "reply",
       "class_name": "AdsUpdateCardManager",
       "module_path": "Module.Adapters.feishu.cards.ads_update_cards",
-      "manager_type": "广告更新",
-      "templates": {
-        "admin_ads_update_confirm": {
-          "template_id": "AAqdJvEYwMDQ3",
-          "template_version": "1.0.0"
-        }
-      }
+      "template_id": "AAqdJvEYwMDQ3",
+      "template_version": "1.0.0"
     },
     "bilibili_video_info": {
       "reply_modes": "new",
       "class_name": "BilibiliCardManager",
       "module_path": "Module.Adapters.feishu.cards.bilibili_cards",
-      "manager_type": "B站",
-      "templates": {
-        "bili_video_menu": {
-          "template_id": "AAqBPdq4sxIy5",
-          "template_version": "1.0.9"
-        }
-      }
+      "template_id": "AAqBPdq4sxIy5",
+      "template_version": "1.0.9"
     }
   },
   "config_version": "3.0.0",

@@ -211,15 +211,13 @@ class SchedulerConstKeys:
     SCHEDULER_TYPE = "scheduler_type"
     ADMIN_ID = "admin_id"
 
-# ---------- 卡片模块常量 ----------
+# ---------- 卡片模块 ----------
 # ========== 卡片配置类型常量 (card_config_type) ==========
-class CardConfigTypes:
-    """卡片配置类型，用于获取回复模式等配置"""
-    ADMIN_CARDS = "admin_cards"
-    BILIBILI_CARDS = "bilibili_cards"
-    BILIBILI_VIDEO_INFO = "bilibili_video_info"
+class CardConfigKeys:
+    """卡片配置键名，与配置文件card_configs对应"""
     USER_UPDATE = "user_update"
     ADS_UPDATE = "ads_update"
+    BILIBILI_VIDEO_INFO = "bilibili_video_info"
 
 # ========== 卡片操作类型常量 ==========
 class CardOperationTypes:
