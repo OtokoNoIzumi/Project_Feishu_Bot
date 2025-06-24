@@ -104,100 +104,124 @@ Project_Feishu_Bot/
 
 ---
 
-## 🃏 配置化关联卡片架构 v2.1
+## 🃏 配置驱动卡片架构 v3.0
 
-### 🎯 **核心架构理念**
+### 🎯 **架构升级要点**
 
-#### **分离原则**
-- **卡片定位**: 飞书Adapter的附属特性，负责消息接收、格式化、展示和传递
-- **业务解耦**: 业务层与卡片层通过配置文件桥接，避免硬编码依赖关系
-- **依赖方向**: 卡片可以向下调用业务层，业务层不能反向依赖卡片
+#### **完全配置驱动**
+- **零硬编码**: 所有卡片配置集中在 `cards_business_mapping.json`
+- **自动注册**: 系统启动时自动发现和注册所有卡片管理器
+- **热插拔**: 支持动态添加/移除卡片类型，无需修改代码
 
-#### **3个独立卡片业务完整架构**
+#### **插件化架构**
+- **统一接口**: 所有卡片管理器继承 `BaseCardManager`
+- **独立模块**: 每个卡片管理器完全独立，互不影响
+- **配置验证**: 启动时自动验证配置完整性和管理器可用性
 
-| 卡片业务 | 模板标识 | 业务功能 | 交互组件 |
-|---------|---------|----------|----------|
-| **用户更新确认卡片** | `admin_user_update_confirm` | 管理员用户状态管理 | 类型选择器 + 确认/取消按钮 |
-| **广告更新确认卡片** | `admin_ads_update_confirm` | B站广告时间戳编辑 | 时间戳编辑器 + 确认/取消按钮 |
-| **B站视频菜单卡片** | `bili_video_menu` | B站视频推荐交互 | 已读标记 + 更多推荐按钮 |
+#### **当前已实现的卡片类型**
 
-### 📋 **配置化关联实施方案**
+| 卡片类型 | 配置键 | 业务功能 | 模板ID | 支持动作 |
+|---------|--------|----------|---------|----------|
+| **B站视频卡片** | `bilibili_video_info` | 视频推荐菜单 | `AAqBPdq4sxIy5` | `mark_bili_read` |
+| **用户更新卡片** | `user_update` | 用户状态管理 | `AAqdbwJ2cflOp` | `confirm_user_update`, `cancel_user_update`, `update_user_type` |
+| **广告更新卡片** | `ads_update` | 广告时间编辑 | `AAqdJvEYwMDQ3` | `confirm_ads_update`, `cancel_ads_update`, `adtime_editor_change` |
 
-#### **1. 核心配置文件架构**
+### 📋 **配置驱动架构实现**
+
+#### **1. 双层配置文件架构**
 
 ```json
-// cards_business_mapping.json - 业务卡片映射配置
+// cards_business_mapping.json - 全新配置驱动架构
 {
   "business_mappings": {
     "update_user": {
       "response_type": "admin_card_send",
-      "card_template": "admin_user_update_confirm",
-      "card_builder_method": "build_user_update_confirm_card",
+      "card_config_key": "user_update",
+      "processor": "AdminProcessor",
       "timeout_seconds": 30,
-      "actions": ["confirm_user_update", "cancel_user_update", "update_user_type_selector"],
-      "business_processor": "AdminProcessor",
-      "description": "管理员用户状态更新确认卡片"
+      "description": "管理员用户状态更新确认"
     },
     "update_ads": {
-      "response_type": "admin_ads_send",
-      "card_template": "admin_ads_update_confirm",
-      "card_builder_method": "build_ads_update_confirm_card",
-      "timeout_seconds": 45,
-      "actions": ["confirm_ads_update", "cancel_ads_update", "adtime_editor_change"],
-      "business_processor": "AdminProcessor",
-      "description": "B站广告时间戳更新确认卡片"
+      "response_type": "admin_card_send",
+      "card_config_key": "ads_update",
+      "processor": "AdminProcessor",
+      "timeout_seconds": 30,
+      "description": "B站广告时间戳更新确认"
     },
     "bili_video_menu": {
       "response_type": "bili_card_send",
-      "card_template": "bili_video_menu",
-      "card_builder_method": "build_video_menu_card",
-      "timeout_seconds": 300,
-      "actions": ["mark_bili_read", "get_more_bili"],
-      "business_processor": "BilibiliProcessor",
-      "description": "B站视频推荐菜单卡片"
+      "card_config_key": "bilibili_video_info",
+      "processor": "BilibiliProcessor",
+      "timeout_seconds": 30,
+      "description": "B站视频推荐菜单"
     }
   },
-  "config_version": "2.1.0",
-  "last_updated": "2025-06-20"
+  "card_configs": {
+    "user_update": {
+      "reply_modes": "reply",
+      "class_name": "UserUpdateCardManager",
+      "module_path": "Module.Adapters.feishu.cards.user_update_cards",
+      "template_id": "AAqdbwJ2cflOp",
+      "template_version": "1.1.0"
+    },
+    "ads_update": {
+      "reply_modes": "reply",
+      "class_name": "AdsUpdateCardManager",
+      "module_path": "Module.Adapters.feishu.cards.ads_update_cards",
+      "template_id": "AAqdJvEYwMDQ3",
+      "template_version": "1.0.0"
+    },
+    "bilibili_video_info": {
+      "reply_modes": "new",
+      "class_name": "BilibiliCardManager",
+      "module_path": "Module.Adapters.feishu.cards.bilibili_cards",
+      "template_id": "AAqBPdq4sxIy5",
+      "template_version": "1.0.9"
+    }
+  },
+  "config_version": "3.0.0",
+  "last_updated": "2025-01-03"
 }
 ```
 
-#### **2. 变量分层管理架构**
+#### **2. 自动注册机制**
 
-##### **Step 1: Business层配置解耦**
 ```python
-# 原问题：硬编码超时时间和响应类型
-operation_timeouts = {"update_user": 30, "update_ads": 45}  # ❌
-return ProcessResult("admin_card_send")  # ❌
+# 配置驱动的管理器自动发现和注册
+def initialize_card_managers(app_controller=None):
+    """配置驱动的自动注册"""
+    card_definitions = card_mapping_service.get_all_definition()
 
-# 方案A解决：通过业务ID从配置获取
-config = CardBusinessMapping.get_business_config(business_id)
-timeout = config.get("timeout_seconds", 30)  # ✅
-response_type = config.get("response_type")   # ✅
-return ProcessResult(response_type)           # ✅
+    for card_type, definition in card_definitions.items():
+        # 动态导入管理器类
+        module = __import__(definition['module_path'], fromlist=[definition['class_name']])
+        manager_class = getattr(module, definition['class_name'])
+
+        # 创建实例并注册
+        manager_instance = manager_class(app_controller=app_controller)
+        card_registry.register_manager(card_type, manager_instance)
 ```
 
-##### **Step 2: Adapter层路由解耦**
+#### **3. 统一基类架构**
+
 ```python
-# 原问题：硬编码响应类型检测和方法映射
-if response_type == "admin_card_send":        # ❌
-    method_name = "build_user_update_confirm_card"  # ❌
+class BaseCardManager(ABC):
+    """卡片管理器基类 - 配置驱动架构"""
 
-# 方案A解决：配置驱动的自动路由
-config = CardBusinessMapping.get_config_by_response_type(response_type)
-method_name = config.get("card_builder_method")  # ✅
-card_manager = self._get_card_manager(config.get("card_template"))  # ✅
-```
+    @abstractmethod
+    def get_card_type_name(self) -> str:
+        """获取卡片类型名称"""
+        pass
 
-##### **Step 3: 交互动作配置化**
-```python
-# 原问题：硬编码动作名称和响应类型映射
-action_dispatchers = {
-    "confirm_user_update": _handle_pending_admin_card_action,  # ❌
-    "cancel_user_update": _handle_pending_admin_card_action,   # ❌
-}
+    @abstractmethod
+    def get_supported_actions(self) -> List[str]:
+        """获取该卡片支持的所有动作"""
+        pass
 
-# 方案A解决：配置驱动的动作注册
+    @abstractmethod
+    def build_card(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """构建卡片内容"""
+        pass
 for business_id, config in CardBusinessMapping.get_all_mappings().items():
     for action in config.get("actions", []):
         action_dispatchers[action] = self._get_action_handler(config)  # ✅

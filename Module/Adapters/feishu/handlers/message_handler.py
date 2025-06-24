@@ -334,7 +334,6 @@ class MessageHandler:
             parent_message_id=parent_message_id,
             metadata={
                 'chat_id': data.event.message.chat_id,
-                'message_id': message_id,
                 'chat_type': data.event.message.chat_type,
                 'interaction_type': 'message'
             }

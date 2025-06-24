@@ -154,9 +154,6 @@ class CardHandler:
                 # 普通按钮动作
                 content = action_value.get(FieldNames.ACTION, DefaultValues.UNKNOWN_ACTION)
 
-        open_message_id = data.event.context.open_message_id if hasattr(data.event, 'context') and hasattr(data.event.context, 'open_message_id') else DefaultValues.EMPTY_STRING
-        open_chat_id = data.event.context.open_chat_id if hasattr(data.event, 'context') and hasattr(data.event.context, 'open_chat_id') else DefaultValues.EMPTY_STRING
-
         return MessageContext(
             user_id=user_id,
             user_name=user_name,
@@ -167,9 +164,7 @@ class CardHandler:
             metadata={
                 'action_value': action_value,
                 'action_tag': action_tag,
-                'interaction_type': 'card',
-                FieldNames.OPEN_MESSAGE_ID: open_message_id,
-                FieldNames.OPEN_CHAT_ID: open_chat_id
+                'interaction_type': 'card'
             }
         )
 

@@ -101,7 +101,6 @@ class MenuHandler:
             event_id=event_id,
             metadata={
                 'app_id': data.header.app_id,
-                'event_key': event_key,
                 'interaction_type': 'menu'
             }
         )

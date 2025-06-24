@@ -4,6 +4,42 @@
 
 ---
 
+## [v3.0.0] - 2025-01-03 (配置驱动卡片架构完全实现)
+
+### 🎯 **重大架构升级**
+- **配置驱动架构实现**: 完成从配置化关联到完全配置驱动的架构升级
+- **自动注册机制**: 实现卡片管理器的自动发现和注册，支持零代码扩展
+- **插件化架构**: 每个卡片管理器都是独立插件，支持热插拔
+
+### ✨ **新增核心组件**
+- 新增 `Module/Services/card_business_mapping_service.py` - 配置映射服务
+- 重构 `Module/Adapters/feishu/cards/card_registry.py` - 统一基类和注册表
+- 优化 `cards_business_mapping.json` - 双层配置文件架构
+
+### 🔧 **卡片管理器重构**
+- **BaseCardManager**: 统一的卡片管理器基类，标准化接口
+- **BilibiliCardManager**: B站视频卡片，支持主视频+附加列表
+- **UserUpdateCardManager**: 用户更新卡片，交互式类型选择
+- **AdsUpdateCardManager**: 广告更新卡片，时间编辑器功能
+
+### 🛠️ **技术特性完善**
+- **装饰器安全体系**: `@card_build_safe`, `@card_operation_safe`, `@message_conversion_safe`
+- **常量统一管理**: 统一的 `CardActions`, `ResponseTypes`, `CardConfigKeys`
+- **配置验证机制**: 启动时自动验证配置文件和管理器状态
+
+### 📚 **文档完善**
+- 全面重写 `CARD_PLUGIN_GUIDE.md` - 配置驱动开发指南
+- 新增 `CARD_MODULE_ARCHITECTURE.md` - 卡片模块架构总结
+- 更新 `TECHNICAL_ARCHITECTURE_REFERENCE.md` - 技术架构参考
+
+### 🎯 **架构优势**
+- **零硬编码**: 所有配置集中在JSON文件中
+- **热插拔**: 添加新卡片类型无需修改任何代码
+- **自动发现**: 系统启动自动注册所有配置的管理器
+- **完全向后兼容**: 现有功能无缝升级
+
+---
+
 ## [v2.1.0] - 2025-06-22 (配置化关联架构设计)
 
 ### 🎯 **重大架构变更**
