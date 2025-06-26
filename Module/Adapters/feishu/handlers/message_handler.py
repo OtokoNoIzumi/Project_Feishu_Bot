@@ -8,12 +8,14 @@
 """
 
 import json
-import datetime
 import threading
 from typing import Optional, Dict, Any
 
 from Module.Common.scripts.common import debug_utils
-from Module.Business.processors import MessageContext, ProcessResult
+from Module.Business.processors import (
+    MessageContext, ProcessResult, MessageContext_Refactor,
+    TextContent, FileContent
+)
 from ..decorators import (
     feishu_event_handler_safe, message_conversion_safe, async_operation_safe
 )
@@ -331,8 +333,29 @@ class MessageHandler:
         # 提取消息特定内容
         message_type = data.event.message.message_type
         content = self._extract_message_content(data.event.message)
+        content_refactor = self._extract_message_content_refactor(data.event.message)
         message_id = data.event.message.message_id
         parent_message_id = data.event.message.parent_id if hasattr(data.event.message, 'parent_id') and data.event.message.parent_id else None
+
+        New_MessageContext = MessageContext_Refactor(
+            adapter_name=AdapterNames.FEISHU,
+            timestamp=message_timestamp,
+            event_id=event_id,
+
+            user_id=user_id,
+            user_name=user_name,
+            message_id=message_id,
+            parent_message_id=parent_message_id,
+
+            message_type=message_type,
+            content=content_refactor,
+            metadata={
+                'chat_id': data.event.message.chat_id,
+                'chat_type': data.event.message.chat_type
+            }
+        )
+        print('test-New_MessageContext', New_MessageContext)
+
 
         return MessageContext(
             user_id=user_id,
@@ -359,5 +382,19 @@ class MessageHandler:
                 return json.loads(message.content)
             case _:
                 return message.content
+
+
+    def _extract_message_content_refactor(self, message) -> Any:
+        """提取飞书消息内容"""
+        match message.message_type:
+            case "text":
+                return TextContent(text=json.loads(message.content)["text"])
+            case "image":
+                return FileContent(image_key=json.loads(message.content)["image_key"])
+            case "audio":
+                return FileContent(file_key=json.loads(message.content)["file_key"])
+            case _:
+                return message.content
+
 
 

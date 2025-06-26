@@ -4,12 +4,74 @@
 包含共同的数据结构、工具方法和基础功能
 """
 
-from typing import Dict, Any, Optional, List
-from dataclasses import dataclass
+from typing import Dict, Any, Optional, Union
+from dataclasses import dataclass, field
 from datetime import datetime
 from functools import wraps
 from Module.Common.scripts.common import debug_utils
 from Module.Services.decorator_base import create_exception_handler_decorator, create_business_return_value_factory
+
+
+# --- 载荷数据结构定义 (这部分保持) ---
+@dataclass
+class TextContent:
+    text: str
+
+@dataclass
+class CardActionContent:
+    # 把之前分散在 content 和 metadata 的信息都集中在这里
+    tag: str  # 'button', 'select_static', 'input'
+    value: Dict[str, Any]  # 原始的 action.value
+    # 你的业务指示器，之前是 content 的值
+    action_name: Optional[str] = None
+    card_action_key: Optional[str] = None # e.g., 'design_confirm', 'cancel_order'
+    form_data: Optional[Dict[str, Any]] = None
+    selected_option: Optional[str] = None
+    input_value: Optional[str] = None
+
+@dataclass
+class MenuClickContent:
+    event_key: str
+
+@dataclass
+class FileContent:
+    # 后续再看是不是可以合并
+    file_key: Optional[str] = None
+    image_key: Optional[str] = None
+
+# 定义一个 ContentUnion 类型，用于类型提示
+ContentPayloads = Union[
+    str, # 简单文本可以继续用 str
+    TextContent,
+    CardActionContent,
+    MenuClickContent,
+    FileContent,
+    Dict[str, Any] # 保留 Dict 作为通用或未标准化的载荷
+]
+
+
+@dataclass
+class MessageContext_Refactor:
+    """消息上下文 - 标准化的消息数据结构"""
+    # adapter逻辑信息
+    adapter_name: str
+    timestamp: datetime
+    event_id: str
+    # 用户数据信息（目前仅来自飞书，后续可能扩展到其他平台）
+    user_id: str
+    user_name: str
+
+    # 业务参数-part1
+    message_type: str  # text, image, audio, menu_click, card_action
+    content: ContentPayloads
+
+    # 消息ID信息
+    parent_message_id: Optional[str] = None  # 用户消息如果是回复，这里是被回复的消息ID
+    message_id: Optional[str] = None  # 用户发送的这条消息的ID（系统回复时作为parent_id）
+
+    # 业务参数-part2
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
 
 
 @dataclass

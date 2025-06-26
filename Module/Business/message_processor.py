@@ -182,16 +182,17 @@ class MessageProcessor(BaseProcessor):
         card_action = context.content
         action_value = context.metadata.get('action_value', {})
 
-        # # ✅ 优先尝试配置驱动路由（MVP3目标）
-        # adapter_name = context.adapter_name
-        # adapter = self.app_controller.get_adapter(adapter_name)
+        # ✅ 优先尝试配置驱动路由（MVP3目标）
+        adapter_name = context.adapter_name
+        adapter = self.app_controller.get_adapter(adapter_name)
 
-        # if adapter and hasattr(adapter, 'card_handler') and hasattr(adapter.card_handler, 'handle_card_action'):
-        #     # 尝试新的配置驱动路由
-        #     try:
-        #         return adapter.card_handler.handle_card_action(context)
-        #     except Exception as e:
-        #         debug_utils.log_and_print(f"⚠️ 配置驱动路由失败，使用降级方案: {e}", log_level="WARNING")
+        if adapter and hasattr(adapter, 'card_handler') and hasattr(adapter.card_handler, 'handle_card_action'):
+            # 尝试新的配置驱动路由
+            process_result = adapter.card_handler.handle_card_action(context)
+            if process_result.success:
+                return process_result
+            else:
+                debug_utils.log_and_print(f"⚠️ 配置驱动路由失败，使用降级方案: {process_result.error_message}", log_level="WARNING")
 
         # 🔄 降级到硬编码分发表（保持系统可用）
         handler = self.action_dispatchers.get(card_action)

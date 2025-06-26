@@ -13,7 +13,7 @@ from typing import Optional, Dict, Any
 from lark_oapi.event.callback.model.p2_card_action_trigger import P2CardActionTriggerResponse
 
 from Module.Common.scripts.common import debug_utils
-from Module.Business.processors import MessageContext, ProcessResult
+from Module.Business.processors import MessageContext, ProcessResult, MessageContext_Refactor, CardActionContent
 from Module.Services.constants import (
     ServiceNames, CardOperationTypes, CardConfigKeys, ResponseTypes,
     Messages, CardActions, UIElements, FieldNames, DefaultValues, MessageTypes,
@@ -145,6 +145,31 @@ class CardHandler:
         action_tag = action.tag if hasattr(action, 'tag') else 'button'
         content = action_value.get('card_action', '')
 
+        content_refactor = CardActionContent(
+            tag=action_tag,
+            action_name=action.name if hasattr(action, 'name') else None,
+            value=action_value,
+            card_action_key=content,
+            form_data=action.form_value,
+            selected_option=action.option if hasattr(action, 'option') else None,
+            input_value=action.input_value if hasattr(action, 'input_value') else None
+        )
+
+        New_MessageContext = MessageContext_Refactor(
+            adapter_name=AdapterNames.FEISHU,
+            timestamp=timestamp,
+            event_id=event_id,
+
+            user_id=user_id,
+            user_name=user_name,
+            message_id=message_id,
+            parent_message_id=message_id,
+
+            message_type=MessageTypes.CARD_ACTION,
+            content=content_refactor,
+        )
+        print('test-New_MessageContext', New_MessageContext)
+
         # 处理不同类型的卡片交互事件
         match action_tag:
             case UIElements.SELECT_STATIC:
@@ -182,8 +207,8 @@ class CardHandler:
             adapter_name=adapter_name,  # ✅ 独立字段
             message_id=message_id,      # ✅ 独立字段
             metadata={
-                'action_value': action_value,  # ✅ 弹性数据
-                'action_tag': action_tag       # ✅ 弹性数据
+                'action_value': action_value,
+                'action_tag': action_tag
             }
         )
 
