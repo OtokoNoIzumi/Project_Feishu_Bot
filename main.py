@@ -31,7 +31,7 @@ from Module.Application.app_controller import AppController
 from Module.Application.app_utils import TimeUtils
 from Module.Business.message_processor import MessageProcessor
 from Module.Adapters import FeishuAdapter
-from Module.Services.constants import ServiceNames, SchedulerConstKeys
+from Module.Services.constants import ServiceNames, SchedulerConstKeys, AdapterNames
 from Module.Common.scripts.common import debug_utils
 from Module.Services.service_decorators import require_service
 from Module.Services.scheduler.scheduler_service import TaskUtils
@@ -64,7 +64,7 @@ def setup_application():
         message_processor=message_processor,
         app_controller=app_controller
     )
-
+    app_controller.register_adapter(AdapterNames.FEISHU, feishu_adapter)
     # 建立定时任务事件监听
     scheduler_service = app_controller.get_service(ServiceNames.SCHEDULER)
     if scheduler_service:

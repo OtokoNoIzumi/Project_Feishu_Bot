@@ -21,6 +21,7 @@ class MessageContext:
     content: Any
     timestamp: datetime
     event_id: str
+    adapter_name: str
     metadata: Dict[str, Any] = None
     message_id: Optional[str] = None  # 用户发送的这条消息的ID（系统回复时作为parent_id）
     parent_message_id: Optional[str] = None  # 用户消息如果是回复，这里是被回复的消息ID

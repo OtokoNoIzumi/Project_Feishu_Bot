@@ -237,7 +237,7 @@ class CardActions:
     # B站视频动作
     MARK_BILI_READ = "mark_bili_read"
 
-    # 管理员动作 - 用户管理
+    # 管理员动作 - 用户管理--待配合admin一起改，遗留部分
     CONFIRM_USER_UPDATE = "confirm_user_update"
     CANCEL_USER_UPDATE = "cancel_user_update"
     UPDATE_USER_TYPE = "update_user_type"
@@ -270,3 +270,7 @@ class DesignPlanConstants:
         'service_type': 'AISmart_Select_service_type',
         'room_status': 'AISmart_Select_room_status'
     }
+
+# =adpter常量=
+class AdapterNames:
+    FEISHU = "feishu"
