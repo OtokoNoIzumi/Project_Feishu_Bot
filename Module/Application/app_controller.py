@@ -36,6 +36,9 @@ class AppController:
         self.service_configs: Dict[str, Dict[str, Any]] = {}
         self.initialized_services: set = set()
 
+        # ✅ 新增：adapter实例存储
+        self.adapters: Dict[str, Any] = {}
+
     def register_service(self, service_name: str, service_class: type, config: Dict[str, Any] = None) -> bool:
         """
         注册服务
@@ -146,6 +149,32 @@ class AppController:
                 return None
 
         return self.services[service_name]['instance']
+
+    def register_adapter(self, adapter_name: str, adapter_instance) -> bool:
+        """
+        注册adapter实例
+
+        Args:
+            adapter_name: adapter名称 (如 "feishu")
+            adapter_instance: adapter实例
+        """
+        self.adapters[adapter_name] = adapter_instance
+        return True
+
+    def get_adapter(self, adapter_name: str) -> Optional[Any]:
+        """
+        获取adapter实例
+
+        Args:
+            adapter_name: adapter名称
+
+        Returns:
+            Optional[Any]: adapter实例，如果失败返回None
+        """
+        adapter = self.adapters.get(adapter_name)
+        if not adapter:
+            debug_utils.log_and_print(f"❌ 未找到adapter: {adapter_name}", log_level="ERROR")
+        return adapter
 
     def call_service(self, service_name: str, method_name: str, *args, **kwargs) -> Tuple[bool, Any]:
         """
