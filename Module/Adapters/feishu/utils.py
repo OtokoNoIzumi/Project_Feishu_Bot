@@ -7,7 +7,6 @@
 import json
 import pprint
 import datetime
-from typing import Dict, Any
 
 from Module.Common.scripts.common import debug_utils
 from Module.Application.app_utils import custom_serializer

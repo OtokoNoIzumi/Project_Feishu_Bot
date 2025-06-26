@@ -11,13 +11,14 @@
 """
 
 import time
-from typing import Dict, Any, Optional
+from typing import Dict, Any
+import json
 
 from Module.Common.scripts.common import debug_utils
 from Module.Services.router.card_builder import CardBuilder
 from Module.Services.constants import (
     ServiceNames, MenuClickTypes, ResponseTypes,
-    MessageTypes, CardActions, Messages
+    MessageTypes, CardActions, Messages, DesignPlanConstants
 )
 from .processors import (
     BaseProcessor, MessageContext, ProcessResult,
@@ -205,6 +206,10 @@ class MessageProcessor(BaseProcessor):
             CardActions.ADTIME_EDITOR_CHANGE: self._handle_pending_admin_card_action,
             CardActions.CANCEL_USER_UPDATE: self._handle_pending_admin_card_action,
             CardActions.CANCEL_ADS_UPDATE: self._handle_pending_admin_card_action,
+
+            # 设计方案动作
+            CardActions.CONFIRM_DESIGN_PLAN: self._handle_design_plan_action,
+            CardActions.CANCEL_DESIGN_PLAN: self._handle_design_plan_action,
         }
 
     def _handle_ai_route_result(self, context: MessageContext, route_result: Dict[str, Any]) -> ProcessResult:
@@ -219,14 +224,11 @@ class MessageProcessor(BaseProcessor):
             ProcessResult: 包含确认卡片的处理结果
         """
         try:
-            card_builder = CardBuilder()
-            card_content = card_builder.build_intent_confirmation_card(route_result)
-
-            # 记录路由成功
             intent = route_result.get('intent', '未知')
             confidence = route_result.get('confidence', 0)
             route_type = route_result.get('route_type', 'unknown')
 
+            # 记录路由成功
             self._log_command(
                 context.user_name,
                 "🎯",
@@ -234,7 +236,33 @@ class MessageProcessor(BaseProcessor):
                 f"置信度: {confidence}%"
             )
 
-            return ProcessResult.success_result("interactive", card_content, parent_id=context.message_id)
+            # 根据意图类型选择处理方式
+            if intent == "设计方案":
+                # 检查设计方案卡片开关
+                if DesignPlanConstants.CARD_ENABLED:
+                    # 业务层只负责判断，返回特殊响应类型让前端层处理
+                    parameters = route_result.get('parameters', {})
+                    card_data = {
+                        'operation_id': f"design_plan_{context.user_id}_{int(time.time())}",
+                        'content': route_result.get('content', ''),
+                        **parameters  # 直接扁平化parameters到第一层
+                    }
+                    return ProcessResult.success_result(ResponseTypes.DESIGN_PLAN_CARD, card_data, parent_id=context.message_id)
+                else:
+                    # 卡片功能关闭，返回文本回复
+                    parameters = route_result.get('parameters', {})
+                    customer_name = parameters.get('customer_name', '客户')
+                    response_text = f"✅ 已收到{customer_name}的设计方案需求\n\n"
+                    response_text += f"原始输入：{route_result.get('content', '')}\n\n"
+                    response_text += f"AI识别参数：{json.dumps(parameters, ensure_ascii=False)}"
+                    return ProcessResult.success_result("text", {
+                        "text": response_text
+                    }, parent_id=context.message_id)
+            else:
+                # 其他意图使用CardBuilder处理
+                card_builder = CardBuilder()
+                card_content = card_builder.build_intent_confirmation_card(route_result)
+                return ProcessResult.success_result("interactive", card_content, parent_id=context.message_id)
 
         except Exception as e:
             debug_utils.log_and_print(f"❌ AI路由结果处理失败: {e}", log_level="ERROR")
@@ -338,29 +366,35 @@ class MessageProcessor(BaseProcessor):
         # 直接调用admin处理器的缓存操作处理方法
         return self.admin.handle_pending_operation_action(action_value)
 
-    # ================ 状态查询方法 ================
+    @safe_execute("设计方案动作处理失败")
+    def _handle_design_plan_action(
+        self, context: MessageContext,
+        action_value: Dict[str, Any]
+    ) -> ProcessResult:
+        """
+        处理设计方案卡片动作 - 业务层只负责路由
 
-    def get_status(self) -> Dict[str, Any]:
-        """获取消息处理器状态"""
-        return {
-            "processor_type": "modular",
-            "sub_processors": {
-                "text": "TextProcessor",
-                "media": "MediaProcessor",
-                "bilibili": "BilibiliProcessor",
-                "admin": "AdminProcessor",
-                "schedule": "ScheduleProcessor"
+        Args:
+            context: 消息上下文
+            action_value: 动作参数
+
+        Returns:
+            ProcessResult: 处理结果，返回特殊响应类型让前端层处理
+        """
+        action = action_value.get("action") or context.content
+        # 业务层只负责路由，返回特殊响应类型让前端层处理
+        return ProcessResult.success_result(
+            ResponseTypes.DESIGN_PLAN_ACTION,
+            {
+                "action": action,
+                "action_value": action_value,
+                "context_info": {
+                    "user_name": context.user_name,
+                    "message_id": context.message_id
+                }
             },
-            "app_controller_available": self.app_controller is not None,
-            "supported_message_types": [
-                MessageTypes.TEXT, MessageTypes.IMAGE, MessageTypes.AUDIO,
-                MessageTypes.MENU_CLICK, MessageTypes.CARD_ACTION
-            ],
-            "registered_actions": {
-                "count": len(self.action_dispatchers),
-                "actions": list(self.action_dispatchers.keys())
-            }
-        }
+            parent_id=context.message_id
+        )
 
     @safe_execute("下拉选择处理失败")
     def _handle_user_type_select_action(
@@ -450,3 +484,27 @@ class MessageProcessor(BaseProcessor):
             debug_utils.log_and_print(f"❌ 操作数据更新失败", log_level="ERROR")
 
         return success
+
+    # ================ 状态查询方法 ================
+
+    def get_status(self) -> Dict[str, Any]:
+        """获取消息处理器状态"""
+        return {
+            "processor_type": "modular",
+            "sub_processors": {
+                "text": "TextProcessor",
+                "media": "MediaProcessor",
+                "bilibili": "BilibiliProcessor",
+                "admin": "AdminProcessor",
+                "schedule": "ScheduleProcessor"
+            },
+            "app_controller_available": self.app_controller is not None,
+            "supported_message_types": [
+                MessageTypes.TEXT, MessageTypes.IMAGE, MessageTypes.AUDIO,
+                MessageTypes.MENU_CLICK, MessageTypes.CARD_ACTION
+            ],
+            "registered_actions": {
+                "count": len(self.action_dispatchers),
+                "actions": list(self.action_dispatchers.keys())
+            }
+        }

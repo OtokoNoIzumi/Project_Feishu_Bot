@@ -516,7 +516,7 @@ class CardBuilder:
                     "tag": "div",
                     "text": {
                         "tag": "lark_md",
-                        "content": "**建议使用快捷指令：**\n• `jl` - 记录思考\n• `rc` - 记录日程\n• `cx` - 查询内容\n• `dc` - 点餐"
+                        "content": "**建议使用快捷指令：**\n• `jl` - 记录思考\n• `rc` - 记录日程\n• `cx` - 查询内容\n• `dc` - 点餐\n• `sj` - 设计方案"
                     }
                 }
             ]

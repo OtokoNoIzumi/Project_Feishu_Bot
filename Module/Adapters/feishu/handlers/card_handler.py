@@ -13,10 +13,11 @@ from typing import Optional, Dict, Any
 from lark_oapi.event.callback.model.p2_card_action_trigger import P2CardActionTriggerResponse
 
 from Module.Common.scripts.common import debug_utils
-from Module.Business.processors import MessageContext
+from Module.Business.processors import MessageContext, ProcessResult
 from Module.Services.constants import (
     ServiceNames, CardOperationTypes, CardConfigKeys, ResponseTypes,
-    Messages, CardActions, UIElements, FieldNames, DefaultValues, MessageTypes, ReplyModes
+    Messages, CardActions, UIElements, FieldNames, DefaultValues, MessageTypes, ReplyModes,
+    DesignPlanConstants
 )
 from ..decorators import (
     card_operation_safe, message_conversion_safe
@@ -91,6 +92,10 @@ class CardHandler:
                     )
                 case ResponseTypes.SCHEDULER_CARD_UPDATE_BILI_BUTTON:
                     return P2CardActionTriggerResponse(result.response_content)
+
+                case ResponseTypes.DESIGN_PLAN_ACTION:
+                    return self._handle_design_plan_action_execute(result.response_content, data)
+
                 case _:
                     # 默认成功响应
                     return P2CardActionTriggerResponse({
@@ -153,6 +158,14 @@ class CardHandler:
             case _:
                 # 普通按钮动作
                 content = action_value.get(FieldNames.ACTION, DefaultValues.UNKNOWN_ACTION)
+                if action.name == 'design_confirm':
+                    # 反转FORM_FIELD_MAP，直接查找key对应的form_key，避免嵌套循环
+                    reverse_field_map = {v: k for k, v in DesignPlanConstants.FORM_FIELD_MAP.items()}
+                    for key, value in action.form_value.items():
+                        form_key = reverse_field_map.get(key)
+                        if form_key:
+                            action_value['raw_card_data'][form_key] = value
+
 
         return MessageContext(
             user_id=user_id,
@@ -197,10 +210,9 @@ class CardHandler:
             return False
         update_toast_type = result_content.get('result_type', 'success') if isinstance(result_content, dict) else 'success'
         # 使用通用卡片操作处理
-        return self._handle_card_operation_common(
+        return bili_card_manager._handle_card_operation_common(
             card_content=bili_card_manager.build_card(video_data=result_content),
             card_operation_type=card_operation_type,
-            card_info=bili_card_manager.card_info,
             update_toast_type=update_toast_type,
             **kwargs
         )
@@ -248,69 +260,12 @@ class CardHandler:
         update_toast_type = result_content.get('result_type', 'success') if isinstance(result_content, dict) else 'success'
 
         # 使用通用卡片操作处理
-        return self._handle_card_operation_common(
+        return card_manager._handle_card_operation_common(
             card_content=card_manager.build_card(admin_confirm_action_data=result_content),
             card_operation_type=card_operation_type,
-            card_info=card_manager.card_info,
             update_toast_type=update_toast_type,
             **kwargs
         )
-
-    def _handle_card_operation_common(
-        self,
-        card_content,
-        card_operation_type: str,
-        card_info: Dict[str, Any],
-        update_toast_type: str,
-        **kwargs
-    ) -> Any:
-        """
-        通用卡片操作处理方法
-
-        Args:
-            card_content: 卡片内容
-            card_operation_type: 操作类型 ('send' | 'update_response')
-            card_info: 卡片信息
-            update_toast_type: 更新提示类型
-            **kwargs: 额外参数
-
-        Returns:
-            发送操作: Tuple[bool, Optional[str]] (是否成功, 消息ID)
-            更新响应操作: P2CardActionTriggerResponse (响应对象)
-        """
-        # 使用卡片管理器构建卡片内容
-        match card_operation_type:
-            case CardOperationTypes.SEND:
-                # 构建发送参数
-                send_params = {"card_content": card_content, "reply_mode": card_info.get('reply_mode', ReplyModes.REPLY)}
-                send_params.update(kwargs)
-
-                success, message_id = self.sender.send_interactive_card(**send_params)
-                if not success:
-                    debug_utils.log_and_print(f"❌ {card_info.get('card_name')}卡片发送失败", log_level="ERROR")
-                    return False, None
-
-                return success, message_id
-
-            case CardOperationTypes.UPDATE_RESPONSE:
-                # 构建卡片更新响应
-                toast_message = kwargs.get("toast_message", "操作完成")
-
-                response_data = {
-                    "toast": {
-                        "type": update_toast_type,
-                        "content": toast_message
-                    },
-                    "card": {
-                        "type": "raw",
-                        "data": card_content
-                    }
-                }
-                return P2CardActionTriggerResponse(response_data)
-
-            case _:
-                debug_utils.log_and_print(f"❌ 未知的{card_info.get('card_name')}卡片操作类型: {card_operation_type}", log_level="ERROR")
-                return False, None
 
     def create_card_ui_update_callback(self):
         """
@@ -358,3 +313,72 @@ class CardHandler:
                 return False
 
         return update_card_ui
+
+    def dispatch_card_response(self, card_response_type: str, result: ProcessResult,  **kwargs) -> Any:
+        """
+        分发卡片响应，作为一个公共模块接受外部的参数，并根据参数调用不同的卡片操作方法
+        作为一个response的属性，上游是MessageContext/ProcessResult，后者优先级更高，最好能分离清楚不再包括原生data，不然功能耦合太重。
+        """
+        match card_response_type:
+            case "design_plan_card":
+                self._handle_design_plan_card_operation(
+                    result_content=result.response_content,
+                    card_operation_type=CardOperationTypes.SEND,
+                    message_id=result.parent_id
+                )
+                return True
+            case _:
+                return False
+
+    def _handle_design_plan_card_operation(self, result_content: Dict[str, Any], card_operation_type: str, **kwargs) -> Any:
+        """
+        处理设计方案卡片操作，这里包括更新关闭也可以用。
+
+        Args:
+            result_content: 业务层返回的数据
+            card_operation_type: 操作类型 ('send' | 'update_response')
+            **kwargs: 额外参数
+
+        Returns:
+            发送操作: Tuple[bool, Optional[str]] (是否成功, 消息ID)
+            更新响应操作: P2CardActionTriggerResponse (响应对象)
+        """
+        # 获取设计方案卡片管理器
+        design_manager = self.card_registry.get_manager(CardConfigKeys.DESIGN_PLAN)
+        if not design_manager:
+            debug_utils.log_and_print("❌ 未找到设计方案卡片管理器", log_level="ERROR")
+            if card_operation_type == CardOperationTypes.SEND:
+                return False, None
+            return False
+        result_content['result'] = '| 待检查⏰'
+        # 使用通用卡片操作处理
+        return design_manager._handle_card_operation_common(
+            card_content=design_manager.build_card(result_content),
+            card_operation_type=card_operation_type,
+            update_toast_type='success',
+            **kwargs
+        )
+
+    def _handle_design_plan_action_execute(self, action_data: Dict[str, Any], feishu_data) -> P2CardActionTriggerResponse:
+        """
+        处理设计方案动作执行 - 完全委托给DesignPlanCardManager
+
+        Args:
+            action_data: 业务层传递的动作数据
+            feishu_data: 飞书数据
+
+        Returns:
+            P2CardActionTriggerResponse: 动作响应
+        """
+        design_manager = self.card_registry.get_manager(CardConfigKeys.DESIGN_PLAN)
+        if not design_manager:
+            debug_utils.log_and_print("❌ 未找到设计方案卡片管理器", log_level="ERROR")
+            return P2CardActionTriggerResponse({
+                "toast": {
+                    "type": "error",
+                    "content": "设计方案卡片管理器未找到"
+                }
+            })
+
+        # 完全委托给DesignPlanCardManager处理
+        return design_manager._handle_design_plan_action_execute(action_data, feishu_data)

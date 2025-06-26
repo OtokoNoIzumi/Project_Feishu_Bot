@@ -64,6 +64,76 @@
         "required": ["food_item_or_type"]
       }
     },
+    "设计方案": {
+      "core_goal": "为用户提供智能家居设计方案服务，收集客户基本信息和需求",
+      "description": "用户想要获取智能家居设计方案，需要收集客户姓名、联系方式、房型、地址、生态偏好和套餐选择等信息",
+      "stage2_parameters": {
+        "type": "object",
+        "properties": {
+          "customer_name": {
+            "type": "string",
+            "description": "客户姓名或称呼（如：张先生、李女士等）"
+          },
+          "phone_number": {
+            "type": "string",
+            "description": "客户联系电话"
+          },
+          "address": {
+            "type": "string",
+            "description": "基础地址信息（小区名称或大致地址）"
+          },
+          "address_detail": {
+            "type": "string",
+            "description": "详细房间信息（如：5单元2栋2304）"
+          },
+          "room_type": {
+            "type": "string",
+            "description": "房型信息（如：三室一厅、两室两厅、四室两厅、别墅等）",
+            "enum": ["两室两厅", "三室两厅", "四室两厅", "别墅"]
+          },
+          "brand_type": {
+            "type": "string",
+            "description": "偏好的智能家居生态品牌（小米、华为、苹果等）",
+            "enum": ["小米", "苹果", "华为"]
+          },
+          "set_type": {
+            "type": "string",
+            "description": "套餐类型（基础套餐、专业套餐、旗舰套餐等）",
+            "enum": ["基础套餐", "专业套餐", "旗舰套餐"]
+          },
+          "install_type": {
+            "type": "string",
+            "description": "安装方式偏好（DIY、专业设计、智能照明、人车家生态等）",
+            "enum": [
+              "DIY自行安装",
+              "专业智能设计及落地",
+              "智能照明设计及落地",
+              "人车家生态设计及落地"
+            ]
+          },
+          "service_type": {
+            "type": "string",
+            "description": "保障服务需求（基础保障、一年保、二年保、五年保等）",
+            "enum": [
+              "基础产品保障",
+              "放心保（一年）",
+              "放心保（二年）",
+              "放心保（五年）"
+            ]
+          },
+          "room_status": {
+            "type": "string",
+            "description": "装修状态（前装、后装）",
+            "enum": ["前装", "后装"]
+          },
+          "additional_requirements": {
+            "type": "string",
+            "description": "其他特殊需求或补充说明"
+          }
+        },
+        "required": ["customer_name"]
+      }
+    },
     "其他": {
       "core_goal": "表示用户输入的意图不属于任何其他明确定义的类别，或者意图非常模糊",
       "description": "无法明确分类的其他意图，如闲聊、询问等",
@@ -108,6 +178,12 @@
         "description": "点餐或餐饮查询",
         "handler": "food_service",
         "method": "order_food"
+      },
+      "sj": {
+        "intent": "设计方案",
+        "description": "智能家居设计方案咨询",
+        "handler": "design_service",
+        "method": "create_design_plan"
       }
     },
     "intent_handlers": {
@@ -122,6 +198,10 @@
       "点餐": {
         "handler": "food_service",
         "method": "order_food"
+      },
+      "设计方案": {
+        "handler": "design_service",
+        "method": "create_design_plan"
       },
       "其他": {
         "handler": "default",

@@ -54,6 +54,10 @@ class ResponseTypes:
     ADMIN_CARD_UPDATE = "admin_card_update"
     BILI_CARD_UPDATE = "bili_card_update"
     SCHEDULER_CARD_UPDATE_BILI_BUTTON = "scheduler_card_update_bili_button"
+    DESIGN_PLAN_SUBMIT = "design_plan_submit"
+    DESIGN_PLAN_CANCEL = "design_plan_cancel"
+    DESIGN_PLAN_CARD = "design_plan_card"
+    DESIGN_PLAN_ACTION = "design_plan_action"
 
     RICH_TEXT = "rich_text"
     IMAGE_LIST = "image_list"
@@ -213,6 +217,7 @@ class CardConfigKeys:
     USER_UPDATE = "user_update"
     ADS_UPDATE = "ads_update"
     BILIBILI_VIDEO_INFO = "bilibili_video_info"
+    DESIGN_PLAN = "design_plan"
 
 # ========== 卡片操作类型常量 ==========
 class CardOperationTypes:
@@ -241,3 +246,27 @@ class CardActions:
     CONFIRM_ADS_UPDATE = "confirm_ads_update"
     CANCEL_ADS_UPDATE = "cancel_ads_update"
     ADTIME_EDITOR_CHANGE = "adtime_editor_change"
+
+    # 设计方案动作
+    CONFIRM_DESIGN_PLAN = "confirm_design_plan"
+    CANCEL_DESIGN_PLAN = "cancel_design_plan"
+
+# ========== 设计方案相关常量 ==========
+class DesignPlanConstants:
+    """设计方案业务常量"""
+    # 快速拔插开关（测试用）
+    CARD_ENABLED = True
+
+    # 表单字段映射
+    FORM_FIELD_MAP = {
+        'customer_name': 'AISmart_Input_custom_name',
+        'phone_number': 'AISmart_Input_custom_contact',
+        'address': 'AISmart_Input_address',
+        'address_detail': 'AISmart_Input_address_house_detail',
+        'room_type': 'AISmart_Select_room_type',
+        'brand_type': 'AISmart_Select_brand_type',
+        'set_type': 'AISmart_Select_set_type',
+        'install_type': 'AISmart_Select_install_type',
+        'service_type': 'AISmart_Select_service_type',
+        'room_status': 'AISmart_Select_room_status'
+    }

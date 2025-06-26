@@ -6,23 +6,27 @@
 
 from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional, List
-from Module.Common.scripts.common import debug_utils
-from Module.Services.constants import ServiceNames
+from lark_oapi.event.callback.model.p2_card_action_trigger import P2CardActionTriggerResponse
 
+from Module.Common.scripts.common import debug_utils
+from Module.Services.constants import ServiceNames, CardOperationTypes, ReplyModes
 # 配置驱动的管理器映射 - 从配置文件获取
 
 
 class BaseCardManager(ABC):
     """卡片管理器基类 - 配置驱动架构"""
 
-    def __init__(self):
+    def __init__(self, app_controller=None, card_info=None, sender=None):
+        self.app_controller = app_controller
+        self.card_info = card_info or {}
+        self.sender = sender
+
+        # 直接从card_info获取配置
+        self.card_name = self.card_info.get('card_name', '未知卡片')
+        self.card_config_key = self.card_info.get('card_config_key', 'unknown')
+
         self.templates = {}
         self._initialize_templates()
-
-    @abstractmethod
-    def get_card_type_name(self) -> str:
-        """获取卡片类型名称 - 子类必须实现"""
-        pass
 
     @abstractmethod
     def get_supported_actions(self) -> List[str]:
@@ -33,6 +37,10 @@ class BaseCardManager(ABC):
     def build_card(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """构建卡片内容 - 子类必须实现"""
         pass
+
+    def get_card_type_name(self) -> str:
+        """获取卡片类型名称 - 默认返回card_name，子类可根据需要重写"""
+        return self.card_name
 
     def _initialize_templates(self):
         """统一的配置驱动模板初始化 - 基于子类的card_config_key"""
@@ -45,28 +53,72 @@ class BaseCardManager(ABC):
             debug_utils.log_and_print(f"⚠️ 未找到{self.card_info.get('card_config_key')}的模板配置", log_level="WARNING")
 
     def _build_template_content(self, template_params: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        构建飞书卡片模板内容 - 简化版，使用默认模板
-
-        Args:
-            template_params: 模板参数
-
-        Returns:
-            Dict[str, Any]: 卡片内容
-        """
-        template_config = self.templates
-        if not template_config:
-            debug_utils.log_and_print(f"❌ {self.get_card_type_name()}未找到默认模板配置", log_level="ERROR")
+        """构建模板内容的统一入口"""
+        if not self.templates.get("template_id"):
+            debug_utils.log_and_print(f"⚠️ {self.get_card_type_name()}缺少模板配置", log_level="WARNING")
             return {}
 
         return {
             "type": "template",
             "data": {
-                "template_id": template_config["template_id"],
-                "template_version": template_config["template_version"],
+                "template_id": self.templates["template_id"],
+                "template_version": self.templates.get("template_version", "1.0.0"),
                 "template_variable": template_params
             }
         }
+
+    def _handle_card_operation_common(
+        self,
+        card_content,
+        card_operation_type: str,
+        update_toast_type: str = "success",
+        **kwargs
+    ):
+        """
+        通用卡片操作处理方法 - 从CardHandler迁移
+
+        Args:
+            card_content: 卡片内容
+            card_operation_type: 操作类型 ('send' | 'update_response')
+            update_toast_type: 更新提示类型
+            **kwargs: 其他参数，用来提供发送对象，但这里需要宽容的定义吗？，需要三种参数，再看怎么处理和调优吧
+
+        Returns:
+            发送操作: Tuple[bool, Optional[str]] (是否成功, 消息ID)
+            更新响应操作: P2CardActionTriggerResponse (响应对象)
+        """
+        match card_operation_type:
+            case CardOperationTypes.SEND:
+                # 构建发送参数
+                send_params = {"card_content": card_content, "reply_mode": self.card_info.get('reply_mode', ReplyModes.REPLY)}
+                send_params.update(kwargs)
+
+                success, message_id = self.sender.send_interactive_card(**send_params)
+                if not success:
+                    debug_utils.log_and_print(f"❌ {self.card_info.get('card_name')}卡片发送失败", log_level="ERROR")
+                    return False, None
+
+                return success, message_id
+
+            case CardOperationTypes.UPDATE_RESPONSE:
+                # 构建卡片更新响应
+                toast_message = kwargs.get("toast_message", "操作完成")
+
+                response_data = {
+                    "toast": {
+                        "type": update_toast_type,
+                        "content": toast_message
+                    },
+                    "card": {
+                        "type": "raw",
+                        "data": card_content
+                    }
+                }
+                return P2CardActionTriggerResponse(response_data)
+
+            case _:
+                debug_utils.log_and_print(f"❌ 未知的{self.card_info.get('card_name')}卡片操作类型: {card_operation_type}", log_level="ERROR")
+                return False, None
 
 
 class FeishuCardRegistry:

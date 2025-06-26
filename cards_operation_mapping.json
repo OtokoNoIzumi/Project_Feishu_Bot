@@ -22,6 +22,14 @@
       "processor": "BilibiliProcessor",
       "timeout_seconds": 30,
       "description": "B站视频推荐菜单"
+    },
+    "design_plan_confirm": {
+      "response_type": "design_plan_card_send",
+      "card_config_key": "design_plan",
+      "processor": "DesignPlanProcessor",
+      "timeout_seconds": 60,
+      "description": "智能家居设计方案确认",
+      "default_action": "confirm"
     }
   },
 
@@ -49,6 +57,14 @@
       "module_path": "Module.Adapters.feishu.cards.bilibili_cards",
       "template_id": "AAqBPdq4sxIy5",
       "template_version": "1.0.9"
+    },
+    "design_plan": {
+      "reply_mode": "reply",
+      "card_name": "设计方案确认",
+      "class_name": "DesignPlanCardManager",
+      "module_path": "Module.Adapters.feishu.cards.design_plan_cards",
+      "template_id": "AAqdn6SINMKfr",
+      "template_version": "1.0.5"
     }
   },
   "config_version": "3.0.0",

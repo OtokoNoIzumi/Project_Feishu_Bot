@@ -12,6 +12,7 @@ from .card_registry import BaseCardManager, FeishuCardRegistry
 from .bilibili_cards import BilibiliCardManager
 from .user_update_cards import UserUpdateCardManager
 from .ads_update_cards import AdsUpdateCardManager
+from .design_plan_cards import DesignPlanCardManager
 
 # 导出主要组件
 __all__ = [
@@ -19,7 +20,8 @@ __all__ = [
     'FeishuCardRegistry',
     'BilibiliCardManager',
     'UserUpdateCardManager',
-    'AdsUpdateCardManager'
+    'AdsUpdateCardManager',
+    'DesignPlanCardManager'
 ]
 
 # 创建全局卡片注册中心
@@ -30,12 +32,13 @@ _CARD_REGISTRY_INITIALIZED = False
 
 
 # 配置驱动的卡片管理器注册系统
-def initialize_card_managers(app_controller=None):
+def initialize_card_managers(app_controller=None, sender=None):
     """
     初始化并注册所有卡片管理器 - 配置驱动 (单例)
 
     Args:
-        config_service: 配置服务实例，用于获取卡片配置
+        app_controller: 应用控制器实例，用于获取卡片配置
+        sender: 消息发送器实例
 
     Returns:
         FeishuCardRegistry: 卡片注册表实例
@@ -73,10 +76,11 @@ def initialize_card_managers(app_controller=None):
             module = __import__(module_path, fromlist=[class_name])
             manager_class = getattr(module, class_name)
 
-            # 创建管理器实例（传入配置服务）
+            # 创建管理器实例（传入app_controller和sender）
             manager_instance = manager_class(
                 app_controller=app_controller,
-                card_info=card_definition
+                card_info=card_definition,
+                sender=sender
             )
 
             # 注册管理器

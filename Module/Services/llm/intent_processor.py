@@ -7,6 +7,7 @@
 
 import json
 import os
+import time
 from typing import Dict, Any, Optional, Tuple
 from google import genai
 from Module.Common.scripts.common import debug_utils
@@ -110,42 +111,52 @@ class IntentProcessor:
         }
 
     def recognize_intent_stage1(self, user_input: str) -> Dict[str, Any]:
-        """执行第一阶段意图识别"""
-        try:
-            prompt = self._build_stage1_prompt(user_input)
+        """执行第一阶段意图识别（带重试机制，最多3次，间隔1、3秒）"""
+        prompt = self._build_stage1_prompt(user_input)
+        print('test-', prompt, '\n')
 
-            debug_utils.log_and_print(f"🔍 开始第一阶段意图识别: '{user_input[:50]}'", log_level="DEBUG")
-            # debug_utils.log_and_print(f"\n🔍 第一阶段意图识别完整提示词: \n{prompt}\n", log_level="DEBUG")
-            # debug_utils.log_and_print(f"\n🔍 第一阶段意图识别完整结构: \n{self._get_stage1_response_schema()}\n", log_level="DEBUG")
+        debug_utils.log_and_print(f"🔍 开始第一阶段意图识别: '{user_input[:50]}'", log_level="DEBUG")
+        # debug_utils.log_and_print(f"\n🔍 第一阶段意图识别完整提示词: \n{prompt}\n", log_level="DEBUG")
+        # debug_utils.log_and_print(f"\n🔍 第一阶段意图识别完整结构: \n{self._get_stage1_response_schema()}\n", log_level="DEBUG")
 
-            # 调用Gemini API
-            response = self.llm_client.models.generate_content(
-                model=self.model_name,
-                contents=[{
-                    'role': 'user',
-                    'parts': [{'text': prompt}]
-                }],
-                config={
-                    'response_mime_type': 'application/json',
-                    'response_schema': self._get_stage1_response_schema(),
-                    'temperature': self.settings.get('stage1_model_config', {}).get('temperature', 0.1)
-                }
-            )
+        max_retries = 3
+        retry_intervals = [1, 3]  # 第一次失败后等1秒，第二次失败后等3秒
+        last_exception = None
 
-            # 解析响应
-            result = json.loads(response.text)
-            debug_utils.log_and_print(f"✅ 第一阶段完成，评分: {result.get('intent_scores', {})}", log_level="DEBUG")
+        for attempt in range(max_retries):
+            try:
+                # 调用Gemini API
+                response = self.llm_client.models.generate_content(
+                    model=self.model_name,
+                    contents=[{
+                        'role': 'user',
+                        'parts': [{'text': prompt}]
+                    }],
+                    config={
+                        'response_mime_type': 'application/json',
+                        'response_schema': self._get_stage1_response_schema(),
+                        'temperature': self.settings.get('stage1_model_config', {}).get('temperature', 0.1)
+                    }
+                )
 
-            return result
+                # 解析响应
+                result = json.loads(response.text)
+                debug_utils.log_and_print(f"✅ 第一阶段完成，评分: {result.get('intent_scores', {})}", log_level="DEBUG")
+                return result
 
-        except Exception as e:
-            debug_utils.log_and_print(f"❌ 第一阶段意图识别失败: {e}", log_level="ERROR")
-            return {
-                "error": str(e),
-                "intent_scores": {name: 0 for name in self.intents.keys()},
-                "primary_extracted_content": user_input,
-                "reasoning_for_scores": f"处理失败: {e}"
-            }
+            except Exception as e:
+                last_exception = e
+                debug_utils.log_and_print(f"❌ 第一阶段意图识别失败（第{attempt+1}次）: {e}", log_level="ERROR")
+                if attempt < max_retries - 1:
+                    time.sleep(retry_intervals[attempt] if attempt < len(retry_intervals) else retry_intervals[-1])
+
+        # 所有重试均失败
+        return {
+            "error": str(last_exception),
+            "intent_scores": {name: 0 for name in self.intents.keys()},
+            "primary_extracted_content": user_input,
+            "reasoning_for_scores": f"处理失败: {last_exception}"
+        }
 
     def determine_primary_intent(self, stage1_result: Dict[str, Any],
                                confidence_threshold: int = None) -> Tuple[Optional[str], int]:
@@ -199,14 +210,9 @@ class IntentProcessor:
             "",
             "# 任务：",
             f"根据已识别的用户意图 {determined_intent}，从以下用户输入中提取相关的参数信息。",
-            "请严格按照下面提供的JSON Schema格式输出结果。如果某些参数在用户输入中未提及，则省略该参数或将其值设为null（除非schema中明确要求）。",
+            "如果某些schema中定义的参数在用户输入中未提及，则省略该参数或将其值设为null，考虑一定的用户描述不精确的情况，允许一定程度的模糊匹配。",
             "",
             f"# 用户输入：\n{user_input}",
-            "",
-            f"# 针对意图{determined_intent}的参数JSON Schema定义：",
-            schema_desc,
-            "",
-            "# 请分析用户输入并严格按照上述JSON Schema返回参数信息："
         ]
 
         return "\n".join(prompt_parts)
@@ -225,39 +231,49 @@ class IntentProcessor:
         if determined_intent not in self.intents:
             return {"error": f"未知意图类型: {determined_intent}"}
 
-        try:
-            prompt = self._build_stage2_prompt(user_input, determined_intent)
-            if not prompt:
-                return {"error": f"无法为意图 {determined_intent} 构建参数提取提示词"}
+        prompt = self._build_stage2_prompt(user_input, determined_intent)
+        print('test-prompt_stage2', prompt, '\n')
+        if not prompt:
+            return {"error": f"无法为意图 {determined_intent} 构建参数提取提示词"}
 
-            debug_utils.log_and_print(f"🔧 开始第二阶段参数提取: {determined_intent}", log_level="DEBUG")
+        debug_utils.log_and_print(f"🔧 开始第二阶段参数提取: {determined_intent}", log_level="DEBUG")
 
-            # 调用Gemini API
-            response = self.llm_client.models.generate_content(
-                model=self.model_name,
-                contents=[{
-                    'role': 'user',
-                    'parts': [{'text': prompt}]
-                }],
-                config={
-                    'response_mime_type': 'application/json',
-                    'response_schema': self.intents[determined_intent]['stage2_parameters'],
-                    'temperature': self.settings.get('stage2_model_config', {}).get('temperature', 0.2)
-                }
-            )
+        # 增加重试机制，最多3次，间隔1秒和3秒
+        max_retries = 3
+        retry_intervals = [1, 3]  # 第一次失败后等1秒，第二次失败后等3秒
+        last_exception = None
 
-            # 解析响应
-            parameters = json.loads(response.text)
-            debug_utils.log_and_print(f"✅ 第二阶段完成，参数: {list(parameters.keys())}", log_level="DEBUG")
+        for attempt in range(max_retries):
+            try:
+                response = self.llm_client.models.generate_content(
+                    model=self.model_name,
+                    contents=[{
+                        'role': 'user',
+                        'parts': [{'text': prompt}]
+                    }],
+                    config={
+                        'response_mime_type': 'application/json',
+                        'response_schema': self.intents[determined_intent]['stage2_parameters'],
+                        'temperature': self.settings.get('stage2_model_config', {}).get('temperature', 0.2)
+                    }
+                )
 
-            return {"parameters": parameters}
+                # 解析响应
+                parameters = json.loads(response.text)
+                debug_utils.log_and_print(f"✅ 第二阶段完成，参数: {list(parameters.keys())}", log_level="DEBUG")
 
-        except Exception as e:
-            debug_utils.log_and_print(f"❌ 第二阶段参数提取失败: {e}", log_level="ERROR")
-            return {
-                "error": str(e),
-                "parameters": {"original_input": user_input}
-            }
+                return {"parameters": parameters}
+            except Exception as e:
+                last_exception = e
+                debug_utils.log_and_print(f"❌ 第二阶段参数提取失败（第{attempt+1}次尝试）: {e}", log_level="ERROR")
+                if attempt < max_retries - 1:
+                    time.sleep(retry_intervals[attempt] if attempt < len(retry_intervals) else retry_intervals[-1])
+
+        # 所有尝试都失败
+        return {
+            "error": str(last_exception),
+            "parameters": {"original_input": user_input}
+        }
 
     # ==================== 完整处理流程 ====================
 

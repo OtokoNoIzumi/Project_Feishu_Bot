@@ -44,26 +44,34 @@ class FeishuAdapter:
             message_processor: 消息处理器实例
             app_controller: 应用控制器，用于获取配置
         """
-        self.message_processor = message_processor
+        # 来自已经初始化好的外部组件，按照定义的顺序
         self.app_controller = app_controller
+        self.message_processor = message_processor
 
-        # 导入并初始化新的卡片管理架构 - 配置驱动
-        self.card_registry = initialize_card_managers(app_controller=app_controller)
-
+        # ----第一层依赖关系，需要app_controller----
         # 初始化飞书SDK配置
         self._init_feishu_config()
 
         # 创建飞书客户端
         self.client = lark.Client.builder().app_id(self.app_id).app_secret(self.app_secret).build()
 
+        # ----第二层依赖关系，需要sender----
         # 创建消息发送器
         self.sender = MessageSender(self.client, app_controller)
+
+        # 导入并初始化新的卡片管理架构 - 配置驱动
+        self.card_registry = initialize_card_managers(app_controller=app_controller, sender=self.sender)
 
         # 准备调试函数
         debug_functions = create_debug_functions()
 
-        self.message_handler = MessageHandler(message_processor, self.sender, self.sender.get_user_name, debug_functions)
-        self.card_handler = CardHandler(message_processor, self.sender, self.sender.get_user_name, debug_functions, self.card_registry)
+        # ----第三层依赖关系，需要sender、message_processor----
+        self.message_handler = MessageHandler(
+            message_processor, self.sender, self.sender.get_user_name, debug_functions
+        )
+        self.card_handler = CardHandler(
+            message_processor, self.sender, self.sender.get_user_name, debug_functions, self.card_registry
+        )
         self.menu_handler = MenuHandler(message_processor, self.sender, self.sender.get_user_name)
 
         # 注入handler依赖，实现解耦

@@ -111,19 +111,19 @@ class MessageSender:
         # 决定消息模式
         reply_mode = self._determine_reply_mode(original_data, result, force_reply_mode)
 
-        # 提取基础信息
-        chat_id = original_data.event.message.chat_id
-        user_id = original_data.event.sender.sender_id.open_id
 
         try:
             match reply_mode:
                 case ReplyModes.NEW:
+                    # 提取基础信息
+                    user_id = original_data.event.sender.sender_id.open_id
                     # 模式1: 新消息
                     return self._send_create_message(user_id, content_json, result.response_type, ReceiverIdTypes.OPEN_ID)[0]
 
                 case ReplyModes.REPLY | ReplyModes.THREAD:
                     # 模式2&3: 回复消息 (含新话题)
-                    message_id = original_data.event.message.message_id
+                    # message_id = original_data.event.message.message_id
+                    message_id = result.parent_id
                     return self._send_reply_message(message_id, content_json, result.response_type, reply_mode == ReplyModes.THREAD)[0]
 
                 case _:
@@ -542,11 +542,13 @@ class MessageSender:
             upload_response.data and
             upload_response.data.image_key):
 
+            if not hasattr(original_data.event, 'message'):
+                parent_id = original_data.event.context.open_message_id
             # 发送图片消息
             image_result = ProcessResult.success_result(
                 "image",
                 {"image_key": upload_response.data.image_key},
-                parent_id=original_data.event.message.message_id
+                parent_id=parent_id
             )
             return self.send_feishu_reply(original_data, image_result)
 

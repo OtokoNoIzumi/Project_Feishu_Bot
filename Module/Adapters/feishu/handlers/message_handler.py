@@ -299,6 +299,17 @@ class MessageHandler:
                     self.sender.send_feishu_reply(data, error_result, force_reply_mode="reply")
                 return True
 
+            case ResponseTypes.DESIGN_PLAN_CARD:
+                # 设计方案卡片发送
+                if self.card_handler:
+                    self.card_handler.dispatch_card_response(
+                        "design_plan_card",
+                        result,
+                    )
+                    return True
+
+                return False
+
             case _:
                 return False
 
