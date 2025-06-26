@@ -14,6 +14,9 @@ import base64
 from typing import Optional, List, Dict, Any, Union
 from pathlib import Path
 
+import qrcode
+from PIL import Image, ImageDraw, ImageFont
+
 from Module.Common.scripts.common import debug_utils
 from ..service_decorators import service_operation_safe, external_api_safe, file_processing_safe
 
@@ -27,6 +30,7 @@ class ImageService:
     2. 图像风格转换 (图像转图像)
     3. gradio服务调用管理
     4. 图像处理结果管理
+    5. 二维码生成
     """
 
     def __init__(self, app_controller=None):
@@ -42,6 +46,9 @@ class ImageService:
 
         # 健康状态检查
         self.is_healthy = self._check_service_health()
+
+        # 初始化二维码生成器
+        self.qr_generator = QRCodeGenerator()
 
     @service_operation_safe("图像服务配置加载失败")
     def _load_config(self):
@@ -275,3 +282,125 @@ class ImageService:
             self._reinit_gradio_client()
 
         return self.is_healthy and self.gradio_client is not None
+
+    @service_operation_safe("生成二维码失败")
+    def generate_qrcode(self, data_to_encode: str) -> Optional[Image.Image]:
+        """
+        生成基础二维码图片
+
+        Args:
+            data_to_encode: 要编码到二维码中的数据
+
+        Returns:
+            Optional[Image.Image]: 生成的二维码图片，失败时返回None
+        """
+        return self.qr_generator.generate_qrcode(data_to_encode)
+
+    @service_operation_safe("生成设计方案二维码失败")
+    def generate_design_plan_qrcode(self, data_to_encode: str, customer_name: str) -> Optional[Image.Image]:
+        """
+        生成带有客户姓名的设计方案二维码
+
+        Args:
+            data_to_encode: 要编码到二维码中的数据 (JSON格式)
+            customer_name: 客户姓名，用于显示在二维码下方
+
+        Returns:
+            Optional[Image.Image]: 生成的二维码图片，失败时返回None
+        """
+        return self.qr_generator.generate_design_plan_qrcode(data_to_encode, customer_name)
+
+
+class QRCodeGenerator:
+    """
+    一个独立的、功能更强大的二维码生成器，基于用户提供的代码示例
+    """
+    def __init__(self):
+        self.font_path = self._get_font_path()
+
+    def _get_font_path(self):
+        """获取系统字体路径，提供降级方案"""
+        try:
+            # 优先使用Windows下的微软雅黑
+            path = os.path.join(os.environ.get('SystemRoot', 'C:/Windows'), 'Fonts', 'msyh.ttc')
+            if os.path.exists(path):
+                return path
+            # 备选字体
+            for font_name in ["simhei.ttf", "simsun.ttc"]:
+                fallback_path = os.path.join(os.environ.get('SystemRoot', 'C:/Windows'), 'Fonts', font_name)
+                if os.path.exists(fallback_path):
+                    return fallback_path
+        except Exception:
+            pass
+        return None
+
+    def _get_optimal_font_size(self, text: str, max_width: int, start_size: int = 28, min_size: int = 20) -> int:
+        """根据文字长度动态计算最佳字号"""
+        current_size = start_size
+        while current_size >= min_size:
+            try:
+                font = ImageFont.truetype(self.font_path, current_size) if self.font_path else ImageFont.load_default()
+                # 使用 textlength 计算宽度，兼容性更好
+                text_width = ImageDraw.Draw(Image.new('RGB', (1, 1))).textlength(text, font=font)
+                if text_width <= max_width:
+                    return current_size
+            except Exception:
+                # 字体加载失败等问题
+                pass
+            current_size -= 2
+        return min_size
+
+    def _add_text_to_image(self, img: Image, text: str, qr_height: int) -> None:
+        """在图片上添加文字说明"""
+        draw = ImageDraw.Draw(img)
+
+        # 计算最佳字号并添加文字
+        optimal_size = self._get_optimal_font_size(text, max_width=img.width - 20)
+        font = ImageFont.truetype(self.font_path, optimal_size) if self.font_path else ImageFont.load_default()
+
+        text_width = draw.textlength(text, font=font)
+        # 文本位置微调，使其更美观
+        text_position = ((img.width - text_width) / 2, qr_height + 15)
+        draw.text(text_position, text, font=font, fill="black")
+
+    @service_operation_safe("生成二维码图片失败")
+    def generate_qrcode(self, data_to_encode: str) -> Optional[Image.Image]:
+        """
+        生成二维码图片
+        """
+        qr = qrcode.QRCode(version=1, box_size=10, border=4, error_correction=qrcode.constants.ERROR_CORRECT_L)
+        qr.add_data(data_to_encode)
+        qr.make(fit=True)
+        qr_img = qr.make_image(fill_color="black", back_color="white").convert('RGB')
+
+        return qr_img
+
+    @service_operation_safe("生成二维码图片失败")
+    def generate_design_plan_qrcode(self, data_to_encode: str, customer_name: str) -> Optional[Image.Image]:
+        """
+        生成带有文字说明的二维码图片
+
+        Args:
+            data_to_encode: 要编码到二维码中的字符串 (JSON格式)
+            customer_name: 用于显示在二维码下方的客户姓名
+
+        Returns:
+            PIL.Image: 生成的图片对象, 或在失败时返回None
+        """
+        # 1. 生成基础二维码
+        qr = qrcode.QRCode(version=1, box_size=10, border=4, error_correction=qrcode.constants.ERROR_CORRECT_L)
+        qr.add_data(data_to_encode)
+        qr.make(fit=True)
+        qr_img = qr.make_image(fill_color="black", back_color="white").convert('RGB')
+        qr_width, qr_height = qr_img.size
+
+        # 2. 创建用于粘贴二维码和文字的最终画布
+        text_area_height = 60
+        final_img = Image.new('RGB', (qr_width, qr_height + text_area_height), color='white')
+        final_img.paste(qr_img, (0, 0))
+
+        # 3. 在图片下方添加说明文字
+        text_to_add = f"尊敬的{customer_name}，扫码打开您专属的方案"
+        self._add_text_to_image(final_img, text_to_add, qr_height)
+
+        return final_img

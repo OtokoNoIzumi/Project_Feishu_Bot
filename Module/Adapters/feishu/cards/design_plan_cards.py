@@ -9,99 +9,13 @@ from lark_oapi.event.callback.model.p2_card_action_trigger import P2CardActionTr
 from Module.Services.constants import CardActions, ResponseTypes, CardOperationTypes
 from .card_registry import BaseCardManager
 from ..decorators import card_build_safe
-import qrcode
 import json
 from io import BytesIO
-from PIL import Image, ImageDraw, ImageFont
-import os
 from Module.Common.scripts.common import debug_utils
-
-class QRCodeGenerator:
-    """
-    一个独立的、功能更强大的二维码生成器，基于用户提供的代码示例
-    """
-    def __init__(self):
-        self.font_path = self._get_font_path()
-
-    def _get_font_path(self):
-        """获取系统字体路径，提供降级方案"""
-        try:
-            # 优先使用Windows下的微软雅黑
-            path = os.path.join(os.environ.get('SystemRoot', 'C:/Windows'), 'Fonts', 'msyh.ttc')
-            if os.path.exists(path):
-                return path
-            # 备选字体
-            for font_name in ["simhei.ttf", "simsun.ttc"]:
-                fallback_path = os.path.join(os.environ.get('SystemRoot', 'C:/Windows'), 'Fonts', font_name)
-                if os.path.exists(fallback_path):
-                    return fallback_path
-        except Exception:
-            pass
-        return None
-
-    def _get_optimal_font_size(self, text: str, max_width: int, start_size: int = 28, min_size: int = 20) -> int:
-        """根据文字长度动态计算最佳字号"""
-        current_size = start_size
-        while current_size >= min_size:
-            try:
-                font = ImageFont.truetype(self.font_path, current_size) if self.font_path else ImageFont.load_default()
-                # 使用 textlength 计算宽度，兼容性更好
-                text_width = ImageDraw.Draw(Image.new('RGB', (1, 1))).textlength(text, font=font)
-                if text_width <= max_width:
-                    return current_size
-            except Exception:
-                # 字体加载失败等问题
-                pass
-            current_size -= 2
-        return min_size
-
-    def _add_text_to_image(self, img: Image, text: str, qr_height: int) -> None:
-        """在图片上添加文字说明"""
-        draw = ImageDraw.Draw(img)
-
-        # 计算最佳字号并添加文字
-        optimal_size = self._get_optimal_font_size(text, max_width=img.width - 20)
-        font = ImageFont.truetype(self.font_path, optimal_size) if self.font_path else ImageFont.load_default()
-
-        text_width = draw.textlength(text, font=font)
-        # 文本位置微调，使其更美观
-        text_position = ((img.width - text_width) / 2, qr_height + 15)
-        draw.text(text_position, text, font=font, fill="black")
-    @card_build_safe("生成二维码图片失败")
-    def generate(self, data_to_encode: str, customer_name: str) -> Optional[Image.Image]:
-        """
-        生成带有文字说明的二维码图片
-
-        Args:
-            data_to_encode: 要编码到二维码中的字符串 (JSON格式)
-            customer_name: 用于显示在二维码下方的客户姓名
-
-        Returns:
-            PIL.Image: 生成的图片对象, 或在失败时返回None
-        """
-        # 1. 生成基础二维码
-        qr = qrcode.QRCode(version=1, box_size=10, border=4, error_correction=qrcode.constants.ERROR_CORRECT_L)
-        qr.add_data(data_to_encode)
-        qr.make(fit=True)
-        qr_img = qr.make_image(fill_color="black", back_color="white").convert('RGB')
-        qr_width, qr_height = qr_img.size
-
-        # 2. 创建用于粘贴二维码和文字的最终画布
-        text_area_height = 60
-        final_img = Image.new('RGB', (qr_width, qr_height + text_area_height), color='white')
-        final_img.paste(qr_img, (0, 0))
-
-        # 3. 在图片下方添加说明文字
-        text_to_add = f"尊敬的{customer_name}，扫码打开您专属的方案"
-        self._add_text_to_image(final_img, text_to_add, qr_height)
-
-        return final_img
 
 
 class DesignPlanCardManager(BaseCardManager):
     """设计方案卡片管理器"""
-
-
 
     def get_interaction_components(self, operation_id: str, raw_card_data: Dict[str, Any]) -> Dict[str, Any]:
         """获取交互组件 - 生成确认和取消动作数据"""
@@ -237,7 +151,7 @@ class DesignPlanCardManager(BaseCardManager):
     def handle_design_plan_submit(self, raw_card_data: Dict[str, Any], context_info: Dict[str, Any]) -> Dict[str, Any]:
         """
         处理设计方案提交确认 - 完整的业务逻辑处理
-        使用全新的QRCodeGenerator生成二维码，并将结果以项目标准格式返回
+        通过ImageService生成带有客户信息的专属二维码，符合分层架构规范
 
         Args:
             raw_card_data: 原始卡片数据
@@ -251,9 +165,12 @@ class DesignPlanCardManager(BaseCardManager):
             plan_data = self._build_plan_data_for_qrcode(raw_card_data)
             final_str_to_encode = json.dumps(plan_data, ensure_ascii=False, indent=2)
 
-            # 2. 使用新的生成器创建二维码图片
-            qr_generator = QRCodeGenerator()
-            final_img = qr_generator.generate(final_str_to_encode, customer_name)
+            # 2. 通过ImageService生成二维码图片
+            image_service = self.app_controller.get_service('image')
+            if not image_service:
+                raise ValueError("ImageService不可用")
+
+            final_img = image_service.generate_design_plan_qrcode(final_str_to_encode, customer_name)
 
             if not final_img:
                 raise ValueError("二维码图片生成失败，返回对象为None")
