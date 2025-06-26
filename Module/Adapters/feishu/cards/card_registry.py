@@ -16,22 +16,17 @@ from Module.Services.constants import ServiceNames, CardOperationTypes, ReplyMod
 class BaseCardManager(ABC):
     """卡片管理器基类 - 配置驱动架构"""
 
-    def __init__(self, app_controller=None, card_info=None, sender=None):
+    def __init__(self, app_controller=None, card_info=None, card_config_key=None, sender=None):
         self.app_controller = app_controller
         self.card_info = card_info or {}
         self.sender = sender
 
         # 直接从card_info获取配置
         self.card_name = self.card_info.get('card_name', '未知卡片')
-        self.card_config_key = self.card_info.get('card_config_key', 'unknown')
+        self.card_config_key = card_config_key or self.card_info.get('card_config_key', 'unknown')
 
         self.templates = {}
         self._initialize_templates()
-
-    @abstractmethod
-    def get_supported_actions(self) -> List[str]:
-        """获取该卡片支持的所有动作 - 子类必须实现"""
-        pass
 
     @abstractmethod
     def build_card(self, data: Dict[str, Any]) -> Dict[str, Any]:

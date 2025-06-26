@@ -183,17 +183,6 @@ class AdminProcessor(BaseProcessor):
             }
         )
 
-    def handle_cancel_admin_operation(self, context: MessageContext) -> ProcessResult:
-        """处理取消管理员操作"""
-        return ProcessResult.success_result("toast", {
-            "type": "info",
-            "message": "操作已取消",
-            "card_update": {
-                "action": "disable_buttons",
-                "message": "❌ 操作已取消"
-            }
-        }, parent_id=context.message_id)
-
     @require_app_controller("应用控制器不可用")
     @require_service(ServiceNames.PENDING_CACHE, "缓存业务服务不可用")
     @safe_execute("创建待处理操作失败")
@@ -444,7 +433,7 @@ class AdminProcessor(BaseProcessor):
         """
         pending_cache_service = self.app_controller.get_service(ServiceNames.PENDING_CACHE)
 
-        action = action_value.get('action', '')
+        card_action = action_value.get('card_action', '')
         operation_id = action_value.get('operation_id', '')
 
         if not operation_id:
@@ -455,7 +444,7 @@ class AdminProcessor(BaseProcessor):
             return ProcessResult.error_result("操作不存在")
         card_update_response_type = action_value.get('process_result_type', '')
 
-        match action:
+        match card_action:
             case CardActions.CONFIRM_USER_UPDATE | CardActions.CONFIRM_ADS_UPDATE:
                 # 确认操作（统一处理，出于敏捷考虑是不是应该先响应前端？）
                 success = pending_cache_service.confirm_operation(operation_id)
@@ -534,7 +523,7 @@ class AdminProcessor(BaseProcessor):
                     "type": "success"
                 })
             case _:
-                return ProcessResult.error_result(f"未知的操作类型: {action}")
+                return ProcessResult.error_result(f"未知的操作类型: {card_action}")
 
     @require_service(ServiceNames.IMAGE, "图像服务不可用")
     @safe_execute("配置更新失败")

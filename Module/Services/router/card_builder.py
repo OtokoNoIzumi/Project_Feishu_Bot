@@ -103,7 +103,7 @@ class CardBuilder:
                             },
                             "options": tag_options,
                             "value": {
-                                "action": "select_tag",
+                                "card_action": "select_tag",
                                 "intent": "记录思考"
                             }
                         }
@@ -181,7 +181,7 @@ class CardBuilder:
                             },
                             "type": "primary",
                             "value": {
-                                "action": "confirm_thought",
+                                "card_action": "confirm_thought",
                                 "content": content,
                                 "intent": "记录思考",
                                 "route_result": route_result
@@ -195,7 +195,7 @@ class CardBuilder:
                             },
                             "type": "default",
                             "value": {
-                                "action": "edit_content",
+                                "card_action": "edit_content",
                                 "content": content,
                                 "intent": "记录思考"
                             }
@@ -208,7 +208,7 @@ class CardBuilder:
                             },
                             "type": "danger",
                             "value": {
-                                "action": "cancel",
+                                "card_action": "cancel",
                                 "intent": "记录思考"
                             }
                         }
@@ -311,7 +311,7 @@ class CardBuilder:
                                 }
                             ],
                             "value": {
-                                "action": "select_status",
+                                "card_action": "select_status",
                                 "intent": "记录日程",
                                 "default_status": status
                             }
@@ -333,7 +333,7 @@ class CardBuilder:
                             },
                             "type": "primary",
                             "value": {
-                                "action": "confirm_schedule",
+                                "card_action": "confirm_schedule",
                                 "content": event_content,
                                 "intent": "记录日程",
                                 "route_result": route_result
@@ -347,7 +347,7 @@ class CardBuilder:
                             },
                             "type": "default",
                             "value": {
-                                "action": "edit_content",
+                                "card_action": "edit_content",
                                 "content": event_content,
                                 "intent": "记录日程"
                             }
@@ -360,7 +360,7 @@ class CardBuilder:
                             },
                             "type": "danger",
                             "value": {
-                                "action": "cancel",
+                                "card_action": "cancel",
                                 "intent": "记录日程"
                             }
                         }
@@ -428,7 +428,7 @@ class CardBuilder:
                             },
                             "type": "primary",
                             "value": {
-                                "action": "confirm_food_order",
+                                "card_action": "confirm_food_order",
                                 "content": food_item,
                                 "intent": "点餐",
                                 "route_result": route_result
@@ -442,7 +442,7 @@ class CardBuilder:
                             },
                             "type": "default",
                             "value": {
-                                "action": "edit_content",
+                                "card_action": "edit_content",
                                 "content": food_item,
                                 "intent": "点餐"
                             }
@@ -455,7 +455,7 @@ class CardBuilder:
                             },
                             "type": "danger",
                             "value": {
-                                "action": "cancel",
+                                "card_action": "cancel",
                                 "intent": "点餐"
                             }
                         }

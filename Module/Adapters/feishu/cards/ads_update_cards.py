@@ -13,31 +13,32 @@ from ..decorators import card_build_safe
 class AdsUpdateCardManager(BaseCardManager):
     """广告更新卡片管理器"""
 
-    def get_supported_actions(self) -> List[str]:
-        """获取该卡片支持的所有动作"""
-        return [
-            CardActions.CONFIRM_ADS_UPDATE,
-            CardActions.CANCEL_ADS_UPDATE,
-            CardActions.ADTIME_EDITOR_CHANGE
-        ]
-
     def get_interaction_components(self, operation_id: str, bvid: str, adtime_stamps: str) -> Dict[str, Any]:
         """获取广告更新确认卡片的交互组件"""
+
+        # ✅ card_config_key是路由必需信息，必须注入
+        base_action_value = {
+            "card_config_key": self.card_config_key  # ✅ MessageProcessor路由需要
+        }
+
         return {
             "confirm_action": {
-                "action": CardActions.CONFIRM_ADS_UPDATE,
+                **base_action_value,
+                "card_action": "confirm_ads_update",
                 "process_result_type": ResponseTypes.ADMIN_CARD_UPDATE,
                 "operation_id": operation_id,
                 "bvid": bvid,
                 "adtime_stamps": adtime_stamps
             },
             "cancel_action": {
-                "action": CardActions.CANCEL_ADS_UPDATE,
+                **base_action_value,
+                "card_action": "cancel_ads_update",
                 "process_result_type": ResponseTypes.ADMIN_CARD_UPDATE,
                 "operation_id": operation_id
             },
             "adtime_editor": {
-                "action": CardActions.ADTIME_EDITOR_CHANGE,
+                **base_action_value,
+                "card_action": "adtime_editor_change",
                 "operation_id": operation_id,
                 "target_field": "adtime_stamps",
                 "current_value": adtime_stamps or ""

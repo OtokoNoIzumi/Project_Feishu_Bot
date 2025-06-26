@@ -13,31 +13,32 @@ from ..decorators import card_build_safe
 class UserUpdateCardManager(BaseCardManager):
     """用户更新卡片管理器"""
 
-    def get_supported_actions(self) -> List[str]:
-        """获取该卡片支持的所有动作"""
-        return [
-            CardActions.CONFIRM_USER_UPDATE,
-            CardActions.CANCEL_USER_UPDATE,
-            CardActions.UPDATE_USER_TYPE
-        ]
-
     def get_interaction_components(self, operation_id: str, user_id: str, user_type: int) -> Dict[str, Any]:
         """获取用户更新确认卡片的交互组件"""
+
+        # ✅ card_config_key是路由必需信息，必须注入
+        base_action_value = {
+            "card_config_key": self.card_config_key  # ✅ MessageProcessor路由需要
+        }
+
         return {
             "confirm_action": {
-                "action": CardActions.CONFIRM_USER_UPDATE,
+                **base_action_value,
+                "card_action": "confirm_user_update",
                 "process_result_type": ResponseTypes.ADMIN_CARD_UPDATE,
                 "operation_id": operation_id,
                 "user_id": user_id,
                 "user_type": user_type
             },
             "cancel_action": {
-                "action": CardActions.CANCEL_USER_UPDATE,
+                **base_action_value,
+                "card_action": "cancel_user_update",
                 "process_result_type": ResponseTypes.ADMIN_CARD_UPDATE,
                 "operation_id": operation_id
             },
             "user_type_selector": {
-                "action": CardActions.UPDATE_USER_TYPE,
+                **base_action_value,
+                "card_action": "update_user_type",
                 "operation_id": operation_id,
                 "target_field": "user_type",
                 "value_mapping": {

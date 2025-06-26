@@ -62,8 +62,14 @@ class FeishuAdapter:
         # 导入并初始化新的卡片管理架构 - 配置驱动
         self.card_registry = initialize_card_managers(app_controller=app_controller, sender=self.sender)
 
-        # 准备调试函数
-        debug_functions = create_debug_functions()
+        # 从配置服务获取verbose设置并准备调试函数
+        verbose_config = False  # 默认值
+        if self.app_controller:
+            config_service = self.app_controller.get_service(ServiceNames.CONFIG)
+            if config_service:
+                verbose_config = config_service.get('debug_verbose', False)
+
+        debug_functions = create_debug_functions(verbose_config)
 
         # ----第三层依赖关系，需要sender、message_processor----
         self.message_handler = MessageHandler(

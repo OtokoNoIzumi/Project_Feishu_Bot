@@ -19,7 +19,7 @@ from ..decorators import (
 )
 from ..utils import extract_timestamp, noop_debug
 from Module.Services.constants import (
-    ServiceNames, UITypes, ResponseTypes, Messages, CardOperationTypes, ProcessResultConstKeys, ProcessResultNextAction
+    ServiceNames, UITypes, ResponseTypes, Messages, CardOperationTypes, ProcessResultConstKeys, ProcessResultNextAction, AdapterNames
 )
 
 
@@ -341,6 +341,7 @@ class MessageHandler:
             content=content,
             timestamp=message_timestamp,
             event_id=event_id,
+            adapter_name=AdapterNames.FEISHU,
             message_id=message_id,
             parent_message_id=parent_message_id,
             metadata={

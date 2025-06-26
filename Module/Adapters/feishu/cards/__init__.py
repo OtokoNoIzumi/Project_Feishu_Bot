@@ -80,6 +80,7 @@ def initialize_card_managers(app_controller=None, sender=None):
             manager_instance = manager_class(
                 app_controller=app_controller,
                 card_info=card_definition,
+                card_config_key=card_type,
                 sender=sender
             )
 

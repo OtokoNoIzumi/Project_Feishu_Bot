@@ -231,7 +231,7 @@ class ScheduleProcessor(BaseProcessor):
                             "type": "primary",
                             "size": "tiny",
                             "value": {
-                                "action": "mark_bili_read",
+                                "card_action": "mark_bili_read",
                                 "pageid": video_pageid,
                                 "card_type": "daily",  # 定时卡片
                                 "video_index": i - 1,  # 推荐视频序号 (0,1,2)

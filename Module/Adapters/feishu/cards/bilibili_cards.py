@@ -11,11 +11,7 @@ from ..decorators import card_build_safe
 
 
 class BilibiliCardManager(BaseCardManager):
-    """B站卡片管理器"""
-
-    def get_supported_actions(self) -> List[str]:
-        """获取该卡片支持的所有动作"""
-        return [CardActions.MARK_BILI_READ]
+    """B站视频卡片管理器"""
 
     @card_build_safe("B站视频菜单卡片构建失败")
     def build_card(self, video_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -36,7 +32,8 @@ class BilibiliCardManager(BaseCardManager):
         }
 
         cached_video_data = {
-            'action': CardActions.MARK_BILI_READ,
+            'card_config_key': self.card_config_key,  # ✅ MessageProcessor路由需要
+            'card_action': 'mark_bili_read',
             'pageid': main_video.get('pageid', ''),
             'card_type': 'menu',
             'cached_video_data': cached_video_data

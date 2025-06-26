@@ -101,25 +101,27 @@ class QRCodeGenerator:
 class DesignPlanCardManager(BaseCardManager):
     """设计方案卡片管理器"""
 
-    def get_supported_actions(self) -> List[str]:
-        """获取该卡片支持的所有动作"""
-        return [
-            CardActions.CONFIRM_DESIGN_PLAN,
-            CardActions.CANCEL_DESIGN_PLAN,
-            CardActions.EDIT_CONTENT
-        ]
+
 
     def get_interaction_components(self, operation_id: str, raw_card_data: Dict[str, Any]) -> Dict[str, Any]:
         """获取交互组件 - 生成确认和取消动作数据"""
+
+        # ✅ card_config_key是路由必需信息，必须注入
+        base_action_value = {
+            "card_config_key": self.card_config_key  # ✅ MessageProcessor路由需要
+        }
+
         return {
             "confirm_action": {
-                "action": CardActions.CONFIRM_DESIGN_PLAN,
+                **base_action_value,
+                "card_action": "confirm_design_plan",
                 "process_result_type": ResponseTypes.DESIGN_PLAN_SUBMIT,
                 "operation_id": operation_id,
                 "raw_card_data": raw_card_data  # 存储完整的数据对象
             },
             "cancel_action": {
-                "action": CardActions.CANCEL_DESIGN_PLAN,
+                **base_action_value,
+                "card_action": "cancel_design_plan",
                 "process_result_type": ResponseTypes.DESIGN_PLAN_CANCEL,
                 "operation_id": operation_id,
                 "raw_card_data": raw_card_data  # 存储完整的数据对象
@@ -370,11 +372,11 @@ class DesignPlanCardManager(BaseCardManager):
             P2CardActionTriggerResponse: 动作响应
         """
         try:
-            action = action_data.get("action")
+            card_action = action_data.get("card_action")
             action_value = action_data.get("action_value", {})
 
-            match action:
-                case CardActions.CONFIRM_DESIGN_PLAN:
+            match card_action:
+                case "confirm_design_plan":
                     # 入口1：生成二维码并更新卡片
                     result = self.process_design_plan_request(action_data)
 
@@ -406,7 +408,7 @@ class DesignPlanCardManager(BaseCardManager):
                             }
                         })
 
-                case CardActions.CANCEL_DESIGN_PLAN:
+                case "cancel_design_plan":
                     # 入口2：更新卡片状态
                     raw_card_data = action_value.get('raw_card_data', {})
                     new_card_data = {
@@ -424,11 +426,11 @@ class DesignPlanCardManager(BaseCardManager):
                     )
 
                 case _:
-                    debug_utils.log_and_print(f"未知的设计方案动作: {action}")
+                    debug_utils.log_and_print(f"未知的设计方案动作: {card_action}")
                     return P2CardActionTriggerResponse({
                         "toast": {
                             "type": "error",
-                            "content": f"未知的设计方案动作: {action}"
+                            "content": f"未知的设计方案动作: {card_action}"
                         }
                     })
 
@@ -452,18 +454,18 @@ class DesignPlanCardManager(BaseCardManager):
             Dict: 处理结果
         """
         try:
-            action = action_data.get("action")
+            card_action = action_data.get("card_action")
             action_value = action_data.get("action_value", {})
             context_info = action_data.get("context_info", {})
 
-            if action == "confirm_design_plan":
+            if card_action == "confirm_design_plan":
                 raw_card_data = action_value.get('raw_card_data', {})
                 return self.handle_design_plan_submit(raw_card_data, context_info)
             else:
-                debug_utils.log_and_print(f"未知的设计方案动作: {action}")
+                debug_utils.log_and_print(f"未知的设计方案动作: {card_action}")
                 return {
                     "success": False,
-                    "error": f"未知的设计方案动作: {action}"
+                    "error": f"未知的设计方案动作: {card_action}"
                 }
         except Exception as e:
             debug_utils.log_and_print(f"设计方案处理失败: {e}", exc_info=True)

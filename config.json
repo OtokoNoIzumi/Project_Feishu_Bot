@@ -3,6 +3,7 @@
   "coze_bot_url": "https://api.coze.cn/v1/workflow/run",
   "voice_id": "peach",
   "log_level": "INFO",
+  "debug_verbose": true,
   "GEMINI_MODEL_NAME": "gemini-2.5-flash-preview-05-20",
   "pending_cache": {
     "max_operations_per_user": 2,

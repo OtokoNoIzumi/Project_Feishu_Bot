@@ -7,12 +7,12 @@
 import json
 import pprint
 import datetime
+from functools import partial
 
 from Module.Common.scripts.common import debug_utils
 from Module.Application.app_utils import custom_serializer
 
-# P2ImMessageReceiveV1对象调试开关 - 开发调试用
-DEBUG_P2IM_OBJECTS = False  # 设置为True启用详细调试输出
+# P2ImMessageReceiveV1对象调试开关现在从配置服务获取
 
 
 def extract_timestamp(data) -> datetime.datetime:
@@ -42,7 +42,7 @@ def extract_timestamp(data) -> datetime.datetime:
     return timestamp
 
 
-def debug_p2im_object(data, object_type: str = "P2ImMessageReceiveV1"):
+def debug_p2im_object(data, object_type: str = "P2ImMessageReceiveV1", verbose: bool = False):
     """
     调试P2ImMessageReceiveV1对象的详细信息输出
 
@@ -50,7 +50,7 @@ def debug_p2im_object(data, object_type: str = "P2ImMessageReceiveV1"):
         data: 需要调试的对象
         object_type: 对象类型名称（用于日志标识）
     """
-    if not DEBUG_P2IM_OBJECTS:
+    if not verbose:
         return
 
     debug_utils.log_and_print(f"🔍 {object_type}对象详细信息 (JSON序列化):", log_level="DEBUG")
@@ -67,14 +67,14 @@ def debug_p2im_object(data, object_type: str = "P2ImMessageReceiveV1"):
         debug_utils.log_and_print(f"  - 尝试使用 repr(): {repr(data)}", log_level="DEBUG")
 
 
-def debug_parent_id_analysis(data):
+def debug_parent_id_analysis(data, verbose: bool = False):
     """
     分析并调试parent_id相关信息
 
     Args:
         data: 需要分析的消息对象
     """
-    if not DEBUG_P2IM_OBJECTS:
+    if not verbose:
         return
 
     # 特别关注回复消息的关键字段 parent_id
@@ -93,16 +93,20 @@ def noop_debug(*args, **kwargs):
     pass
 
 
-def create_debug_functions():
+def create_debug_functions(verbose_config: bool = False):
     """
     创建调试函数字典，用于注入到处理器中
 
+    Args:
+        verbose_config: 从配置服务获取的verbose配置值
+
     Returns:
-        dict: 包含调试函数的字典
+        dict: 包含调试函数的字典，函数已绑定verbose配置
     """
+    # 使用functools.partial直接绑定verbose配置
     return {
-        'debug_p2im_object': debug_p2im_object,
-        'debug_parent_id_analysis': debug_parent_id_analysis
+        'debug_p2im_object': partial(debug_p2im_object, verbose=verbose_config),
+        'debug_parent_id_analysis': partial(debug_parent_id_analysis, verbose=verbose_config)
     }
 
 
@@ -112,6 +116,5 @@ __all__ = [
     'debug_p2im_object',
     'debug_parent_id_analysis',
     'noop_debug',
-    'create_debug_functions',
-    'DEBUG_P2IM_OBJECTS'
+    'create_debug_functions'
 ]

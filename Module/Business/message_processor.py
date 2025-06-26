@@ -178,14 +178,27 @@ class MessageProcessor(BaseProcessor):
 
     @safe_execute("卡片动作处理失败")
     def _process_card_action(self, context: MessageContext) -> ProcessResult:
-        """处理卡片动作"""
-        action = context.content
+        """处理卡片动作 - 配置驱动 + 降级机制"""
+        card_action = context.content
         action_value = context.metadata.get('action_value', {})
-        # 使用分发表处理动作
-        handler = self.action_dispatchers.get(action)
+
+        # # ✅ 优先尝试配置驱动路由（MVP3目标）
+        # adapter_name = context.adapter_name
+        # adapter = self.app_controller.get_adapter(adapter_name)
+
+        # if adapter and hasattr(adapter, 'card_handler') and hasattr(adapter.card_handler, 'handle_card_action'):
+        #     # 尝试新的配置驱动路由
+        #     try:
+        #         return adapter.card_handler.handle_card_action(context)
+        #     except Exception as e:
+        #         debug_utils.log_and_print(f"⚠️ 配置驱动路由失败，使用降级方案: {e}", log_level="WARNING")
+
+        # 🔄 降级到硬编码分发表（保持系统可用）
+        handler = self.action_dispatchers.get(card_action)
         if handler:
             return handler(context, action_value)
-        return ProcessResult.error_result(f"未知的卡片动作: {action}")
+
+        return ProcessResult.error_result(f"未知的卡片动作: {card_action}")
 
     @safe_execute("消息分发器初始化失败")
     def _init_action_dispatchers(self):
@@ -281,11 +294,11 @@ class MessageProcessor(BaseProcessor):
         """
         try:
             # 从action_value中获取action类型
-            action = action_value.get("action") or context.content
+            card_action = action_value.get("card_action") or context.content
             intent = action_value.get('intent', '未知')
             content = action_value.get('content', '')
 
-            match action:
+            match card_action:
                 case "cancel":
                     # 取消操作
                     return ProcessResult.success_result("text", {
@@ -306,7 +319,7 @@ class MessageProcessor(BaseProcessor):
                         "confirm_food_order": "点餐订单"
                     }
 
-                    operation_name = action_map.get(action, "操作")
+                    operation_name = action_map.get(card_action, "操作")
 
                     # 记录确认操作
                     self._log_command(
@@ -323,7 +336,7 @@ class MessageProcessor(BaseProcessor):
                     }, parent_id=context.message_id)
 
                 case _:
-                    return ProcessResult.error_result(f"未知的卡片动作: {action}")
+                    return ProcessResult.error_result(f"未知的卡片动作: {card_action}")
 
         except Exception as e:
             debug_utils.log_and_print(f"❌ AI卡片动作处理失败: {e}", log_level="ERROR")
@@ -381,12 +394,12 @@ class MessageProcessor(BaseProcessor):
         Returns:
             ProcessResult: 处理结果，返回特殊响应类型让前端层处理
         """
-        action = action_value.get("action") or context.content
+        card_action = action_value.get("card_action") or context.content
         # 业务层只负责路由，返回特殊响应类型让前端层处理
         return ProcessResult.success_result(
             ResponseTypes.DESIGN_PLAN_ACTION,
             {
-                "action": action,
+                "card_action": card_action,
                 "action_value": action_value,
                 "context_info": {
                     "user_name": context.user_name,

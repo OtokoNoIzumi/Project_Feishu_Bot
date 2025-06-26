@@ -14,7 +14,7 @@ from Module.Business.processors import MessageContext
 from ..decorators import (
     feishu_event_handler_safe, message_conversion_safe
 )
-from Module.Services.constants import ProcessResultConstKeys, ProcessResultNextAction, MessageTypes
+from Module.Services.constants import ProcessResultConstKeys, ProcessResultNextAction, MessageTypes, AdapterNames
 
 
 class MenuHandler:
@@ -99,6 +99,7 @@ class MenuHandler:
             content=event_key,
             timestamp=message_timestamp,
             event_id=event_id,
+            adapter_name=AdapterNames.FEISHU,  # ✅ 标识来源adapter
             metadata={
                 'app_id': data.header.app_id
             }

@@ -16,8 +16,8 @@ from Module.Common.scripts.common import debug_utils
 from Module.Business.processors import MessageContext, ProcessResult
 from Module.Services.constants import (
     ServiceNames, CardOperationTypes, CardConfigKeys, ResponseTypes,
-    Messages, CardActions, UIElements, FieldNames, DefaultValues, MessageTypes, ReplyModes,
-    DesignPlanConstants
+    Messages, CardActions, UIElements, FieldNames, DefaultValues, MessageTypes,
+    DesignPlanConstants, AdapterNames
 )
 from ..decorators import (
     card_operation_safe, message_conversion_safe
@@ -115,7 +115,11 @@ class CardHandler:
 
     @message_conversion_safe("卡片转换失败")
     def _convert_card_to_context(self, data) -> Optional[MessageContext]:
-        """将飞书卡片点击转换为标准消息上下文"""
+        """
+        将飞书卡片点击转换为标准消息上下文
+        更好的做法是快速获取卡片事件里的标识信息，然后根据标识信息获取卡片管理器
+        再根据卡片管理器获取格式化的方法，然后调用方法，这样就不需要再根据action_tag来处理了，用get_attr从参数里获取方法并执行，实现动态调用。
+        """
         # 调试输出P2ImMessageReceiveV1Card对象信息
         self.debug_p2im_object(data, "P2ImMessageReceiveV1Card")
 
@@ -127,6 +131,10 @@ class CardHandler:
         timestamp = datetime.datetime.now()
         user_name = self._get_user_name(user_id)
 
+        # ✅ 标准化字段：独立必要字段
+        adapter_name = AdapterNames.FEISHU  # 标识来源adapter
+        message_id = data.event.context.open_message_id  # update操作需要
+
         # 卡片动作信息
         action = data.event.action
         # 优化action.value为None或空的处理逻辑
@@ -135,6 +143,7 @@ class CardHandler:
             action_value = {}
 
         action_tag = action.tag if hasattr(action, 'tag') else 'button'
+        content = action_value.get('card_action', '')
 
         # 处理不同类型的卡片交互事件
         match action_tag:
@@ -142,11 +151,9 @@ class CardHandler:
                 # 对于select_static，action.option包含选中的值
                 action_option = action.option if hasattr(action, 'option') else '0'
                 action_value.update({
-                    FieldNames.ACTION: CardActions.UPDATE_USER_TYPE,  # 统一的动作名
                     FieldNames.OPTION: action_option,
                     FieldNames.TAG: action_tag
                 })
-                content = CardActions.UPDATE_USER_TYPE
             case UIElements.INPUT:
                 # 对于input类型，action.input_value包含用户输入的值
                 input_value = action.input_value if hasattr(action, 'input_value') else DefaultValues.EMPTY_STRING
@@ -154,10 +161,8 @@ class CardHandler:
                     FieldNames.VALUE: input_value,  # 将输入值添加到action_value中
                     FieldNames.TAG: action_tag
                 })
-                content = action_value.get(FieldNames.ACTION, DefaultValues.UNKNOWN_INPUT_ACTION)
             case _:
                 # 普通按钮动作
-                content = action_value.get(FieldNames.ACTION, DefaultValues.UNKNOWN_ACTION)
                 if action.name == 'design_confirm':
                     # 反转FORM_FIELD_MAP，直接查找key对应的form_key，避免嵌套循环
                     reverse_field_map = {v: k for k, v in DesignPlanConstants.FORM_FIELD_MAP.items()}
@@ -174,9 +179,11 @@ class CardHandler:
             content=content,
             timestamp=timestamp,
             event_id=event_id,
+            adapter_name=adapter_name,  # ✅ 独立字段
+            message_id=message_id,      # ✅ 独立字段
             metadata={
-                'action_value': action_value,
-                'action_tag': action_tag
+                'action_value': action_value,  # ✅ 弹性数据
+                'action_tag': action_tag       # ✅ 弹性数据
             }
         )
 
@@ -313,6 +320,29 @@ class CardHandler:
                 return False
 
         return update_card_ui
+
+    def handle_card_action(self, context: MessageContext) -> ProcessResult:
+        """处理卡片动作 - 配置驱动路由到具体card_manager"""
+        action_value = context.metadata.get('action_value', {})
+
+        # ✅ 通过card_config_key路由到正确的card_manager
+        card_config_key = action_value.get('card_config_key')
+        if not card_config_key:
+            return ProcessResult.error_result("缺少卡片配置键")
+
+        # 获取card_manager
+        card_manager = self.card_registry.get_manager(card_config_key)
+        if not card_manager:
+            return ProcessResult.error_result(f"未找到卡片管理器: {card_config_key}")
+
+        # ✅ 调用card_manager的handle方法，传入标准化context
+        card_action = action_value.get('card_action')
+        method_name = f"handle_{card_action}"
+
+        if hasattr(card_manager, method_name):
+            return getattr(card_manager, method_name)(context)
+        else:
+            return ProcessResult.error_result(f"未支持的动作: {card_action}")
 
     def dispatch_card_response(self, card_response_type: str, result: ProcessResult,  **kwargs) -> Any:
         """
