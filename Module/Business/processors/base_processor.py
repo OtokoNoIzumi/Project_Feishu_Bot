@@ -10,6 +10,7 @@ from datetime import datetime
 from functools import wraps
 from Module.Common.scripts.common import debug_utils
 from Module.Services.decorator_base import create_exception_handler_decorator, create_business_return_value_factory
+from Module.Services.constants import ResponseTypes
 
 
 # --- 载荷数据结构定义 (这部分保持) ---
@@ -104,6 +105,27 @@ class ProcessResult:
     should_reply: bool = True
     # 新增：上下文信息，指向要关联的消息ID
     parent_id: Optional[str] = None  # 指向要关联的消息ID，用于建立回复关系
+    async_action: Optional[str] = None # 异步操作，用于后续处理
+    message_before_async: Optional[str] = None # 异步消息，用于后续处理
+    reply_message_type: Optional[str] = None # 回复消息类型，用于后续处理
+
+    @classmethod
+    def async_result(
+        cls,
+        async_action: str,
+        message_before_async: Optional[str] = None,
+        reply_message_type: Optional[str] = None,
+        should_reply: bool = True
+    ):
+        return cls(
+            success=True,
+            response_type=ResponseTypes.ASYNC_ACTION,
+            response_content={},
+            async_action=async_action,
+            message_before_async=message_before_async,
+            reply_message_type=reply_message_type,
+            should_reply=should_reply
+        )
 
     @classmethod
     def success_result(cls, response_type: str, content: Any, parent_id: Optional[str] = None):

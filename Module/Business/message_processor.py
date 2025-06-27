@@ -140,7 +140,7 @@ class MessageProcessor(BaseProcessor):
                 return self.media.sample_image(context)
             case Messages.BILI_COMMAND | Messages.VIDEO_COMMAND:
                 self._log_command(context.user_name, "📺", "触发B站视频指令")
-                return self.bili.video_menu(context)
+                return self.bili.video_menu_with_async_action()
 
         # AI智能路由（新增 - 在原有指令之前）
         router_service = self.app_controller.get_service(ServiceNames.ROUTER) if self.app_controller else None
@@ -169,7 +169,7 @@ class MessageProcessor(BaseProcessor):
         match event_key:
             case MenuClickTypes.GET_BILI_URL:
                 debug_utils.log_and_print(f"📺 B站视频推荐 by [{context.user_name}]", log_level="INFO")
-                return self.bili.video_menu(context)
+                return self.bili.video_menu_with_async_action()
             case _:
                 debug_utils.log_and_print(f"❓ 未知菜单键: {event_key}", log_level="INFO")
                 return ProcessResult.success_result(ResponseTypes.TEXT, {

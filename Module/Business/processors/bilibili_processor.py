@@ -18,41 +18,22 @@ class BilibiliProcessor(BaseProcessor):
     处理B站相关的所有功能
     """
 
-    def handle_bili_video_request(self, context: MessageContext) -> ProcessResult:
-        """处理B站视频推荐请求（重构原有get_bili_url功能）"""
-        try:
-            # 检查缓存状态，决定是否需要发送提示消息
-            need_cache_sync = False
-            cache_status_msg = "正在获取B站视频推荐，请稍候..."
-
-            if self.app_controller:
-                notion_service = self.app_controller.get_service('notion')
-                if notion_service:
-                    # 检查缓存是否需要更新
-                    if not notion_service._is_cache_valid() or not notion_service.cache_data.get(notion_service.bili_cache_key):
-                        need_cache_sync = True
-                        cache_status_msg = "正在从Notion同步最新数据，获取可能需要十秒左右，请稍候..."
-
-            # 只有在需要同步缓存时才发送提示消息
-            if need_cache_sync:
-                result = ProcessResult.success_result("text", {
-                    "text": cache_status_msg,
-                    ProcessResultConstKeys.NEXT_ACTION: ProcessResultNextAction.PROCESS_BILI_VIDEO,
-                    "user_id": context.user_id
-                })
-            else:
-                # 直接返回异步处理指令，不发送提示消息
-                result = ProcessResult.success_result("text", {
-                    "text": "",  # 空文本，不显示
-                    ProcessResultConstKeys.NEXT_ACTION: ProcessResultNextAction.PROCESS_BILI_VIDEO,
-                    "user_id": context.user_id
-                })
-
-            return result
-
-        except Exception as e:
-            debug_utils.log_and_print(f"❌ B站视频推荐请求处理失败: {str(e)}", log_level="ERROR")
-            return ProcessResult.error_result(f"B站视频推荐请求处理失败: {str(e)}")
+    def video_menu_with_async_action(self) -> ProcessResult:
+        """
+        处理B站/视频文本指令（等同于菜单点击get_bili_url）
+        业务逻辑：判断缓存是否有效，决定是否提示用户"正在同步数据"，否则直接进入异步处理
+        result就是result，和adapter无关，所以不用特地耦合参数
+        """
+        text = ""
+        if self.app_controller:
+            notion_service = self.app_controller.get_service('notion')
+            if notion_service and notion_service.should_show_sync_message():
+                text = "正在从Notion同步最新数据，获取可能需要十秒左右，请稍候..."
+        return ProcessResult.async_result(
+            async_action=ProcessResultNextAction.PROCESS_BILI_VIDEO,
+            message_before_async=text,
+            reply_message_type="text",
+        )
 
     @require_service('notion', "抱歉，B站视频推荐服务暂时不可用")
     @safe_execute("获取B站视频推荐时出现错误，请稍后再试")
@@ -219,12 +200,3 @@ class BilibiliProcessor(BaseProcessor):
                 }
             )
         return ProcessResult.error_result("获取更新数据失败")
-
-    def video_menu(self, context: MessageContext) -> ProcessResult:
-        """处理B站/视频文本指令（等同于菜单点击get_bili_url）"""
-        try:
-            # 直接复用菜单点击的B站处理逻辑
-            return self.handle_bili_video_request(context)
-
-        except Exception as e:
-            return ProcessResult.error_result(f"B站视频指令处理失败: {str(e)}")

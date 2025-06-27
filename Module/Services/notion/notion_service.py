@@ -59,8 +59,8 @@ class NotionService:
         """加载本地缓存"""
         # 初始化默认值
         self.cache_data = {
-            self.bili_cache_key: [],
             self.bili_cache_time_key: 0,
+            self.bili_cache_key: [],
             self._read_status_cache_key: []
         }
         self._local_read_status = set()
@@ -95,6 +95,15 @@ class NotionService:
         """
         cache_time = self.cache_data.get(self.bili_cache_time_key, 0)
         return (time.time() - cache_time) < self.cache_expiry
+
+    def should_show_sync_message(self) -> bool:
+        """
+        判断是否需要显示数据同步提示消息
+
+        Returns:
+            bool: 如果需要同步数据则返回True
+        """
+        return not self._is_cache_valid() or not self.cache_data.get(self.bili_cache_key)
 
     def _select_video_by_priority(self, videos: List[Dict]) -> Dict:
         """

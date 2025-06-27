@@ -31,8 +31,8 @@ from ..decorators import (
     feishu_sdk_safe, file_operation_safe
 )
 from Module.Services.constants import (
-    ServiceNames, ConfigKeys, ReplyModes, ChatTypes, ReceiverIdTypes,
-    Messages
+    ServiceNames, ReplyModes, ChatTypes, ReceiverIdTypes,
+    Messages, ResponseTypes
 )
 
 
@@ -108,6 +108,7 @@ class MessageSender:
         # 转换响应内容为飞书格式
         content_json = json.dumps(result.response_content)
 
+        print(f"test-content_json: {content_json}")
         # 决定消息模式
         reply_mode = self._determine_reply_mode(original_data, result, force_reply_mode)
 
@@ -150,7 +151,7 @@ class MessageSender:
             # 向后兼容
             if new_message_context.parent_message_id:
                 return "reply"
-            if new_message_context.chat_type == ChatTypes.GROUP:
+            if new_message_context.metadata.get("chat_type") == ChatTypes.GROUP:
                 return "reply"
             else:
                 return "new"
@@ -623,3 +624,63 @@ class MessageSender:
 
         debug_utils.log_and_print(f"图片上传失败: {upload_response.code} - {upload_response.msg}", log_level="ERROR")
         return False
+
+
+    @feishu_sdk_safe("发送飞书回复失败", return_value=False)
+    def send_feishu_reply_with_context(self, context: MessageContext_Refactor, result: ProcessResult, force_reply_mode: str = None) -> bool:
+        """
+        发送飞书回复消息
+
+        支持3种消息模式：
+        1. "new" - 新消息 (CreateMessage)
+        2. "reply" - 回复消息 (ReplyMessage)
+        3. "thread" - 回复新话题 (ReplyMessage + reply_in_thread)
+
+        Args:
+            original_data: 原始飞书消息数据
+            result: 处理结果
+            force_reply_mode: 强制指定回复模式 ("new"|"reply"|"thread")
+        """
+        result_formatted, should_reply = self._format_content_json(result)
+        content_json = json.dumps(result_formatted, ensure_ascii=False)
+        if not should_reply:
+            return True
+
+        # 决定消息模式
+        reply_mode = self._determine_reply_mode(None, result, force_reply_mode, context)
+        msg_type = result.reply_message_type
+
+        match reply_mode:
+            case ReplyModes.NEW:
+                # 提取基础信息
+                user_id = context.user_id
+                # 模式1: 新消息
+                return self._send_create_message(
+                    receive_id=user_id, content=content_json,
+                    msg_type=msg_type, receive_id_type=ReceiverIdTypes.OPEN_ID
+                )[0]
+
+            case ReplyModes.REPLY | ReplyModes.THREAD:
+                # 模式2&3: 回复消息 (含新话题)
+                message_id = context.parent_message_id
+                return self._send_reply_message(
+                    message_id=message_id, content=content_json,
+                    msg_type=msg_type, reply_in_thread=reply_mode == ReplyModes.THREAD
+                )[0]
+
+            case _:
+                debug_utils.log_and_print(f"❌ 未知的回复模式: {reply_mode}", log_level="ERROR")
+                return False
+
+    def _format_content_json(self, result: ProcessResult) -> Tuple[Dict[str, Any], bool]:
+        """
+        格式化响应内容为飞书格式
+        """
+        result_type = result.response_type
+        msg_type = result.reply_message_type
+        match result_type:
+            case ResponseTypes.ASYNC_ACTION:
+                should_reply = result.should_reply if result.message_before_async else False
+                return {"text": result.message_before_async}, should_reply
+            case _:
+                return result.response_content, result.should_reply

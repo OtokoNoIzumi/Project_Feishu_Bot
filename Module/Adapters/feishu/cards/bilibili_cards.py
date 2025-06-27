@@ -4,10 +4,12 @@ B站相关卡片管理器
 处理B站视频相关的飞书卡片发送、更新和回调
 """
 
-from typing import Dict, Any, List
-from Module.Services.constants import CardActions
+from typing import Dict, Any
 from .card_registry import BaseCardManager
 from ..decorators import card_build_safe
+from lark_oapi.event.callback.model.p2_card_action_trigger import P2CardActionTriggerResponse
+from Module.Services.constants import CardOperationTypes
+from Module.Business.processors import ProcessResult, MessageContext_Refactor
 
 
 class BilibiliCardManager(BaseCardManager):
@@ -18,6 +20,20 @@ class BilibiliCardManager(BaseCardManager):
         """构建B站视频菜单卡片内容"""
         template_params = self._format_bili_video_params(video_data)
         return self._build_template_content(template_params)
+
+    def handle_send_video_card(
+        self, result: ProcessResult, context: MessageContext_Refactor
+    ) -> P2CardActionTriggerResponse:
+        """
+        处理发送B站视频卡片动作 - 向后兼容新架构
+        """
+        video_data = result.response_content
+        return self._handle_card_operation_common(
+            card_content=self.build_card(video_data),
+            card_operation_type=CardOperationTypes.SEND,
+            update_toast_type='success',
+            user_id=context.user_id
+        )
 
     @card_build_safe("格式化B站视频参数失败")
     def _format_bili_video_params(self, video_data: Dict[str, Any]) -> Dict[str, Any]:

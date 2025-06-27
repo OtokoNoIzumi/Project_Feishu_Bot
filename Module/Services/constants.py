@@ -53,6 +53,7 @@ class ResponseTypes:
     ADMIN_CARD_SEND = "admin_card_send"
     ADMIN_CARD_UPDATE = "admin_card_update"
     BILI_CARD_UPDATE = "bili_card_update"
+    BILI_VIDEO_CARD = "bili_video_card"
     SCHEDULER_CARD_UPDATE_BILI_BUTTON = "scheduler_card_update_bili_button"
     DESIGN_PLAN_SUBMIT = "design_plan_submit"
     DESIGN_PLAN_CANCEL = "design_plan_cancel"
@@ -69,6 +70,7 @@ class ResponseTypes:
     TEXT = "text"
     AUDIO = "audio"
     IMAGE = "image"
+    ASYNC_ACTION = "async_action"
 
 class ProcessResultConstKeys:
     NEXT_ACTION = "next_action"

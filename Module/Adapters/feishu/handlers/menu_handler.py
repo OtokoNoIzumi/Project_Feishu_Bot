@@ -10,11 +10,11 @@ import datetime
 from typing import Optional
 
 from Module.Common.scripts.common import debug_utils
-from Module.Business.processors import MessageContext
+from Module.Business.processors import MessageContext, MessageContext_Refactor, MenuClickContent
 from ..decorators import (
     feishu_event_handler_safe, message_conversion_safe
 )
-from Module.Services.constants import ProcessResultConstKeys, ProcessResultNextAction, MessageTypes, AdapterNames
+from Module.Services.constants import ProcessResultConstKeys, ProcessResultNextAction, MessageTypes, AdapterNames, ResponseTypes
 
 
 class MenuHandler:
@@ -46,7 +46,7 @@ class MenuHandler:
         将菜单点击转换为标准消息上下文处理
         """
         # 转换为标准消息上下文
-        context = self._convert_menu_to_context(data)
+        context, context_refactor = self._convert_menu_to_context(data)
         if not context:
             debug_utils.log_and_print("❌ 菜单上下文转换失败", log_level="ERROR")
             return
@@ -55,23 +55,15 @@ class MenuHandler:
         result = self.message_processor.process_message(context)
 
         # 检查是否需要异步处理B站视频推荐
-        if (
-            result.success
-            and result.response_content
-            and result.response_content.get(ProcessResultConstKeys.NEXT_ACTION) == ProcessResultNextAction.PROCESS_BILI_VIDEO
-        ):
+        if result.response_type == ResponseTypes.ASYNC_ACTION:
+            self.sender.send_feishu_reply_with_context(context_refactor, result)
 
-            user_id = result.response_content.get("user_id", "")
+            match result.async_action:
+                case ProcessResultNextAction.PROCESS_BILI_VIDEO:
+                    self.message_handler._handle_bili_video_async(context_refactor)
+                case _:
+                    debug_utils.log_and_print(f"❌ 未知异步操作: {result.async_action}", log_level="ERROR")
 
-            # 只有在有实际文本内容时才发送提示消息
-            text_content = result.response_content.get("text", "")
-            if text_content and text_content.strip():
-                self.sender.send_direct_message(context.user_id, result)
-
-            if self.message_handler:
-                self.message_handler._handle_bili_video_async(user_id)
-            else:
-                debug_utils.log_and_print("❌ MessageHandler未注入", log_level="ERROR")
             return
 
         # 发送回复（菜单点击通常需要主动发送消息）
@@ -91,8 +83,23 @@ class MenuHandler:
 
         # 菜单事件的内容是event_key，区分业务的核心参数
         event_key = data.event.event_key
+        menu_click_content = MenuClickContent(event_key=event_key)
+        New_MessageContext = MessageContext_Refactor(
+            adapter_name=AdapterNames.FEISHU,
+            timestamp=message_timestamp,
+            event_id=event_id,
 
-        return MessageContext(
+            user_id=user_id,
+            user_name=user_name,
+
+            message_type=MessageTypes.MENU_CLICK,
+            content=menu_click_content,
+            metadata={
+                'app_id': data.header.app_id
+            }
+        )
+
+        legacy_context = MessageContext(
             user_id=user_id,
             user_name=user_name,
             message_type=MessageTypes.MENU_CLICK,  # 自定义类型
@@ -104,3 +111,5 @@ class MenuHandler:
                 'app_id': data.header.app_id
             }
         )
+
+        return legacy_context, New_MessageContext

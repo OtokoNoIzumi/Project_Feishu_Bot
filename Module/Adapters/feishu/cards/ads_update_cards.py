@@ -4,8 +4,8 @@
 专门处理B站广告时间戳更新确认相关的飞书卡片
 """
 
-from typing import Dict, Any, List
-from Module.Services.constants import CardActions, ResponseTypes
+from typing import Dict, Any
+from Module.Services.constants import ResponseTypes
 from .card_registry import BaseCardManager
 from ..decorators import card_build_safe
 

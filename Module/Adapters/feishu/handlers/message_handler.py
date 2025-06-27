@@ -83,7 +83,7 @@ class MessageHandler:
         result = self.message_processor.process_message(context)
 
         # 检查是否需要异步处理
-        if self._handle_async_actions(data, result):
+        if self._handle_async_actions(data, result, context_refactor):
             return
 
         # 检查特殊响应类型
@@ -94,22 +94,31 @@ class MessageHandler:
         if result.should_reply:
             self.sender.send_feishu_reply(data, result)
 
-    def _handle_async_actions(self, data, result) -> bool:
+    def _handle_async_actions(self, data, result: ProcessResult, context_refactor: MessageContext_Refactor) -> bool:
         """处理异步操作，返回True表示已处理"""
+
+        # 异步操作映射表，直接映射到处理逻辑——后续要换成配置
+        action_handlers = {
+            ProcessResultNextAction.PROCESS_TTS: lambda: self._handle_tts_async(data, result.response_content.get("tts_text", "")),
+            ProcessResultNextAction.PROCESS_IMAGE_GENERATION: lambda: self._handle_image_generation_async(data, result.response_content.get("generation_prompt", "")),
+            ProcessResultNextAction.PROCESS_IMAGE_CONVERSION: lambda: self._handle_image_conversion_async(data),
+            ProcessResultNextAction.PROCESS_BILI_VIDEO: lambda: self._handle_bili_video_async(context_refactor)
+        }
+
+        if result.response_type == ResponseTypes.ASYNC_ACTION:
+            self.sender.send_feishu_reply_with_context(context_refactor, result)
+
+            async_action = action_handlers.get(result.async_action)
+            if async_action:
+                async_action()
+                return True
+
         if not (result.success and result.response_content):
             return False
 
         next_action = result.response_content.get(ProcessResultConstKeys.NEXT_ACTION)
         if not next_action:
             return False
-
-        # 异步操作映射表，直接映射到处理逻辑
-        action_handlers = {
-            ProcessResultNextAction.PROCESS_TTS: lambda: self._handle_tts_async(data, result.response_content.get("tts_text", "")),
-            ProcessResultNextAction.PROCESS_IMAGE_GENERATION: lambda: self._handle_image_generation_async(data, result.response_content.get("generation_prompt", "")),
-            ProcessResultNextAction.PROCESS_IMAGE_CONVERSION: lambda: self._handle_image_conversion_async(data),
-            ProcessResultNextAction.PROCESS_BILI_VIDEO: lambda: self._handle_bili_video_with_text_check(data, result)
-        }
 
         handler = action_handlers.get(next_action)
         if handler:
@@ -118,14 +127,34 @@ class MessageHandler:
 
         return False
 
-    def _handle_bili_video_with_text_check(self, data, result):
-        """处理B站视频操作（包含文本检查逻辑）"""
-        user_id = result.response_content.get("user_id", "")
-        if user_id:
-            text_content = result.response_content.get("text", "")
-            if text_content and text_content.strip():
-                self.sender.send_feishu_reply(data, result)
-            self._handle_bili_video_async(user_id)
+    @async_operation_safe("B站视频推荐异步处理失败")
+    def _handle_bili_video_async(self, context_refactor: MessageContext_Refactor):
+        """异步处理B站视频推荐任务"""
+        def process_in_background():
+            # 调用业务处理器获取原始数据
+            result = self.message_processor.bili.process_bili_video_async()
+
+            if result.success and result.response_type == ResponseTypes.BILI_VIDEO_DATA:
+                if self.card_handler:
+                    success = self.card_handler._handle_bili_card_operation(
+                        result.response_content,
+                        card_operation_type=CardOperationTypes.SEND,
+                        user_id=context_refactor.user_id
+                    )
+                else:
+                    success = False
+                    debug_utils.log_and_print("❌ CardHandler未注入", log_level="ERROR")
+
+                if not success:
+                    # 发送失败，使用降级方案
+                    error_result = ProcessResult.error_result("B站视频卡片发送失败")
+                    self.sender.send_direct_message(context_refactor.user_id, error_result)
+            else:
+                debug_utils.log_and_print(f"❌ B站视频获取失败: {result.error_message}", log_level="ERROR")
+                # B站视频获取失败，发送错误信息
+                self.sender.send_direct_message(context_refactor.user_id, result)
+
+        self._execute_async(process_in_background)
 
     @async_operation_safe("TTS异步处理失败")
     def _handle_tts_async(self, original_data, tts_text: str):
@@ -209,35 +238,6 @@ class MessageHandler:
             else:
                 # 图像转换失败，发送错误信息
                 self.sender.send_feishu_reply(original_data, result)
-
-        self._execute_async(process_in_background)
-
-    @async_operation_safe("B站视频推荐异步处理失败")
-    def _handle_bili_video_async(self, user_id: str):
-        """异步处理B站视频推荐任务"""
-        def process_in_background():
-            # 调用业务处理器获取原始数据
-            result = self.message_processor.bili.process_bili_video_async()
-
-            if result.success and result.response_type == ResponseTypes.BILI_VIDEO_DATA:
-                if self.card_handler:
-                    success = self.card_handler._handle_bili_card_operation(
-                        result.response_content,
-                        card_operation_type=CardOperationTypes.SEND,
-                        user_id=user_id
-                    )
-                else:
-                    success = False
-                    debug_utils.log_and_print("❌ CardHandler未注入", log_level="ERROR")
-
-                if not success:
-                    # 发送失败，使用降级方案
-                    error_result = ProcessResult.error_result("B站视频卡片发送失败")
-                    self.sender.send_direct_message(user_id, error_result)
-            else:
-                debug_utils.log_and_print(f"❌ B站视频获取失败: {result.error_message}", log_level="ERROR")
-                # B站视频获取失败，发送错误信息
-                self.sender.send_direct_message(user_id, result)
 
         self._execute_async(process_in_background)
 
