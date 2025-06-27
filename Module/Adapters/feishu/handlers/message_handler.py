@@ -75,10 +75,9 @@ class MessageHandler:
         并根据处理结果决定回复方式（普通回复、异步处理、特殊类型）
         """
         # 转换为标准消息上下文
-        context = self._convert_message_to_context(data)
-        if not context:
-            debug_utils.log_and_print("❌ 消息上下文转换失败", log_level="ERROR")
-            return
+        conversion_result = self._convert_message_to_context(data)
+
+        context, context_refactor = conversion_result
 
         # 调用业务处理器
         result = self.message_processor.process_message(context)
@@ -88,7 +87,7 @@ class MessageHandler:
             return
 
         # 检查特殊响应类型
-        if self._handle_special_response_types(data, result, context):
+        if self._handle_special_response_types(data, result, context, context_refactor):
             return
 
         # 普通回复
@@ -242,7 +241,7 @@ class MessageHandler:
 
         self._execute_async(process_in_background)
 
-    def _handle_special_response_types(self, data, result, context) -> bool:
+    def _handle_special_response_types(self, data, result, context, context_refactor) -> bool:
         """处理特殊回复类型，返回True表示已处理"""
         if not result.success:
             return False
@@ -305,8 +304,10 @@ class MessageHandler:
                 # 设计方案卡片发送
                 if self.card_handler:
                     self.card_handler.dispatch_card_response(
-                        "design_plan_card",
-                        result,
+                        card_config_key="design_plan",
+                        card_action="send_confirm_card",
+                        result=result,
+                        context_refactor=context_refactor
                     )
                     return True
 
@@ -354,10 +355,8 @@ class MessageHandler:
                 'chat_type': data.event.message.chat_type
             }
         )
-        print('test-New_MessageContext', New_MessageContext)
 
-
-        return MessageContext(
+        legacy_context = MessageContext(
             user_id=user_id,
             user_name=user_name,
             message_type=message_type,
@@ -372,6 +371,8 @@ class MessageHandler:
                 'chat_type': data.event.message.chat_type
             }
         )
+
+        return legacy_context, New_MessageContext
 
     def _extract_message_content(self, message) -> Any:
         """提取飞书消息内容"""

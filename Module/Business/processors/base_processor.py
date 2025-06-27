@@ -71,6 +71,7 @@ class MessageContext_Refactor:
 
     # 业务参数-part2
     metadata: Dict[str, Any] = field(default_factory=dict)
+    chat_type: Optional[str] = None
 
 
 

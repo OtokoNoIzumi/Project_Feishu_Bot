@@ -6,12 +6,13 @@
 
 from typing import Dict, Any, List, Optional
 from lark_oapi.event.callback.model.p2_card_action_trigger import P2CardActionTriggerResponse
-from Module.Services.constants import CardActions, ResponseTypes, CardOperationTypes
+from Module.Services.constants import CardActions, ResponseTypes, CardOperationTypes, DesignPlanConstants
 from .card_registry import BaseCardManager
 from ..decorators import card_build_safe
 import json
 from io import BytesIO
 from Module.Common.scripts.common import debug_utils
+from Module.Business.processors import MessageContext, ProcessResult, MessageContext_Refactor, CardActionContent
 
 
 class DesignPlanCardManager(BaseCardManager):
@@ -28,14 +29,14 @@ class DesignPlanCardManager(BaseCardManager):
         return {
             "confirm_action": {
                 **base_action_value,
-                "card_action": "confirm_design_plan",
+                "card_action": "submit_design_plan",
                 "process_result_type": ResponseTypes.DESIGN_PLAN_SUBMIT,
                 "operation_id": operation_id,
                 "raw_card_data": raw_card_data  # 存储完整的数据对象
             },
             "cancel_action": {
                 **base_action_value,
-                "card_action": "cancel_design_plan",
+                "card_action": "stop_modify_plan",
                 "process_result_type": ResponseTypes.DESIGN_PLAN_CANCEL,
                 "operation_id": operation_id,
                 "raw_card_data": raw_card_data  # 存储完整的数据对象
@@ -390,3 +391,86 @@ class DesignPlanCardManager(BaseCardManager):
                 "success": False,
                 "error": f"处理失败: {str(e)}"
             }
+
+    def handle_submit_design_plan(self, context: MessageContext_Refactor) -> P2CardActionTriggerResponse:
+        """
+        处理设计方案提交 - 完整的业务逻辑处理
+        通过ImageService生成带有客户信息的专属二维码，符合分层架构规范
+        """
+        # 从MessageContext_Refactor提取数据
+        raw_card_data = context.content.value.get('raw_card_data', {})
+
+        if context.content.form_data:
+            # 使用DesignPlanConstants中的映射关系
+            reverse_field_map = {v: k for k, v in DesignPlanConstants.FORM_FIELD_MAP.items()}
+            for key, value in context.content.form_data.items():
+                form_key = reverse_field_map.get(key)
+                if form_key:
+                    raw_card_data[form_key] = value
+
+        customer_name = raw_card_data.get('customer_name', '客户')
+        user_name = context.user_name
+
+        # 1. 构建要编码到二维码中的数据
+        plan_data = self._build_plan_data_for_qrcode(raw_card_data)
+        final_str_to_encode = json.dumps(plan_data, ensure_ascii=False, indent=2)
+
+        # 2. 通过ImageService生成二维码图片
+        image_service = self.app_controller.get_service('image')
+        final_img = image_service.generate_design_plan_qrcode(final_str_to_encode, customer_name)
+
+        # 3. 将图片转换为bytes，以便适配器层处理
+        img_buffer = BytesIO()
+        final_img.save(img_buffer, format='PNG')
+        image_bytes = img_buffer.getvalue()
+
+        debug_utils.log_and_print(f"🏠 设计方案提交成功，客户: {customer_name}, 操作用户: {user_name}")
+
+        # 4. 发送二维码图片给用户
+        self.sender.send_image_with_context(context, image_bytes)
+
+        # 5. 更新卡片状态
+        new_card_data = {
+            **raw_card_data,
+            'result': " | 已提交检查"
+        }
+
+        # 使用基类的通用卡片操作方法
+        return self._handle_card_operation_common(
+            card_content=self.build_card(new_card_data),
+            card_operation_type=CardOperationTypes.UPDATE_RESPONSE,
+            update_toast_type='success',
+            toast_message="已提交设计方案"
+        )
+
+    def handle_stop_modify_plan(self, context: MessageContext_Refactor) -> P2CardActionTriggerResponse:
+        """
+        处理停止修改设计方案动作
+        """
+        raw_card_data = context.content.value.get('raw_card_data', {})
+        new_card_data = {
+            **raw_card_data,
+            'finished': True,
+            'result': " | 结束检查"
+        }
+
+        # 使用基类的通用卡片操作方法
+        return self._handle_card_operation_common(
+            card_content=self.build_card(new_card_data),
+            card_operation_type=CardOperationTypes.UPDATE_RESPONSE,
+            update_toast_type='info',
+            toast_message="已结束对设计方案的检查"
+        )
+
+    def handle_send_confirm_card(self, result: ProcessResult, context: MessageContext_Refactor) -> P2CardActionTriggerResponse:
+        """
+        处理发送设计方案确认卡片动作
+        """
+        new_card_data = result.response_content
+        new_card_data['result'] = '| 待检查⏰'
+        return self._handle_card_operation_common(
+            card_content=self.build_card(new_card_data),
+            card_operation_type=CardOperationTypes.SEND,
+            update_toast_type='success',
+            message_id=context.message_id
+        )

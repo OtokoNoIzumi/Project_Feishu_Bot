@@ -26,7 +26,7 @@ from lark_oapi.api.im.v1 import (
 )
 
 from Module.Common.scripts.common import debug_utils
-from Module.Business.processors import ProcessResult
+from Module.Business.processors import ProcessResult, MessageContext_Refactor
 from ..decorators import (
     feishu_sdk_safe, file_operation_safe
 )
@@ -134,7 +134,7 @@ class MessageSender:
             debug_utils.log_and_print(f"❌ 发送消息失败: {e}", log_level="ERROR")
             return False
 
-    def _determine_reply_mode(self, original_data, result: ProcessResult, force_mode: str = None) -> str:
+    def _determine_reply_mode(self, original_data, result: ProcessResult, force_mode: str = None, new_message_context: MessageContext_Refactor = None) -> str:
         """
         决定回复模式
 
@@ -145,6 +145,17 @@ class MessageSender:
         """
         if force_mode in ["new", "reply", "thread"]:
             return force_mode
+
+        if new_message_context:
+            # 向后兼容
+            if new_message_context.parent_message_id:
+                return "reply"
+            if new_message_context.chat_type == ChatTypes.GROUP:
+                return "reply"
+            else:
+                return "new"
+
+        debug_utils.log_and_print(f"❌ 开始用旧的飞书逻辑: {original_data.event.message.chat_type}", log_level="ERROR")
 
         # 根据parent_id判断
         if result.parent_id:
@@ -573,4 +584,42 @@ class MessageSender:
             return True
 
         debug_utils.log_and_print(f"❌ 交互式卡片更新失败: {response.code} - {response.msg}", log_level="ERROR")
+        return False
+
+    @file_operation_safe("使用新context发送图片失败", return_value=False)
+    def send_image_with_context(self, context, image_data: bytes) -> bool:
+        """
+        使用MessageContext_Refactor发送图片数据
+
+        Args:
+            context: MessageContext_Refactor对象
+            image_data: 图片字节数据
+
+        Returns:
+            bool: 发送是否成功
+        """
+        image_stream = BytesIO(image_data)
+        upload_response = self.client.im.v1.image.create(
+            CreateImageRequest.builder()
+            .request_body(
+                CreateImageRequestBody.builder()
+                .image_type("message")
+                .image(image_stream)
+                .build()
+            )
+            .build()
+        )
+
+        if (upload_response.success() and
+            upload_response.data and
+            upload_response.data.image_key):
+
+            # 使用context中的message_id作为parent_id
+            return self._send_reply_message(
+                message_id=context.parent_message_id,
+                content=json.dumps({"image_key": upload_response.data.image_key}),
+                msg_type="image"
+            )[0]
+
+        debug_utils.log_and_print(f"图片上传失败: {upload_response.code} - {upload_response.msg}", log_level="ERROR")
         return False

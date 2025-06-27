@@ -69,9 +69,29 @@ class CardHandler:
         将卡片点击转换为标准消息上下文处理
         """
         # 转换为标准消息上下文
-        context = self._convert_card_to_context(data)
-        if not context:
-            return P2CardActionTriggerResponse({})
+        conversion_result = self._convert_card_to_context(data)
+
+        context, context_refactor = conversion_result
+
+        # 按照新的架构，节奏process和adapter，那么必要的数据转换要先在这里完成，那就要分发回卡片模块，对于design_plan，我许可qrcode在内部调用
+        if context.metadata.get('action_value').get('card_config_key') == CardConfigKeys.DESIGN_PLAN:
+            card_action = context.metadata.get('action_value').get('card_action')
+            card_config_key = context.metadata.get('action_value').get('card_config_key')
+            if not card_config_key:
+                return P2CardActionTriggerResponse({
+                    "toast": {"type": "error", "content": "缺少卡片配置键"}
+                })
+            # 获取card_manager
+            card_manager = self.card_registry.get_manager(card_config_key)
+            if not card_manager:
+                return P2CardActionTriggerResponse({
+                    "toast": {"type": "error", "content": f"未找到卡片管理器: {card_config_key}"}
+                })
+            method_name = f"handle_{card_action}"
+
+            if hasattr(card_manager, method_name):
+                return getattr(card_manager, method_name)(context_refactor)
+
 
         # 调用业务处理器，由业务层判断处理类型
         result = self.message_processor.process_message(context)
@@ -168,7 +188,6 @@ class CardHandler:
             message_type=MessageTypes.CARD_ACTION,
             content=content_refactor,
         )
-        print('test-New_MessageContext', New_MessageContext)
 
         # 处理不同类型的卡片交互事件
         match action_tag:
@@ -197,7 +216,7 @@ class CardHandler:
                             action_value['raw_card_data'][form_key] = value
 
 
-        return MessageContext(
+        legacy_context = MessageContext(
             user_id=user_id,
             user_name=user_name,
             message_type=MessageTypes.CARD_ACTION,  # 自定义类型
@@ -211,6 +230,8 @@ class CardHandler:
                 'action_tag': action_tag
             }
         )
+
+        return legacy_context, New_MessageContext
 
     @card_operation_safe("B站卡片操作失败")
     def _handle_bili_card_operation(self, result_content: Dict[str, Any], card_operation_type: str, **kwargs) -> Any:
@@ -369,21 +390,27 @@ class CardHandler:
         else:
             return ProcessResult.error_result(f"未支持的动作: {card_action}")
 
-    def dispatch_card_response(self, card_response_type: str, result: ProcessResult,  **kwargs) -> Any:
+    def dispatch_card_response(
+        self,
+        card_config_key: str,
+        card_action: str,
+        result: ProcessResult,
+        context_refactor: MessageContext_Refactor,
+        **kwargs
+    ) -> Any:
         """
         分发卡片响应，作为一个公共模块接受外部的参数，并根据参数调用不同的卡片操作方法
         作为一个response的属性，上游是MessageContext/ProcessResult，后者优先级更高，最好能分离清楚不再包括原生data，不然功能耦合太重。
         """
-        match card_response_type:
-            case "design_plan_card":
-                self._handle_design_plan_card_operation(
-                    result_content=result.response_content,
-                    card_operation_type=CardOperationTypes.SEND,
-                    message_id=result.parent_id
-                )
-                return True
-            case _:
-                return False
+        card_manager = self.card_registry.get_manager(card_config_key)
+        if not card_manager:
+            return ProcessResult.error_result(f"未找到卡片管理器: {card_config_key}")
+        method_name = f"handle_{card_action}"
+        if hasattr(card_manager, method_name):
+            return getattr(card_manager, method_name)(result, context_refactor)
+        else:
+            return ProcessResult.error_result(f"未支持的动作: {card_action}")
+
 
     def _handle_design_plan_card_operation(self, result_content: Dict[str, Any], card_operation_type: str, **kwargs) -> Any:
         """
