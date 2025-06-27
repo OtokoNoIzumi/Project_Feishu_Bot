@@ -36,17 +36,17 @@ class FeishuAdapter:
     - 无parent_id: 群聊默认reply用户消息，私聊创建新消息
     """
 
-    def __init__(self, message_processor, app_controller=None):
+    def __init__(self, message_router, app_controller=None):
         """
         初始化飞书适配器
 
         Args:
-            message_processor: 消息处理器实例
+            message_router: 消息路由器实例
             app_controller: 应用控制器，用于获取配置
         """
         # 来自已经初始化好的外部组件，按照定义的顺序
         self.app_controller = app_controller
-        self.message_processor = message_processor
+        self.message_router = message_router
 
         # ----第一层依赖关系，需要app_controller----
         # 初始化飞书SDK配置
@@ -73,12 +73,12 @@ class FeishuAdapter:
 
         # ----第三层依赖关系，需要sender、message_processor----
         self.message_handler = MessageHandler(
-            message_processor, self.sender, self.sender.get_user_name, debug_functions
+            message_router, self.sender, self.sender.get_user_name, debug_functions
         )
         self.card_handler = CardHandler(
-            message_processor, self.sender, self.sender.get_user_name, debug_functions, self.card_registry
+            message_router, self.sender, self.sender.get_user_name, debug_functions, self.card_registry
         )
-        self.menu_handler = MenuHandler(message_processor, self.sender, self.sender.get_user_name)
+        self.menu_handler = MenuHandler(message_router, self.sender, self.sender.get_user_name)
 
         # 注入handler依赖，实现解耦
         self.message_handler.set_card_handler(self.card_handler)

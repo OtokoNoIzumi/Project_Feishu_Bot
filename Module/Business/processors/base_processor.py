@@ -94,6 +94,15 @@ class MessageContext:
         if self.metadata is None:
             self.metadata = {}
 
+@dataclass
+class RouteResult:
+    """路由结果 - 不包括adapter信息的中层业务"""
+    success: bool
+    route_result_type: str  # 用来区分业务的信息？先开个头
+
+    async_action: Optional[str] = None # 异步操作，用于后续处理
+    message_before_async: Optional[str] = None # 异步消息，用于后续处理
+    reply_message_type: Optional[str] = None # 回复消息类型，用于后续处理
 
 @dataclass
 class ProcessResult:

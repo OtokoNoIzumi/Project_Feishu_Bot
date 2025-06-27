@@ -29,7 +29,7 @@ from http_api_server import start_http_server
 from test_runtime_api import validate_with_shared_controller
 from Module.Application.app_controller import AppController
 from Module.Application.app_utils import TimeUtils
-from Module.Business.message_processor import MessageProcessor
+from Module.Business.message_router import MessageRouter
 from Module.Adapters import FeishuAdapter
 from Module.Services.constants import ServiceNames, SchedulerConstKeys, AdapterNames
 from Module.Common.scripts.common import debug_utils
@@ -44,6 +44,7 @@ def setup_application():
     print("🚀 飞书机器人启动中...")
 
     # 创建应用控制器
+    # 这里已经有scheduler和pending了吗？
     app_controller = AppController(project_root_path=str(current_dir))
 
     # 注册服务
@@ -59,9 +60,9 @@ def setup_application():
         debug_utils.log_and_print(f"❌ 失败的服务: {failed_services}", log_level="WARNING")
 
     # 创建核心组件
-    message_processor = MessageProcessor(app_controller=app_controller)
+    message_router = MessageRouter(app_controller=app_controller)
     feishu_adapter = FeishuAdapter(
-        message_processor=message_processor,
+        message_router=message_router,
         app_controller=app_controller
     )
     app_controller.register_adapter(AdapterNames.FEISHU, feishu_adapter)
@@ -76,8 +77,8 @@ def setup_application():
                     debug_utils.log_and_print("没找到管理员ID，无法启动定时任务", log_level="WARNING")
                     return
 
-                # 调用定时处理器的统一接口
-                result = message_processor.schedule.create_task(event.data)
+                # 调用定时处理器的统一接口【待处理，scheduler的架构需要调整
+                result = message_router.schedule.create_task(event.data)
 
                 if result.success:
                     feishu_adapter.sender.send_direct_message(admin_id, result)

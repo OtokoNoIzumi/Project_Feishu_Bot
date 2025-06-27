@@ -5,8 +5,8 @@
 设计原则：平台无关、高复用、业务聚焦
 """
 
-from .message_processor import MessageProcessor
+from .message_router import MessageRouter
 
 __all__ = [
-    'MessageProcessor'
+    'MessageRouter'
 ]

@@ -28,7 +28,7 @@ from .processors import (
 )
 
 
-class MessageProcessor(BaseProcessor):
+class MessageRouter(BaseProcessor):
     """
     业务消息处理器
 

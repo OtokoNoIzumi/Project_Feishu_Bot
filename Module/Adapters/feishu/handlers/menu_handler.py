@@ -20,16 +20,16 @@ from Module.Services.constants import ProcessResultConstKeys, ProcessResultNextA
 class MenuHandler:
     """飞书菜单处理器"""
 
-    def __init__(self, message_processor, sender, user_name_getter):
+    def __init__(self, message_router, sender, user_name_getter):
         """
         初始化菜单处理器
 
         Args:
-            message_processor: 业务消息处理器
+            message_router: 业务消息路由器
             sender: 消息发送器实例
             user_name_getter: 用户名获取函数
         """
-        self.message_processor = message_processor
+        self.message_router = message_router
         self.sender = sender
         self._get_user_name = user_name_getter
         self.message_handler = None  # 由adapter注入
@@ -52,7 +52,7 @@ class MenuHandler:
             return
 
         # 调用业务处理器
-        result = self.message_processor.process_message(context)
+        result = self.message_router.process_message(context)
 
         # 检查是否需要异步处理B站视频推荐
         if result.response_type == ResponseTypes.ASYNC_ACTION:

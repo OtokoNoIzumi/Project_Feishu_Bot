@@ -28,22 +28,22 @@ from Module.Services.constants import (
 class MessageHandler:
     """飞书消息处理器"""
 
-    def __init__(self, message_processor, sender, user_name_getter, debug_functions=None):
+    def __init__(self, message_router, sender, user_name_getter, debug_functions=None):
         """
         初始化消息处理器
 
         Args:
-            message_processor: 业务消息处理器
+            message_router: 业务消息路由器
             sender: 消息发送器实例
             user_name_getter: 用户名获取函数
             debug_functions: 调试函数字典，包含debug_p2im_object等
         """
-        self.message_processor = message_processor
+        self.message_router = message_router
         self.sender = sender
         self._get_user_name = user_name_getter
 
         # 获取应用控制器以访问服务
-        self.app_controller = getattr(message_processor, 'app_controller', None)
+        self.app_controller = getattr(message_router, 'app_controller', None)
         self.debug_p2im_object = debug_functions.get('debug_p2im_object', noop_debug)
         self.debug_parent_id_analysis = debug_functions.get('debug_parent_id_analysis', noop_debug)
         self.card_handler = None  # 将由adapter注入
@@ -85,7 +85,7 @@ class MessageHandler:
         context, context_refactor = conversion_result
 
         # 调用业务处理器
-        result = self.message_processor.process_message(context)
+        result = self.message_router.process_message(context)
 
         # 检查是否需要异步处理
         if self._handle_async_actions(data, result, context_refactor):
@@ -137,7 +137,7 @@ class MessageHandler:
         """异步处理B站视频推荐任务"""
         def process_in_background():
             # 调用业务处理器获取原始数据
-            result = self.message_processor.bili.process_bili_video_async()
+            result = self.message_router.bili.process_bili_video_async()
 
             if self.card_handler:
                 self.card_handler.dispatch_card_response(
@@ -157,7 +157,7 @@ class MessageHandler:
         """异步处理TTS任务"""
         def process_in_background():
             # 调用业务处理器的异步TTS方法
-            result = self.message_processor.media.process_tts_async(tts_text)
+            result = self.message_router.media.process_tts_async(tts_text)
 
             if result.success and result.response_type == ResponseTypes.AUDIO:
                 # 上传并发送音频
@@ -183,7 +183,7 @@ class MessageHandler:
             self.sender.send_feishu_reply(original_data, processing_result)
 
             # 调用业务处理器的异步图像生成方法
-            result = self.message_processor.media.process_image_generation_async(prompt)
+            result = self.message_router.media.process_image_generation_async(prompt)
 
             if result.success and result.response_type == ResponseTypes.IMAGE_LIST:
                 # 上传并发送图像
@@ -218,7 +218,7 @@ class MessageHandler:
             image_base64, mime_type, file_name, file_size = image_resource
 
             # 调用业务处理器的异步图像转换方法
-            result = self.message_processor.media.process_image_conversion_async(
+            result = self.message_router.media.process_image_conversion_async(
                 image_base64, mime_type, file_name, file_size
             )
 
