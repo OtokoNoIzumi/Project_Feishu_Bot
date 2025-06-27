@@ -113,9 +113,6 @@ class CardHandler:
                 case ResponseTypes.SCHEDULER_CARD_UPDATE_BILI_BUTTON:
                     return P2CardActionTriggerResponse(result.response_content)
 
-                case ResponseTypes.DESIGN_PLAN_ACTION:
-                    return self._handle_design_plan_action_execute(result.response_content, data)
-
                 case _:
                     # 默认成功响应
                     return P2CardActionTriggerResponse({
@@ -410,57 +407,3 @@ class CardHandler:
             return getattr(card_manager, method_name)(result, context_refactor)
         else:
             return ProcessResult.error_result(f"未支持的动作: {card_action}")
-
-
-    def _handle_design_plan_card_operation(self, result_content: Dict[str, Any], card_operation_type: str, **kwargs) -> Any:
-        """
-        处理设计方案卡片操作，这里包括更新关闭也可以用。
-
-        Args:
-            result_content: 业务层返回的数据
-            card_operation_type: 操作类型 ('send' | 'update_response')
-            **kwargs: 额外参数
-
-        Returns:
-            发送操作: Tuple[bool, Optional[str]] (是否成功, 消息ID)
-            更新响应操作: P2CardActionTriggerResponse (响应对象)
-        """
-        # 获取设计方案卡片管理器
-        design_manager = self.card_registry.get_manager(CardConfigKeys.DESIGN_PLAN)
-        if not design_manager:
-            debug_utils.log_and_print("❌ 未找到设计方案卡片管理器", log_level="ERROR")
-            if card_operation_type == CardOperationTypes.SEND:
-                return False, None
-            return False
-        result_content['result'] = '| 待检查⏰'
-        # 使用通用卡片操作处理
-        return design_manager._handle_card_operation_common(
-            card_content=design_manager.build_card(result_content),
-            card_operation_type=card_operation_type,
-            update_toast_type='success',
-            **kwargs
-        )
-
-    def _handle_design_plan_action_execute(self, action_data: Dict[str, Any], feishu_data) -> P2CardActionTriggerResponse:
-        """
-        处理设计方案动作执行 - 完全委托给DesignPlanCardManager
-
-        Args:
-            action_data: 业务层传递的动作数据
-            feishu_data: 飞书数据
-
-        Returns:
-            P2CardActionTriggerResponse: 动作响应
-        """
-        design_manager = self.card_registry.get_manager(CardConfigKeys.DESIGN_PLAN)
-        if not design_manager:
-            debug_utils.log_and_print("❌ 未找到设计方案卡片管理器", log_level="ERROR")
-            return P2CardActionTriggerResponse({
-                "toast": {
-                    "type": "error",
-                    "content": "设计方案卡片管理器未找到"
-                }
-            })
-
-        # 完全委托给DesignPlanCardManager处理
-        return design_manager._handle_design_plan_action_execute(action_data, feishu_data)

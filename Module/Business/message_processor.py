@@ -221,9 +221,6 @@ class MessageProcessor(BaseProcessor):
             CardActions.CANCEL_USER_UPDATE: self._handle_pending_admin_card_action,
             CardActions.CANCEL_ADS_UPDATE: self._handle_pending_admin_card_action,
 
-            # 设计方案动作
-            CardActions.CONFIRM_DESIGN_PLAN: self._handle_design_plan_action,
-            CardActions.CANCEL_DESIGN_PLAN: self._handle_design_plan_action,
         }
 
     def _handle_ai_route_result(self, context: MessageContext, route_result: Dict[str, Any]) -> ProcessResult:
@@ -379,36 +376,6 @@ class MessageProcessor(BaseProcessor):
         """
         # 直接调用admin处理器的缓存操作处理方法
         return self.admin.handle_pending_operation_action(action_value)
-
-    @safe_execute("设计方案动作处理失败")
-    def _handle_design_plan_action(
-        self, context: MessageContext,
-        action_value: Dict[str, Any]
-    ) -> ProcessResult:
-        """
-        处理设计方案卡片动作 - 业务层只负责路由
-
-        Args:
-            context: 消息上下文
-            action_value: 动作参数
-
-        Returns:
-            ProcessResult: 处理结果，返回特殊响应类型让前端层处理
-        """
-        card_action = action_value.get("card_action") or context.content
-        # 业务层只负责路由，返回特殊响应类型让前端层处理
-        return ProcessResult.success_result(
-            ResponseTypes.DESIGN_PLAN_ACTION,
-            {
-                "card_action": card_action,
-                "action_value": action_value,
-                "context_info": {
-                    "user_name": context.user_name,
-                    "message_id": context.message_id
-                }
-            },
-            parent_id=context.message_id
-        )
 
     @safe_execute("下拉选择处理失败")
     def _handle_user_type_select_action(
