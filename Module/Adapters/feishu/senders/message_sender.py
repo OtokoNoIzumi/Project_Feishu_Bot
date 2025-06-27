@@ -108,7 +108,6 @@ class MessageSender:
         # 转换响应内容为飞书格式
         content_json = json.dumps(result.response_content)
 
-        print(f"test-content_json: {content_json}")
         # 决定消息模式
         reply_mode = self._determine_reply_mode(original_data, result, force_reply_mode)
 
@@ -553,9 +552,10 @@ class MessageSender:
         if (upload_response.success() and
             upload_response.data and
             upload_response.data.image_key):
-
             if not hasattr(original_data.event, 'message'):
                 parent_id = original_data.event.context.open_message_id
+            else:
+                parent_id = original_data.event.message.message_id
             # 发送图片消息
             image_result = ProcessResult.success_result(
                 "image",

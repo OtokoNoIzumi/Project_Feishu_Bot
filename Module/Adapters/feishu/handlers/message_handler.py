@@ -73,6 +73,11 @@ class MessageHandler:
 
         将飞书消息转换为标准消息上下文，调用业务处理器处理，
         并根据处理结果决定回复方式（普通回复、异步处理、特殊类型）
+        目前的标准步骤有3个
+        1 转换为标准消息上下文
+        2 调用业务处理器-得到ProcessResult
+          2.1 识别ProcessResult中的异步操作，那么这个结果本身不包含更多业务数据，前置发送一个确认信息，然后做异步处理，得到最终的ProcessResult
+        3 根据ProcessResult中的response_type，决定回复方式/调用卡片
         """
         # 转换为标准消息上下文
         conversion_result = self._convert_message_to_context(data)
@@ -134,24 +139,15 @@ class MessageHandler:
             # 调用业务处理器获取原始数据
             result = self.message_processor.bili.process_bili_video_async()
 
-            if result.success and result.response_type == ResponseTypes.BILI_VIDEO_DATA:
-                if self.card_handler:
-                    success = self.card_handler._handle_bili_card_operation(
-                        result.response_content,
-                        card_operation_type=CardOperationTypes.SEND,
-                        user_id=context_refactor.user_id
-                    )
-                else:
-                    success = False
-                    debug_utils.log_and_print("❌ CardHandler未注入", log_level="ERROR")
-
-                if not success:
-                    # 发送失败，使用降级方案
-                    error_result = ProcessResult.error_result("B站视频卡片发送失败")
-                    self.sender.send_direct_message(context_refactor.user_id, error_result)
+            if self.card_handler:
+                self.card_handler.dispatch_card_response(
+                    card_config_key="bilibili_video_info",
+                    card_action="send_video_card",
+                    result=result,
+                    context_refactor=context_refactor
+                )
             else:
-                debug_utils.log_and_print(f"❌ B站视频获取失败: {result.error_message}", log_level="ERROR")
-                # B站视频获取失败，发送错误信息
+                debug_utils.log_and_print("❌ CardHandler未注入", log_level="ERROR")
                 self.sender.send_direct_message(context_refactor.user_id, result)
 
         self._execute_async(process_in_background)

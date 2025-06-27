@@ -92,7 +92,6 @@ class CardHandler:
             if hasattr(card_manager, method_name):
                 return getattr(card_manager, method_name)(context_refactor)
 
-
         # 调用业务处理器，由业务层判断处理类型
         result = self.message_processor.process_message(context)
         # 统一处理成功和失败的响应，减少分支嵌套
