@@ -92,7 +92,7 @@ class MessageHandler:
         if isinstance(result, RouteResult):
             # 向后兼容在这里处理新的业务。
             # 参考handle_feishu_card的配置驱动模式，避免硬编码
-            self._handle_route_result_dynamic(result, context_refactor)
+            self.handle_route_result_dynamic(result, context_refactor)
             return
 
         # 检查是否需要异步处理
@@ -106,7 +106,7 @@ class MessageHandler:
         if result.should_reply:
             self.sender.send_feishu_reply(data, result)
 
-    def _handle_route_result_dynamic(self, route_result: RouteResult, context_refactor: MessageContext_Refactor):
+    def handle_route_result_dynamic(self, route_result: RouteResult, context_refactor: MessageContext_Refactor):
         """
         动态处理RouteResult - 基于路由知识映射进行分发
         实现业务层与适配器层的分离：业务层只提供标识，适配器层管理前端知识

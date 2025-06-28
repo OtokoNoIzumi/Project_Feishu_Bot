@@ -10,11 +10,11 @@ import datetime
 from typing import Optional
 
 from Module.Common.scripts.common import debug_utils
-from Module.Business.processors import MessageContext, MessageContext_Refactor, MenuClickContent, RouteResult
+from Module.Business.processors import MessageContext, MessageContext_Refactor, MenuClickContent
+from Module.Services.constants import MessageTypes, AdapterNames, MenuClickTypes
 from ..decorators import (
     feishu_event_handler_safe, message_conversion_safe
 )
-from Module.Services.constants import MessageTypes, AdapterNames, ResponseTypes
 
 
 class MenuHandler:
@@ -46,25 +46,28 @@ class MenuHandler:
         将菜单点击转换为标准消息上下文处理
         """
         # 转换为标准消息上下文
-        context, context_refactor = self._convert_menu_to_context(data)
+        context_refactor = self._convert_menu_to_context(data)
         if self.sender.filter_duplicate_message(context_refactor):
             return
 
-        # 调用业务处理器
-        result = self.message_router.process_message(context)
+        event_key = context_refactor.content.event_key
+        match event_key:
+            case MenuClickTypes.GET_BILI_URL:
+                debug_utils.log_and_print(f"📺 B站视频推荐 by [{context_refactor.user_name}]", log_level="INFO")
+                # 统一使用新的路由决策，实现DRY原则
+                route_result = self.message_router.bili.video_menu_route_choice()
+            case _:
+                debug_utils.log_and_print(f"❓ 未知菜单键: {event_key}", log_level="INFO")
+                text = f"收到菜单点击：{event_key}，功能开发中..."
+                self.sender.send_feishu_message_reply(context_refactor, text)
+                return
 
-        # 检查是否是RouteResult，如果是则转发给message_handler处理
-        if isinstance(result, RouteResult):
-            # 利用现有的message_handler的路由分发能力，避免重复代码
-            if self.message_handler:
-                self.message_handler._handle_route_result_dynamic(result, context_refactor)
-            else:
-                debug_utils.log_and_print("❌ MessageHandler未注入，无法处理RouteResult", log_level="ERROR")
-            return
+        if self.message_handler:
+            self.message_handler.handle_route_result_dynamic(route_result, context_refactor)
+        else:
+            debug_utils.log_and_print("❌ MessageHandler未注入，无法处理RouteResult", log_level="ERROR")
 
-        # 发送回复（菜单点击通常需要主动发送消息）
-        if result.should_reply:
-            self.sender.send_direct_message(context.user_id, result)
+        return
 
     @message_conversion_safe("菜单转换失败")
     def _convert_menu_to_context(self, data) -> Optional[MessageContext]:
@@ -80,7 +83,7 @@ class MenuHandler:
         # 菜单事件的内容是event_key，区分业务的核心参数
         event_key = data.event.event_key
         menu_click_content = MenuClickContent(event_key=event_key)
-        New_MessageContext = MessageContext_Refactor(
+        new_message_context = MessageContext_Refactor(
             adapter_name=AdapterNames.FEISHU,
             timestamp=message_timestamp,
             event_id=event_id,
@@ -95,17 +98,4 @@ class MenuHandler:
             }
         )
 
-        legacy_context = MessageContext(
-            user_id=user_id,
-            user_name=user_name,
-            message_type=MessageTypes.MENU_CLICK,  # 自定义类型
-            content=event_key,
-            timestamp=message_timestamp,
-            event_id=event_id,
-            adapter_name=AdapterNames.FEISHU,  # ✅ 标识来源adapter
-            metadata={
-                'app_id': data.header.app_id
-            }
-        )
-
-        return legacy_context, New_MessageContext
+        return new_message_context
