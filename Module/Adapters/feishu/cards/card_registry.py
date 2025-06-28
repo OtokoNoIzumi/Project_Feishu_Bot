@@ -99,7 +99,6 @@ class BaseCardManager(ABC):
             case CardOperationTypes.UPDATE_RESPONSE:
                 # 构建卡片更新响应
                 toast_message = kwargs.get("toast_message", "操作完成")
-
                 response_data = {
                     "toast": {
                         "type": update_toast_type,

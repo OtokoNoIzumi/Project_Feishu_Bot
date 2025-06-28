@@ -10,6 +10,7 @@ from datetime import datetime
 from .base_processor import BaseProcessor, MessageContext, ProcessResult, require_service, safe_execute
 from Module.Common.scripts.common import debug_utils
 from Module.Services.constants import SchedulerTaskTypes, ServiceNames, ResponseTypes, SchedulerConstKeys
+from Module.Business.processors.bilibili_processor import convert_to_bili_app_link
 
 
 class ScheduleProcessor(BaseProcessor):
@@ -218,7 +219,7 @@ class ScheduleProcessor(BaseProcessor):
                                         "default_url": video_url,
                                         "pc_url": video_url,
                                         "ios_url": video_url,
-                                        "android_url": self.convert_to_bili_app_link(video_url)
+                                        "android_url": convert_to_bili_app_link(video_url)
                                     }
                                 ]
                             }
@@ -242,34 +243,6 @@ class ScheduleProcessor(BaseProcessor):
                     })
 
         return card
-
-    def convert_to_bili_app_link(self, web_url: str) -> str:
-        """
-        将B站网页链接转换为B站应用链接
-        """
-        try:
-            # 输入验证
-            if not web_url or not isinstance(web_url, str):
-                return web_url or ""
-
-            # 检查是否是BV号格式
-            bv_match = re.search(r'(/BV[a-zA-Z0-9]+)', web_url)
-            if bv_match:
-                bv_id = bv_match.group(1).replace('/', '')
-                return f"bilibili://video/{bv_id}"
-
-            # 检查是否包含av号
-            av_match = re.search(r'av(\d+)', web_url)
-            if av_match:
-                av_id = av_match.group(1)
-                return f"bilibili://video/av{av_id}"
-
-            # 默认返回原始链接
-            return web_url
-
-        except Exception as e:
-            debug_utils.log_and_print(f"[链接转换] 处理异常: {e}, URL: {web_url}", log_level="ERROR")
-            return web_url  # 异常时返回原始链接
 
     def format_notion_bili_analysis(self, data: Dict[str, Any]) -> str:
         """格式化notion B站统计数据"""

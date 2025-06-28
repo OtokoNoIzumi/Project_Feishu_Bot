@@ -17,7 +17,7 @@ import json
 from Module.Common.scripts.common import debug_utils
 from Module.Services.router.card_builder import CardBuilder
 from Module.Services.constants import (
-    ServiceNames, MenuClickTypes, ResponseTypes,
+    ServiceNames, ResponseTypes,
     MessageTypes, CardActions, Messages, DesignPlanConstants
 )
 from .processors import (
@@ -75,8 +75,6 @@ class MessageRouter(BaseProcessor):
                 return self._process_image_message(context)
             case MessageTypes.AUDIO:
                 return self._process_audio_message(context)
-            case MessageTypes.MENU_CLICK:
-                return self._process_menu_click(context)
             case MessageTypes.CARD_ACTION:
                 return self._process_card_action(context)
             case _:
@@ -142,20 +140,6 @@ class MessageRouter(BaseProcessor):
     def _process_audio_message(self, context: MessageContext) -> ProcessResult:
         """处理音频消息"""
         return self.media.handle_audio_message(context)
-
-    def _process_menu_click(self, context: MessageContext) -> ProcessResult:
-        """处理菜单点击"""
-        event_key = context.content
-        match event_key:
-            case MenuClickTypes.GET_BILI_URL:
-                debug_utils.log_and_print(f"📺 B站视频推荐 by [{context.user_name}]", log_level="INFO")
-                # 统一使用新的路由决策，实现DRY原则
-                return self.bili.video_menu_route_choice()
-            case _:
-                debug_utils.log_and_print(f"❓ 未知菜单键: {event_key}", log_level="INFO")
-                return ProcessResult.success_result(ResponseTypes.TEXT, {
-                    "text": f"收到菜单点击：{event_key}，功能开发中..."
-                }, parent_id=context.message_id)
 
     @safe_execute("卡片动作处理失败")
     def _process_card_action(self, context: MessageContext) -> ProcessResult:
@@ -327,14 +311,7 @@ class MessageRouter(BaseProcessor):
         根据卡片类型分发到对应的处理器
         """
         try:
-            card_type = action_value.get("card_type", "menu")
-            match card_type:
-                case "daily":
-                    # 定时卡片由ScheduleProcessor处理
-                    return self.schedule.handle_mark_bili_read(context, action_value)
-                case _:
-                    # 菜单卡片由BilibiliProcessor处理
-                    return self.bili.handle_mark_bili_read(context, action_value)
+            return self.schedule.handle_mark_bili_read(context, action_value)
 
         except Exception as e:
             debug_utils.log_and_print(f"❌ 标记B站视频为已读失败: {str(e)}", log_level="ERROR")
@@ -463,7 +440,7 @@ class MessageRouter(BaseProcessor):
             "app_controller_available": self.app_controller is not None,
             "supported_message_types": [
                 MessageTypes.TEXT, MessageTypes.IMAGE, MessageTypes.AUDIO,
-                MessageTypes.MENU_CLICK, MessageTypes.CARD_ACTION
+                MessageTypes.CARD_ACTION
             ],
             "registered_actions": {
                 "count": len(self.action_dispatchers),

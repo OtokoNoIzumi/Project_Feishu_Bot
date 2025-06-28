@@ -7,9 +7,11 @@ B站相关卡片管理器
 from typing import Dict, Any
 from .card_registry import BaseCardManager
 from ..decorators import card_build_safe
-from lark_oapi.event.callback.model.p2_card_action_trigger import P2CardActionTriggerResponse
 from Module.Services.constants import CardOperationTypes
 from Module.Business.processors import ProcessResult, MessageContext_Refactor, RouteResult
+from Module.Services.service_decorators import require_service
+from Module.Services.constants import ServiceNames, Messages
+from Module.Common.scripts.common import debug_utils
 
 
 class BilibiliCardManager(BaseCardManager):
@@ -27,16 +29,7 @@ class BilibiliCardManager(BaseCardManager):
         route_result的metadata应该就是必要的参数。
         """
         # 调用外部业务
-        result = self.message_router.bili.process_bili_video_async()
-        self.handle_send_video_card(result, context)
-
-    def handle_send_video_card(
-        self, result: ProcessResult, context: MessageContext_Refactor
-    ) -> P2CardActionTriggerResponse:
-        """
-        处理发送B站视频卡片动作 - 向后兼容新架构
-        """
-        video_data = result.response_content
+        video_data = self.message_router.bili.process_bili_video_async()
         return self._handle_card_operation_common(
             card_content=self.build_card(video_data),
             card_operation_type=CardOperationTypes.SEND,
@@ -59,8 +52,8 @@ class BilibiliCardManager(BaseCardManager):
         cached_video_data = {
             'card_config_key': self.card_config_key,  # ✅ MessageProcessor路由需要
             'card_action': 'mark_bili_read',
+            'message_before_action': '',
             'pageid': main_video.get('pageid', ''),
-            'card_type': 'menu',
             'cached_video_data': cached_video_data
         }
         main_video_cached_data = cached_video_data.copy()
@@ -102,3 +95,55 @@ class BilibiliCardManager(BaseCardManager):
             template_params["addtional_videos"].append(video_item)
 
         return template_params
+
+    @require_service('notion', "标记服务暂时不可用")
+    def handle_mark_bili_read(self, context: MessageContext_Refactor) -> ProcessResult:
+        """
+        处理标记B站视频为已读（新架构：使用缓存数据避免重新获取）
+
+        Args:
+            context: 消息上下文
+            action_value: 按钮值，包含pageid、video_index和action_info
+
+        Returns:
+            ProcessResult: 包含更新后卡片数据的处理结果
+        """
+        # 1. 校验依赖服务
+        notion_service = self.app_controller.get_service(ServiceNames.NOTION)
+        action_value = context.content.value
+        cached_video_data = action_value.get('cached_video_data', {})
+        video_index = action_value.get("video_index", "0")
+
+        # 2. 先获取video_index，驱动后续参数
+        video_index_int = int(video_index)
+
+        # 3. 根据video_index获取pageid
+        if video_index_int == 0:
+            pageid = action_value.get("pageid", "")
+        else:
+            pageid = cached_video_data['additional_videos'][video_index_int - 1]['pageid']
+
+        # 4. 标记为已读
+        if not notion_service.mark_video_as_read(pageid):
+            self.sender.send_feishu_message_reply(context, '标记为已读失败')
+            return
+
+        # 5. 用缓存数据更新卡片
+        if cached_video_data:
+            try:
+                if video_index_int == 0:
+                    cached_video_data['main_video']['is_read'] = True
+                    cached_video_data['main_video']['is_read_str'] = " | 已读"
+                else:
+                    cached_video_data['additional_videos'][video_index_int - 1]['is_read'] = True
+                    cached_video_data['additional_videos'][video_index_int - 1]['is_read_str'] = " | 已读"
+            except Exception as e:
+                debug_utils.log_and_print(f"⚠️ 更新缓存数据已读状态失败: {e}", log_level="WARNING")
+                return
+
+            return self._handle_card_operation_common(
+                card_content=self.build_card(cached_video_data),
+                card_operation_type=CardOperationTypes.UPDATE_RESPONSE,
+                update_toast_type='success',
+                toast_message=Messages.VIDEO_MARKED_READ
+            )

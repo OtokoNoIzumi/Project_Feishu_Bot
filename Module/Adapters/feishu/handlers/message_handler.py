@@ -167,7 +167,6 @@ class MessageHandler:
                 **system_params     # 系统参数（高优先级）
             }
 
-            print('test-', method_name, kwargs)
             # 执行调用
             if route_knowledge.get("is_async", False):
                 # 异步执行

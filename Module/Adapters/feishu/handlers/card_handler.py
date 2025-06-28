@@ -89,8 +89,7 @@ class CardHandler:
             # return 可以不用P2CardActionTriggerResponse，直接return
             return
 
-        # 按照新的架构，节奏process和adapter，那么必要的数据转换要先在这里完成，那就要分发回卡片模块，对于design_plan，我许可qrcode在内部调用
-        if context.metadata.get('action_value').get('card_config_key') == CardConfigKeys.DESIGN_PLAN:
+        if context.metadata.get('action_value').get('card_config_key') in [CardConfigKeys.DESIGN_PLAN, CardConfigKeys.BILIBILI_VIDEO_INFO]:
             message_before_action = context.metadata.get('action_value',{}).get('message_before_action', '')
             if message_before_action:
                 # 看起来是冗余的检测，但胜在增加了可读性，也确保了外层的局部可靠
@@ -119,12 +118,6 @@ class CardHandler:
         if result.success:
             # 特殊类型处理
             match result.response_type:
-                case ResponseTypes.BILI_CARD_UPDATE:
-                    return self._handle_bili_card_operation(
-                        result_content=result.response_content,
-                        card_operation_type=CardOperationTypes.UPDATE_RESPONSE,
-                        toast_message=Messages.VIDEO_MARKED_READ
-                    )
                 case ResponseTypes.ADMIN_CARD_UPDATE:
                     return self._handle_admin_card_operation(
                         result_content=result.response_content,
@@ -252,43 +245,6 @@ class CardHandler:
         )
 
         return legacy_context, New_MessageContext
-
-    @card_operation_safe("B站卡片操作失败")
-    def _handle_bili_card_operation(self, result_content: Dict[str, Any], card_operation_type: str, **kwargs) -> Any:
-        """
-        统一处理B站卡片的构建和操作
-
-        Args:
-            video_data: 业务层返回的视频数据
-            card_operation_type: 操作类型 ('send' | 'update_response')
-            **kwargs: 额外参数(user_id, toast_message等)
-
-        Returns:
-            bool: 发送操作的成功状态
-            P2CardActionTriggerResponse: 更新响应操作的响应对象
-        """
-        # B站特有的参数验证
-        if card_operation_type == CardOperationTypes.SEND:
-            user_id = kwargs.get(FieldNames.USER_ID)
-            if not user_id:
-                debug_utils.log_and_print("❌ 发送B站卡片缺少用户ID", log_level="ERROR")
-                return False, None
-
-        # 使用配置驱动获取B站卡片管理器
-        bili_card_manager = self.card_registry.get_manager(CardConfigKeys.BILIBILI_VIDEO_INFO)
-        if not bili_card_manager:
-            debug_utils.log_and_print("❌ 未找到B站卡片管理器", log_level="ERROR")
-            if card_operation_type == CardOperationTypes.SEND:
-                return False, None
-            return False
-        update_toast_type = result_content.get('result_type', 'success') if isinstance(result_content, dict) else 'success'
-        # 使用通用卡片操作处理
-        return bili_card_manager._handle_card_operation_common(
-            card_content=bili_card_manager.build_card(video_data=result_content),
-            card_operation_type=card_operation_type,
-            update_toast_type=update_toast_type,
-            **kwargs
-        )
 
     @card_operation_safe("管理员卡片操作失败")
     def _handle_admin_card_operation(self, result_content: Dict[str, Any], card_operation_type: str,**kwargs) -> Any:
