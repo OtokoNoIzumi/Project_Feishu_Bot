@@ -4,34 +4,17 @@ Services层专用装饰器
 为各种服务操作提供统一的异常处理和日志记录
 独立于其他模块，专门服务于Services层
 
-装饰器层级结构：
-1. Module/Services/decorator_base.py - 装饰器基础工厂（内部使用）
-2. Module/Services/service_decorators.py - Services层装饰器（本文件）
-3. Module/Adapters/feishu/decorators.py - 飞书适配器专用装饰器
-4. Module/Business/processors/base_processor.py - Business层装饰器
-
-通用装饰器：
-- require_service: 通用服务依赖检查，适用于Services层和main.py
-- service_operation_safe: 通用服务操作安全装饰器
-
-Business层专用：
-- Module.Business.processors.base_processor.require_service: 返回ProcessResult的版本
+简化设计原则：
+- 2层装饰器结构：decorator(func) -> wrapper
+- 统一的错误日志格式
+- 不使用过度复杂的工厂模式
 """
 
 from functools import wraps
-from typing import TypeVar, Callable, Any, Optional, Dict, List
+from typing import TypeVar, Callable, Any, Optional, List
 from Module.Common.scripts.common import debug_utils
-from .decorator_base import create_exception_handler_decorator, create_file_cleanup_handler
 
 F = TypeVar('F', bound=Callable[..., Any])
-
-# 创建各种装饰器工厂
-_service_decorator = create_exception_handler_decorator("🔧", default_return_value=None)
-_api_decorator = create_exception_handler_decorator("🌐", default_return_value=None)
-_file_decorator = create_exception_handler_decorator("📁", default_return_value=None, cleanup_handler=create_file_cleanup_handler())
-_config_decorator = create_exception_handler_decorator("⚙️", default_return_value=None)
-_cache_decorator = create_exception_handler_decorator("🗄️", default_return_value=None)
-_scheduler_decorator = create_exception_handler_decorator("⏰", default_return_value=None)
 
 
 def require_service(service_name: str, error_msg: Optional[str] = None, check_available: bool = False, return_value: Any = None):
@@ -83,11 +66,6 @@ def service_operation_safe(error_message: str, return_value: Any = None, log_arg
     """
     🔧 通用服务操作安全装饰器
 
-    适用于大部分服务层操作：
-    - 业务逻辑执行
-    - 数据处理操作
-    - 内部方法调用
-
     Args:
         error_message: 错误描述信息
         return_value: 异常时的返回值
@@ -101,7 +79,7 @@ def service_operation_safe(error_message: str, return_value: Any = None, log_arg
                     debug_utils.log_and_print(f"🔧 执行{func.__name__}: args={args[1:][:2]}", log_level="DEBUG")
                 return func(*args, **kwargs)
             except Exception as e:
-                debug_utils.log_and_print(f"🔧 {error_message}: {e}", log_level="ERROR")
+                debug_utils.log_and_print(f"🔧 {error_message} [{func.__name__}]: {e}", log_level="ERROR")
                 return return_value
         return wrapper
     return decorator
@@ -110,11 +88,6 @@ def service_operation_safe(error_message: str, return_value: Any = None, log_arg
 def external_api_safe(error_message: str, return_value: Any = None, api_name: str = ""):
     """
     🌐 外部API调用安全装饰器
-
-    专门处理外部服务调用：
-    - Notion API
-    - 文件上传/下载
-    - 第三方服务集成
 
     Args:
         error_message: 错误描述信息
@@ -129,7 +102,7 @@ def external_api_safe(error_message: str, return_value: Any = None, api_name: st
                 return result
             except Exception as e:
                 api_info = f"[{api_name}] " if api_name else ""
-                debug_utils.log_and_print(f"🌐 {api_info}{error_message}: {e}", log_level="ERROR")
+                debug_utils.log_and_print(f"🌐 {api_info}{error_message} [{func.__name__}]: {e}", log_level="ERROR")
                 return return_value
         return wrapper
     return decorator
@@ -139,27 +112,37 @@ def file_processing_safe(error_message: str, return_value: Any = None, cleanup_f
     """
     📁 文件处理安全装饰器
 
-    专门处理文件相关操作：
-    - 文件读写
-    - 格式转换
-    - 临时文件处理
-
     Args:
         error_message: 错误描述信息
         return_value: 文件操作失败时的返回值
         cleanup_files: 需要清理的临时文件列表
     """
-    return _file_decorator(error_message, return_value, cleanup_files=cleanup_files)
+    def decorator(func: F) -> F:
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            try:
+                return func(*args, **kwargs)
+            except Exception as e:
+                debug_utils.log_and_print(f"📁 {error_message} [{func.__name__}]: {e}", log_level="ERROR")
+                return return_value
+            finally:
+                # 清理临时文件
+                if cleanup_files:
+                    import os
+                    for file_path in cleanup_files:
+                        if file_path and os.path.exists(file_path):
+                            try:
+                                os.remove(file_path)
+                                debug_utils.log_and_print(f"📁 清理临时文件: {file_path}", log_level="DEBUG")
+                            except:
+                                pass
+        return wrapper
+    return decorator
 
 
 def config_operation_safe(error_message: str, return_value: Any = None, config_operation_type: str = ""):
     """
     ⚙️ 配置操作安全装饰器
-
-    专门处理配置相关操作：
-    - 配置文件读写
-    - 环境变量处理
-    - 设置项验证
 
     Args:
         error_message: 错误描述信息
@@ -176,7 +159,7 @@ def config_operation_safe(error_message: str, return_value: Any = None, config_o
                 return result
             except Exception as e:
                 op_info = f"[{config_operation_type}] " if config_operation_type else ""
-                debug_utils.log_and_print(f"⚙️ {op_info}{error_message}: {e}", log_level="ERROR")
+                debug_utils.log_and_print(f"⚙️ {op_info}{error_message} [{func.__name__}]: {e}", log_level="ERROR")
                 return return_value
         return wrapper
     return decorator
@@ -185,11 +168,6 @@ def config_operation_safe(error_message: str, return_value: Any = None, config_o
 def cache_operation_safe(error_message: str, return_value: Any = None, cache_key: str = ""):
     """
     🗄️ 缓存操作安全装饰器
-
-    专门处理缓存相关操作：
-    - 缓存读写
-    - 缓存清理
-    - 缓存验证
 
     Args:
         error_message: 错误描述信息
@@ -206,7 +184,7 @@ def cache_operation_safe(error_message: str, return_value: Any = None, cache_key
                 return result
             except Exception as e:
                 key_info = f"[{cache_key}] " if cache_key else ""
-                debug_utils.log_and_print(f"🗄️ {key_info}{error_message}: {e}", log_level="ERROR")
+                debug_utils.log_and_print(f"🗄️ {key_info}{error_message} [{func.__name__}]: {e}", log_level="ERROR")
                 return return_value
         return wrapper
     return decorator
@@ -215,11 +193,6 @@ def cache_operation_safe(error_message: str, return_value: Any = None, cache_key
 def scheduler_operation_safe(error_message: str, return_value: Any = None, task_name: str = ""):
     """
     ⏰ 调度器操作安全装饰器
-
-    专门处理调度器相关操作：
-    - 任务调度
-    - 定时执行
-    - 任务状态管理
 
     Args:
         error_message: 错误描述信息
@@ -236,7 +209,27 @@ def scheduler_operation_safe(error_message: str, return_value: Any = None, task_
                 return result
             except Exception as e:
                 task_info = f"[{task_name}] " if task_name else ""
-                debug_utils.log_and_print(f"⏰ {task_info}{error_message}: {e}", log_level="ERROR")
+                debug_utils.log_and_print(f"⏰ {task_info}{error_message} [{func.__name__}]: {e}", log_level="ERROR")
+                return return_value
+        return wrapper
+    return decorator
+
+
+def app_controller_safe(error_message: str, return_value: Any = None):
+    """
+    🎯 应用控制器操作安全装饰器
+
+    Args:
+        error_message: 错误描述信息
+        return_value: 操作失败时的返回值
+    """
+    def decorator(func: F) -> F:
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            try:
+                return func(*args, **kwargs)
+            except Exception as e:
+                debug_utils.log_and_print(f"🎯 {error_message} [{func.__name__}]: {e}", log_level="ERROR")
                 return return_value
         return wrapper
     return decorator

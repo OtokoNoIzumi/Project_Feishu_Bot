@@ -10,6 +10,7 @@ from typing import Dict, Any, Optional, Tuple
 from Module.Common.scripts.common import debug_utils
 from Module.Services import AVAILABLE_SERVICES
 from Module.Services.constants import ServiceNames
+from Module.Services.service_decorators import app_controller_safe
 from .app_utils import PathUtils
 
 
@@ -39,6 +40,47 @@ class AppController:
         # ✅ 新增：adapter实例存储
         self.adapters: Dict[str, Any] = {}
 
+    @app_controller_safe("自动服务注册失败", return_value={})
+    def auto_register_services(self) -> Dict[str, bool]:
+        """
+        自动注册可用的服务
+
+        Returns:
+            Dict[str, bool]: 各服务注册结果
+        """
+        results = {}
+
+        for service_name, service_class in AVAILABLE_SERVICES.items():
+            # 根据服务类型设置默认配置
+            match service_name:
+                case ServiceNames.CONFIG:
+                    config = {
+                        'static_config_file_path': 'config.json'
+                    }
+                case ServiceNames.CACHE:
+                    config = {
+                        'cache_dir': os.path.join(self.project_root_path, 'cache')
+                    }
+                case ServiceNames.PENDING_CACHE:
+                    config = {
+                        'cache_dir': os.path.join(self.project_root_path, 'cache'),
+                        'max_operations_per_user': 2
+                    }
+                case ServiceNames.CARD_OPERATION_MAPPING:
+                    config = {}
+                case _:
+                    config = {}
+
+            results[service_name] = self.register_service(service_name, service_class, config)
+
+        debug_utils.log_and_print(
+            f"自动注册完成，成功: {sum(results.values())}/{len(results)}",
+            log_level="INFO"
+        )
+
+        return results
+
+    @app_controller_safe("服务注册操作失败", return_value=False)
     def register_service(self, service_name: str, service_class: type, config: Dict[str, Any] = None) -> bool:
         """
         注册服务
@@ -51,24 +93,19 @@ class AppController:
         Returns:
             bool: 注册是否成功
         """
-        try:
-            if service_name in self.services:
-                debug_utils.log_and_print(f"服务 '{service_name}' 已存在，将被覆盖", log_level="WARNING")
+        if service_name in self.services:
+            debug_utils.log_and_print(f"服务 '{service_name}' 已存在，将被覆盖", log_level="WARNING")
 
-            self.service_configs[service_name] = config or {}
+        self.service_configs[service_name] = config or {}
 
-            # 暂时只注册类，不立即初始化（懒加载）
-            self.services[service_name] = {
-                'class': service_class,
-                'instance': None,
-                'status': 'registered'
-            }
+        # 暂时只注册类，不立即初始化（懒加载）
+        self.services[service_name] = {
+            'class': service_class,
+            'instance': None,
+            'status': 'registered'
+        }
 
-            return True
-
-        except Exception as e:
-            debug_utils.log_and_print(f"注册服务 '{service_name}' 失败: {e}", log_level="ERROR")
-            return False
+        return True
 
     def _initialize_service(self, service_name: str) -> bool:
         """
@@ -253,49 +290,6 @@ class AppController:
             all_status["services"][name] = self.get_service_status(name)
 
         return all_status
-
-    def auto_register_services(self) -> Dict[str, bool]:
-        """
-        自动注册可用的服务
-
-        Returns:
-            Dict[str, bool]: 各服务注册结果
-        """
-        results = {}
-
-        try:
-            for service_name, service_class in AVAILABLE_SERVICES.items():
-                # 根据服务类型设置默认配置
-                match service_name:
-                    case ServiceNames.CONFIG:
-                        config = {
-                            'static_config_file_path': 'config.json'
-                        }
-                    case ServiceNames.CACHE:
-                        config = {
-                            'cache_dir': os.path.join(self.project_root_path, 'cache')
-                        }
-                    case ServiceNames.PENDING_CACHE:
-                        config = {
-                            'cache_dir': os.path.join(self.project_root_path, 'cache'),
-                            'max_operations_per_user': 2
-                        }
-                    case ServiceNames.CARD_OPERATION_MAPPING:
-                        config = {}
-                    case _:
-                        config = {}
-
-                results[service_name] = self.register_service(service_name, service_class, config)
-
-            debug_utils.log_and_print(
-                f"自动注册完成，成功: {sum(results.values())}/{len(results)}",
-                log_level="INFO"
-            )
-
-        except ImportError as e:
-            debug_utils.log_and_print(f"自动注册失败，无法导入服务: {e}", log_level="ERROR")
-
-        return results
 
     def health_check(self) -> Dict[str, Any]:
         """
