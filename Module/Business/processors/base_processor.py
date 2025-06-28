@@ -75,7 +75,6 @@ class MessageContext_Refactor:
     chat_type: Optional[str] = None
 
 
-
 @dataclass
 class MessageContext:
     """消息上下文 - 标准化的消息数据结构"""
@@ -93,6 +92,7 @@ class MessageContext:
     def __post_init__(self):
         if self.metadata is None:
             self.metadata = {}
+
 
 @dataclass
 class RouteResult:
@@ -178,7 +178,7 @@ class ProcessResult:
     @classmethod
     def error_result(cls, error_msg: str):
         # 错误消息保持默认逻辑（parent_id=None）
-        return cls(False, "text", {"text": error_msg}, error_msg, True, parent_id=None)
+        return cls(False, "text", {"text": error_msg}, error_msg, True, parent_id=None, reply_message_type="text")
 
     @classmethod
     def no_reply_result(cls):

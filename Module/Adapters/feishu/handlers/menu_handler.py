@@ -10,11 +10,11 @@ import datetime
 from typing import Optional
 
 from Module.Common.scripts.common import debug_utils
-from Module.Business.processors import MessageContext, MessageContext_Refactor, MenuClickContent
+from Module.Business.processors import MessageContext, MessageContext_Refactor, MenuClickContent, RouteResult
 from ..decorators import (
     feishu_event_handler_safe, message_conversion_safe
 )
-from Module.Services.constants import ProcessResultConstKeys, ProcessResultNextAction, MessageTypes, AdapterNames, ResponseTypes
+from Module.Services.constants import MessageTypes, AdapterNames, ResponseTypes
 
 
 class MenuHandler:
@@ -53,16 +53,13 @@ class MenuHandler:
         # 调用业务处理器
         result = self.message_router.process_message(context)
 
-        # 检查是否需要异步处理B站视频推荐
-        if result.response_type == ResponseTypes.ASYNC_ACTION:
-            self.sender.send_feishu_reply_with_context(context_refactor, result)
-
-            match result.async_action:
-                case ProcessResultNextAction.PROCESS_BILI_VIDEO:
-                    self.message_handler._handle_bili_video_async(context_refactor)
-                case _:
-                    debug_utils.log_and_print(f"❌ 未知异步操作: {result.async_action}", log_level="ERROR")
-
+        # 检查是否是RouteResult，如果是则转发给message_handler处理
+        if isinstance(result, RouteResult):
+            # 利用现有的message_handler的路由分发能力，避免重复代码
+            if self.message_handler:
+                self.message_handler._handle_route_result_dynamic(result, context_refactor)
+            else:
+                debug_utils.log_and_print("❌ MessageHandler未注入，无法处理RouteResult", log_level="ERROR")
             return
 
         # 发送回复（菜单点击通常需要主动发送消息）

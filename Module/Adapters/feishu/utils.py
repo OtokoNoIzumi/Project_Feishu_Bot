@@ -11,6 +11,7 @@ from functools import partial
 
 from Module.Common.scripts.common import debug_utils
 from Module.Application.app_utils import custom_serializer
+from Module.Services.constants import RouteTypes
 
 # P2ImMessageReceiveV1对象调试开关现在从配置服务获取
 
@@ -126,13 +127,14 @@ __all__ = [
 """
 
 ROUTE_KNOWLEDGE_MAPPING = {
-    "bili_video_card": {
+    RouteTypes.BILI_VIDEO_CARD: {
         "handler": "card_handler",
         "method": "dispatch_card_response",
         "call_params": {
             "card_config_key": "bilibili_video_info",
             "card_action": "generate_new_card"
-        }
+        },
+        "is_async": True  # 标记为异步处理
     },
     "admin_card": {
         "handler": "card_handler",

@@ -169,7 +169,14 @@ class MessageHandler:
 
             print('test-', method_name, kwargs)
             # 执行调用
-            method(**kwargs)
+            if route_knowledge.get("is_async", False):
+                # 异步执行
+                def process_in_background():
+                    method(**kwargs)
+                self._execute_async(process_in_background)
+            else:
+                # 同步执行
+                method(**kwargs)
             return
 
         except Exception as e:
@@ -184,8 +191,7 @@ class MessageHandler:
         action_handlers = {
             ProcessResultNextAction.PROCESS_TTS: lambda: self._handle_tts_async(data, result.response_content.get("tts_text", "")),
             ProcessResultNextAction.PROCESS_IMAGE_GENERATION: lambda: self._handle_image_generation_async(data, result.response_content.get("generation_prompt", "")),
-            ProcessResultNextAction.PROCESS_IMAGE_CONVERSION: lambda: self._handle_image_conversion_async(data),
-            ProcessResultNextAction.PROCESS_BILI_VIDEO: lambda: self._handle_bili_video_async(context_refactor)
+            ProcessResultNextAction.PROCESS_IMAGE_CONVERSION: lambda: self._handle_image_conversion_async(data)
         }
 
         if result.response_type == ResponseTypes.ASYNC_ACTION:
@@ -209,26 +215,6 @@ class MessageHandler:
             return True
 
         return False
-
-    @async_operation_safe("B站视频推荐异步处理失败")
-    def _handle_bili_video_async(self, context_refactor: MessageContext_Refactor):
-        """异步处理B站视频推荐任务"""
-        def process_in_background():
-            # 调用业务处理器获取原始数据
-            result = self.message_router.bili.process_bili_video_async()
-
-            if self.card_handler:
-                self.card_handler.dispatch_card_response(
-                    card_config_key="bilibili_video_info",
-                    card_action="send_video_card",
-                    result=result,
-                    context_refactor=context_refactor
-                )
-            else:
-                debug_utils.log_and_print("❌ CardHandler未注入", log_level="ERROR")
-                self.sender.send_direct_message(context_refactor.user_id, result)
-
-        self._execute_async(process_in_background)
 
     @async_operation_safe("TTS异步处理失败")
     def _handle_tts_async(self, original_data, tts_text: str):

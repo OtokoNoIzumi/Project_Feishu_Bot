@@ -747,9 +747,10 @@ class MessageSender:
         if is_duplicate:
             time_diff = time.time() - event_timestamp
             time_diff_str = f"时间差: {time_diff:.2f}秒"
+            text = context.content.text[:50] if hasattr(context.content, 'text') else context.content
             debug_utils.log_and_print(
                 f"📋 重复事件已由过滤器跳过 [{context.message_type}] "
-                f"[{context.content.text[:50]}] {time_diff_str}",
+                f"[{text}] {time_diff_str}",
                 log_level="INFO"
             )
             return True

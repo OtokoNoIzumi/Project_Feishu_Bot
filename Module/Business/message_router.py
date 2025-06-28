@@ -149,7 +149,8 @@ class MessageRouter(BaseProcessor):
         match event_key:
             case MenuClickTypes.GET_BILI_URL:
                 debug_utils.log_and_print(f"📺 B站视频推荐 by [{context.user_name}]", log_level="INFO")
-                return self.bili.video_menu_with_async_action()
+                # 统一使用新的路由决策，实现DRY原则
+                return self.bili.video_menu_route_choice()
             case _:
                 debug_utils.log_and_print(f"❓ 未知菜单键: {event_key}", log_level="INFO")
                 return ProcessResult.success_result(ResponseTypes.TEXT, {
