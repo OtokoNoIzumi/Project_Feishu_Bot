@@ -9,7 +9,7 @@
 
 import json
 import threading
-from typing import Optional, Dict, Any
+from typing import Optional, Any
 
 from Module.Common.scripts.common import debug_utils
 from Module.Business.processors import (
@@ -28,22 +28,21 @@ from Module.Services.constants import (
 class MessageHandler:
     """飞书消息处理器"""
 
-    def __init__(self, message_router, sender, user_name_getter, debug_functions=None):
+    def __init__(self, app_controller, message_router, sender, debug_functions=None):
         """
         初始化消息处理器
 
         Args:
+            app_controller: 应用控制器实例
             message_router: 业务消息路由器
             sender: 消息发送器实例
-            user_name_getter: 用户名获取函数
             debug_functions: 调试函数字典，包含debug_p2im_object等
         """
         self.message_router = message_router
         self.sender = sender
-        self._get_user_name = user_name_getter
 
         # 获取应用控制器以访问服务
-        self.app_controller = getattr(message_router, 'app_controller', None)
+        self.app_controller = app_controller
         self.debug_p2im_object = debug_functions.get('debug_p2im_object', noop_debug)
         self.debug_parent_id_analysis = debug_functions.get('debug_parent_id_analysis', noop_debug)
         self.card_handler = None  # 将由adapter注入
@@ -58,7 +57,6 @@ class MessageHandler:
     def set_card_handler(self, card_handler):
         """注入CardHandler实例"""
         self.card_handler = card_handler
-
 
     def _execute_async(self, func):
         """执行异步操作的通用方法"""
@@ -324,7 +322,7 @@ class MessageHandler:
         user_id = data.event.sender.sender_id.open_id
 
         # 提取通用数据（时间戳和用户名）
-        user_name = self._get_user_name(user_id)
+        user_name = self.sender.get_user_name(user_id)
         message_timestamp = extract_timestamp(data)
 
         # 提取消息特定内容

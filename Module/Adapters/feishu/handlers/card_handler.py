@@ -28,22 +28,21 @@ from ..utils import noop_debug
 class CardHandler:
     """飞书卡片处理器"""
 
-    def __init__(self, message_router, sender, user_name_getter, debug_functions=None, card_registry=None):
+    def __init__(self, app_controller, message_router, sender, debug_functions=None, card_registry=None):
         """
         初始化卡片处理器
 
         Args:
+            app_controller: 应用控制器实例
             message_router: 业务消息路由器
             sender: 消息发送器实例
-            user_name_getter: 用户名获取函数
             debug_functions: 调试函数字典，包含debug_p2im_object等
         """
         self.message_router = message_router
         self.sender = sender
-        self._get_user_name = user_name_getter
 
-        # 获取应用控制器以访问服务【这里的传参逻辑不符合规划，【待处理
-        self.app_controller = getattr(message_router, 'app_controller', None)
+        # 获取应用控制器以访问服务
+        self.app_controller = app_controller
 
         # 获取配置驱动的卡片注册表
         self.card_registry = card_registry
@@ -145,7 +144,7 @@ class CardHandler:
 
         # 对于卡片事件，使用当前时间而不是事件时间（保持原有逻辑）
         timestamp = datetime.datetime.now()
-        user_name = self._get_user_name(user_id)
+        user_name = self.sender.get_user_name(user_id)
 
         # ✅ 标准化字段：独立必要字段
         adapter_name = AdapterNames.FEISHU  # 标识来源adapter

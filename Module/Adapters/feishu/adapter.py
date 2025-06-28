@@ -60,7 +60,7 @@ class FeishuAdapter:
         # 创建消息发送器，这里的逻辑是sender通过app_controller访问服务，而不是反过来
         self.sender = MessageSender(self.client, app_controller)
 
-        # 导入并初始化新的卡片管理架构 - 配置驱动
+        # 导入并初始化新的卡片管理架构，这些每个卡片都是业务属地和整合的前端终端，完备独立的调用服务
         self.card_registry = initialize_card_managers(app_controller=app_controller, sender=self.sender)
 
         # 从配置服务获取verbose设置并准备调试函数
@@ -74,18 +74,18 @@ class FeishuAdapter:
 
         # ----第三层依赖关系，需要sender、message_processor----
         self.message_handler = MessageHandler(
-            message_router, self.sender, self.sender.get_user_name, debug_functions
+            app_controller, message_router, self.sender, debug_functions
         )
         self.card_handler = CardHandler(
-            message_router, self.sender, self.sender.get_user_name, debug_functions, self.card_registry
+            app_controller, message_router, self.sender, debug_functions, self.card_registry
         )
-        self.menu_handler = MenuHandler(message_router, self.sender, self.sender.get_user_name)
+        self.menu_handler = MenuHandler(app_controller, message_router, self.sender)
 
         # 注入handler依赖，实现解耦
         self.message_handler.set_card_handler(self.card_handler)
         self.menu_handler.set_message_handler(self.message_handler)
 
-        # 注册UI更新回调到pending_cache_service
+        # 注册UI更新回调到pending_cache_service——后续【待优化
         self._register_ui_update_callbacks()
 
         # 创建WebSocket客户端

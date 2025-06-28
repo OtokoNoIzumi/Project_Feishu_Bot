@@ -20,18 +20,18 @@ from Module.Services.constants import ProcessResultConstKeys, ProcessResultNextA
 class MenuHandler:
     """飞书菜单处理器"""
 
-    def __init__(self, message_router, sender, user_name_getter):
+    def __init__(self, app_controller, message_router, sender):
         """
         初始化菜单处理器
 
         Args:
+            app_controller: 应用控制器实例
             message_router: 业务消息路由器
             sender: 消息发送器实例
-            user_name_getter: 用户名获取函数
         """
         self.message_router = message_router
         self.sender = sender
-        self._get_user_name = user_name_getter
+        self.app_controller = app_controller
         self.message_handler = None  # 由adapter注入
 
     def set_message_handler(self, message_handler):
@@ -78,7 +78,7 @@ class MenuHandler:
         user_id = data.event.operator.operator_id.open_id
 
         # 提取通用数据（时间戳和用户名）
-        user_name = self._get_user_name(user_id)
+        user_name = self.sender.get_user_name(user_id)
         message_timestamp = datetime.datetime.now()
 
         # 菜单事件的内容是event_key，区分业务的核心参数
