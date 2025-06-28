@@ -12,7 +12,6 @@ class CardOperationMappingService:
 
     def __init__(self, config_service=None):
         self.config_service = config_service
-        self._mappings_cache: Optional[Dict[str, Any]] = None
         self._definitions_cache: Optional[Dict[str, Any]] = None
         self._mappings_cache = {}
         self._definitions_cache = {}
@@ -89,18 +88,6 @@ class CardOperationMappingService:
         """
         config = self.get_operation_config(operation_type)
         return config.get("card_config_key", "")
-
-    def get_processor(self, operation_type: str) -> str:
-        """获取业务的处理器名称
-
-        Args:
-            operation_type: 业务标识
-
-        Returns:
-            str: 处理器名称，不存在时返回空字符串
-        """
-        config = self.get_operation_config(operation_type)
-        return config.get("processor", "")
 
     def get_card_definition(self, card_config_key: str) -> Dict[str, Any]:
         """根据管理器键获取管理器配置

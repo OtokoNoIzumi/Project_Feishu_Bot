@@ -39,7 +39,7 @@ class BilibiliProcessor(BaseProcessor):
     @safe_execute("获取B站视频推荐时出现错误，请稍后再试")
     def process_bili_video_async(self, cached_data: Dict[str, Any] = None) -> ProcessResult:
         """
-        异步处理B站视频推荐（由FeishuAdapter调用）
+        异步处理B站视频推荐
         支持从缓存数据获取或从Notion重新获取
 
         Args:

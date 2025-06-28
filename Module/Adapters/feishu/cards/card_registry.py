@@ -45,7 +45,7 @@ class BaseCardManager(ABC):
                 "template_version": self.card_info.get('template_version')
             }
         else:
-            debug_utils.log_and_print(f"⚠️ 未找到{self.card_info.get('card_config_key')}的模板配置", log_level="WARNING")
+            debug_utils.log_and_print(f"⚠️ 未找到{self.card_config_key}的模板配置", log_level="WARNING")
 
     def _build_template_content(self, template_params: Dict[str, Any]) -> Dict[str, Any]:
         """构建模板内容的统一入口"""
@@ -147,14 +147,14 @@ class FeishuCardRegistry:
             debug_utils.log_and_print("❌ 卡片业务映射服务不可用", log_level="ERROR")
             return None
 
-        # 获取业务配置
-        operation_config = card_mapping_service.get_operation_config(operation_type)
-        if not operation_config:
-            debug_utils.log_and_print(f"❌ 未找到业务配置: {operation_type}", log_level="WARNING")
-            return None
+        # # 获取业务配置
+        # operation_config = card_mapping_service.get_operation_config(operation_type)
+        # if not operation_config:
+        #     debug_utils.log_and_print(f"❌ 未找到业务配置: {operation_type}", log_level="WARNING")
+        #     return None
 
         # 获取管理器标识
-        card_config_key = operation_config.get('card_config_key')
+        card_config_key = card_mapping_service.get_card_config_key(operation_type)
         if not card_config_key:
             debug_utils.log_and_print(f"❌ 业务配置缺少card_config_key字段: {operation_type}", log_level="ERROR")
             return None

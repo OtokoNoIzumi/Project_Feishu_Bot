@@ -36,9 +36,10 @@ class FeishuAdapter:
     - 无parent_id: 群聊默认reply用户消息，私聊创建新消息
     """
 
-    def __init__(self, message_router, app_controller=None):
+    def __init__(self, message_router, app_controller):
         """
-        初始化飞书适配器
+        初始化飞书适配器，作为前端层，要有能力在这一层直接访问所有后端服务
+        pending和scheduler的依赖关系是一个特殊情况，需要单独处理
 
         Args:
             message_router: 消息路由器实例
@@ -56,7 +57,7 @@ class FeishuAdapter:
         self.client = lark.Client.builder().app_id(self.app_id).app_secret(self.app_secret).build()
 
         # ----第二层依赖关系，需要sender----
-        # 创建消息发送器
+        # 创建消息发送器，这里的逻辑是sender通过app_controller访问服务，而不是反过来
         self.sender = MessageSender(self.client, app_controller)
 
         # 导入并初始化新的卡片管理架构 - 配置驱动
@@ -92,27 +93,20 @@ class FeishuAdapter:
 
     def _init_feishu_config(self):
         """初始化飞书配置"""
-        if self.app_controller:
-            # 从配置服务获取
-            config_service = self.app_controller.get_service(ServiceNames.CONFIG)
-            if config_service:
-                app_id = config_service.get(EnvVars.FEISHU_APP_MESSAGE_ID)
-                app_secret = config_service.get(EnvVars.FEISHU_APP_MESSAGE_SECRET)
-                log_level_str = config_service.get('log_level', 'INFO')
-            else:
-                app_id = os.getenv(EnvVars.FEISHU_APP_MESSAGE_ID, "")
-                app_secret = os.getenv(EnvVars.FEISHU_APP_MESSAGE_SECRET, "")
-                log_level_str = os.getenv('log_level', 'INFO')
-
-            self.app_id = app_id
-            self.app_secret = app_secret
-            self.log_level = getattr(lark.LogLevel, log_level_str)
-
+        # 从配置服务获取
+        config_service = self.app_controller.get_service(ServiceNames.CONFIG)
+        if config_service:
+            app_id = config_service.get(EnvVars.FEISHU_APP_MESSAGE_ID)
+            app_secret = config_service.get(EnvVars.FEISHU_APP_MESSAGE_SECRET)
+            log_level_str = config_service.get('log_level', 'INFO')
         else:
-            # 从环境变量获取
-            self.app_id = os.getenv(EnvVars.FEISHU_APP_MESSAGE_ID, "")
-            self.app_secret = os.getenv(EnvVars.FEISHU_APP_MESSAGE_SECRET, "")
-            self.log_level = lark.LogLevel.INFO
+            app_id = os.getenv(EnvVars.FEISHU_APP_MESSAGE_ID, "")
+            app_secret = os.getenv(EnvVars.FEISHU_APP_MESSAGE_SECRET, "")
+            log_level_str = os.getenv('log_level', 'INFO')
+
+        self.app_id = app_id
+        self.app_secret = app_secret
+        self.log_level = getattr(lark.LogLevel, log_level_str)
 
         # 设置全局配置
         lark.APP_ID = self.app_id

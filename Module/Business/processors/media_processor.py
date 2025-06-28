@@ -36,7 +36,7 @@ class MediaProcessor(BaseProcessor):
     @safe_execute("TTS异步处理失败")
     def process_tts_async(self, tts_text: str) -> ProcessResult:
         """
-        异步处理TTS生成（由FeishuAdapter调用）
+        异步处理TTS生成
 
         Args:
             tts_text: 要转换的文本
@@ -85,7 +85,7 @@ class MediaProcessor(BaseProcessor):
     @safe_execute("图像生成异步处理失败")
     def process_image_generation_async(self, prompt: str) -> ProcessResult:
         """
-        异步处理图像生成（由FeishuAdapter调用）
+        异步处理图像生成
 
         Args:
             prompt: 图像生成提示词
@@ -132,7 +132,7 @@ class MediaProcessor(BaseProcessor):
     def process_image_conversion_async(self, image_base64: str, mime_type: str,
                                      file_name: str, file_size: int) -> ProcessResult:
         """
-        异步处理图像风格转换（由FeishuAdapter调用）
+        异步处理图像风格转换
 
         Args:
             image_base64: base64编码的图像数据
