@@ -14,6 +14,7 @@ from typing import Optional, Dict, Any, Tuple, List
 from pathlib import Path
 import base64
 from io import BytesIO
+import time
 
 from lark_oapi.api.contact.v3 import GetUserRequest
 from lark_oapi.api.im.v1 import (
@@ -34,7 +35,7 @@ from Module.Services.constants import (
     ServiceNames, ReplyModes, ChatTypes, ReceiverIdTypes,
     Messages, ResponseTypes
 )
-
+from Module.Services.service_decorators import require_service
 
 class MessageSender:
     """飞书消息发送器"""
@@ -733,3 +734,38 @@ class MessageSender:
             case _:
                 debug_utils.log_and_print(f"❌ 未知的回复模式: {reply_mode}", log_level="ERROR")
                 return False
+
+    @require_service(ServiceNames.CACHE, "缓存服务不可用，无法过滤重复消息", return_value=False)
+    def filter_duplicate_message(self, context: MessageContext_Refactor) -> bool:
+        """
+        过滤重复消息
+        """
+        cache_service = self.app_controller.get_service(ServiceNames.CACHE)
+        is_duplicate = cache_service.check_event(context.event_id)
+        event_timestamp = cache_service.get_event_timestamp(context.event_id)
+
+        if is_duplicate:
+            time_diff = time.time() - event_timestamp
+            time_diff_str = f"时间差: {time_diff:.2f}秒"
+            debug_utils.log_and_print(
+                f"📋 重复事件已由过滤器跳过 [{context.message_type}] "
+                f"[{context.content.text[:50]}] {time_diff_str}",
+                log_level="INFO"
+            )
+            return True
+
+        # 记录新事件
+        self._record_event(context)
+        return False
+
+    @require_service(ServiceNames.CACHE, "缓存服务不可用，无法记录事件", return_value=False)
+    def _record_event(self, context: MessageContext_Refactor):
+        """记录新事件"""
+        cache_service = self.app_controller.get_service(ServiceNames.CACHE)
+
+        # 直接调用缓存服务的方法
+        cache_service.add_event(context.event_id)
+        cache_service.save_event_cache()
+
+        # 更新用户缓存
+        cache_service.update_user(context.user_id, context.user_name)

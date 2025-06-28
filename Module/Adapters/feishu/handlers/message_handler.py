@@ -82,7 +82,11 @@ class MessageHandler:
 
         context, context_refactor = conversion_result
 
-        # 调用业务处理器
+        if self.sender.filter_duplicate_message(context_refactor):
+            return
+
+        # 分离一些和业务无关的逻辑出来，比如消息去重。
+        # 调用业务消息路由器
         result = self.message_router.process_message(context)
 
         # 检查是否需要异步处理

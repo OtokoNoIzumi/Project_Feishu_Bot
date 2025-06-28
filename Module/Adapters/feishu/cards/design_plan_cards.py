@@ -30,7 +30,7 @@ class DesignPlanCardManager(BaseCardManager):
             "confirm_action": {
                 **base_action_value,
                 "card_action": "submit_design_plan",
-                "message_before_action": "正在更新数据并生成二维码，请稍等...",
+                "message_before_action": "",
                 "process_result_type": ResponseTypes.DESIGN_PLAN_SUBMIT,
                 "operation_id": operation_id,
                 "raw_card_data": raw_card_data  # 存储完整的数据对象

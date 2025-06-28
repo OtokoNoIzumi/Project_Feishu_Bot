@@ -250,37 +250,3 @@ class BaseProcessor:
             debug_utils.log_and_print(f"{emoji} {user_name} {action}：{content}", log_level="INFO")
         else:
             debug_utils.log_and_print(f"{emoji} {user_name} {action}", log_level="INFO")
-
-    def _is_duplicate_event(self, event_id: str) -> bool:
-        """检查事件是否重复"""
-        if not self.app_controller:
-            debug_utils.log_and_print("app_controller为空，无法检查重复事件", log_level="WARNING")
-            return False
-
-        cache_service = self.app_controller.get_service('cache')
-        if not cache_service:
-            debug_utils.log_and_print("缓存服务不可用，无法检查重复事件", log_level="WARNING")
-            return False
-
-        # 直接调用缓存服务的check_event方法
-        is_duplicate = cache_service.check_event(event_id)
-        event_timestamp = cache_service.get_event_timestamp(event_id)
-        return is_duplicate, event_timestamp
-
-    def _record_event(self, context: MessageContext):
-        """记录新事件"""
-        if not self.app_controller:
-            debug_utils.log_and_print("app_controller为空，无法记录事件", log_level="WARNING")
-            return
-
-        cache_service = self.app_controller.get_service('cache')
-        if not cache_service:
-            debug_utils.log_and_print("缓存服务不可用，无法记录事件", log_level="WARNING")
-            return
-
-        # 直接调用缓存服务的方法
-        cache_service.add_event(context.event_id)
-        cache_service.save_event_cache()
-
-        # 更新用户缓存
-        cache_service.update_user(context.user_id, context.user_name)

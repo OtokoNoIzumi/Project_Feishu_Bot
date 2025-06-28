@@ -47,8 +47,7 @@ class MenuHandler:
         """
         # 转换为标准消息上下文
         context, context_refactor = self._convert_menu_to_context(data)
-        if not context:
-            debug_utils.log_and_print("❌ 菜单上下文转换失败", log_level="ERROR")
+        if self.sender.filter_duplicate_message(context_refactor):
             return
 
         # 调用业务处理器

@@ -67,27 +67,7 @@ class MessageRouter(BaseProcessor):
         Returns:
             ProcessResult: 处理结果
         """
-        # 检查事件是否已处理（去重）
-        is_duplicate, event_timestamp = self._is_duplicate_event(context.event_id)
-        if is_duplicate:
-            time_diff = time.time() - event_timestamp
-            time_diff_str = f"时间差: {time_diff:.2f}秒"
-            debug_utils.log_and_print(
-                f"📋 重复事件已跳过 [{context.message_type}] "
-                f"[{context.content[:50]}] {time_diff_str}",
-                log_level="INFO"
-            )
-            return ProcessResult.no_reply_result()
-
-        # 记录新事件
-        self._record_event(context)
-
         # 根据消息类型分发处理
-        return self._dispatch_by_message_type(context)
-
-    @safe_execute("消息类型分发失败")
-    def _dispatch_by_message_type(self, context: MessageContext) -> ProcessResult:
-        """根据消息类型分发处理"""
         match context.message_type:
             case MessageTypes.TEXT:
                 return self._process_text_message(context)

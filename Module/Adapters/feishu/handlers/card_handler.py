@@ -84,6 +84,11 @@ class CardHandler:
 
         context, context_refactor = conversion_result
 
+        if self.sender.filter_duplicate_message(context_refactor):
+            # 似乎对于card的回调事件，根本进不来，回另外报超时，并且不重复，最后可以考虑删掉
+            # return 可以不用P2CardActionTriggerResponse，直接return
+            return
+
         # 按照新的架构，节奏process和adapter，那么必要的数据转换要先在这里完成，那就要分发回卡片模块，对于design_plan，我许可qrcode在内部调用
         if context.metadata.get('action_value').get('card_config_key') == CardConfigKeys.DESIGN_PLAN:
             message_before_action = context.metadata.get('action_value',{}).get('message_before_action', '')
@@ -158,7 +163,8 @@ class CardHandler:
         self.debug_p2im_object(data, "P2ImMessageReceiveV1Card")
 
         # 提取基本信息
-        event_id = f"card_{data.event.operator.open_id}_{int(time.time())}"  # 卡片事件生成ID
+        event_id = data.header.event_id
+
         user_id = data.event.operator.open_id
 
         # 对于卡片事件，使用当前时间而不是事件时间（保持原有逻辑）
