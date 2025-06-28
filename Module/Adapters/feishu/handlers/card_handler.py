@@ -65,7 +65,19 @@ class CardHandler:
         """
         处理飞书卡片按钮点击事件
 
-        将卡片点击转换为标准消息上下文处理
+        在业务概念上是顶层入口和最终终点，需要有能力调用和组织所有服务、卡片、处理器。
+
+        遵循的通用业务架构是：
+        1. 信息格式转换：将卡片点击转换为标准消息上下文处理
+        1.1 原则上所有的卡片信息都是信息完备的，这里就包括了要访问的card_action，以及为了解决异步长时间的card_action提前回消息机制，而预先要发的普通消息
+        2. 被跳过的通用架构的message_router，因为可以直接用参数直接执行卡片属地的内部方法
+        3. 异步前的文本信息
+        4. 用参数直接执行卡片属地的内部方法，至于是否需要pending_cache_service，由卡片内部决定
+
+        这反过来要求卡片创建时需要遵循通用的信息格式，以及卡片内部方法的参数格式。
+        核心思路还是要前后端解耦，不然直接这里就全做完就可以了。
+        分离前端的业务数据，和后端的业务能力。
+
         """
         # 转换为标准消息上下文
         conversion_result = self._convert_card_to_context(data)
@@ -74,6 +86,11 @@ class CardHandler:
 
         # 按照新的架构，节奏process和adapter，那么必要的数据转换要先在这里完成，那就要分发回卡片模块，对于design_plan，我许可qrcode在内部调用
         if context.metadata.get('action_value').get('card_config_key') == CardConfigKeys.DESIGN_PLAN:
+            message_before_action = context.metadata.get('action_value',{}).get('message_before_action', '')
+            if message_before_action:
+                # 看起来是冗余的检测，但胜在增加了可读性，也确保了外层的局部可靠
+                self.sender.send_feishu_message_reply(context_refactor, message_before_action)
+
             card_action = context.metadata.get('action_value').get('card_action')
             card_config_key = context.metadata.get('action_value').get('card_config_key')
             if not card_config_key:
@@ -134,6 +151,8 @@ class CardHandler:
         将飞书卡片点击转换为标准消息上下文
         更好的做法是快速获取卡片事件里的标识信息，然后根据标识信息获取卡片管理器
         再根据卡片管理器获取格式化的方法，然后调用方法，这样就不需要再根据action_tag来处理了，用get_attr从参数里获取方法并执行，实现动态调用。
+
+
         """
         # 调试输出P2ImMessageReceiveV1Card对象信息
         self.debug_p2im_object(data, "P2ImMessageReceiveV1Card")
