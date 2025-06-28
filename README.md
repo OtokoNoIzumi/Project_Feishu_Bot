@@ -4,76 +4,81 @@
 
 ## 🏗️ 系统架构
 
-采用**语义化节点**的模块化架构，主要模块节点：
+采用**语义化节点**的模块化架构，经过大幅重构优化，实现了更清晰的前后端分离和业务层次：
 
-### 🎯 主模块节点
-- **`main`**: 应用入口，负责启动流程和定时任务配置化管理
-- **`app_controller`**: 服务协调器，统一管理所有服务生命周期和健康状态
-- **`feishu_adapter`**: 飞书平台适配器，处理消息接收、发送和格式转换
+### 🎯 新架构层级
 
-### 🧩 业务处理节点
-**MessageProcessor**暴露的语义化处理节点：
-- **`message_processor.text`**: 文本处理 (`get_help`, `greeting`, `default_reply`)
-- **`message_processor.media`**: 多媒体处理 (`process_tts_async`, `sample_rich_text`, `sample_image`)
-- **`message_processor.bili`**: B站功能 (`video_menu`, `process_bili_video_async`)
-- **`message_processor.admin`**: 管理功能 (`handle_admin_command`, `handle_pending_operation_action`)
-- **`message_processor.schedule`**: 定时任务 (`create_task`, `daily_summary`, `bili_notification`)
+#### 1️⃣ **前端/Adapter层** (`Module/Adapters/`)
+**纯粹的协议转换和平台接口封装**
+- **`FeishuAdapter`**: 飞书平台适配器，处理WebSocket连接、消息接收发送和格式转换
+- **handlers**: 事件处理器集合（消息、卡片、菜单）
+- **senders**: 消息发送器，负责与飞书API交互
+- **cards**: 卡片管理器，处理飞书卡片的构建和交互
+- **职责**: 协议转换、输入验证、格式适配，终端操作点，不包含任何业务逻辑，但可以访问和调用所有能力
 
-### 🔧 服务支撑层
-通过`ServiceNames`常量化访问：
-- **Config**: 配置管理，支持.env和config.json优先级
-- **Cache/PendingCache**: 缓存管理和待处理操作管理
-- **Audio/Image**: 多媒体处理服务
-- **Scheduler**: 配置化定时任务服务
-- **Notion**: 数据源集成
+#### 2️⃣ **Router层** (`Module/Business/`)
+**业务路由和逻辑处理，对应一部分原来的message_processor**
+- **`MessageRouter`**: 业务层统一入口，负责消息路由和业务逻辑协调
+- **processors**: 专门的业务处理器模块——后续会合并到service里，这里只保留router的逻辑
+  - **`TextProcessor`**: 文本消息处理 (`get_help`, `greeting`, `default_reply`)
+  - **`MediaProcessor`**: 多媒体处理 (`process_tts_async`, `sample_rich_text`, `sample_image`)
+  - **`BilibiliProcessor`**: B站功能 (`video_menu`, `process_bili_video_async`)
+  - **`AdminProcessor`**: 管理功能 (`handle_admin_command`, `handle_pending_operation_action`)
+  - **`ScheduleProcessor`**: 定时任务 (`create_task`, `daily_summary`, `bili_notification`)
+- **职责**: 消息路由、业务逻辑处理、流程控制
 
-### 🃏 卡片架构设计
+#### 3️⃣ **Service层** (`Module/Services/`)
+**功能服务实现，整合了原来的processor子模块和service**
+- **router**: 智能路由服务
+  - **`RouterService`**: AI驱动的消息路由，支持快捷指令和意图识别
+  - **`CardBuilder`**: 卡片构建服务，统一卡片模板管理
+- **核心服务**: 通过`ServiceNames`常量化访问
+  - **Config**: 配置管理，支持.env和config.json优先级
+  - **Cache/PendingCache**: 缓存管理和待处理操作管理
+  - **Audio/Image**: 多媒体处理服务
+  - **Notion**: 数据源集成和B站数据管理
+  - **LLM**: 大语言模型服务集成
+- **职责**: 具体功能实现、数据处理、服务提供
 
-项目采用**配置化关联**的卡片架构，实现业务与卡片的彻底解耦：
+#### 4️⃣ **Pending & Schedule层** (自动化)
+**自动化处理层，实现异步操作和定时任务的完全自动化**
+- **`PendingCacheService`**: 待处理操作自动管理
+  - 支持倒计时和自动执行
+  - UI更新推送机制
+  - 操作状态跟踪和过期清理
+- **`SchedulerService`**: 完全解耦的定时任务服务
+  - 事件驱动架构，通过事件机制通知其他组件
+  - 支持每日任务和间隔任务
+  - 独立于前端实现的调度机制
+- **职责**: 定时任务、异步操作、状态管理，完全自动化运行
 
-#### 核心理念
-- **卡片定位**: 卡片是飞书Adapter的附属特性，本质是消息的接收、标准格式化、展示和传递容器
-- **业务解耦**: 业务层与卡片层通过配置文件桥接，避免硬编码依赖
-- **依赖方向**: 卡片可以向下调用业务层，但业务层不能依赖卡片
+#### 5️⃣ **Application层** (`Module/Application/`)
+**应用控制和服务协调**
+- **`AppController`**: 服务注册、统一调用、健康监控、adapter管理
+- **`AppApiController`**: HTTP API控制器，RESTful接口实现
+- **职责**: 服务编排、API管理、系统监控、生命周期管理
 
-#### 3个独立卡片业务
-1. **用户更新确认卡片** (`admin_user_update_confirm`)
-   - 管理员用户状态管理的确认界面
-   - 支持用户类型选择和操作确认
+### 🔄 **架构优势**
 
-2. **广告更新确认卡片** (`admin_ads_update_confirm`)
-   - B站广告时间戳编辑的确认界面
-   - 支持时间戳编辑器和操作确认
+#### **前后端完全分离**
+- 前端Adapter层专注协议转换，不包含业务逻辑
+- Router层处理业务路由，Service层提供功能实现
+- 自动化层独立运行，减少手动干预
 
-3. **B站视频菜单卡片** (`bili_video_menu`)
-   - B站视频推荐的交互界面
-   - 支持1+3推荐模式和已读管理
+#### **业务逻辑清晰化**
+- 消息路由与具体处理分离
+- 每个处理器职责单一，易于维护和扩展
+- 智能路由支持AI驱动的意图识别
 
-#### 配置化关联机制
-```json
-// cards_business_mapping.json - 业务卡片映射配置
-{
-  "business_mappings": {
-    "update_user": {
-      "response_type": "admin_card_send",
-      "card_template": "admin_user_update_confirm",
-      "timeout_seconds": 30,
-      "actions": ["confirm_user_update", "cancel_user_update"]
-    },
-    "update_ads": {
-      "response_type": "admin_ads_send",
-      "card_template": "admin_ads_update_confirm",
-      "timeout_seconds": 45,
-      "actions": ["confirm_ads_update", "cancel_ads_update"]
-    }
-  }
-}
-```
+#### **服务化架构**
+- 所有功能模块化为独立服务
+- 统一的服务注册和调用机制
+- 服务间解耦，支持独立测试和部署
 
-#### 快速插拔支持
-- **新增卡片**: 仅需在配置文件中添加映射关系，无需修改业务代码
-- **模板热更新**: 卡片模板和配置支持重启加载
-- **最小入侵**: 新卡片插拔对现有业务零影响
+#### **自动化程度高**
+- 待处理操作自动管理和执行
+- 定时任务自动调度和监控
+- UI状态自动更新和同步
 
 ## ✨ 主要功能
 
