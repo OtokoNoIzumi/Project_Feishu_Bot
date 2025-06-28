@@ -9,7 +9,7 @@ from .card_registry import BaseCardManager
 from ..decorators import card_build_safe
 from lark_oapi.event.callback.model.p2_card_action_trigger import P2CardActionTriggerResponse
 from Module.Services.constants import CardOperationTypes
-from Module.Business.processors import ProcessResult, MessageContext_Refactor
+from Module.Business.processors import ProcessResult, MessageContext_Refactor, RouteResult
 
 
 class BilibiliCardManager(BaseCardManager):
@@ -20,6 +20,15 @@ class BilibiliCardManager(BaseCardManager):
         """构建B站视频菜单卡片内容"""
         template_params = self._format_bili_video_params(video_data)
         return self._build_template_content(template_params)
+
+    def handle_generate_new_card(self, route_result: RouteResult, context: MessageContext_Refactor) -> None:
+        """
+        处理生成新卡片动作，先兼容一下route_result，毕竟这是没参数的函数。
+        route_result的metadata应该就是必要的参数。
+        """
+        # 调用外部业务
+        result = self.message_router.bili.process_bili_video_async()
+        self.handle_send_video_card(result, context)
 
     def handle_send_video_card(
         self, result: ProcessResult, context: MessageContext_Refactor

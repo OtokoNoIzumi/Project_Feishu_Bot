@@ -96,13 +96,48 @@ class MessageContext:
 
 @dataclass
 class RouteResult:
-    """路由结果 - 不包括adapter信息的中层业务"""
+    """路由结果 - 中层业务路由决策，承载业务标识和参数"""
     success: bool
-    route_result_type: str  # 用来区分业务的信息？先开个头
+    route_type: str  # 业务标识，如"bili_video_card"
 
-    async_action: Optional[str] = None # 异步操作，用于后续处理
-    message_before_async: Optional[str] = None # 异步消息，用于后续处理
-    reply_message_type: Optional[str] = None # 回复消息类型，用于后续处理
+    # 错误处理
+    error_message: Optional[str] = None
+
+    # 业务参数载体
+    route_params: Dict[str, Any] = field(default_factory=dict)
+
+    # 前置消息
+    message_before_async: Optional[str] = None
+
+    # 路由决策相关
+    should_reply: bool = True
+
+    @classmethod
+    def create_route_result(
+        cls,
+        route_type: str,
+        route_params: Optional[Dict[str, Any]] = None,
+        message_before_async: Optional[str] = None,
+        should_reply: bool = True
+    ):
+        """创建路由结果"""
+        return cls(
+            success=True,
+            route_type=route_type,
+            route_params=route_params or {},
+            message_before_async=message_before_async,
+            should_reply=should_reply
+        )
+
+    @classmethod
+    def error_route_result(cls, error_msg: str):
+        """创建错误路由结果"""
+        return cls(
+            success=False,
+            route_type="error",
+            error_message=error_msg,
+            should_reply=True
+        )
 
 @dataclass
 class ProcessResult:

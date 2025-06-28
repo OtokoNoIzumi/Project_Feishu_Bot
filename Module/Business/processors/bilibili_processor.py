@@ -7,9 +7,9 @@ B站处理器
 import re
 import json
 from typing import Dict, Any, List
-from .base_processor import BaseProcessor, MessageContext, ProcessResult, require_service, safe_execute
+from .base_processor import BaseProcessor, MessageContext, ProcessResult, require_service, safe_execute, RouteResult
 from Module.Common.scripts.common import debug_utils
-from Module.Services.constants import ServiceNames, ResponseTypes, ProcessResultConstKeys, ProcessResultNextAction
+from Module.Services.constants import ServiceNames, ResponseTypes, ProcessResultNextAction, RouteTypes
 
 class BilibiliProcessor(BaseProcessor):
     """
@@ -17,6 +17,25 @@ class BilibiliProcessor(BaseProcessor):
 
     处理B站相关的所有功能
     """
+
+    def video_menu_route_choice(self) -> RouteResult:
+        """
+        处理B站/视频文本指令路由选择
+        业务逻辑：判断缓存是否有效，决定是否提示用户"正在同步数据"，否则直接进入异步处理
+        返回路由决策，只提供业务标识，前端知识由适配器层映射
+        """
+        text = ""
+        if self.app_controller:
+            notion_service = self.app_controller.get_service('notion')
+            if notion_service and notion_service.should_show_sync_message():
+                text = "正在从Notion同步最新数据，获取可能需要十秒左右，请稍候..."
+
+        # 只提供业务标识和业务参数，不包含前端知识
+        return RouteResult.create_route_result(
+            route_type=RouteTypes.BILI_VIDEO_CARD,  # 业务标识
+            route_params={},               # 当前业务无参数
+            message_before_async=text
+        )
 
     def video_menu_with_async_action(self) -> ProcessResult:
         """

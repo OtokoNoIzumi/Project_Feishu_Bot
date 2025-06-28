@@ -13,13 +13,13 @@ from typing import Optional, Any
 
 from Module.Common.scripts.common import debug_utils
 from Module.Business.processors import (
-    MessageContext, ProcessResult, MessageContext_Refactor,
-    TextContent, FileContent
+    MessageContext, ProcessResult,
+    MessageContext_Refactor, TextContent, FileContent, RouteResult
 )
 from ..decorators import (
     feishu_event_handler_safe, message_conversion_safe, async_operation_safe
 )
-from ..utils import extract_timestamp, noop_debug
+from ..utils import extract_timestamp, noop_debug, ROUTE_KNOWLEDGE_MAPPING
 from Module.Services.constants import (
     ServiceNames, UITypes, ResponseTypes, Messages, CardOperationTypes, ProcessResultConstKeys, ProcessResultNextAction, AdapterNames
 )
@@ -89,6 +89,12 @@ class MessageHandler:
         # 调用业务消息路由器
         result = self.message_router.process_message(context)
 
+        if isinstance(result, RouteResult):
+            # 向后兼容在这里处理新的业务。
+            # 参考handle_feishu_card的配置驱动模式，避免硬编码
+            self._handle_route_result_dynamic(result, context_refactor)
+            return
+
         # 检查是否需要异步处理
         if self._handle_async_actions(data, result, context_refactor):
             return
@@ -96,10 +102,80 @@ class MessageHandler:
         # 检查特殊响应类型
         if self._handle_special_response_types(data, result, context, context_refactor):
             return
-
         # 普通回复
         if result.should_reply:
             self.sender.send_feishu_reply(data, result)
+
+    def _handle_route_result_dynamic(self, route_result: RouteResult, context_refactor: MessageContext_Refactor):
+        """
+        动态处理RouteResult - 基于路由知识映射进行分发
+        实现业务层与适配器层的分离：业务层只提供标识，适配器层管理前端知识
+
+        Args:
+            route_result: 路由结果，包含业务标识和业务参数
+            context_refactor: 重构后的消息上下文
+        """
+        try:
+            # 先发送前置消息（如果有）
+            if route_result.message_before_async:
+                self.sender.send_feishu_message_reply(context_refactor, route_result.message_before_async)
+
+            # 从路由知识映射获取前端处理方式
+            route_knowledge = ROUTE_KNOWLEDGE_MAPPING.get(route_result.route_type)
+
+            if not route_knowledge:
+                debug_utils.log_and_print(f"未知的路由类型: {route_result.route_type}", log_level="ERROR")
+                error_result = ProcessResult.error_result(f"未知的路由类型: {route_result.route_type}")
+                self.sender.send_feishu_reply_with_context(context_refactor, error_result)
+                return
+
+            # 获取处理器对象 - 支持三个handler的配置
+            handler_name = route_knowledge["handler"]
+            handler_mapping = {
+                "message_handler": self,
+                "card_handler": self.card_handler,
+                # "menu_handler": getattr(self, 'menu_handler', None)
+            }
+            handler = handler_mapping.get(handler_name)
+            if not handler:
+                debug_utils.log_and_print(f"未找到处理器: {handler_name}", log_level="ERROR")
+                error_result = ProcessResult.error_result(f"未找到处理器: {handler_name}")
+                self.sender.send_feishu_reply_with_context(context_refactor, error_result)
+                return
+
+            # 获取处理方法
+            method_name = route_knowledge["method"]
+            method = getattr(handler, method_name, None)
+            if not method:
+                debug_utils.log_and_print(f"未找到方法: {handler_name}.{method_name}", log_level="ERROR")
+                error_result = ProcessResult.error_result(f"未找到方法: {handler_name}.{method_name}")
+                self.sender.send_feishu_reply_with_context(context_refactor, error_result)
+                return
+
+            # 结构化参数解析：分离不同来源的参数
+            call_params = route_knowledge.get("call_params", {})  # 前端知识参数
+            system_params = {                                     # 系统必须参数
+                "result": route_result,
+                "context_refactor": context_refactor
+            }
+            business_params = route_result.route_params           # 业务参数
+
+            # 构造最终调用参数：优先级 系统 > 前端知识 > 业务
+            kwargs = {
+                **call_params,      # 前端知识参数（低优先级）
+                **business_params,  # 业务参数（中优先级）
+                **system_params     # 系统参数（高优先级）
+            }
+
+            print('test-', method_name, kwargs)
+            # 执行调用
+            method(**kwargs)
+            return
+
+        except Exception as e:
+            debug_utils.log_and_print(f"路由分发处理异常: {str(e)}", log_level="ERROR")
+            error_result = ProcessResult.error_result(f"路由分发处理异常: {str(e)}")
+            self.sender.send_feishu_reply_with_context(context_refactor, error_result)
 
     def _handle_async_actions(self, data, result: ProcessResult, context_refactor: MessageContext_Refactor) -> bool:
         """处理异步操作，返回True表示已处理"""

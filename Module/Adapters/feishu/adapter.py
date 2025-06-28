@@ -61,7 +61,8 @@ class FeishuAdapter:
         self.sender = MessageSender(self.client, app_controller)
 
         # 导入并初始化新的卡片管理架构，这些每个卡片都是业务属地和整合的前端终端，完备独立的调用服务
-        self.card_registry = initialize_card_managers(app_controller=app_controller, sender=self.sender)
+        # message_router承载了部分未来要service化的业务，但这里不重构了，直接传进来【待优化
+        self.card_registry = initialize_card_managers(app_controller=app_controller, sender=self.sender, message_router=message_router)
 
         # 从配置服务获取verbose设置并准备调试函数
         verbose_config = False  # 默认值

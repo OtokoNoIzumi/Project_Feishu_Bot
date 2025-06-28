@@ -16,10 +16,11 @@ from Module.Services.constants import ServiceNames, CardOperationTypes, ReplyMod
 class BaseCardManager(ABC):
     """卡片管理器基类 - 配置驱动架构"""
 
-    def __init__(self, app_controller=None, card_info=None, card_config_key=None, sender=None):
+    def __init__(self, app_controller=None, card_info=None, card_config_key=None, sender=None, message_router=None):
         self.app_controller = app_controller
         self.card_info = card_info or {}
         self.sender = sender
+        self.message_router = message_router
 
         # 直接从card_info获取配置
         self.card_name = self.card_info.get('card_name', '未知卡片')

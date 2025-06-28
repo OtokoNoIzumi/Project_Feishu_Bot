@@ -45,7 +45,7 @@ _CARD_REGISTRY_INITIALIZED = False
 
 
 # 配置驱动的卡片管理器注册系统
-def initialize_card_managers(app_controller=None, sender=None):
+def initialize_card_managers(app_controller=None, sender=None, message_router=None):
     """
     初始化并注册所有卡片管理器 - 配置驱动 + 属地化 (单例)
 
@@ -83,12 +83,13 @@ def initialize_card_managers(app_controller=None, sender=None):
                 debug_utils.log_and_print(f"❌ 未找到卡片管理器: {card_type}", log_level="ERROR")
                 continue
 
-            # 创建管理器实例（传入app_controller和sender）
+            # 创建管理器实例（传入app_controller和sender），同样作为业务终端，需要获取独立执行和调用的能力。
             manager_instance = manager_class(
                 app_controller=app_controller,
                 card_info=card_definition,
                 card_config_key=card_type,
-                sender=sender
+                sender=sender,
+                message_router=message_router
             )
 
             # 注册管理器

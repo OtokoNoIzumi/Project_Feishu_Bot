@@ -21,7 +21,7 @@ from Module.Services.constants import (
     MessageTypes, CardActions, Messages, DesignPlanConstants
 )
 from .processors import (
-    BaseProcessor, MessageContext, ProcessResult,
+    BaseProcessor, MessageContext, ProcessResult, RouteResult,
     TextProcessor, MediaProcessor, BilibiliProcessor,
     AdminProcessor, ScheduleProcessor,
     require_app_controller, safe_execute
@@ -57,7 +57,7 @@ class MessageRouter(BaseProcessor):
 
     @require_app_controller("系统服务不可用")
     @safe_execute("消息处理失败")
-    def process_message(self, context: MessageContext) -> ProcessResult:
+    def process_message(self, context: MessageContext):
         """
         处理消息的主入口
 
@@ -84,8 +84,8 @@ class MessageRouter(BaseProcessor):
                 return ProcessResult.error_result(f"不支持的消息类型: {context.message_type}")
 
     @safe_execute("文本消息处理失败")
-    def _process_text_message(self, context: MessageContext) -> ProcessResult:
-        """处理文本消息"""
+    def _process_text_message(self, context: MessageContext):
+        """处理文本消息，B站视频指令返回RouteResult，其他返回ProcessResult"""
         user_msg = context.content
 
         # 1. 检查管理员命令
@@ -120,7 +120,7 @@ class MessageRouter(BaseProcessor):
                 return self.media.sample_image(context)
             case Messages.BILI_COMMAND | Messages.VIDEO_COMMAND:
                 self._log_command(context.user_name, "📺", "触发B站视频指令")
-                return self.bili.video_menu_with_async_action()
+                return self.bili.video_menu_route_choice()
 
         # AI智能路由（新增 - 在原有指令之前）
         router_service = self.app_controller.get_service(ServiceNames.ROUTER) if self.app_controller else None

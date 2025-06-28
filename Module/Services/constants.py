@@ -276,3 +276,7 @@ class DesignPlanConstants:
 # =adpter常量=
 class AdapterNames:
     FEISHU = "feishu"
+
+# ========== 路由类型常量 ==========
+class RouteTypes:
+    BILI_VIDEO_CARD = "bili_video_card"

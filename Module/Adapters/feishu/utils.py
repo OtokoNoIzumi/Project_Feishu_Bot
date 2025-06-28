@@ -118,3 +118,41 @@ __all__ = [
     'noop_debug',
     'create_debug_functions'
 ]
+
+# ========== 路由知识映射配置 ==========
+"""
+路由知识映射 - 将业务层的route_type映射到适配器层的具体处理方式
+这些是 "bili_video_card" 等业务标识对应的前端知识
+"""
+
+ROUTE_KNOWLEDGE_MAPPING = {
+    "bili_video_card": {
+        "handler": "card_handler",
+        "method": "dispatch_card_response",
+        "call_params": {
+            "card_config_key": "bilibili_video_info",
+            "card_action": "generate_new_card"
+        }
+    },
+    "admin_card": {
+        "handler": "card_handler",
+        "method": "dispatch_card_response",
+        "call_params": {
+            "card_config_key": "admin_user_info",
+            "card_action": "show_admin_panel"
+        }
+    },
+    "design_plan_card": {
+        "handler": "card_handler",
+        "method": "dispatch_card_response",
+        "call_params": {
+            "card_config_key": "design_plan",
+            "card_action": "send_confirm_card"
+        }
+    },
+    "text_reply": {
+        "handler": "sender",
+        "method": "send_feishu_message_reply",
+        "call_params": {}
+    }
+}

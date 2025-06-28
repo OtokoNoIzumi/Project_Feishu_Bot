@@ -414,7 +414,7 @@ class CardHandler:
         self,
         card_config_key: str,
         card_action: str,
-        result: ProcessResult,
+        result,
         context_refactor: MessageContext_Refactor,
         **kwargs
     ) -> Any:
