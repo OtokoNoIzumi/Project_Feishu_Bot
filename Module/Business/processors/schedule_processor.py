@@ -5,11 +5,15 @@
 """
 
 import re
-from typing import Dict, Any, List, Optional
-from datetime import datetime
+import json
+import asyncio
+import aiohttp
+from typing import Dict, Any, List, Optional, Tuple
+from datetime import datetime, timedelta
+from concurrent.futures import ThreadPoolExecutor
 from .base_processor import BaseProcessor, MessageContext, ProcessResult, require_service, safe_execute
 from Module.Common.scripts.common import debug_utils
-from Module.Services.constants import SchedulerTaskTypes, ServiceNames, ResponseTypes, SchedulerConstKeys
+from Module.Services.constants import SchedulerTaskTypes, ServiceNames, ResponseTypes, SchedulerConstKeys, DefaultValues, EnvVars
 from Module.Business.processors.bilibili_processor import convert_to_bili_app_link
 from Module.Services.message_aggregation_service import MessagePriority
 
@@ -19,6 +23,27 @@ class ScheduleProcessor(BaseProcessor):
 
     处理各种定时任务相关的功能
     """
+
+    def __init__(self, app_controller=None):
+        super().__init__(app_controller)
+        self._load_config()
+
+    def _load_config(self):
+        """加载配置"""
+        # 统一默认值
+        self.bili_api_base_url = DefaultValues.DEFAULT_BILI_API_BASE
+        self.bili_admin_secret = DefaultValues.DEFAULT_ADMIN_SECRET
+
+        if not self.app_controller:
+            return
+
+        config_service = self.app_controller.get_service(ServiceNames.CONFIG)
+        if not config_service:
+            return
+
+        # 获取B站API配置
+        self.bili_api_base_url = config_service.get_env(EnvVars.BILI_API_BASE, self.bili_api_base_url)
+        self.bili_admin_secret = config_service.get_env(EnvVars.ADMIN_SECRET_KEY, self.bili_admin_secret)
 
     @safe_execute("创建定时消息失败")
     def create_task(self, event_data: Dict[str, Any]) -> ProcessResult:
@@ -66,6 +91,11 @@ class ScheduleProcessor(BaseProcessor):
         """创建每日信息汇总消息（7:30定时卡片容器）"""
         # 构建B站信息cache分析数据
         analysis_data = self.build_bilibili_cache_analysis()
+
+        # 获取运营数据
+        operation_data = self.get_operation_data()
+        if operation_data:
+            analysis_data['operation_data'] = operation_data
 
         # 将服务状态信息加入分析数据
         if services_status:
@@ -121,6 +151,172 @@ class ScheduleProcessor(BaseProcessor):
             "timestamp": now.isoformat()
         }
 
+    def get_operation_data(self) -> Optional[Dict[str, Any]]:
+        """
+        获取运营数据（每日必须，周一还要获取周数据）
+        """
+        now = datetime.now()
+        today_str = (now - timedelta(days=1)).strftime("%Y-%m-%d")
+        is_monday = now.weekday() == 0  # 0是周一
+
+        # 检查B站API是否可用
+        if not self._is_bili_api_available():
+            debug_utils.log_and_print("B站API不可用，跳过运营数据获取", log_level="WARNING")
+            return None
+
+        try:
+            # 获取每日数据
+            daily_data = self._get_daily_operation_data(today_str)
+
+            operation_data = {
+                "daily": daily_data,
+                "date": today_str,
+                "is_monday": is_monday
+            }
+
+            # 如果是周一，额外获取周数据
+            if is_monday:
+                weekly_data = self._get_weekly_operation_data()
+                if weekly_data:
+                    operation_data["weekly"] = weekly_data
+
+            return operation_data
+
+        except Exception as e:
+            debug_utils.log_and_print(f"获取运营数据失败: {e}", log_level="ERROR")
+            return None
+
+    def _is_bili_api_available(self) -> bool:
+        """检查B站API是否可用"""
+        return (self.bili_api_base_url and
+                self.bili_api_base_url != DefaultValues.DEFAULT_BILI_API_BASE)
+
+    def _get_daily_operation_data(self, date: str) -> Optional[Dict[str, Any]]:
+        """获取每日运营数据"""
+        try:
+            # 在线程池中执行异步API调用
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(self._run_async_in_thread, self._call_daily_operation_api_async, date)
+                success, response_data = future.result(timeout=30)
+
+            if success and response_data.get("success", False):
+                return response_data
+            else:
+                error_msg = response_data.get("message", "未知错误") if response_data else "API调用失败"
+                debug_utils.log_and_print(f"获取每日运营数据失败: {error_msg}", log_level="WARNING")
+                return None
+
+        except Exception as e:
+            debug_utils.log_and_print(f"获取每日运营数据异常: {e}", log_level="ERROR")
+            return None
+
+    def _get_weekly_operation_data(self) -> Optional[Dict[str, Any]]:
+        """获取每周运营数据"""
+        try:
+            # 在线程池中执行异步API调用
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(self._run_async_in_thread, self._call_weekly_operation_api_async)
+                success, response_data = future.result(timeout=30)
+
+            if success and response_data.get("success", False):
+                return response_data
+            else:
+                error_msg = response_data.get("message", "未知错误") if response_data else "API调用失败"
+                debug_utils.log_and_print(f"获取每周运营数据失败: {error_msg}", log_level="WARNING")
+                return None
+
+        except Exception as e:
+            debug_utils.log_and_print(f"获取每周运营数据异常: {e}", log_level="ERROR")
+            return None
+
+    def _run_async_in_thread(self, async_func, *args):
+        """在线程中运行异步函数"""
+        try:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                return loop.run_until_complete(async_func(*args))
+            finally:
+                loop.close()
+        except Exception as e:
+            debug_utils.log_and_print(f"异步函数执行失败: {e}", log_level="ERROR")
+            return False, {"message": str(e)}
+
+    async def _call_daily_operation_api_async(self, date: str) -> Tuple[bool, Dict[str, Any]]:
+        """异步调用每日运营数据API"""
+        url = f"{self.bili_api_base_url}/api/admin/operation/daily"
+        data = {
+            "date": date,
+            "with_comparison": True,
+            "admin_secret_key": self.bili_admin_secret
+        }
+        return await self._make_operation_api_request(url, data, "每日运营数据")
+
+    async def _call_weekly_operation_api_async(self) -> Tuple[bool, Dict[str, Any]]:
+        """异步调用每周运营数据API"""
+        url = f"{self.bili_api_base_url}/api/admin/operation/weekly"
+        params = {
+            "admin_secret_key": self.bili_admin_secret
+            # week_start 留空，使用默认值
+        }
+        return await self._make_operation_api_request(url, params, "每周运营数据", method="GET")
+
+    async def _make_operation_api_request(
+        self,
+        url: str,
+        data: Dict[str, Any],
+        operation_name: str,
+        method: str = "POST",
+        max_retries: int = 2,
+        retry_delay: float = 1.0
+    ) -> Tuple[bool, Dict[str, Any]]:
+        """
+        通用的运营数据API请求方法
+
+        Args:
+            url: API端点URL
+            data: 请求数据
+            operation_name: 操作名称（用于日志）
+            method: HTTP方法（GET或POST）
+            max_retries: 最大重试次数
+            retry_delay: 重试间隔（秒）
+
+        Returns:
+            Tuple[bool, Dict[str, Any]]: (是否成功, 响应数据)
+        """
+        headers = {"Content-Type": "application/json"}
+        timeout = aiohttp.ClientTimeout(total=15)
+
+        last_error = None
+
+        for attempt in range(max_retries + 1):
+            try:
+                async with aiohttp.ClientSession(timeout=timeout) as session:
+                    if method.upper() == "GET":
+                        async with session.get(url, params=data, headers=headers) as response:
+                            response_data = await response.json()
+                    else:  # POST
+                        async with session.post(url, data=json.dumps(data), headers=headers) as response:
+                            response_data = await response.json()
+
+                    if response.status == 200:
+                        debug_utils.log_and_print(f"✅ {operation_name}获取成功", log_level="INFO")
+                        return True, response_data
+                    else:
+                        error_msg = f"HTTP {response.status}: {response_data.get('message', '未知错误')}"
+                        debug_utils.log_and_print(f"❌ {operation_name}API返回错误: {error_msg}", log_level="WARNING")
+                        return False, {"message": error_msg}
+
+            except Exception as e:
+                last_error = e
+                if attempt < max_retries:
+                    debug_utils.log_and_print(f"⚠️ {operation_name}API调用失败，第{attempt + 1}次重试: {e}", log_level="WARNING")
+                    await asyncio.sleep(retry_delay)
+                else:
+                    debug_utils.log_and_print(f"❌ {operation_name}API调用最终失败: {e}", log_level="ERROR")
+
+        return False, {"message": str(last_error) if last_error else "API调用失败"}
+
     def create_daily_summary_card(self, analysis_data: Dict[str, Any]) -> Dict[str, Any]:
         """创建每日信息汇总卡片"""
         source = analysis_data.get('source', 'unknown')
@@ -131,6 +327,11 @@ class ScheduleProcessor(BaseProcessor):
         else:
             # 占位信息
             content = f"📊 **{analysis_data['date']} {analysis_data['weekday']}** \n\n🔄 **系统状态**\n\n{analysis_data.get('status', '服务准备中...')}"
+
+        # 添加运营数据信息
+        operation_data = analysis_data.get('operation_data')
+        if operation_data:
+            content += self.format_operation_data(operation_data)
 
         # 添加服务状态信息
         services_status = analysis_data.get('services_status')
@@ -303,6 +504,126 @@ class ScheduleProcessor(BaseProcessor):
                 content += "\n\n📺 **来源分布:**"
                 for source, count in source_stats.items():
                     content += f"\n• {source}: {count} 个"
+
+        return content
+
+    def format_operation_data(self, operation_data: Dict[str, Any]) -> str:
+        """格式化运营数据信息"""
+        content = "\n\n📈 **运营日报**"
+
+        # 获取每日数据
+        daily = operation_data.get('daily')
+        is_monday = operation_data.get('is_monday', False)
+
+        if daily and daily.get('success', False):
+            current = daily.get('current', {})
+            previous = daily.get('previous', {})
+            comparison = daily.get('comparison', {})
+
+            # 基础统计信息
+            date_str = current.get('stats_date', '未知日期')
+            content += f"\n📅 **{date_str} 数据概览**"
+
+            # 用户活跃度
+            active_users = current.get('active_users', 0)
+            new_users = current.get('new_users', 0)
+            content += f"\n👥 **用户活跃度:** {active_users} 活跃用户 (+{new_users} 新增)"
+
+            # 内容统计
+            new_videos_user = current.get('new_videos_user', 0)
+            new_videos_admin = current.get('new_videos_admin', 0)
+            total_requests = current.get('total_user_requests', 0)
+            content += f"\n🎬 **内容统计:** {new_videos_user} 用户视频 | {new_videos_admin} 管理员视频"
+            content += f"\n🔄 **请求总数:** {total_requests} 次"
+
+            # 缓存效率
+            cache_hits = current.get('cache_hits', 0)
+            cache_rate = current.get('cache_utilization_rate', 0)
+            content += f"\n⚡ **缓存效率:** {cache_hits} 次命中 ({cache_rate:.1%})"
+
+            # 拒绝统计
+            total_rejections = current.get('total_rejections', 0)
+            rejected_users = current.get('rejected_users', 0)
+            if rejected_users > 0:
+                rejected_rate = total_rejections / rejected_users
+                content += f"\n🚫 **拒绝请求:** {total_rejections} 次 ({rejected_users} 用户，人均 {rejected_rate:.1f} 次)"
+            else:
+                content += f"\n🚫 **拒绝请求:** {total_rejections} 次 ({rejected_users} 用户)"
+
+            # 显示关键变化趋势
+            if comparison:
+                trends = []
+
+                # 检查用户活跃度变化
+                if 'active_users' in comparison:
+                    change = comparison['active_users'].get('change', 0)
+                    trend = comparison['active_users'].get('trend', '')
+                    if abs(change) >= 5:  # 显著变化
+                        trend_emoji = '📈' if trend == 'up' else '📉'
+                        trends.append(f"活跃用户{trend_emoji}{abs(change)}")
+
+                # 检查请求量变化
+                if 'total_user_requests' in comparison:
+                    change = comparison['total_user_requests'].get('change', 0)
+                    trend = comparison['total_user_requests'].get('trend', '')
+                    if abs(change) >= 20:  # 显著变化
+                        trend_emoji = '📈' if trend == 'up' else '📉'
+                        trends.append(f"请求量{trend_emoji}{abs(change)}")
+
+                if trends:
+                    content += f"\n📊 **今日变化:** {' | '.join(trends)}"
+
+            # 广告检测统计（如果有）
+            ads_detected = current.get('ads_detected', 0)
+            total_ad_duration = current.get('total_ad_duration', 0)
+            ad_rate = ads_detected / total_requests if total_requests > 0 else 0
+            if ads_detected > 0:
+                ad_minutes = int(total_ad_duration / 60) if total_ad_duration else 0
+                content += f"\n🎯 **广告检测:** {ads_detected} 个广告，总时长 {ad_minutes} 分钟，占比 {ad_rate:.1%}"
+
+        # 如果是周一，添加周报数据
+        if is_monday:
+            weekly = operation_data.get('weekly')
+            if weekly and weekly.get('success', False):
+                content += self.format_weekly_operation_data(weekly.get('data', {}))
+
+        return content
+
+    def format_weekly_operation_data(self, weekly_data: Dict[str, Any]) -> str:
+        """格式化周运营数据"""
+        content = "\n\n📅 **本周运营概览**"
+
+        # 周期信息
+        week_start = weekly_data.get('week_start_date', '')
+        week_end = weekly_data.get('week_end_date', '')
+        if week_start and week_end:
+            content += f"\n🗓️ **统计周期:** {week_start} 至 {week_end}"
+
+        # 用户统计
+        total_users = weekly_data.get('total_users', 0)
+        weekly_new_users = weekly_data.get('weekly_new_users', 0)
+        weekly_churned_users = weekly_data.get('weekly_churned_users', 0)
+        active_users = weekly_data.get('active_users', 0)
+        content += f"\n👥 **用户概况:** {total_users} 总用户 | {active_users} 活跃 | +{weekly_new_users} 新增 | -{weekly_churned_users} 流失"
+
+        # 付费用户
+        free_users = weekly_data.get('free_users', 0)
+        paid_users = weekly_data.get('paid_users', 0)
+        if paid_users > 0:
+            paid_rate = paid_users / (free_users + paid_users) * 100 if (free_users + paid_users) > 0 else 0
+            content += f"\n💰 **付费情况:** {paid_users} 付费用户 ({paid_rate:.1f}%)"
+
+        # 内容分析
+        weekly_unique_videos = weekly_data.get('weekly_unique_videos', 0)
+        weekly_requests = weekly_data.get('weekly_total_requests', 0)
+        cache_rate = weekly_data.get('weekly_cache_utilization_rate', 0)
+        content += f"\n📊 **内容活动:** {weekly_unique_videos} 视频 | {weekly_requests} 请求 | 缓存命中率 {cache_rate:.1%}"
+
+        # 广告分析
+        weekly_ad_videos = weekly_data.get('weekly_ad_videos', 0)
+        weekly_ad_time_ratio = weekly_data.get('weekly_ad_time_ratio', 0)
+        if weekly_ad_videos > 0:
+            content += f"\n🎯 **广告分析:** {weekly_ad_videos} 个广告视频 ({weekly_ad_time_ratio:.2%} 时长占比)"
 
         return content
 

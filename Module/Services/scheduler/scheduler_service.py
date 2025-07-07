@@ -536,7 +536,9 @@ class SchedulerService:
         services_status = self.check_services_status()
 
         # 发布轻量级事件，数据生成交给MessageProcessor
-        event = ScheduledEvent("daily_schedule_reminder", {
+        event = ScheduledEvent(
+            event_type="daily_schedule_reminder",
+            data={
             SchedulerConstKeys.ADMIN_ID: admin_id,
             SchedulerConstKeys.SCHEDULER_TYPE: SchedulerTaskTypes.DAILY_SCHEDULE,
             "services_status": services_status  # 添加服务状态信息
@@ -584,7 +586,9 @@ class SchedulerService:
             return  # 静默模式：只处理API，不发送事件
 
         # 发布事件（非静默时间）
-        event = ScheduledEvent("bilibili_updates_reminder", {
+        event = ScheduledEvent(
+            event_type="bilibili_updates_reminder",
+            data={
             SchedulerConstKeys.ADMIN_ID: admin_id,
             "sources": sources,
             "api_result": api_result,
