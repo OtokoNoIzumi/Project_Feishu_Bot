@@ -14,6 +14,7 @@ from .llm import LLMService
 from .router import RouterService
 from .pending_cache_service import PendingCacheService
 from .card_operation_mapping_service import CardOperationMappingService
+from .message_aggregation_service import MessageAggregationService
 from .constants import ServiceNames
 
 __all__ = [
@@ -26,7 +27,8 @@ __all__ = [
     'LLMService',
     'RouterService',
     'PendingCacheService',
-    'CardOperationMappingService'
+    'CardOperationMappingService',
+    'MessageAggregationService'
 ]
 
 # 服务注册表（用于应用控制器）
@@ -40,5 +42,6 @@ AVAILABLE_SERVICES = {
     ServiceNames.LLM: LLMService,
     ServiceNames.ROUTER: RouterService,
     ServiceNames.PENDING_CACHE: PendingCacheService,
-    ServiceNames.CARD_OPERATION_MAPPING: CardOperationMappingService
+    ServiceNames.CARD_OPERATION_MAPPING: CardOperationMappingService,
+    ServiceNames.MESSAGE_AGGREGATION: MessageAggregationService
 }

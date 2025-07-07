@@ -24,6 +24,7 @@ from pathlib import Path
 from Module.Common.scripts.common import debug_utils
 from ..service_decorators import service_operation_safe, scheduler_operation_safe, external_api_safe, config_operation_safe
 from Module.Services.constants import ServiceNames, SchedulerTaskTypes, SchedulerConstKeys
+from Module.Services.message_aggregation_service import MessagePriority
 
 class TaskUtils:
     """任务相关工具函数"""
@@ -43,6 +44,9 @@ class TaskUtils:
         task_functions = {
             SchedulerTaskTypes.DAILY_SCHEDULE: scheduler_service.trigger_daily_schedule_reminder,
             SchedulerTaskTypes.BILI_UPDATES: scheduler_service.trigger_bilibili_updates_reminder,
+            SchedulerTaskTypes.PERSONAL_STATUS_EVAL: scheduler_service.trigger_personal_status_evaluation,
+            SchedulerTaskTypes.WEEKLY_REVIEW: scheduler_service.trigger_weekly_review,
+            SchedulerTaskTypes.MONTHLY_REVIEW: scheduler_service.trigger_monthly_review,
         }
         return task_functions.get(task_type)
 
@@ -118,14 +122,15 @@ class SchedulerService:
 
         return True
 
-    @scheduler_operation_safe("添加间隔任务失败", return_value=False)
-    def add_interval_task(self, task_name: str, interval: int, task_func: Callable, *args, **kwargs) -> bool:
+    @scheduler_operation_safe("添加每周任务失败", return_value=False)
+    def add_weekly_task(self, task_name: str, day_of_week: str, time_str: str, task_func: Callable, *args, **kwargs) -> bool:
         """
-        添加间隔定时任务
+        添加每周定时任务
 
         Args:
             task_name: 任务名称
-            interval: 间隔秒数
+            day_of_week: 星期几 (e.g., "monday", "sunday")
+            time_str: 时间字符串 "HH:MM"
             task_func: 任务函数
             *args: 传递给任务函数的位置参数
             **kwargs: 传递给任务函数的关键字参数
@@ -133,20 +138,75 @@ class SchedulerService:
         Returns:
             bool: 是否添加成功
         """
-        # 创建一个包装函数来传递参数
         def task_wrapper():
             return task_func(*args, **kwargs)
 
-        # 添加任务
-        job = self.scheduler.every(interval).seconds.do(task_wrapper)
+        # map day string to schedule method
+        schedule_day = getattr(self.scheduler.every(), day_of_week, None)
+        if not schedule_day:
+            debug_utils.log_and_print(f"❌ 无效的星期: {day_of_week}", log_level="ERROR")
+            return False
+
+        job = schedule_day.at(time_str).do(task_wrapper)
         self.tasks[task_name] = job
         self.scheduled_functions[task_name] = {
             'function': task_func,
-            'interval': interval,
+            'day_of_week': day_of_week,
+            'time': time_str,
+            'args': args,
+            'kwargs': kwargs
+        }
+        return True
+
+    @scheduler_operation_safe("添加间隔任务失败", return_value=False)
+    def add_interval_task(self, task_name: str, interval_hours: int, start_offset_minutes: int, task_func: Callable, *args, **kwargs) -> bool:
+        """
+        添加固定间隔任务，在一天中的固定时间点触发
+        e.g., 每12小时，偏移5分钟，只在 00:05, 12:05 触发
+
+        Args:
+            task_name: 任务名称
+            interval_hours: 间隔小时数
+            start_offset_minutes: 启动偏移分钟数
+            task_func: 任务函数
+            *args: 位置参数
+            **kwargs: 关键字参数
+        """
+        # 先清理同名旧任务，避免重复
+        if task_name in self.tasks:
+            self.remove_task(task_name)
+
+        # 创建任务包装函数
+        def task_wrapper():
+            task_func(*args, **kwargs)
+
+        # 计算所有可能的触发时间点
+        trigger_times = []
+        for i in range(24 // interval_hours):
+            hour = i * interval_hours
+            time_str = f"{hour:02d}:{start_offset_minutes:02d}"
+            trigger_times.append(time_str)
+
+        # 为每个时间点创建每日任务
+        jobs = []
+        for time_str in trigger_times:
+            job = self.scheduler.every().day.at(time_str).do(task_wrapper).tag(task_name)
+            jobs.append(job)
+
+        # 存储第一个job作为代表（用于管理）
+        self.tasks[task_name] = jobs[0] if jobs else None
+
+        self.scheduled_functions[task_name] = {
+            'function': task_func,
+            'interval_hours': interval_hours,
+            'start_offset_minutes': start_offset_minutes,
+            'trigger_times': trigger_times,
+            'jobs_count': len(jobs),
             'args': args,
             'kwargs': kwargs
         }
 
+        debug_utils.log_and_print(f"✅ 间隔任务已添加: {task_name} (触发时间: {', '.join(trigger_times)})", log_level="INFO")
         return True
 
     def remove_task(self, task_name: str) -> bool:
@@ -160,7 +220,8 @@ class SchedulerService:
             bool: 是否移除成功
         """
         if task_name in self.tasks:
-            self.scheduler.cancel_job(self.tasks[task_name])
+            # 使用tag删除所有相关任务（适用于interval任务的多个job）
+            self.scheduler.clear(tag=task_name)
             del self.tasks[task_name]
             if task_name in self.scheduled_functions:
                 del self.scheduled_functions[task_name]
@@ -531,6 +592,122 @@ class SchedulerService:
         })
 
         self._publish_event(event)
+
+    @scheduler_operation_safe("个人状态评估任务失败")
+    def trigger_personal_status_evaluation(self, user_id: str):
+        """触发个人状态评估任务"""
+        debug_utils.log_and_print("个人状态评估任务执行", log_level="INFO")
+
+        # 简化测试数据
+        data = {
+            "task_type": "个人状态评估",
+            "execution_time": datetime.datetime.now().strftime("%H:%M:%S"),
+            "user_id": user_id,
+            "status": "测试执行成功"
+        }
+
+        # 将数据发送到信息汇总服务
+        message_aggregation_service = self.app_controller.get_service(ServiceNames.MESSAGE_AGGREGATION)
+        if message_aggregation_service:
+            message_aggregation_service.add_message(
+                source_type="personal_status_eval",
+                content=data,
+                user_id=user_id,
+                priority=MessagePriority.NORMAL
+            )
+
+    @scheduler_operation_safe("周度盘点任务失败")
+    def trigger_weekly_review(self, user_id: str):
+        """触发周度盘点任务"""
+        debug_utils.log_and_print("周度盘点任务执行", log_level="INFO")
+
+        # 简化测试数据
+        data = {
+            "task_type": "周度盘点",
+            "execution_time": datetime.datetime.now().strftime("%H:%M:%S"),
+            "user_id": user_id,
+            "week": f"第{datetime.datetime.now().strftime('%W')}周",
+            "status": "测试执行成功"
+        }
+
+        message_aggregation_service = self.app_controller.get_service(ServiceNames.MESSAGE_AGGREGATION)
+        if message_aggregation_service:
+            message_aggregation_service.add_message(
+                source_type="weekly_review",
+                content=data,
+                user_id=user_id,
+                priority=MessagePriority.HIGH
+            )
+
+    @scheduler_operation_safe("月度盘点任务失败")
+    def trigger_monthly_review(self, user_id: str):
+        """触发月度盘点任务"""
+        debug_utils.log_and_print("月度盘点任务执行", log_level="INFO")
+
+        # 简化测试数据
+        data = {
+            "task_type": "月度盘点",
+            "execution_time": datetime.datetime.now().strftime("%H:%M:%S"),
+            "user_id": user_id,
+            "month": datetime.datetime.now().strftime("%Y年%m月"),
+            "status": "测试执行成功"
+        }
+
+        message_aggregation_service = self.app_controller.get_service(ServiceNames.MESSAGE_AGGREGATION)
+        if message_aggregation_service:
+            message_aggregation_service.add_message(
+                source_type="monthly_review",
+                content=data,
+                user_id=user_id,
+                priority=MessagePriority.HIGH
+            )
+
+    # ================ 数据收集方法 ================
+
+    @service_operation_safe("个人状态数据收集失败", return_value={})
+    def _collect_personal_status(self) -> Dict[str, Any]:
+        """收集个人状态数据"""
+        status_data = {}
+        try:
+            if self.app_controller:
+                health = self.app_controller.health_check()
+                status_data['system_status'] = health.get('overall_status', 'unknown')
+                status_data['healthy_services_ratio'] = f"{health['summary']['healthy']}/{health['summary']['total']}"
+
+                pending_service = self.app_controller.get_service(ServiceNames.PENDING_CACHE)
+                if pending_service:
+                    stats = pending_service.get_cache_statistics()
+                    status_data['pending_operations'] = stats.get('total_operations', 0)
+        except Exception as e:
+            debug_utils.log_and_print(f"收集个人状态数据异常: {e}", log_level="ERROR")
+            status_data["error"] = str(e)
+        return status_data
+
+    @service_operation_safe("周度数据收集失败", return_value={})
+    def _collect_weekly_review_data(self, user_id: str) -> Dict[str, Any]:
+        """收集周度盘点数据"""
+        return {
+            "title": f"第{datetime.datetime.now().strftime('%W')}周回顾",
+            "summary": "系统稳定运行，所有定时任务按计划执行。",
+            "highlights": [
+                "信息汇总服务上线并稳定运行",
+                "处理了X个B站视频更新",
+                "完成了Y个用户交互操作"
+            ]
+        }
+
+    @service_operation_safe("月度数据收集失败", return_value={})
+    def _collect_monthly_review_data(self, user_id: str) -> Dict[str, Any]:
+        """收集月度盘点数据"""
+        return {
+            "title": f"{datetime.datetime.now().strftime('%Y年%m月')}回顾",
+            "summary": "本月系统表现出色，无重大故障。",
+            "achievements": [
+                "新定时任务架构（个人评估、周/月度盘点）成功部署",
+                "AI信息汇总功能提升了信息处理效率",
+            ],
+            "next_month_goals": ["引入更智能的调度策略", "优化LLM调用成本"]
+        }
 
     # ================ 独立API方法 ================
 

@@ -35,6 +35,7 @@ from Module.Services.constants import ServiceNames, SchedulerConstKeys, AdapterN
 from Module.Common.scripts.common import debug_utils
 from Module.Services.service_decorators import require_service
 from Module.Services.scheduler.scheduler_service import TaskUtils
+from Module.Business.processors.base_processor import ProcessResult
 
 
 def setup_application():
@@ -91,10 +92,68 @@ def setup_application():
 
         scheduler_service.add_event_listener(handle_scheduled_event)
 
+    # 配置信息汇总服务
+    setup_message_aggregation(app_controller, feishu_adapter)
+
     # 配置定时任务
     setup_scheduled_tasks(app_controller)
 
     return app_controller, feishu_adapter
+
+
+def setup_message_aggregation(app_controller, feishu_adapter):
+    """配置信息汇总服务"""
+    aggregation_service = app_controller.get_service(ServiceNames.MESSAGE_AGGREGATION)
+    if not aggregation_service:
+        debug_utils.log_and_print("❌ 信息汇总服务不可用，跳过配置", log_level="WARNING")
+        return
+
+    def aggregation_callback(messages, summary):
+        """信息汇总回调函数"""
+        try:
+            if not messages:
+                return False
+
+            # 使用第一个消息的用户ID
+            admin_id = messages[0].user_id
+
+            # 构建汇总消息
+            summary_content = f"📋 **信息汇总** ({len(messages)}条消息)\n\n{summary}"
+
+            # 添加详细信息（可选）
+            if len(messages) <= 5:  # 消息较少时显示详细信息
+                summary_content += "\n\n---\n\n**详细信息：**\n"
+                for i, msg in enumerate(messages, 1):
+                    msg_summary = msg.content.get('summary', '无摘要')
+                    summary_content += f"{i}. {msg.source_type}: {msg_summary}\n"
+
+            # 发送汇总消息
+            result = ProcessResult.success_result("text", summary_content)
+
+            success = feishu_adapter.sender.send_direct_message(admin_id, result)
+
+            if success:
+                debug_utils.log_and_print(f"✅ 信息汇总消息已发送: {len(messages)}条消息", log_level="INFO")
+            else:
+                debug_utils.log_and_print(f"❌ 信息汇总消息发送失败", log_level="ERROR")
+
+            return success
+
+        except Exception as e:
+            debug_utils.log_and_print(f"❌ 信息汇总回调异常: {e}", log_level="ERROR")
+            return False
+
+    # 注册汇总回调
+    aggregation_service.register_aggregation_callback(aggregation_callback)
+
+    # 配置汇总参数
+    aggregation_service.configure_aggregation(
+        window_seconds=300,  # 5分钟汇总窗口
+        max_messages=8,      # 最多8条消息
+        min_messages=2       # 最少2条消息触发汇总
+    )
+
+    debug_utils.log_and_print("✅ 信息汇总服务配置完成", log_level="INFO")
 
 
 @require_service(ServiceNames.SCHEDULER, "调度器服务不可用，跳过定时任务配置")
@@ -113,17 +172,11 @@ def setup_scheduled_tasks(app_controller):
         if not task_config.get("enabled", True):
             continue
 
-        task_name = task_config["name"]
-        task_type = task_config["type"]
-        time_str = task_config["time"]
+        task_name = task_config.get("name", f"task_{int(time.time())}")
+        task_type = task_config.get("type")
         task_params = task_config.get("params", {})
         task_debug = task_config.get("debug", {})
-
-        # 处理单任务调试模式：force_latest_time
-        if task_debug.get("force_latest_time", False):
-            offset_seconds = task_debug.get("force_offset_seconds", 5)
-            time_str = TimeUtils.get_debug_time(offset_seconds)
-            debug_utils.log_and_print(f"🔧 调试模式：{task_name} 时间调整为 {time_str}", log_level="INFO")
+        frequency = task_config.get("frequency", "daily")  # default to daily
 
         # 根据任务类型选择触发函数
         task_func = TaskUtils.get_task_function(scheduler_service, task_type)
@@ -131,12 +184,42 @@ def setup_scheduled_tasks(app_controller):
             debug_utils.log_and_print(f"❌ 未知的任务类型: {task_type}", log_level="WARNING")
             continue
 
-        success = scheduler_service.add_daily_task(
-            task_name=task_name,
-            time_str=time_str,
-            task_func=task_func,
-            **task_params
-        )
+        # 处理单任务调试模式：force_latest_time
+        time_str = task_config.get("time", "00:00")
+        if task_debug.get("force_latest_time", False):
+            offset_seconds = task_debug.get("force_offset_seconds", 5)
+            time_str = TimeUtils.get_debug_time(offset_seconds)
+            debug_utils.log_and_print(f"🔧 调试模式：{task_name} 时间调整为 {time_str}", log_level="INFO")
+
+        success = False
+        if frequency == "daily":
+            success = scheduler_service.add_daily_task(
+                task_name=task_name,
+                time_str=time_str,
+                task_func=task_func,
+                **task_params
+            )
+        elif frequency == "weekly":
+            day_of_week = task_config.get("day_of_week", "sunday")
+            success = scheduler_service.add_weekly_task(
+                task_name=task_name,
+                day_of_week=day_of_week,
+                time_str=time_str,
+                task_func=task_func,
+                **task_params
+            )
+        elif frequency == "interval":
+            interval_hours = int(task_config.get("interval_hours", 1))
+            start_offset_minutes = int(task_config.get("start_offset_minutes", 0))
+            if interval_hours > 0:
+                success = scheduler_service.add_interval_task(
+                    task_name,
+                    interval_hours,
+                    start_offset_minutes,
+                    task_func=task_func,
+                    user_id=task_params.get("user_id")
+                )
+
         if success:
             tasks_configured += 1
 

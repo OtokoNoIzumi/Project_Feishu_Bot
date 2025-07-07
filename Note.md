@@ -267,3 +267,7 @@ handle_admin_command
 		handle_update_user_command	【新增，路由性质，但包含了业务信息，根据特定的关键词匹配指定，这里可以接受指定，因为暂时还没打算制作完整的指令和功能映射
 		context-沿用
 		user_msg-沿用
+
+
+schedule、pengding、aggreation，这些或许才是service层，processor就是processor——router只到processor，  最外层的main和handler调用pending等？
+总之现在的shcedule的两个模块要整理，可以等做完之后。

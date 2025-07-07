@@ -64,6 +64,35 @@
         "params": {
           "sources": ["favorites", "dynamic"]
         }
+      },
+      {
+        "name": "personal_status_eval",
+        "type": "personal_status_eval",
+        "frequency": "interval",
+        "interval_hours": 2,
+        "start_offset_minutes": 5,
+        "enabled": false,
+        "description": "每2小时个人状态评估",
+        "params": {
+          "user_id": "ou_08158e2f511912a18063fc6072ce42da"
+        }
+      },
+      {
+        "name": "weekly_review",
+        "type": "weekly_review",
+        "frequency": "weekly",
+        "day_of_week": "sunday",
+        "time": "20:00",
+        "enabled": false,
+        "description": "每周日晚间周度盘点"
+      },
+      {
+        "name": "monthly_review",
+        "type": "monthly_review",
+        "frequency": "daily",
+        "time": "19:00",
+        "enabled": false,
+        "description": "月度盘点（每日检查是否为月末）"
       }
     ]
   },

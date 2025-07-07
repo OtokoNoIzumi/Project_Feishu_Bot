@@ -16,6 +16,7 @@ class ServiceNames:
     LLM = "llm"
     CACHE = "cache"
     CARD_OPERATION_MAPPING = "card_operation_mapping"
+    MESSAGE_AGGREGATION = "message_aggregation"
 
 # ========== UI类型常量 ==========
 class UITypes:
@@ -207,6 +208,9 @@ class BusinessConstants:
 class SchedulerTaskTypes:
     DAILY_SCHEDULE = "daily_schedule"
     BILI_UPDATES = "bili_updates"
+    PERSONAL_STATUS_EVAL = "personal_status_eval"  # 个人状态评估
+    WEEKLY_REVIEW = "weekly_review"               # 周度盘点
+    MONTHLY_REVIEW = "monthly_review"             # 月度盘点
 
 class SchedulerConstKeys:
     SCHEDULER_TYPE = "scheduler_type"

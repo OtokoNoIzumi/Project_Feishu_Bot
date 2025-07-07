@@ -140,7 +140,7 @@ class AppController:
                     cache_dir = config.get('cache_dir', os.path.join(self.project_root_path, "cache"))
                     os.makedirs(cache_dir, exist_ok=True)
                     instance = service_class(cache_dir)
-                case ServiceNames.AUDIO | ServiceNames.SCHEDULER | ServiceNames.LLM | ServiceNames.ROUTER:
+                case ServiceNames.AUDIO | ServiceNames.SCHEDULER | ServiceNames.LLM | ServiceNames.ROUTER | ServiceNames.MESSAGE_AGGREGATION:
                     instance = service_class(app_controller=self)
                 case ServiceNames.NOTION:
                     cache_service = self.get_service(ServiceNames.CACHE)

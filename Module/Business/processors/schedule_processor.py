@@ -11,7 +11,7 @@ from .base_processor import BaseProcessor, MessageContext, ProcessResult, requir
 from Module.Common.scripts.common import debug_utils
 from Module.Services.constants import SchedulerTaskTypes, ServiceNames, ResponseTypes, SchedulerConstKeys
 from Module.Business.processors.bilibili_processor import convert_to_bili_app_link
-
+from Module.Services.message_aggregation_service import MessagePriority
 
 class ScheduleProcessor(BaseProcessor):
     """
@@ -43,6 +43,18 @@ class ScheduleProcessor(BaseProcessor):
                     sources = event_data.get('sources')
                     api_result = event_data.get('api_result')
                     return self.bili_notification(sources, api_result)
+                case SchedulerTaskTypes.PERSONAL_STATUS_EVAL:
+                    status_data = event_data.get('status_data')
+                    evaluation_time = event_data.get('evaluation_time')
+                    return self.personal_status_evaluation(status_data, evaluation_time)
+                case SchedulerTaskTypes.WEEKLY_REVIEW:
+                    weekly_data = event_data.get('weekly_data')
+                    review_week = event_data.get('review_week')
+                    return self.weekly_review(weekly_data, review_week)
+                case SchedulerTaskTypes.MONTHLY_REVIEW:
+                    monthly_data = event_data.get('monthly_data')
+                    review_month = event_data.get('review_month')
+                    return self.monthly_review(monthly_data, review_month)
                 case _:
                     return ProcessResult.error_result(f"不支持的定时任务类型: {scheduler_type}")
         except Exception as e:
@@ -875,3 +887,201 @@ class ScheduleProcessor(BaseProcessor):
                     "content": f"已标记第{video_index + 1}个推荐为已读"
                 }
             })
+
+    def _get_admin_id(self) -> Optional[str]:
+        """获取管理员ID"""
+        if self.app_controller:
+            config_service = self.app_controller.get_service(ServiceNames.CONFIG)
+            if config_service:
+                return config_service.get("ADMIN_ID", None)
+        return None
+
+    @safe_execute("个人状态评估消息创建失败")
+    def personal_status_evaluation(self, status_data: Dict[str, Any], evaluation_time: str) -> ProcessResult:
+        """
+        创建个人状态评估消息
+
+        Args:
+            status_data: 状态数据
+            evaluation_time: 评估时间
+
+        Returns:
+            ProcessResult: 处理结果
+        """
+        # 添加到信息聚合服务，避免直接发送
+        admin_id = self._get_admin_id()
+        if admin_id and self.app_controller:
+            aggregation_service = self.app_controller.get_service(ServiceNames.MESSAGE_AGGREGATION)
+            if aggregation_service:
+                aggregation_service.add_message(
+                    source_type="personal_status_eval",
+                    content={
+                        "evaluation_time": evaluation_time,
+                        "status_data": status_data,
+                        "summary": self._format_status_summary(status_data)
+                    },
+                    user_id=admin_id,
+                    priority=MessagePriority.LOW
+                )
+
+                return ProcessResult.success_result("no_reply", {
+                    "message": "个人状态评估已加入汇总队列"
+                })
+
+        # 降级处理：直接返回状态信息
+        return ProcessResult.success_result("text", self._format_status_summary(status_data))
+
+    def _format_status_summary(self, status_data: Dict[str, Any]) -> str:
+        """格式化状态摘要"""
+        if not status_data:
+            return "📊 个人状态评估：暂无数据"
+
+        summary_parts = ["📊 **个人状态评估**\n"]
+
+        # 系统健康状态
+        system_health = status_data.get("system_health", {})
+        if system_health:
+            overall_status = system_health.get("overall_status", "unknown")
+            healthy_services = system_health.get("healthy_services", 0)
+            service_count = system_health.get("service_count", 0)
+
+            summary_parts.append(f"🔧 **系统状态**: {overall_status}")
+            summary_parts.append(f"⚙️ **服务健康**: {healthy_services}/{service_count}")
+
+        # 待处理任务
+        pending_tasks = status_data.get("pending_tasks", {})
+        if pending_tasks:
+            total_ops = pending_tasks.get("total_operations", 0)
+            pending_count = pending_tasks.get("pending_count", 0)
+            summary_parts.append(f"📋 **待处理任务**: {pending_count}/{total_ops}")
+
+        return "\n".join(summary_parts)
+
+    @safe_execute("周度盘点消息创建失败")
+    def weekly_review(self, weekly_data: Dict[str, Any], review_week: str) -> ProcessResult:
+        """
+        创建周度盘点消息
+
+        Args:
+            weekly_data: 周度数据
+            review_week: 评估周期
+
+        Returns:
+            ProcessResult: 处理结果
+        """
+        # 添加到信息聚合服务
+        admin_id = self._get_admin_id()
+        if admin_id and self.app_controller:
+            aggregation_service = self.app_controller.get_service(ServiceNames.MESSAGE_AGGREGATION)
+            if aggregation_service:
+                aggregation_service.add_message(
+                    source_type="weekly_review",
+                    content={
+                        "review_week": review_week,
+                        "weekly_data": weekly_data,
+                        "summary": self._format_weekly_summary(weekly_data, review_week)
+                    },
+                    user_id=admin_id,
+                    priority=MessagePriority.NORMAL
+                )
+
+                return ProcessResult.success_result("no_reply", {
+                    "message": "周度盘点已加入汇总队列"
+                })
+
+        # 降级处理：直接返回盘点信息
+        return ProcessResult.success_result("text", self._format_weekly_summary(weekly_data, review_week))
+
+    def _format_weekly_summary(self, weekly_data: Dict[str, Any], review_week: str) -> str:
+        """格式化周度摘要"""
+        if not weekly_data:
+            return f"📅 {review_week}周度盘点：暂无数据"
+
+        summary_parts = [f"📅 **{review_week}周度盘点**\n"]
+
+        # 成果亮点
+        achievements = weekly_data.get("achievement_highlights", [])
+        if achievements:
+            summary_parts.append("🎯 **本周亮点**:")
+            for achievement in achievements[:3]:  # 最多3个
+                summary_parts.append(f"• {achievement}")
+
+        # 系统统计
+        system_stats = weekly_data.get("system_statistics", {})
+        if system_stats:
+            summary_parts.append(f"\n⚙️ **系统概况**: {len(system_stats)}个服务正常运行")
+
+        # 下周关注
+        upcoming_focus = weekly_data.get("upcoming_focus", [])
+        if upcoming_focus:
+            summary_parts.append("\n🔜 **下周关注**:")
+            for focus in upcoming_focus[:2]:  # 最多2个
+                summary_parts.append(f"• {focus}")
+
+        return "\n".join(summary_parts)
+
+    @safe_execute("月度盘点消息创建失败")
+    def monthly_review(self, monthly_data: Dict[str, Any], review_month: str) -> ProcessResult:
+        """
+        创建月度盘点消息
+
+        Args:
+            monthly_data: 月度数据
+            review_month: 评估月份
+
+        Returns:
+            ProcessResult: 处理结果
+        """
+        # 添加到信息聚合服务
+        admin_id = self._get_admin_id()
+        if admin_id and self.app_controller:
+            aggregation_service = self.app_controller.get_service(ServiceNames.MESSAGE_AGGREGATION)
+            if aggregation_service:
+                aggregation_service.add_message(
+                    source_type="monthly_review",
+                    content={
+                        "review_month": review_month,
+                        "monthly_data": monthly_data,
+                        "summary": self._format_monthly_summary(monthly_data, review_month)
+                    },
+                    user_id=admin_id,
+                    priority=MessagePriority.HIGH
+                )
+
+                return ProcessResult.success_result("no_reply", {
+                    "message": "月度盘点已加入汇总队列"
+                })
+
+        # 降级处理：直接返回盘点信息
+        return ProcessResult.success_result("text", self._format_monthly_summary(monthly_data, review_month))
+
+    def _format_monthly_summary(self, monthly_data: Dict[str, Any], review_month: str) -> str:
+        """格式化月度摘要"""
+        if not monthly_data:
+            return f"📊 {review_month}月度盘点：暂无数据"
+
+        summary_parts = [f"📊 **{review_month}月度盘点**\n"]
+
+        # 关键成就
+        key_achievements = monthly_data.get("key_achievements", [])
+        if key_achievements:
+            summary_parts.append("🏆 **关键成就**:")
+            for achievement in key_achievements[:3]:  # 最多3个
+                summary_parts.append(f"• {achievement}")
+
+        # 系统演进
+        system_evolution = monthly_data.get("system_evolution", {})
+        if system_evolution:
+            current_health = system_evolution.get("current_health", "unknown")
+            architecture = system_evolution.get("architecture_maturity", "持续发展")
+            summary_parts.append(f"\n🔧 **系统状态**: {current_health}")
+            summary_parts.append(f"🏗️ **架构成熟度**: {architecture}")
+
+        # 下月目标
+        next_goals = monthly_data.get("next_month_goals", [])
+        if next_goals:
+            summary_parts.append("\n🎯 **下月目标**:")
+            for goal in next_goals[:3]:  # 最多3个
+                summary_parts.append(f"• {goal}")
+
+        return "\n".join(summary_parts)

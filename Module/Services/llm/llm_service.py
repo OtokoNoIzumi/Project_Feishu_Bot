@@ -7,6 +7,7 @@ LLM服务 - 基于Google Gemini的大语言模型服务
 import os
 from typing import Dict, Any
 from google import genai
+from google.genai import types
 from Module.Common.scripts.common import debug_utils
 from .intent_processor import IntentProcessor
 
@@ -123,6 +124,41 @@ class LLMService:
         if self.intent_processor:
             return self.intent_processor.get_supported_intents()
         return {}
+
+    def simple_chat(self, prompt: str, max_tokens: int = 1500) -> str:
+        """
+        简单的聊天接口，用于通用文本生成
+
+        Args:
+            prompt: 输入的提示词
+            max_tokens: 最大生成token数
+
+        Returns:
+            str: 生成的文本内容
+        """
+        if not self.client:
+            return "LLM客户端不可用"
+
+        try:
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents=[{
+                    'role': 'user',
+                    'parts': [{'text': prompt}]
+                }],
+                config={
+                    "thinking_config": types.ThinkingConfig(
+                        thinking_budget=-1,
+                    ),
+                    'temperature': 0.7,
+                    'max_output_tokens': max_tokens
+                }
+            )
+            print('test-', response.__dict__, '\n')
+            return response.text
+        except Exception as e:
+            debug_utils.log_and_print(f"❌ simple_chat 调用失败: {e}", log_level="ERROR")
+            return f"文本生成失败: {e}"
 
     def get_status(self) -> Dict[str, Any]:
         """获取LLM服务状态"""
