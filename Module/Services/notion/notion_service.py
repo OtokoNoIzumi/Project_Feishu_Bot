@@ -43,13 +43,13 @@ class NotionService:
         # 缓存键名
         self.bili_cache_key = "bili_videos_cache"
         self.bili_cache_time_key = "bili_videos_cache_time"
+        self._read_status_cache_key = "local_read_status"
 
         # 缓存有效期（秒）
         self.cache_expiry = 7200  # 2小时
 
         # 本地已读状态跟踪（用于卡片显示）
         self._local_read_status = set()  # 存储已读的pageid
-        self._read_status_cache_key = "local_read_status"
 
         # 初始化数据
         self.cache_file = os.path.join(self.cache_service.cache_dir, "notion_bili_cache.json")
@@ -189,6 +189,8 @@ class NotionService:
         # 更新缓存
         self.cache_data[self.bili_cache_key] = videos
         self.cache_data[self.bili_cache_time_key] = time.time()
+        self.cache_data[self._read_status_cache_key] = []
+
         self._save_cache()
 
     def _sync_run_coroutine(self, coroutine):
@@ -543,114 +545,4 @@ class NotionService:
             "main_video": main_video_formatted,
             "additional_videos": additional_videos_formatted,
             "success": True if main_video.get("pageid", "") else False,
-        }
-
-    def get_bili_videos_statistics(self) -> Dict:
-        """
-        获取B站视频统计信息（用于7:30定时任务）
-
-        Returns:
-            Dict: 统计信息（字段内容全部为中文）
-        """
-        # 检查缓存是否有效
-        if not self._is_cache_valid() or not self.cache_data.get(self.bili_cache_key):
-            # 更新缓存是异步的，这里同步执行一次
-            self._update_bili_cache_sync()
-
-        videos = self.cache_data.get(self.bili_cache_key, [])
-        unread_videos = [v for v in videos if v.get("unread", True)]
-
-        if not unread_videos:
-            return {
-                "total_count": 0,
-                "priority_stats": {},
-                "duration_stats": {},
-                "source_stats": {},
-                "top_recommendations": [],
-                "success": False
-            }
-
-        # 统计各维度数据
-        priority_stats = {}
-        # 用中文key替换
-        duration_stats = {"短视频": 0, "中视频": 0, "长视频": 0}  # ≤10分钟, 10-30分钟, >30分钟
-        source_stats = {}
-
-        # # 优先级中文映射
-        # priority_map = {
-        #     "High": "💖高",
-        #     "Medium": "😜中",
-        #     "Low": "👾低",
-        #     "Unknown": "未知优先级"
-        # }
-
-        for video in unread_videos:
-            # 优先级统计
-            priority = video.get("chinese_priority", "Unknown")
-            # priority = priority_map.get(priority_en, priority_en)
-            if priority not in priority_stats:
-                priority_stats[priority] = {"数量": 0, "总时长分钟": 0}
-
-            priority_stats[priority]["数量"] += 1
-
-            # 获取时长（分钟） - duration字段已经是数字类型
-            duration_minutes = video.get("duration", 0)
-            try:
-                total_minutes = float(duration_minutes) if duration_minutes else 0
-                priority_stats[priority]["总时长分钟"] += int(total_minutes)
-            except (ValueError, TypeError):
-                # 如果转换失败，跳过时长计算
-                total_minutes = 0
-
-            # 时长统计
-            if total_minutes <= 10:
-                duration_stats["短视频"] += 1
-            elif total_minutes <= 30:
-                duration_stats["中视频"] += 1
-            else:
-                duration_stats["长视频"] += 1
-
-            # 来源统计
-            source = video.get("chinese_source", "未知来源")
-            source_stats[source] = source_stats.get(source, 0) + 1
-
-        # 获取前3个推荐视频（按优先级排序：高>中>低）
-        top_recommendations = []
-
-        # 按优先级分组
-        high_priority = [v for v in unread_videos if v.get("chinese_priority") == "💖高"]
-        medium_priority = [v for v in unread_videos if v.get("chinese_priority") == "😜中"]
-        low_priority = [v for v in unread_videos if v.get("chinese_priority") == "👾低"]
-
-        # 按优先级依次选择，每个优先级内随机选择
-        selected_videos = []
-        for priority_group in [high_priority, medium_priority, low_priority]:
-            if len(selected_videos) >= 3:
-                break
-
-            # 从当前优先级组中随机选择，直到达到3个或该组用完
-            available = [v for v in priority_group if v not in selected_videos]
-            while available and len(selected_videos) < 3:
-                selected = random.choice(available)
-                selected_videos.append(selected)
-                available.remove(selected)
-
-        # 格式化推荐视频（字段内容中文）
-        for video in selected_videos:
-            top_recommendations.append({
-                "标题": video.get("title", "无标题视频"),
-                "链接": video.get("url", ""),
-                "页面ID": video.get("pageid", ""),
-                "时长": video.get("duration_str", ""),
-                "优先级": video.get("chinese_priority", ""),
-                "来源": video.get("chinese_source", "")
-            })
-
-        return {
-            "总未读数": len([v for v in videos if v.get("unread", True)]),
-            "优先级统计": priority_stats,
-            "时长分布": duration_stats,
-            "来源统计": source_stats,
-            "今日精选推荐": top_recommendations,
-            "success": True
         }

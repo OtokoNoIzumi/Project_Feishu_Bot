@@ -251,18 +251,6 @@ class APIRoutesHandler:
         except Exception as e:
             raise HTTPException(status_code=500, detail=str(e)) from e
 
-    def handle_bili_videos_statistics(self):
-        """处理B站视频统计获取"""
-        try:
-            result = self.app_api_controller.get_bili_videos_statistics()
-            if result['success']:
-                return result
-            raise HTTPException(status_code=400, detail=result['error'])
-        except HTTPException:
-            raise
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=str(e)) from e
-
     def handle_bili_video_mark_read(self, pageid: str):
         """处理B站视频标记已读"""
         try:
@@ -410,16 +398,6 @@ class HTTPAPIServer:
         async def get_bili_videos_multiple():
             # 无需鉴权：只读操作，无成本
             return self.routes_handler.handle_bili_videos_multiple()
-
-        @self.app.get("/api/bilibili/videos/statistics", summary="获取B站视频统计",
-                      description="获取B站视频统计信息")
-        async def get_bili_videos_statistics(
-            request: Request, admin_secret_key: Optional[str] = None
-        ):
-            # 验证管理员权限（统计信息可能敏感）
-            if not verify_admin_access(request, admin_secret_key):
-                raise HTTPException(status_code=403, detail="访问被拒绝：需要管理员权限")
-            return self.routes_handler.handle_bili_videos_statistics()
 
         @self.app.post("/api/bilibili/video/mark-read", summary="标记B站视频为已读",
                        description="标记指定B站视频为已读状态")

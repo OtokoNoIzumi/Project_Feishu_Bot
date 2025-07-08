@@ -346,7 +346,7 @@ class CozeTTS:
             return audio_response.content
 
         except requests.exceptions.RequestException as e:
-            debug_utils.log_and_print(f"Coze TTS网络请求失败: {e}", log_level="ERROR")
+            debug_utils.log_and_print(f"Coze TTS网络请求失败: {e}，请检查access_token是否过期 {self.access_token}", log_level="ERROR")
             return None
         except json.JSONDecodeError as e:
             debug_utils.log_and_print(f"Coze TTS响应解析失败: {e}", log_level="ERROR")

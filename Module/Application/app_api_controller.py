@@ -302,28 +302,6 @@ class AppApiController:
         except Exception as e:
             return self._create_api_response(False, error=f"异常: {str(e)}")
 
-    def get_bili_videos_statistics(self) -> Dict[str, Any]:
-        """获取B站视频统计信息"""
-        try:
-            notion_service = self._validate_required_service(ServiceNames.NOTION)
-            if not notion_service:
-                return self._create_api_response(False, error="Notion服务不可用")
-
-            result = notion_service.get_bili_videos_statistics()
-
-            if result and result.get("success", False):
-                total_count = result.get("总未读数", 0)
-                return self._create_api_response(
-                    True,
-                    data=result,
-                    message=f"成功获取B站视频统计：共{total_count}个未读视频"
-                )
-
-            return self._create_api_response(False, error="获取B站视频统计失败")
-
-        except Exception as e:
-            return self._create_api_response(False, error=f"异常: {str(e)}")
-
     def mark_bili_video_read(self, pageid: str) -> Dict[str, Any]:
         """标记B站视频为已读"""
         try:

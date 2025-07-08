@@ -250,7 +250,6 @@ class MessageAggregationService:
 汇总摘要："""
 
         try:
-            print('test-', prompt, '\n')
             response = llm_service.simple_chat(prompt, max_tokens=1500)
             return response if response else "AI摘要生成失败"
         except Exception as e:

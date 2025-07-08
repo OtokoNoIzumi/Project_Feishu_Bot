@@ -152,6 +152,8 @@ class AppController:
                     if not config_service:
                         raise Exception("card_operation_mapping服务需要config服务，但config服务初始化失败")
                     instance = service_class(config_service)
+                case ServiceNames.USER_BUSINESS_PERMISSION:
+                    instance = service_class()
                 case _:
                     instance = service_class(**config)
 

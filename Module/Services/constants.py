@@ -17,6 +17,7 @@ class ServiceNames:
     CACHE = "cache"
     CARD_OPERATION_MAPPING = "card_operation_mapping"
     MESSAGE_AGGREGATION = "message_aggregation"
+    USER_BUSINESS_PERMISSION = "user_business_permission"
 
 # ========== UI类型常量 ==========
 class UITypes:

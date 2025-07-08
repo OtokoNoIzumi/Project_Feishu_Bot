@@ -154,7 +154,6 @@ class LLMService:
                     'max_output_tokens': max_tokens
                 }
             )
-            print('test-', response.__dict__, '\n')
             return response.text
         except Exception as e:
             debug_utils.log_and_print(f"❌ simple_chat 调用失败: {e}", log_level="ERROR")

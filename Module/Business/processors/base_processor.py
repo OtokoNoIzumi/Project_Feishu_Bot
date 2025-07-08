@@ -4,7 +4,7 @@
 包含共同的数据结构、工具方法和基础功能
 """
 
-from typing import Dict, Any, Optional, Union
+from typing import Dict, Any, Optional, Union, List
 from dataclasses import dataclass, field
 from datetime import datetime
 from functools import wraps
@@ -152,6 +152,7 @@ class ProcessResult:
     async_action: Optional[str] = None # 异步操作，用于后续处理
     message_before_async: Optional[str] = None # 异步消息，用于后续处理
     reply_message_type: Optional[str] = None # 回复消息类型，用于后续处理
+    user_list: Optional[List[str]] = None # 用户列表，用于后续处理
 
     @classmethod
     def async_result(
@@ -174,6 +175,10 @@ class ProcessResult:
     @classmethod
     def success_result(cls, response_type: str, content: Any, parent_id: Optional[str] = None):
         return cls(True, response_type, content, parent_id=parent_id)
+
+    @classmethod
+    def user_list_result(cls, response_type: str, content: Any, user_list: List[str] = None):
+        return cls(True, response_type, content, user_list=user_list)
 
     @classmethod
     def error_result(cls, error_msg: str):

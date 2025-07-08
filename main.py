@@ -31,7 +31,7 @@ from Module.Application.app_controller import AppController
 from Module.Application.app_utils import TimeUtils
 from Module.Business.message_router import MessageRouter
 from Module.Adapters import FeishuAdapter
-from Module.Services.constants import ServiceNames, SchedulerConstKeys, AdapterNames
+from Module.Services.constants import ServiceNames, SchedulerConstKeys, AdapterNames, SchedulerTaskTypes
 from Module.Common.scripts.common import debug_utils
 from Module.Services.service_decorators import require_service
 from Module.Services.scheduler.scheduler_service import TaskUtils
@@ -82,8 +82,14 @@ def setup_application():
                 result = message_router.schedule.create_task(event.data)
 
                 if result.success:
-                    feishu_adapter.sender.send_direct_message(admin_id, result)
-                    debug_utils.log_and_print(f"✅ 定时任务消息已发送: {event.data.get(SchedulerConstKeys.SCHEDULER_TYPE)}", log_level="INFO")
+                    scheduler_type = event.data.get(SchedulerConstKeys.SCHEDULER_TYPE)
+
+                    if scheduler_type == SchedulerTaskTypes.DAILY_SCHEDULE:
+                        for user_id in result.user_list:
+                            feishu_adapter.sender.send_direct_message(user_id, result)
+                    else:
+                        feishu_adapter.sender.send_direct_message(admin_id, result)
+                    debug_utils.log_and_print(f"✅ 定时任务消息已发送: {scheduler_type}", log_level="INFO")
                 else:
                     debug_utils.log_and_print(f"❌ 消息生成失败: {result.error_message}", log_level="ERROR")
 
