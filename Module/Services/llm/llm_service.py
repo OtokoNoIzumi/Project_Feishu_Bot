@@ -5,6 +5,7 @@ LLM服务 - 基于Google Gemini的大语言模型服务
 """
 
 import os
+import json
 from typing import Dict, Any
 from google import genai
 from google.genai import types
@@ -158,6 +159,65 @@ class LLMService:
         except Exception as e:
             debug_utils.log_and_print(f"❌ simple_chat 调用失败: {e}", log_level="ERROR")
             return f"文本生成失败: {e}"
+
+    def structured_call(self,
+                       prompt: str,
+                       response_schema: Dict[str, Any],
+                       system_instruction: str = None,
+                       temperature: float = 0.95,
+                       thinking_budget: int = 0) -> Dict[str, Any]:
+        """
+        结构化调用接口，支持JSON schema和系统提示词
+
+        Args:
+            prompt: 用户提示词
+            response_schema: JSON响应schema
+            system_instruction: 系统提示词
+            temperature: 温度参数
+            thinking_budget: 思考预算
+
+        Returns:
+            Dict[str, Any]: 结构化响应结果
+        """
+        if not self.client:
+            return {"error": "LLM客户端不可用"}
+
+        try:
+            # 构建请求内容
+            contents = [{
+                'role': 'user',
+                'parts': [{'text': prompt}]
+            }]
+
+            # 构建配置
+            config = {
+                'response_mime_type': 'application/json',
+                'response_schema': response_schema,
+                'thinking_config': types.ThinkingConfig(
+                    thinking_budget=thinking_budget,
+                ),
+                'temperature': temperature
+            }
+
+            # 如果有系统提示词，添加到配置中
+            if system_instruction:
+                config['system_instruction'] = system_instruction
+
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents=contents,
+                config=config
+            )
+
+            # 尝试解析JSON响应
+            return json.loads(response.text)
+
+        except json.JSONDecodeError as e:
+            debug_utils.log_and_print(f"❌ JSON解析失败: {e}, 响应内容: {response.text[:200] if 'response' in locals() else 'None'}", log_level="ERROR")
+            return {"error": f"JSON解析失败: {e}"}
+        except Exception as e:
+            debug_utils.log_and_print(f"❌ structured_call 调用失败: {e}", log_level="ERROR")
+            return {"error": f"结构化调用失败: {e}"}
 
     def get_status(self) -> Dict[str, Any]:
         """获取LLM服务状态"""

@@ -8,7 +8,7 @@
 4. 用户权限验证
 """
 
-from typing import Dict, Any
+from typing import Dict, Any, List
 from datetime import datetime
 import random
 
@@ -72,10 +72,8 @@ class DailySummaryBusiness(BaseProcessor):
                     unread_videos = [v for v in videos if v.get("unread", True)]
 
                     if unread_videos:
-                        # 统计各维度数据（复制自get_bili_videos_statistics逻辑）
+                        # 统计各维度数据（移除时长分布和来源分布）
                         priority_stats = {}
-                        duration_stats = {"短视频": 0, "中视频": 0, "长视频": 0}  # ≤10分钟, 10-30分钟, >30分钟
-                        source_stats = {}
 
                         for video in unread_videos:
                             # 优先级统计
@@ -93,20 +91,8 @@ class DailySummaryBusiness(BaseProcessor):
                             except (ValueError, TypeError):
                                 total_minutes = 0
 
-                            # 时长统计
-                            if total_minutes <= 10:
-                                duration_stats["短视频"] += 1
-                            elif total_minutes <= 30:
-                                duration_stats["中视频"] += 1
-                            else:
-                                duration_stats["长视频"] += 1
-
-                            # 来源统计
-                            source = video.get("chinese_source", "未知来源")
-                            source_stats[source] = source_stats.get(source, 0) + 1
-
-                        # 获取前3个推荐视频（按优先级排序：高>中>低）
-                        top_recommendations = []
+                        # 按优先级生成原始推荐视频（用于AI分析的fallback）
+                        original_recommendations = []
 
                         # 按优先级分组
                         high_priority = [v for v in unread_videos if v.get("chinese_priority") == "💖高"]
@@ -114,21 +100,21 @@ class DailySummaryBusiness(BaseProcessor):
                         low_priority = [v for v in unread_videos if v.get("chinese_priority") == "👾低"]
 
                         # 按优先级依次选择，每个优先级内随机选择
-                        selected_videos = []
+                        temp_selected = []
                         for priority_group in [high_priority, medium_priority, low_priority]:
-                            if len(selected_videos) >= 3:
+                            if len(temp_selected) >= 3:
                                 break
 
                             # 从当前优先级组中随机选择，直到达到3个或该组用完
-                            available = [v for v in priority_group if v not in selected_videos]
-                            while available and len(selected_videos) < 3:
+                            available = [v for v in priority_group if v not in temp_selected]
+                            while available and len(temp_selected) < 3:
                                 selected = random.choice(available)
-                                selected_videos.append(selected)
+                                temp_selected.append(selected)
                                 available.remove(selected)
 
-                        # 格式化推荐视频（字段内容中文）
-                        for video in selected_videos:
-                            top_recommendations.append({
+                        # 格式化原始推荐视频
+                        for video in temp_selected:
+                            original_recommendations.append({
                                 "标题": video.get("title", "无标题视频"),
                                 "链接": video.get("url", ""),
                                 "页面ID": video.get("pageid", ""),
@@ -137,6 +123,12 @@ class DailySummaryBusiness(BaseProcessor):
                                 "来源": video.get("chinese_source", "")
                             })
 
+                        # 生成AI分析结果（一次调用完成汇总和话题匹配）
+                        ai_analysis = self._generate_ai_analysis(unread_videos)
+
+                        # 基于AI话题匹配结果重新构建推荐视频
+                        final_recommendations = self._rebuild_recommendations_with_ai(unread_videos, original_recommendations, ai_analysis)
+
                         total_count = len(unread_videos)
                         return {
                             "date": now.strftime("%Y年%m月%d日"),
@@ -144,9 +136,9 @@ class DailySummaryBusiness(BaseProcessor):
                             "statistics": {
                                 "total_count": total_count,
                                 "priority_stats": priority_stats,
-                                "duration_stats": duration_stats,
-                                "source_stats": source_stats,
-                                "top_recommendations": top_recommendations
+                                "top_recommendations": final_recommendations,
+                                "ai_summary": ai_analysis.get("summary", ""),
+                                "ai_quality_score": ai_analysis.get("quality_score", 0)
                             },
                             "source": "notion_statistics",
                             "timestamp": now.isoformat()
@@ -164,6 +156,243 @@ class DailySummaryBusiness(BaseProcessor):
             "timestamp": now.isoformat()
         }
 
+    @safe_execute("生成AI分析失败")
+    def _generate_ai_analysis(self, all_videos: List[Dict]) -> Dict[str, Any]:
+        """
+        使用AI一次性完成内容汇总和话题匹配分析
+
+        Args:
+            all_videos: 所有未读视频
+
+        Returns:
+            Dict: 包含汇总和话题匹配结果
+        """
+        # 获取LLM服务
+        llm_service = self.app_controller.get_service(ServiceNames.LLM)
+        if not llm_service or not llm_service.is_available():
+            return {
+                "summary": "AI服务暂时不可用，无法生成分析",
+                "quality_score": 0,
+                "topic_matches": []
+            }
+
+        # 获取配置服务和关注话题
+        config_service = self.app_controller.get_service(ServiceNames.CONFIG)
+        focus_topics = []
+        if config_service:
+            focus_topics = config_service.get('daily_summary', {}).get('focus_topics', [])
+
+        # 构建视频清单
+        video_list = []
+        for i, video in enumerate(all_videos, 1):
+            video_info = f"{i}. 《{video.get('title', '无标题')}》"
+            video_info += f" | UP主: {video.get('author', '未知')}"
+            video_info += f" | 优先级: {video.get('chinese_priority', '未知')}"
+            video_info += f" | 推荐理由: {video.get('summary', '无理由')}"
+            video_list.append(video_info)
+
+        # 构建系统提示词
+        if focus_topics:
+            system_instruction = """你是一个专业的内容分析助理。你的任务是：
+1. 分析今日视频清单，**智能判断真正有价值的重点**，而非简单罗列。
+2. 分析哪些视频与提供的关注话题相关，给出视频序号和关联度评分(0-10)
+
+**核心要求：**
+1. 优先汇报高价值内容：新技术突破、行业洞察、实用方法论
+2. 整合相似主题，避免重复信息
+3. 如果内容质量普遍一般，直接说"今日无特别重点"
+4. 控制在80字内，重质量不重数量
+5. **必须给出整体内容质量评分(0-10)**
+
+**判断标准：**
+- 优先级"高"且内容新颖 → 必须汇报
+- 多个UP主谈论同一热点 → 整合汇报
+- 纯娱乐、重复话题 → 可忽略
+- 实用工具、技术教程 → 重点关注
+
+**质量评分标准：**
+- 9-10分：有重大技术突破或深度洞察
+- 7-8分：有实用价值或新颖观点
+- 4-6分：普通内容，价值一般
+- 0-3分：纯娱乐或重复内容
+
+**任务1输出格式：**
+如有重点：简洁说明几个关键内容点
+如无重点：直接说"今日待看内容以[主要类型]为主，无特别重点"
+
+**任务2话题匹配要求：**
+- 只返回与关注话题高度相关的视频
+- 关联度评分要准确(0-10，10表示最相关)
+- 没有相关的可以返回空数组
+"""
+        else:
+            system_instruction = """你是一个专业的内容分析助理。你的任务是：分析今日视频清单，**智能判断真正有价值的重点**，而非简单罗列。
+
+**核心要求：**
+1. 优先汇报高价值内容：新技术突破、行业洞察、实用方法论
+2. 整合相似主题，避免重复信息
+3. 如果内容质量普遍一般，直接说"今日无特别重点"
+4. 控制在80字内，重质量不重数量
+5. **必须给出整体内容质量评分(0-10)**
+
+**判断标准：**
+- 优先级"高"且内容新颖 → 必须汇报
+- 多个UP主谈论同一热点 → 整合汇报
+- 纯娱乐、重复话题 → 可忽略
+- 实用工具、技术教程 → 重点关注
+
+**质量评分标准：**
+- 9-10分：有重大技术突破或深度洞察
+- 7-8分：有实用价值或新颖观点
+- 4-6分：普通内容，价值一般
+- 0-3分：纯娱乐或重复内容
+
+**输出格式：**
+如有重点：简洁说明几个关键内容点
+如无重点：直接说"今日待看内容以[主要类型]为主，无特别重点"
+"""
+
+
+        # 构建用户提示词
+        topics_text = f"关注话题：{', '.join(focus_topics)}" if focus_topics else ""
+
+        prompt = f"""
+{topics_text}
+
+今日待看视频清单({len(all_videos)}个)：
+{chr(10).join(video_list)}
+
+请按要求分析并返回结果。
+"""
+
+        # 根据是否有focus_topics，定义两套不同的schema
+        if focus_topics:
+            response_schema = {
+                "type": "object",
+                "properties": {
+                    "summary": {
+                        "type": "string",
+                        "description": "今日内容汇总说明"
+                    },
+                    "quality_score": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 10,
+                        "description": "整体内容质量评分(0-10)"
+                    },
+                    "topic_matches": {
+                        "type": "array",
+                        "description": "与关注话题匹配的视频",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "video_id": {
+                                    "type": "integer",
+                                    "description": "视频序号(从1开始)"
+                                },
+                                "relevance_score": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 10,
+                                    "description": "话题关联度评分(0-10)"
+                                }
+                            },
+                            "required": ["video_id", "relevance_score"]
+                        }
+                    }
+                },
+                "required": ["summary", "quality_score", "topic_matches"]
+            }
+        else:
+            response_schema = {
+                "type": "object",
+                "properties": {
+                    "summary": {
+                        "type": "string",
+                        "description": "今日内容汇总说明"
+                    },
+                    "quality_score": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 10,
+                        "description": "整体内容质量评分(0-10)"
+                    }
+                },
+                "required": ["summary", "quality_score"]
+            }
+        # 调用结构化LLM接口
+        result = llm_service.structured_call(
+            prompt=prompt,
+            response_schema=response_schema,
+            system_instruction=system_instruction,
+            temperature=0.5
+        )
+
+        # 处理返回结果
+        if "error" in result:
+            return {
+                "summary": f"AI分析失败: {result['error']}",
+                "quality_score": 0,
+                "topic_matches": []
+            }
+
+        return {
+            "summary": result.get("summary", ""),
+            "quality_score": result.get("quality_score", 0),
+            "topic_matches": result.get("topic_matches", [])
+        }
+
+    @safe_execute("重构推荐视频失败")
+    def _rebuild_recommendations_with_ai(self, all_videos: List[Dict], original_recommendations: List[Dict], ai_analysis: Dict[str, Any]) -> List[Dict]:
+        """
+        基于AI话题匹配结果重新构建推荐视频列表
+
+        Args:
+            all_videos: 所有未读视频
+            original_recommendations: 原始推荐视频
+            ai_analysis: AI分析结果
+
+        Returns:
+            List[Dict]: 重新构建的推荐视频列表
+        """
+        # 获取AI匹配的高关联度视频
+        topic_matches = ai_analysis.get("topic_matches", [])
+        high_relevance_videos = []
+
+        for match in topic_matches:
+            video_id = match.get("video_id", 0)
+            relevance_score = match.get("relevance_score", 0)
+
+            # 只要关联度>=7的视频
+            if relevance_score >= 7 and 1 <= video_id <= len(all_videos):
+                video_index = video_id - 1  # 转换为0基索引
+                video = all_videos[video_index]
+                high_relevance_videos.append({
+                    "标题": video.get("title", "无标题视频"),
+                    "链接": video.get("url", ""),
+                    "页面ID": video.get("pageid", ""),
+                    "时长": video.get("duration_str", ""),
+                    "优先级": video.get("chinese_priority", ""),
+                    "来源": video.get("chinese_source", "")
+                })
+
+                # 最多3个
+                if len(high_relevance_videos) >= 3:
+                    break
+
+        # 如果AI推荐的不够3个，用原有逻辑补充
+        if len(high_relevance_videos) < 3:
+            # 获取AI推荐中已选视频的pageid，避免重复
+            selected_pageids = {v.get("页面ID") for v in high_relevance_videos}
+
+            # 从原始推荐中补充
+            for video in original_recommendations:
+                if video.get("页面ID") not in selected_pageids:
+                    high_relevance_videos.append(video)
+                    if len(high_relevance_videos) >= 3:
+                        break
+
+        return high_relevance_videos
 
     @safe_execute("创建日报卡片失败")
     def create_daily_summary_card(self, analysis_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -336,23 +565,11 @@ class DailySummaryBusiness(BaseProcessor):
                     time_str = f"{hours}小时{minutes}分钟" if hours > 0 else f"{minutes}分钟"
                     content += f"\n• {priority}: {count} 个 ({time_str})"
 
-            # 时长分布
-            duration_stats = statistics.get('duration_stats', None)
-            if duration_stats is None:
-                duration_stats = statistics.get('时长分布', {})
-            if duration_stats:
-                content += "\n\n⏱️ **时长分布:**"
-                for duration_type, count in duration_stats.items():
-                    content += f"\n• {duration_type}: {count} 个"
-
-            # 来源统计
-            source_stats = statistics.get('source_stats', None)
-            if source_stats is None:
-                source_stats = statistics.get('来源统计', {})
-            if source_stats:
-                content += "\n\n📺 **来源分布:**"
-                for source, count in source_stats.items():
-                    content += f"\n• {source}: {count} 个"
+            # AI汇总（只显示质量评分>=5的）
+            ai_summary = statistics.get('ai_summary', '')
+            ai_quality_score = statistics.get('ai_quality_score', 0)
+            if ai_summary and ai_quality_score >= 5:
+                content += f"\n\n🌟 **AI汇总:**\n{ai_summary}"
 
         return content
 
