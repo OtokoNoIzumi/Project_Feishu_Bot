@@ -166,6 +166,7 @@ class MessageHandler:
                 **business_params,  # 业务参数（中优先级）
                 **system_params     # 系统参数（高优先级）
             }
+            # Notion解析失败的时候这里也会报错 【待增加兼容
             # 执行调用
             if route_knowledge.get("is_async", False):
                 # 异步执行

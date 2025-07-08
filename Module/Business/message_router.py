@@ -26,6 +26,7 @@ from .processors import (
     AdminProcessor, ScheduleProcessor,
     require_app_controller, safe_execute
 )
+from .daily_summary_business import DailySummaryBusiness
 
 
 class MessageRouter(BaseProcessor):
@@ -311,7 +312,9 @@ class MessageRouter(BaseProcessor):
         根据卡片类型分发到对应的处理器
         """
         try:
-            return self.schedule.handle_mark_bili_read(context, action_value)
+            # 日报卡片的标记已读功能由DailySummaryBusiness处理
+            daily_summary_business = DailySummaryBusiness(app_controller=self.app_controller)
+            return daily_summary_business.handle_mark_bili_read(action_value)
 
         except Exception as e:
             debug_utils.log_and_print(f"❌ 标记B站视频为已读失败: {str(e)}", log_level="ERROR")

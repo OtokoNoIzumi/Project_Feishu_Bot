@@ -4,17 +4,11 @@
 处理每日汇总、B站更新等定时任务相关功能
 """
 
-import re
-import json
-import asyncio
-import aiohttp
-from typing import Dict, Any, List, Optional, Tuple
-from datetime import datetime, timedelta
-from concurrent.futures import ThreadPoolExecutor
-from .base_processor import BaseProcessor, MessageContext, ProcessResult, require_service, safe_execute
+from typing import Dict, Any, List, Optional
+from datetime import datetime
+from .base_processor import BaseProcessor, ProcessResult, safe_execute
 from Module.Common.scripts.common import debug_utils
-from Module.Services.constants import SchedulerTaskTypes, ServiceNames, ResponseTypes, SchedulerConstKeys, DefaultValues, EnvVars
-from Module.Business.processors.bilibili_processor import convert_to_bili_app_link
+from Module.Services.constants import SchedulerTaskTypes, ServiceNames, SchedulerConstKeys, DefaultValues, EnvVars
 from Module.Services.message_aggregation_service import MessagePriority
 from Module.Business.daily_summary_business import DailySummaryBusiness
 
@@ -530,63 +524,6 @@ class ScheduleProcessor(BaseProcessor):
             })
 
         return card
-
-    @require_service('notion', "标记服务暂时不可用")
-    @safe_execute("定时卡片标记已读失败")
-    def handle_mark_bili_read(self, context: MessageContext, action_value: Dict[str, Any]) -> ProcessResult:
-        """
-        处理定时卡片中的标记B站视频为已读
-        """
-        # 获取notion服务
-        notion_service = self.app_controller.get_service(ServiceNames.NOTION)
-
-        # 获取参数
-        pageid = action_value.get("pageid", "")
-        video_index = action_value.get("video_index", 0)
-
-        if not pageid:
-            return ProcessResult.error_result("缺少页面ID，无法标记为已读")
-
-        # 执行标记为已读操作
-        success = notion_service.mark_video_as_read(pageid)
-        if not success:
-            return ProcessResult.error_result("标记为已读失败")
-
-        # 定时卡片：基于原始数据重构，只更新已读状态，不重新获取统计数据
-        try:
-            original_analysis_data = action_value.get("original_analysis_data")
-            if original_analysis_data:
-                # 创建日报业务实例并使用原始数据重新生成卡片
-                daily_summary_business = DailySummaryBusiness(app_controller=self.app_controller)
-                updated_card = daily_summary_business.create_daily_summary_card(original_analysis_data)
-
-                return ProcessResult.success_result(ResponseTypes.SCHEDULER_CARD_UPDATE_BILI_BUTTON, {
-                    "toast": {
-                        "type": "success",
-                        "content": f"已标记第{video_index + 1}个推荐为已读"
-                    },
-                    "card": {
-                        "type": "raw",
-                        "data": updated_card
-                    }
-                })
-            else:
-                # 如果没有原始数据，降级处理
-                return ProcessResult.success_result(ResponseTypes.SCHEDULER_CARD_UPDATE_BILI_BUTTON, {
-                    "toast": {
-                        "type": "success",
-                        "content": f"已标记第{video_index + 1}个推荐为已读"
-                    }
-                })
-        except Exception as e:
-            # 如果重新生成失败，只返回toast
-            debug_utils.log_and_print(f"❌ 重新生成定时卡片失败: {str(e)}", log_level="ERROR")
-            return ProcessResult.success_result(ResponseTypes.SCHEDULER_CARD_UPDATE_BILI_BUTTON, {
-                "toast": {
-                    "type": "success",
-                    "content": f"已标记第{video_index + 1}个推荐为已读"
-                }
-            })
 
     def _get_admin_id(self) -> Optional[str]:
         """获取管理员ID"""

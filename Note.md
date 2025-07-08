@@ -271,3 +271,6 @@ handle_admin_command
 
 schedule、pengding、aggreation，这些或许才是service层，processor就是processor——router只到processor，  最外层的main和handler调用pending等？
 总之现在的shcedule的两个模块要整理，可以等做完之后。
+
+
+Notion解析失败的时候，相关业务目前不会报错，后续的业务步骤比如generate_card 解析的数据结构也会是一个报错而不是正确数据。

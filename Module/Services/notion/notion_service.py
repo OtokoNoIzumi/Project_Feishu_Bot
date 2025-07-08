@@ -189,7 +189,7 @@ class NotionService:
         # 更新缓存
         self.cache_data[self.bili_cache_key] = videos
         self.cache_data[self.bili_cache_time_key] = time.time()
-        self.cache_data[self._read_status_cache_key] = []
+        self._local_read_status = set()
 
         self._save_cache()
 
