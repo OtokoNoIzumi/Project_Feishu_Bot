@@ -18,6 +18,7 @@ class ServiceNames:
     CARD_OPERATION_MAPPING = "card_operation_mapping"
     MESSAGE_AGGREGATION = "message_aggregation"
     USER_BUSINESS_PERMISSION = "user_business_permission"
+    BILI_ADSKIP = "bili_adskip"
 
 # ========== UI类型常量 ==========
 class UITypes:

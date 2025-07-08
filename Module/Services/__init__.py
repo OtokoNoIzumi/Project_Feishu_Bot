@@ -16,6 +16,7 @@ from .pending_cache_service import PendingCacheService
 from .card_operation_mapping_service import CardOperationMappingService
 from .message_aggregation_service import MessageAggregationService
 from .user_business_permission_service import UserBusinessPermissionService
+from .bili_adskip_service import BiliAdskipService
 from .constants import ServiceNames
 
 __all__ = [
@@ -30,7 +31,8 @@ __all__ = [
     'PendingCacheService',
     'CardOperationMappingService',
     'MessageAggregationService',
-    'UserBusinessPermissionService'
+    'UserBusinessPermissionService',
+    'BiliAdskipService'
 ]
 
 # 服务注册表（用于应用控制器）
@@ -46,5 +48,6 @@ AVAILABLE_SERVICES = {
     ServiceNames.PENDING_CACHE: PendingCacheService,
     ServiceNames.CARD_OPERATION_MAPPING: CardOperationMappingService,
     ServiceNames.MESSAGE_AGGREGATION: MessageAggregationService,
-    ServiceNames.USER_BUSINESS_PERMISSION: UserBusinessPermissionService
+    ServiceNames.USER_BUSINESS_PERMISSION: UserBusinessPermissionService,
+    ServiceNames.BILI_ADSKIP: BiliAdskipService
 }

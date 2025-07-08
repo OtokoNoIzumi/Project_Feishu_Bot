@@ -61,16 +61,13 @@ class UserBusinessPermissionService:
         # 检查系统许可权限
         system_permission = business_config.get("system_permission", False)
         if not system_permission:
-            debug_utils.log_and_print(f"用户 {user_id} 对业务 {business_name} 无系统许可权限", log_level="DEBUG")
             return False
 
         # 检查用户开关
         user_enabled = business_config.get("user_enabled", False)
         if not user_enabled:
-            debug_utils.log_and_print(f"用户 {user_id} 对业务 {business_name} 未开启用户开关", log_level="DEBUG")
             return False
 
-        debug_utils.log_and_print(f"用户 {user_id} 对业务 {business_name} 权限检查通过", log_level="DEBUG")
         return True
 
     @service_operation_safe("获取用户业务权限配置失败", return_value={})

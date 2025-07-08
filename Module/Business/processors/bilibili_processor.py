@@ -4,10 +4,9 @@ B站处理器
 处理B站视频推荐、卡片生成、已读标记等功能
 """
 
-import re
 from .base_processor import BaseProcessor, ProcessResult, require_service, safe_execute, RouteResult
-from Module.Common.scripts.common import debug_utils
-from Module.Services.constants import ServiceNames, ResponseTypes, RouteTypes
+from Module.Services.constants import ServiceNames, RouteTypes
+from Module.Services.bili_adskip_service import convert_to_bili_app_link
 
 class BilibiliProcessor(BaseProcessor):
     """
@@ -88,37 +87,3 @@ class BilibiliProcessor(BaseProcessor):
             'main_video': main_video,
             'additional_videos': additional_videos
         }
-
-def convert_to_bili_app_link(web_url: str) -> str:
-    """
-    将B站网页链接转换为B站应用链接
-
-    Args:
-        web_url: B站网页链接
-
-    Returns:
-        str: B站应用链接
-    """
-    try:
-        # 输入验证
-        if not web_url or not isinstance(web_url, str):
-            return web_url or ""
-
-        # 检查是否是BV号格式
-        bv_match = re.search(r'(/BV[a-zA-Z0-9]+)', web_url)
-        if bv_match:
-            bv_id = bv_match.group(1).replace('/', '')
-            return f"bilibili://video/{bv_id}"
-
-        # 检查是否包含av号
-        av_match = re.search(r'av(\d+)', web_url)
-        if av_match:
-            av_id = av_match.group(1)
-            return f"bilibili://video/av{av_id}"
-
-        # 默认返回原始链接
-        return web_url
-
-    except Exception as e:
-        debug_utils.log_and_print(f"[链接转换] 处理异常: {e}, URL: {web_url}", log_level="ERROR")
-        return web_url  # 异常时返回原始链接
