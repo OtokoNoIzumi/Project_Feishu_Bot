@@ -274,3 +274,4 @@ schedule、pengding、aggreation，这些或许才是service层，processor就�
 
 
 Notion解析失败的时候，相关业务目前不会报错，后续的业务步骤比如generate_card 解析的数据结构也会是一个报错而不是正确数据。
+获取和更新都没有重试机制，稍微多少有点麻烦

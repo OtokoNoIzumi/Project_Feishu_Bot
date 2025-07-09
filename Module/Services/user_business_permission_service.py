@@ -7,9 +7,10 @@
 3. 按用户ID和业务名称进行权限检查
 """
 
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 from Module.Common.scripts.common import debug_utils
 from .service_decorators import service_operation_safe
+from Module.Services.constants import EnvVars, ServiceNames
 
 
 class UserBusinessPermissionService:
@@ -20,11 +21,14 @@ class UserBusinessPermissionService:
     支持系统级许可和用户级开关的双重控制
     """
 
-    def __init__(self):
+    def __init__(self, app_controller):
         """初始化用户业务权限服务"""
         # 硬编码权限配置（用户ID在最外层，便于用户视角管理）
+        self.app_controller = app_controller
+        self.admin_id = self.app_controller.get_service(ServiceNames.CONFIG).get(EnvVars.ADMIN_ID)
         self._user_permissions = {
-            "ou_08158e2f511912a18063fc6072ce42da": {
+            # 不同的app_id对应不同的openid，这里develop的是08158e2f511912a18063fc6072ce42da，release的是ou_bb1ec32fbd4660b4d7ca36b3640f6fde
+            self.admin_id: {
                 "daily_summary": {
                     "system_permission": True,
                     "user_enabled": True

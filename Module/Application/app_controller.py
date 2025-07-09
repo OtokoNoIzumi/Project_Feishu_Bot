@@ -140,7 +140,15 @@ class AppController:
                     cache_dir = config.get('cache_dir', os.path.join(self.project_root_path, "cache"))
                     os.makedirs(cache_dir, exist_ok=True)
                     instance = service_class(cache_dir)
-                case ServiceNames.AUDIO | ServiceNames.SCHEDULER | ServiceNames.LLM | ServiceNames.ROUTER | ServiceNames.MESSAGE_AGGREGATION | ServiceNames.BILI_ADSKIP:
+                case (
+                    ServiceNames.AUDIO
+                    | ServiceNames.SCHEDULER
+                    | ServiceNames.LLM
+                    | ServiceNames.ROUTER
+                    | ServiceNames.MESSAGE_AGGREGATION
+                    | ServiceNames.BILI_ADSKIP
+                    | ServiceNames.USER_BUSINESS_PERMISSION
+                ):
                     instance = service_class(app_controller=self)
                 case ServiceNames.NOTION:
                     cache_service = self.get_service(ServiceNames.CACHE)
@@ -152,8 +160,6 @@ class AppController:
                     if not config_service:
                         raise Exception("card_operation_mapping服务需要config服务，但config服务初始化失败")
                     instance = service_class(config_service)
-                case ServiceNames.USER_BUSINESS_PERMISSION:
-                    instance = service_class()
                 case _:
                     instance = service_class(**config)
 

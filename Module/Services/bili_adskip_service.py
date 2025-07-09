@@ -7,7 +7,6 @@ B站广告跳过服务
 3. 广告跳过相关功能
 """
 
-import json
 import asyncio
 import aiohttp
 from typing import Dict, Any, Optional, Tuple
