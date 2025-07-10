@@ -112,7 +112,6 @@ class RoutineRecord(BaseProcessor):
         """
         current_time = self._get_formatted_time()
         return {
-            "event_id": str(uuid.uuid4()),
             "name": event_name,
             "type": event_type,
             "category": "",
@@ -165,12 +164,11 @@ class RoutineRecord(BaseProcessor):
         next_num = count + 1
         return f"{event_name}_{next_num:05d}"
 
-    def _create_event_record(self, event_id: str, event_name: str, user_id: str, degree: str = None, note: str = "", related_records: List[str] = None) -> Dict[str, Any]:
+    def _create_event_record(self, event_name: str, user_id: str, degree: str = None, note: str = "", related_records: List[str] = None) -> Dict[str, Any]:
         """
         创建事件记录
 
         Args:
-            event_id: 事件定义ID
             event_name: 事件名称
             user_id: 用户ID
             degree: 事件程度
@@ -185,7 +183,6 @@ class RoutineRecord(BaseProcessor):
 
         return {
             "record_id": record_id,
-            "event_id": event_id,
             "event_name": event_name,
             "timestamp": current_time,
             "degree": degree,
@@ -477,11 +474,10 @@ class RoutineRecord(BaseProcessor):
         if item_name in definitions_data.get("definitions", {}):
             # 事项已存在，直接记录
             event_def = definitions_data["definitions"][item_name]
-            event_id = event_def["event_id"]
 
             # 创建新记录
             record_id = self._get_next_record_id(user_id, item_name)
-            new_record = self._create_event_record(event_id, item_name, user_id)
+            new_record = self._create_event_record(item_name, user_id)
             new_record["record_id"] = record_id
             new_record["timestamp"] = current_time
 
@@ -708,7 +704,7 @@ class RoutineRecord(BaseProcessor):
 
         # 创建首次记录（这时record_count是0，所以生成的ID是00001）
         record_id = self._get_next_record_id(user_id, item_name)
-        new_record = self._create_event_record(new_event_def["event_id"], item_name, user_id)
+        new_record = self._create_event_record(item_name, user_id)
         new_record["record_id"] = record_id
         new_record["timestamp"] = current_time
 
