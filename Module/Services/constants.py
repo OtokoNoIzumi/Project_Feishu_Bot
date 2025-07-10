@@ -286,3 +286,11 @@ class AdapterNames:
 # ========== 路由类型常量 ==========
 class RouteTypes:
     BILI_VIDEO_CARD = "bili_video_card"
+
+# ========== 日常事项类型常量 ==========
+class RoutineTypes:
+    INSTANT = "instant"
+    START = "start"
+    END = "end"
+    ONGOING = "ongoing"
+    FUTURE = "future"

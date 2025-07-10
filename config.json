@@ -115,5 +115,12 @@
         "template_version": "1.0.9"
       }
     }
+  },
+  "routine_record": {
+    "storage_path": "user_data/",
+    "max_recent_items": 10,
+    "query_context_timeout": 300,
+    "default_item_type": "instant",
+    "backup_enabled": false
   }
 }

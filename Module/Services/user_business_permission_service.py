@@ -32,6 +32,10 @@ class UserBusinessPermissionService:
                 "daily_summary": {
                     "system_permission": True,
                     "user_enabled": True
+                },
+                "routine_record": {
+                    "system_permission": True,
+                    "user_enabled": True
                 }
             },
             "ou_ac04234023cf23e54cdd0b1c1dadd000": {

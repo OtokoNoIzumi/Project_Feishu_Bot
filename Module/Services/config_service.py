@@ -153,24 +153,49 @@ class ConfigService:
 
     def get(self, key: str, default: Any = None) -> Any:
         """
-        获取配置项，优先级：环境变量 > 静态配置
+        获取配置项，支持点号分隔的嵌套访问，优先级：环境变量 > 静态配置
 
         Args:
-            key: 配置键
+            key: 配置键，支持点号分隔的嵌套路径（如："routine_record.storage_path"）
             default: 默认值
 
         Returns:
             Any: 配置值或默认值
         """
-        # 最高优先级：环境变量
+        # 最高优先级：环境变量（不支持嵌套）
         if key in self.env_config:
             return self.env_config[key]
 
-        # 静态配置
-        if key in self.static_config:
-            return self.static_config[key]
+        # 静态配置：支持点号分隔的嵌套访问
+        return self._get_nested_value(self.static_config, key, default)
 
-        return default
+    def _get_nested_value(self, data: Dict[str, Any], key: str, default: Any = None) -> Any:
+        """
+        从嵌套字典中获取值，支持点号分隔的路径
+
+        Args:
+            data: 数据字典
+            key: 键路径，支持点号分隔（如："routine_record.storage_path"）
+            default: 默认值
+
+        Returns:
+            Any: 配置值或默认值
+        """
+        if '.' not in key:
+            # 简单键，直接返回
+            return data.get(key, default)
+
+        # 嵌套键，按点号分割并逐层访问
+        keys = key.split('.')
+        current = data
+
+        for k in keys:
+            if isinstance(current, dict) and k in current:
+                current = current[k]
+            else:
+                return default
+
+        return current
 
     def get_env(self, key: str, default: Any = None) -> Any:
         """

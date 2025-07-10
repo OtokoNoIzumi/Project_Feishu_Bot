@@ -27,6 +27,7 @@ from .processors import (
     require_app_controller, safe_execute
 )
 from .daily_summary_business import DailySummaryBusiness
+from .routine_record import RoutineRecord
 
 
 class MessageRouter(BaseProcessor):
@@ -45,6 +46,7 @@ class MessageRouter(BaseProcessor):
         self.bili = BilibiliProcessor(app_controller)
         self.admin = AdminProcessor(app_controller)
         self.schedule = ScheduleProcessor(app_controller)
+        self.routine_record = RoutineRecord(app_controller)
 
         # 初始化Action分发表
         self._init_action_dispatchers()
@@ -90,6 +92,11 @@ class MessageRouter(BaseProcessor):
         # 1. 检查管理员命令
         if self.admin.is_admin_command(user_msg):
             return self.admin.handle_admin_command(context, user_msg)
+
+        # 2. 检查routine_record相关消息
+        routine_result = self.routine_record.route_message(context, user_msg)
+        if routine_result:
+            return routine_result
 
         # TTS配音指令，改成startwith
         if user_msg.startswith(Messages.TTS_PREFIX):
