@@ -56,9 +56,9 @@ class RoutineCardManager(BaseCardManager):
         """构建日常事项卡片"""
         # 虽然有调用，但应该把这个视作特别业务的最后一步，后面是通用的流程，那么这里需要构建的信息就是card_content。
         card_data = kwargs.get('card_data', {})
-        card_mode = kwargs.get('card_mode', RoutineCardMode.NEW_EVENT_DEFINITION.value)
+        card_type = kwargs.get('card_type', RoutineCardMode.NEW_EVENT_DEFINITION.value)
 
-        match card_mode:
+        match card_type:
             case RoutineCardMode.NEW_EVENT_DEFINITION.value:
                 card_content = self._build_new_event_definition_card(card_data)
             case RoutineCardMode.QUICK_RECORD_CONFIRM.value:
@@ -68,8 +68,16 @@ class RoutineCardManager(BaseCardManager):
             case RoutineCardMode.QUERY_RESULTS.value:
                 card_content = self._build_query_results_card(card_data)
             case _:
-                debug_utils.log_and_print(f"未知的routine卡片模式: {card_mode}", log_level="WARNING")
+                debug_utils.log_and_print(f"未知的routine卡片类型: {card_type}", log_level="WARNING")
                 card_content = {}
+
+        # card_id = self.sender.create_card_entity(card_content)
+        # if card_id:
+        #     user_service = self.app_controller.get_service(ServiceNames.USER_BUSINESS_PERMISSION)
+        #     user_service.save_new_card_data(context.user_id, card_id, card_data)
+        #     card_content = {"type": "card", "data": {"card_id": card_id}}
+        # else:
+        #     debug_utils.log_and_print(f"❌ 创建卡片实体失败", log_level="ERROR")
 
         return self._handle_card_operation_common(
             card_content=card_content,

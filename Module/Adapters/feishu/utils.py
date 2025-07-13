@@ -167,7 +167,7 @@ ROUTE_KNOWLEDGE_MAPPING = {
             "card_action": "build_card"
         }
     },
-    "routine_quick_record_card": {
+    RouteTypes.ROUTINE_QUICK_RECORD_CARD: {
         "handler": "card_handler",
         "method": "dispatch_card_response",
         "call_params": {

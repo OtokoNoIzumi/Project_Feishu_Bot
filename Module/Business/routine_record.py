@@ -483,7 +483,6 @@ class RoutineRecord(BaseProcessor):
 
             if command_type == "create":
                 debug_utils.log_and_print(f"📝 {context.user_name} 触发日程创建指令：{item_name}", log_level="INFO")
-                # 大概就是这里，其实没必要一来Route，再由前端回调process_routine_create；而是自己处理完业务之后返回结果信息给前端。，由前端去触发sender。
                 # 只有一种情况需要分离一下，也就是异步操作需要提前调用sender发消息。
                 return self.process_routine_create(context.user_id, item_name)
             elif command_type == "query":
@@ -525,7 +524,7 @@ class RoutineRecord(BaseProcessor):
         route_result = RouteResult.create_route_result(
             route_type=RouteTypes.ROUTINE_QUERY_RESULTS_CARD,
             route_params={
-                "card_mode": "query_results",
+                "card_type": "query_results",
                 "card_data": card_data
             }
         )
@@ -627,13 +626,14 @@ class RoutineRecord(BaseProcessor):
         if item_name in definitions_data.get("definitions", {}):
             # 事项已存在，直接记录，这里要封装原始数据
             event_def = definitions_data["definitions"][item_name]
-
-            card_data = self.build_quick_record_card_data(user_id, item_name, event_def)
+            # 这里出现了第一个要澄清的card相关的概念。按照架构，这里应该是完备的业务数据，不涉及前端逻辑。
+            # 并且这里要能够直接绕过前端直接对接业务——本来前端就是多一层中转和丰富信息，也就是如果这个不routeresult，而是直接到业务也应该OK。
+            routine_record_data = self.build_quick_record_data(user_id, item_name, event_def)
             route_result = RouteResult.create_route_result(
                 route_type=RouteTypes.ROUTINE_QUICK_RECORD_CARD,
                 route_params={
-                    "card_mode": "quick_record_confirm",
-                    "card_data": card_data
+                    "card_type": "quick_record_confirm",
+                    "card_data": routine_record_data
                 }
             )
             return route_result
@@ -643,7 +643,7 @@ class RoutineRecord(BaseProcessor):
             route_result = RouteResult.create_route_result(
                 route_type=RouteTypes.ROUTINE_NEW_EVENT_CARD,
                 route_params={
-                    "card_mode": "new_event_definition",
+                    "card_type": "new_event_definition",
                     "card_data": card_data
                 }
             )
@@ -676,7 +676,7 @@ class RoutineRecord(BaseProcessor):
         }
 
     @safe_execute("构建快速记录确认卡片数据失败")
-    def build_quick_record_card_data(self, user_id: str, event_name: str, event_def: Dict[str, Any]) -> Dict[str, Any]:
+    def build_quick_record_data(self, user_id: str, event_name: str, event_def: Dict[str, Any]) -> Dict[str, Any]:
         """
         构建快速记录确认卡片数据
 
@@ -958,7 +958,7 @@ class RoutineRecord(BaseProcessor):
         route_result = RouteResult.create_route_result(
             route_type=RouteTypes.ROUTINE_QUICK_SELECT_CARD,
             route_params={
-                "card_mode": "quick_select_record",
+                "card_type": "quick_select_record",
                 "card_data": card_data
             }
         )
