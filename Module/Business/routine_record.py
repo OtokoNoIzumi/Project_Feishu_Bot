@@ -632,7 +632,7 @@ class RoutineRecord(BaseProcessor):
             route_result = RouteResult.create_route_result(
                 route_type=RouteTypes.ROUTINE_QUICK_RECORD_CARD,
                 route_params={
-                    "card_type": "quick_record_confirm",
+                    # "card_type": "quick_record_confirm",
                     "business_data": routine_record_data
                 }
             )

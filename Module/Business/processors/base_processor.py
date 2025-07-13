@@ -24,7 +24,7 @@ class CardActionContent:
     tag: str  # 'button', 'select_static', 'input'
     value: Dict[str, Any]  # 原始的 action.value
     # 你的业务指示器，之前是 content 的值
-    action_name: Optional[str] = None
+    card_config_key: Optional[str] = None
     card_action_key: Optional[str] = None # e.g., 'design_confirm', 'cancel_order'
     form_data: Optional[Dict[str, Any]] = None
     selected_option: Optional[str] = None

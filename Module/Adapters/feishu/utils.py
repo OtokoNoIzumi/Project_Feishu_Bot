@@ -171,8 +171,8 @@ ROUTE_KNOWLEDGE_MAPPING = {
         "handler": "card_handler",
         "method": "dispatch_card_response",
         "call_params": {
-            "card_config_key": "routine_quick_record",
-            "card_action": "build_card"
+            "card_config_key": "routine_record",
+            "card_action": "build_quick_record_confirm_card"
         }
     },
     "routine_quick_select_card": {

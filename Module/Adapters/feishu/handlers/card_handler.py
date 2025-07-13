@@ -89,24 +89,23 @@ class CardHandler:
             # return 可以不用P2CardActionTriggerResponse，直接return
             return
 
-        if context.metadata.get('action_value').get('card_config_key') in [CardConfigKeys.DESIGN_PLAN, CardConfigKeys.BILIBILI_VIDEO_INFO, CardConfigKeys.ROUTINE_QUICK_RECORD]:
-            message_before_action = context.metadata.get('action_value',{}).get('message_before_action', '')
+        if context_refactor.content.card_config_key in [CardConfigKeys.DESIGN_PLAN, CardConfigKeys.BILIBILI_VIDEO_INFO, CardConfigKeys.ROUTINE_RECORD]:
+            message_before_action = context_refactor.content.value.get('message_before_action', '')
             if message_before_action:
                 # 看起来是冗余的检测，但胜在增加了可读性，也确保了外层的局部可靠
                 self.sender.send_feishu_message_reply(context_refactor, message_before_action)
 
-            card_action = context.metadata.get('action_value').get('card_action')
-            card_config_key = context.metadata.get('action_value').get('card_config_key')
+            card_action = context_refactor.content.card_action_key
+            card_config_key = context_refactor.content.card_config_key
             # 获取card_manager
             card_manager = self.card_registry.get_manager(card_config_key)
             if not card_manager:
                 return P2CardActionTriggerResponse({
                     "toast": {"type": "error", "content": f"未找到卡片管理器: {card_config_key}"}
                 })
-            method_name = f"handle_{card_action}"
 
-            if hasattr(card_manager, method_name):
-                return getattr(card_manager, method_name)(context_refactor)
+            if hasattr(card_manager, card_action):
+                return getattr(card_manager, card_action)(context_refactor)
 
         # 调用业务处理器，由业务层判断处理类型
         result = self.message_router.process_message(context)
@@ -173,11 +172,12 @@ class CardHandler:
 
         action_tag = action.tag if hasattr(action, 'tag') else 'button'
         content = action_value.get('card_action', '')
+        card_config_key = action_value.get('card_config_key', "")
 
         content_refactor = CardActionContent(
             tag=action_tag,
-            action_name=action.name if hasattr(action, 'name') else None,
             value=action_value,
+            card_config_key=card_config_key,
             card_action_key=content,
             form_data=action.form_value,
             selected_option=action.option if hasattr(action, 'option') else None,

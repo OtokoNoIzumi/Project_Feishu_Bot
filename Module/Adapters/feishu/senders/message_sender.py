@@ -803,12 +803,13 @@ class MessageSender:
 
     def create_card_entity(self, card_content: Dict[str, Any]) -> Dict[str, Any]:
         """创建卡片实体"""
-        content_json = json.dumps(card_content, ensure_ascii=False)
-        print('test-create_card_entity', content_json,'\n')
-        print('test-create_card_entity-json', json.dumps(content_json, ensure_ascii=False),'\n')
+        content_type = card_content.get("type")
+        content_json = json.dumps(card_content.get("data"), ensure_ascii=False)
+        # print('test-create_card_entity', content_json,'\n')
+        # print('test-create_card_entity-json', json.dumps(content_json, ensure_ascii=False),'\n')
         request: CreateCardRequest = CreateCardRequest.builder() \
             .request_body(CreateCardRequestBody.builder()
-                .type("card_json")
+                .type(content_type)
                 .data(content_json)
                 .build()) \
             .build()

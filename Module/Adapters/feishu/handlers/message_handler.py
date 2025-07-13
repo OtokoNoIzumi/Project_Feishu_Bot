@@ -334,7 +334,8 @@ class MessageHandler:
                         result_content=operation_data,
                         card_operation_type=CardOperationTypes.SEND,
                         chat_id=chat_id,
-                        message_id=message_id
+                        message_id=message_id,
+                        user_id=user_id
                     )
                 else:
                     success, sent_message_id = False, None
@@ -364,7 +365,7 @@ class MessageHandler:
                 if self.card_handler:
                     self.card_handler.dispatch_card_response(
                         card_config_key="design_plan",
-                        card_action="handle_send_confirm_card",
+                        card_action="send_confirm_card",
                         result=result,
                         context_refactor=context_refactor
                     )

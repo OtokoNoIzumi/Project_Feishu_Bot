@@ -97,7 +97,7 @@ class BilibiliCardManager(BaseCardManager):
         return template_params
 
     @require_service('notion', "标记服务暂时不可用")
-    def handle_mark_bili_read(self, context: MessageContext_Refactor) -> ProcessResult:
+    def mark_bili_read(self, context: MessageContext_Refactor) -> ProcessResult:
         """
         处理标记B站视频为已读（新架构：使用缓存数据避免重新获取）
 

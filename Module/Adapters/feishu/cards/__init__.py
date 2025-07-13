@@ -38,7 +38,7 @@ CARD_CLASS_MAPPING = {
     'bilibili_video_info': BilibiliCardManager,
     'design_plan': DesignPlanCardManager,
     'routine_new_event': RoutineCardManager,
-    'routine_quick_record': RoutineCardManager,
+    'routine_record': RoutineCardManager,
     'routine_quick_select': RoutineCardManager,
     'routine_query_results': RoutineCardManager,
 }

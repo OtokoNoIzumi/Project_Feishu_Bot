@@ -34,13 +34,6 @@
       "description": "新建日常事项定义",
       "default_action": "confirm"
     },
-    "routine_quick_record": {
-      "response_type": "routine_quick_record_card",
-      "card_config_key": "routine_quick_record",
-      "timeout_seconds": 60,
-      "description": "快速记录确认",
-      "default_action": "confirm"
-    },
     "routine_quick_select": {
       "response_type": "routine_quick_select_card",
       "card_config_key": "routine_quick_select",
@@ -84,7 +77,7 @@
       "reply_mode": "reply",
       "card_name": "新建日常事项"
     },
-    "routine_quick_record": {
+    "routine_record": {
       "reply_mode": "reply",
       "card_name": "快速记录确认"
     },

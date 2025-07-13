@@ -227,7 +227,7 @@ class CardConfigKeys:
     ADS_UPDATE = "ads_update"
     BILIBILI_VIDEO_INFO = "bilibili_video_info"
     DESIGN_PLAN = "design_plan"
-    ROUTINE_QUICK_RECORD = "routine_quick_record"
+    ROUTINE_RECORD = "routine_record"
 
 # ========== 卡片操作类型常量 ==========
 class CardOperationTypes:

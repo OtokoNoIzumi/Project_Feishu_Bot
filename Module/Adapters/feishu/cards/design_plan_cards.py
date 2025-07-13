@@ -151,7 +151,7 @@ class DesignPlanCardManager(BaseCardManager):
         result.update(select_fields)
         return result
 
-    def handle_send_confirm_card(
+    def send_confirm_card(
         self, result: ProcessResult, context: MessageContext_Refactor
     ) -> P2CardActionTriggerResponse:
         """
@@ -163,10 +163,11 @@ class DesignPlanCardManager(BaseCardManager):
             card_content=self.build_card(new_card_data),
             card_operation_type=CardOperationTypes.SEND,
             update_toast_type='success',
-            message_id=context.message_id
+            message_id=context.message_id,
+            user_id=context.user_id
         )
 
-    def handle_submit_design_plan(self, context: MessageContext_Refactor) -> P2CardActionTriggerResponse:
+    def submit_design_plan(self, context: MessageContext_Refactor) -> P2CardActionTriggerResponse:
         """
         处理设计方案提交 - 完整的业务逻辑处理
         通过ImageService生成带有客户信息的专属二维码，符合分层架构规范
@@ -217,7 +218,7 @@ class DesignPlanCardManager(BaseCardManager):
             toast_message="已提交设计方案"
         )
 
-    def handle_stop_modify_plan(self, context: MessageContext_Refactor) -> P2CardActionTriggerResponse:
+    def stop_modify_plan(self, context: MessageContext_Refactor) -> P2CardActionTriggerResponse:
         """
         处理停止修改设计方案动作
         """
