@@ -94,9 +94,11 @@ def setup_application():
                             if card_id:
                                 result.response_content = {"type": "card", "data": {"card_id": card_id}}
                             msg_success, msg_id =feishu_adapter.sender.send_direct_message(user_id, result)
+
                             if card_id:
-                                app_controller.get_service(ServiceNames.CACHE).update_message_id_card_id_mapping(msg_id, card_id, "日报卡片")
-                                app_controller.get_service(ServiceNames.CACHE).save_message_id_card_id_mapping()
+                                cache_service = app_controller.get_service(ServiceNames.CACHE)
+                                cache_service.update_message_id_card_id_mapping(msg_id, card_id, "日报卡片")
+                                cache_service.save_message_id_card_id_mapping()
 
                     else:
                         _, msg_id =feishu_adapter.sender.send_direct_message(admin_id, result)

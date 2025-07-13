@@ -51,7 +51,7 @@ class DailySummaryBusiness(BaseProcessor):
         if services_status:
             analysis_data['services_status'] = services_status
 
-        card_content = self.create_daily_summary_card(analysis_data)
+        card_content = self.create_daily_summary_card_v2(analysis_data)
 
         return ProcessResult.user_list_result("interactive", card_content)
 
@@ -448,7 +448,8 @@ class DailySummaryBusiness(BaseProcessor):
                         "text": {
                             "tag": "lark_md",
                             "content": f"**{title}** | 优先级: {priority} • 时长: {duration}{' | 已读' if video_read else ''}"
-                        }
+                        },
+                        "element_id": f"bili_video_{i}"
                     })
 
                     # 视频基本信息和链接按钮
@@ -491,19 +492,49 @@ class DailySummaryBusiness(BaseProcessor):
                                 "type": "primary",
                                 "size": "tiny",
                                 "value": {
-                                    "card_action": "mark_bili_read",
+                                    "card_action": "mark_bili_read_v2",
                                     "pageid": video_pageid,
-                                    "card_type": "daily",  # 定时卡片
-                                    "video_index": i - 1,  # 推荐视频序号 (0,1,2)
-                                    # 保存原始完整数据用于卡片重构（不重新获取统计数据）
-                                    "original_analysis_data": analysis_data
-                                }
+                                    "video_index": i,  # 推荐视频序号 (0,1,2)
+                                },
+                                "element_id": f"mark_bili_read_{i}"
                             }]
                         }] if video_pageid else [])
                     })
 
         return card
 
+    @require_service('notion', "标记服务暂时不可用")
+    @safe_execute("处理B站标记已读失败")
+    def mark_bili_read_v2(self, action_value: Dict[str, Any]) -> ProcessResult:
+        """
+        处理定时卡片中的标记B站视频为已读
+        """
+        # 获取notion服务
+        notion_service = self.app_controller.get_service(ServiceNames.NOTION)
+
+        # 获取参数
+        pageid = action_value.get("pageid", "")
+        video_index = action_value.get("video_index", 1)
+
+        if not pageid:
+            return ProcessResult.error_result("缺少页面ID，无法标记为已读")
+
+        # 执行标记为已读操作
+        success = notion_service.mark_video_as_read(pageid)
+        if not success:
+            return ProcessResult.error_result("标记为已读失败")
+
+        # 定时卡片：基于原始数据重构，只更新已读状态，不重新获取统计数据
+        # 这里要用异步的方法来解决了，而且最理想的情况还是不再这里处理，把需求传递出去。
+        # 这一步的需求是弹出气泡信息，并且去掉特定element_id的元素。
+        return ProcessResult.success_result(ResponseTypes.SCHEDULER_CARD_UPDATE_BILI_BUTTON, {
+            "toast": {
+                "type": "success",
+                "content": f"已标记第{video_index}个推荐为已读"
+            },
+            "remove_element_id": f"mark_bili_read_{video_index}",
+            "text_element_id": f"bili_video_{video_index}"
+        })
 
     @safe_execute("创建日报卡片失败")
     def create_daily_summary_card(self, analysis_data: Dict[str, Any]) -> Dict[str, Any]:

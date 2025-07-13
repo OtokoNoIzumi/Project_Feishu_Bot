@@ -185,6 +185,7 @@ class MessageRouter(BaseProcessor):
 
             # B站视频卡片动作
             CardActions.MARK_BILI_READ: self._handle_mark_bili_read,
+            "mark_bili_read_v2": self._mark_bili_read_v2,
 
             # 用户类型选择动作（特殊处理）
             CardActions.UPDATE_USER_TYPE: self._handle_user_type_select_action,
@@ -322,6 +323,20 @@ class MessageRouter(BaseProcessor):
             # 日报卡片的标记已读功能由DailySummaryBusiness处理
             daily_summary_business = DailySummaryBusiness(app_controller=self.app_controller)
             return daily_summary_business.handle_mark_bili_read(action_value)
+
+        except Exception as e:
+            debug_utils.log_and_print(f"❌ 标记B站视频为已读失败: {str(e)}", log_level="ERROR")
+            return ProcessResult.error_result(f"处理失败：{str(e)}")
+
+    def _mark_bili_read_v2(self, context: MessageContext, action_value: Dict[str, Any]) -> ProcessResult:
+        """
+        处理标记B站视频为已读
+        根据卡片类型分发到对应的处理器
+        """
+        try:
+            # 日报卡片的标记已读功能由DailySummaryBusiness处理
+            daily_summary_business = DailySummaryBusiness(app_controller=self.app_controller)
+            return daily_summary_business.mark_bili_read_v2(action_value)
 
         except Exception as e:
             debug_utils.log_and_print(f"❌ 标记B站视频为已读失败: {str(e)}", log_level="ERROR")

@@ -119,6 +119,23 @@ class CardHandler:
                         card_operation_type=CardOperationTypes.UPDATE_RESPONSE
                     )
                 case ResponseTypes.SCHEDULER_CARD_UPDATE_BILI_BUTTON:
+                    response_content = result.response_content
+                    if response_content.get('remove_element_id',""):
+                        # 有这个属性说明是v2方法进来的，执行异步的删除指令
+                        message_id = context_refactor.message_id
+                        cache_service = self.app_controller.get_service(ServiceNames.CACHE)
+                        card_info = cache_service.get_card_info(message_id)
+                        card_id = card_info.get('card_id', '')
+                        self.sender.delete_card_element(
+                            card_id=card_id,
+                            element_id=response_content.get('remove_element_id'),
+                            sequence=card_info.get('sequence', 1),
+                            message_id=message_id,
+                            delay_seconds=0.3
+                        )
+                        result.response_content.pop('remove_element_id')
+                        result.response_content.pop('text_element_id')
+
                     return P2CardActionTriggerResponse(result.response_content)
 
                 case _:
