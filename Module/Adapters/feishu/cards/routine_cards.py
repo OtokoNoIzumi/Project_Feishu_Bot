@@ -568,9 +568,12 @@ class RoutineCardManager(BaseCardManager):
         # 对于选择其他的情况，要在卡片界面显示一个新元素，让用户输入。这很可能要全面更新卡片，因为没有元素。
         # origin_data = context.content.value.get('origin_data', {})
         # 避免重复值触发。
+        card_data, card_id, card_info = self._get_core_data(context)
+        if not card_data:
+            debug_utils.log_and_print(f"🔍 update_record_degree - 卡片数据为空", log_level="WARNING")
+            return
         message_id = context.message_id
         new_option = context.content.value.get('option')
-        card_data, card_id, card_info = self._get_core_data(context)
 
         new_record = card_data.get('new_record', {})
         before_degree = new_record.get('degree', '')
@@ -630,8 +633,11 @@ class RoutineCardManager(BaseCardManager):
 
     def add_new_degree(self, context: MessageContext_Refactor):
         """处理记录耗时更新"""
-        new_degree = context.content.value.get('value')
         card_data, card_id, _ = self._get_core_data(context)
+        if not card_data:
+            debug_utils.log_and_print(f"🔍 add_new_degree - 卡片数据为空", log_level="WARNING")
+            return
+        new_degree = context.content.value.get('value')
         new_card_dsl = {"message": "异步更新中..."}
         if  new_degree:
             card_data['new_record']['custom_degree'] = new_degree
@@ -668,8 +674,11 @@ class RoutineCardManager(BaseCardManager):
 
     def update_record_duration(self, context: MessageContext_Refactor):
         """处理记录耗时更新"""
-        new_duration = context.content.value.get('value')
         card_data, card_id, _ = self._get_core_data(context)
+        if not card_data:
+            debug_utils.log_and_print(f"🔍 update_record_duration - 卡片数据为空", log_level="WARNING")
+            return
+        new_duration = context.content.value.get('value')
         new_card_dsl = {"message": "异步更新中..."}
         if  new_duration.strip().isdigit():
             card_data['new_record']['duration'] = int(new_duration)
@@ -707,8 +716,11 @@ class RoutineCardManager(BaseCardManager):
 
     def update_record_note(self, context: MessageContext_Refactor):
         """处理记录耗时更新"""
-        new_note = context.content.value.get('value')
         card_data, card_id, _ = self._get_core_data(context)
+        if not card_data:
+            debug_utils.log_and_print(f"🔍 update_record_note - 卡片数据为空", log_level="WARNING")
+            return
+        new_note = context.content.value.get('value')
         new_card_dsl = {"message": "异步更新中..."}
         if  new_note:
             card_data['new_record']['note'] = new_note
@@ -780,6 +792,7 @@ class RoutineCardManager(BaseCardManager):
         core_data = card_data.get('new_record', {})
         if not core_data:
             # 其实应该假设card_id也失效了，用message_id直接batch，但是这里先不处理。
+            debug_utils.log_and_print(f"🔍 confirm_record - 卡片数据为空", log_level="WARNING")
             card_data['is_confirmed'] = True
             card_data['result'] = "取消"
             new_card_dsl = self._build_quick_record_confirm_card(card_data)
@@ -876,6 +889,9 @@ class RoutineCardManager(BaseCardManager):
     def cancel_record(self, context: MessageContext_Refactor) -> ProcessResult:
         """处理取消操作"""
         card_data, card_id, card_info = self._get_core_data(context)
+        if not card_data:
+            debug_utils.log_and_print(f"🔍 cancel_record - 卡片数据为空", log_level="WARNING")
+
         card_data['is_confirmed'] = True
         card_data['result'] = "取消"
         new_card_dsl = self._build_quick_record_confirm_card(card_data)
@@ -892,7 +908,7 @@ class RoutineCardManager(BaseCardManager):
         # card_content = {"type": "raw", "data": new_card_dsl}
         card_content = {"message": "记录创建功能开发中..."}
         return self._handle_card_operation_common(
-            card_content=card_content,
+            card_content=new_card_dsl,
             card_operation_type=CardOperationTypes.UPDATE_RESPONSE,
             update_toast_type=ToastTypes.INFO,
             toast_message="操作已取消"
