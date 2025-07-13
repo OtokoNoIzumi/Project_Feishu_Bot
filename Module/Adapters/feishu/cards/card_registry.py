@@ -98,6 +98,7 @@ class BaseCardManager(ABC):
 
                 send_params.pop("business_data", None)
                 # 尝试用新方法先创建卡片实体，在发卡片id试试。
+                # 三种卡片结构的数据格式不同，template和card需要带一层type，raw不需要。
                 success, message_id = self.sender.send_interactive_card(**send_params)
                 if not success:
                     debug_utils.log_and_print(f"❌ {self.card_info.get('card_name')}卡片发送失败", log_level="ERROR")

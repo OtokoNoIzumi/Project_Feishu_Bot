@@ -890,8 +890,9 @@ class RoutineCardManager(BaseCardManager):
             delay_seconds=0.5
         )
         # card_content = {"type": "raw", "data": new_card_dsl}
+        card_content = {"message": "记录创建功能开发中..."}
         return self._handle_card_operation_common(
-            card_content={"message": "记录创建功能开发中..."},
+            card_content=card_content,
             card_operation_type=CardOperationTypes.UPDATE_RESPONSE,
             update_toast_type=ToastTypes.INFO,
             toast_message="操作已取消"

@@ -236,7 +236,6 @@ class MessageSender:
             .message_id(message_id) \
             .request_body(builder.build()) \
             .build()
-
         response = self.client.im.v1.message.reply(request)
         if not response.success():
             debug_utils.log_and_print(f"❌ 回复消息发送失败: {response.code} - {response.msg}", log_level="ERROR")
@@ -805,8 +804,6 @@ class MessageSender:
         """创建卡片实体"""
         content_type = card_content.get("type")
         content_json = json.dumps(card_content.get("data"), ensure_ascii=False)
-        # print('test-create_card_entity', content_json,'\n')
-        # print('test-create_card_entity-json', json.dumps(content_json, ensure_ascii=False),'\n')
         request: CreateCardRequest = CreateCardRequest.builder() \
             .request_body(CreateCardRequestBody.builder()
                 .type(content_type)
