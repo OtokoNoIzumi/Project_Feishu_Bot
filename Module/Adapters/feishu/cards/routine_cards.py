@@ -378,8 +378,8 @@ class RoutineCardManager(BaseCardManager):
             elements.append(self._build_record_action_buttons(user_id, event_name))
             elements.append({"tag": "markdown", "content": "**💡 重要提示** 输入之后请按回车或蓝色剪头提交，未提交的值会在其他选项变更后丢失！"})
         else:
+            # 如果真的需要增加成功提交后的消息，那么最好不要改上面的内容，而是加在这里。
             elements.append(self._build_confirmation_message(card_status))
-
 
         return elements
 
@@ -517,7 +517,7 @@ class RoutineCardManager(BaseCardManager):
         """构建程度选择区域"""
         elements = []
 
-        degree_options = degree_info.get('degree_options', [])
+        degree_options = degree_info.get('degree_options', []).copy()
         if '其他' not in degree_options:
             degree_options.append('其他')
         default_degree = degree_info.get('default_degree', '')
