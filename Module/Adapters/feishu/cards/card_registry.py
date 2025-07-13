@@ -103,7 +103,7 @@ class BaseCardManager(ABC):
                 if not success:
                     debug_utils.log_and_print(f"❌ {self.card_info.get('card_name')}卡片发送失败", log_level="ERROR")
                     return False, None
-                self.app_controller.get_service(ServiceNames.CACHE).update_message_id_card_id_mapping(message_id, card_id)
+                self.app_controller.get_service(ServiceNames.CACHE).update_message_id_card_id_mapping(message_id, card_id, self.card_name)
                 self.app_controller.get_service(ServiceNames.CACHE).save_message_id_card_id_mapping()
 
                 return success, message_id

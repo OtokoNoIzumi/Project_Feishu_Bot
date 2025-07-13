@@ -181,15 +181,17 @@ class CacheService:
 
     # ===============卡片相关=================
     # 新增：message_id和card_id的映射
-    def update_message_id_card_id_mapping(self, message_id: str, card_id: str):
+    def update_message_id_card_id_mapping(self, message_id: str, card_id: str, card_name: str = ""):
         info = self.get_card_info(message_id)
         sequence = info.get("sequence", 0) + 1
         create_date = info.get("create_date") or datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        new_card_name = card_name or info.get("card_name", "")
 
         self.message_id_card_id_mapping[message_id] = {
             "card_id": card_id,
+            "card_name": new_card_name,
             "sequence": sequence,
-            "create_date": create_date
+            "create_date": create_date,
         }
 
     def get_card_info(self, message_id: str) -> Optional[Dict[str, Any]]:
