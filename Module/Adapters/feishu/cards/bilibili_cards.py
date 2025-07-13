@@ -23,7 +23,7 @@ class BilibiliCardManager(BaseCardManager):
         template_params = self._format_bili_video_params(video_data)
         return self._build_template_content(template_params)
 
-    def handle_generate_new_card(self, route_result: RouteResult, context: MessageContext_Refactor) -> None:
+    def handle_generate_new_card(self, route_result: RouteResult, context: MessageContext_Refactor, **kwargs) -> None:
         """
         处理生成新卡片动作，先兼容一下route_result，毕竟这是没参数的函数。
         route_result的metadata应该就是必要的参数。

@@ -10,7 +10,7 @@ import datetime
 from typing import Optional
 
 from Module.Common.scripts.common import debug_utils
-from Module.Business.processors import MessageContext, MessageContext_Refactor, MenuClickContent
+from Module.Business.processors import MessageContext, MessageContext_Refactor, MenuClickContent, RouteResult, ProcessResult
 from Module.Services.constants import MessageTypes, AdapterNames, MenuClickTypes
 from ..decorators import (
     feishu_event_handler_safe, message_conversion_safe
@@ -56,6 +56,10 @@ class MenuHandler:
                 debug_utils.log_and_print(f"📺 B站视频推荐 by [{context_refactor.user_name}]", log_level="INFO")
                 # 统一使用新的路由决策，实现DRY原则
                 route_result = self.message_router.bili.video_menu_route_choice()
+            case MenuClickTypes.NEW_ROUTINE:
+                debug_utils.log_and_print(f"🚀 快速日常记录 by [{context_refactor.user_name}]", log_level="INFO")
+                # 处理快速日常记录
+                route_result = self.message_router.routine_record.quick_record_menu_route_choice(context_refactor.user_id)
             case _:
                 debug_utils.log_and_print(f"❓ 未知菜单键: {event_key}", log_level="INFO")
                 text = f"收到菜单点击：{event_key}，功能开发中..."
@@ -63,7 +67,10 @@ class MenuHandler:
                 return
 
         if self.message_handler:
-            self.message_handler.handle_route_result_dynamic(route_result, context_refactor)
+            if isinstance(route_result, RouteResult):
+                self.message_handler.handle_route_result_dynamic(route_result, context_refactor)
+            elif isinstance(route_result, ProcessResult):
+                self.sender.send_feishu_message_reply(context_refactor, route_result.response_content.get('text', ''))
         else:
             debug_utils.log_and_print("❌ MessageHandler未注入，无法处理RouteResult", log_level="ERROR")
 

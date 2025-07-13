@@ -49,6 +49,7 @@ class MessageTypes:
 
 class MenuClickTypes:
     GET_BILI_URL = "get_bili_url"
+    NEW_ROUTINE = "new_routine_record"
 
 # ---------- Buisiness层常量--------------
 # ========== ProcessResult类型常量 ==========
@@ -226,6 +227,7 @@ class CardConfigKeys:
     ADS_UPDATE = "ads_update"
     BILIBILI_VIDEO_INFO = "bilibili_video_info"
     DESIGN_PLAN = "design_plan"
+    ROUTINE_QUICK_RECORD = "routine_quick_record"
 
 # ========== 卡片操作类型常量 ==========
 class CardOperationTypes:
@@ -287,6 +289,12 @@ class AdapterNames:
 class RouteTypes:
     BILI_VIDEO_CARD = "bili_video_card"
 
+    # Routine相关路由类型
+    ROUTINE_NEW_EVENT_CARD = "routine_new_event_card"
+    ROUTINE_QUICK_RECORD_CARD = "routine_quick_record_card"
+    ROUTINE_QUICK_SELECT_CARD = "routine_quick_select_card"
+    ROUTINE_QUERY_RESULTS_CARD = "routine_query_results_card"
+
 # ========== 日常事项类型常量 ==========
 class RoutineTypes:
     INSTANT = "instant"
@@ -294,3 +302,10 @@ class RoutineTypes:
     END = "end"
     ONGOING = "ongoing"
     FUTURE = "future"
+
+class RoutineCheckCycle:
+    DAILY = "天"
+    WEEKLY = "周"
+    MONTHLY = "月"
+    SEASONALLY = "季"  # 保持与业务层一致
+    YEARLY = "年"

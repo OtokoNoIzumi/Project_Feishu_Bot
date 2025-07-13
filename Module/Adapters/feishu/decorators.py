@@ -141,7 +141,7 @@ def card_operation_safe(error_message: str = "卡片操作失败"):
                         })
                     except ImportError:
                         pass
-                return False
+                return
         return wrapper
     return decorator
 

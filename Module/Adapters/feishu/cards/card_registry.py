@@ -5,9 +5,8 @@
 """
 
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional
 from lark_oapi.event.callback.model.p2_card_action_trigger import P2CardActionTriggerResponse
-
 from Module.Common.scripts.common import debug_utils
 from Module.Services.constants import ServiceNames, CardOperationTypes, ReplyModes
 # 配置驱动的管理器映射 - 从配置文件获取
@@ -86,13 +85,23 @@ class BaseCardManager(ABC):
         match card_operation_type:
             case CardOperationTypes.SEND:
                 # 构建发送参数
+                card_id = self.sender.create_card_entity(card_content)
+                if card_id:
+                    # 在这里储存cardid和core_data，存到内存里的user的里面，还有一个堆栈——基本和pending是一套逻辑。
+                    user_service = self.app_controller.get_service(ServiceNames.USER_BUSINESS_PERMISSION)
+                    user_service.save_new_card_data(kwargs.get("user_id"), card_id, kwargs.get("card_core_data", {}))
+                    card_content = {"type": "card", "data": {"card_id": card_id}}
+                # 用card_id发送卡片之后，这个值还需要另外找地方写下来，也就是需要管理message_id和card_id的映射，这个映射的管理可能也要写到cache里持久化。不然取不到。
                 send_params = {"card_content": card_content, "reply_mode": self.card_info.get('reply_mode', ReplyModes.REPLY)}
                 send_params.update(kwargs)
-
+                send_params.pop("card_core_data", None)
+                # 尝试用新方法先创建卡片实体，在发卡片id试试。
                 success, message_id = self.sender.send_interactive_card(**send_params)
                 if not success:
                     debug_utils.log_and_print(f"❌ {self.card_info.get('card_name')}卡片发送失败", log_level="ERROR")
                     return False, None
+                self.app_controller.get_service(ServiceNames.CACHE).update_message_id_card_id_mapping(message_id, card_id)
+                self.app_controller.get_service(ServiceNames.CACHE).save_message_id_card_id_mapping()
 
                 return success, message_id
 
@@ -103,12 +112,15 @@ class BaseCardManager(ABC):
                     "toast": {
                         "type": update_toast_type,
                         "content": toast_message
-                    },
-                    "card": {
+                    }
+                }
+                if isinstance(card_content, dict) and card_content.get('type') == 'card':
+                    response_data['card'] = card_content
+                else:
+                    response_data['card'] = {
                         "type": "raw",
                         "data": card_content
                     }
-                }
                 return P2CardActionTriggerResponse(response_data)
 
             case _:

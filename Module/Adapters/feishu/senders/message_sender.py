@@ -10,12 +10,12 @@
 
 import json
 import os
-from typing import Optional, Dict, Any, Tuple, List
+from typing import Optional, Dict, Any, Tuple, List, Callable
 from pathlib import Path
 import base64
 from io import BytesIO
 import time
-
+import asyncio
 from lark_oapi.api.contact.v3 import GetUserRequest
 from lark_oapi.api.im.v1 import (
     CreateMessageRequest, CreateMessageRequestBody,
@@ -25,7 +25,17 @@ from lark_oapi.api.im.v1 import (
     CreateImageRequest, CreateImageRequestBody,
     PatchMessageRequest, PatchMessageRequestBody
 )
-
+from lark_oapi.api.cardkit.v1 import (
+    CreateCardRequest, CreateCardRequestBody,
+    CreateCardResponse,
+    CreateCardElementRequest, CreateCardElementRequestBody,
+    CreateCardElementResponse,
+    DeleteCardElementRequest, DeleteCardElementRequestBody,
+    DeleteCardElementResponse,
+    UpdateCardRequest, UpdateCardRequestBody,
+    UpdateCardResponse,
+    Card
+)
 from Module.Common.scripts.common import debug_utils
 from Module.Business.processors import ProcessResult, MessageContext_Refactor
 from ..decorators import (
@@ -36,6 +46,25 @@ from Module.Services.constants import (
     Messages, ResponseTypes
 )
 from Module.Services.service_decorators import require_service
+
+class AsyncTaskManager:
+    def __init__(self):
+        self.loop = asyncio.get_event_loop()
+
+    async def delay_execute(self, func: Callable, delay_seconds: float, *args, **kwargs) -> Any:
+        """延迟执行指定的函数"""
+        try:
+            await asyncio.sleep(delay_seconds)
+            result = await asyncio.to_thread(func, *args, **kwargs)  # 在线程中执行同步函数
+            return result
+        except Exception as e:
+            debug_utils.log_and_print(f"异步任务执行失败: {str(e)}", log_level="ERROR")
+            return None
+
+    def schedule_task(self, func: Callable, delay_seconds: float, *args, **kwargs) -> asyncio.Future:
+        """调度异步任务并返回 Future 对象"""
+        return asyncio.ensure_future(self.delay_execute(func, delay_seconds, *args, **kwargs))
+
 
 class MessageSender:
     """飞书消息发送器"""
@@ -50,6 +79,7 @@ class MessageSender:
         """
         self.client = client
         self.app_controller = app_controller
+        self.async_task_manager = AsyncTaskManager()
 
     @feishu_sdk_safe("获取用户名失败", return_value="用户_未知")
     def get_user_name(self, open_id: str) -> str:
@@ -770,3 +800,107 @@ class MessageSender:
 
         # 更新用户缓存
         cache_service.update_user(context.user_id, context.user_name)
+
+    def create_card_entity(self, card_content: Dict[str, Any]) -> Dict[str, Any]:
+        """创建卡片实体"""
+        content_json = json.dumps(card_content, ensure_ascii=False)
+        print('test-create_card_entity', content_json,'\n')
+        print('test-create_card_entity-json', json.dumps(content_json, ensure_ascii=False),'\n')
+        request: CreateCardRequest = CreateCardRequest.builder() \
+            .request_body(CreateCardRequestBody.builder()
+                .type("card_json")
+                .data(content_json)
+                .build()) \
+            .build()
+        response: CreateCardResponse = self.client.cardkit.v1.card.create(request)
+
+        if response.success() and response.data and response.data.card_id:
+            return response.data.card_id
+
+        debug_utils.log_and_print(f"❌ 创建卡片实体失败: {response.code} - {response.msg}", log_level="ERROR")
+        return None
+
+    def add_card_element(self,
+        card_id: str, element_id: str, element: Dict[str, Any], sequence: int, add_position: str = 'insert_after',
+        delay_seconds: float = None, message_id: str = None):
+        """添加卡片元素"""
+        # 考虑到有一个批量修改，一次请求，应该比这些原子请求方便，只不过需要稍微再封装一点点
+        # 先用一个try来管理element的问题吧——批量操作似乎一个报错就不行，到也是问题，似乎也不用try，失败日志是我自己加的。
+        def _add_card_element_impl():
+            element_json = json.dumps(element, ensure_ascii=False)
+            request: CreateCardElementRequest = CreateCardElementRequest.builder() \
+                .card_id(card_id) \
+                .request_body(CreateCardElementRequestBody.builder()
+                    .type(add_position)
+                    .target_element_id(element_id)
+                    .sequence(sequence)
+                    .elements(element_json)
+                    .build()) \
+                .build()
+            response: CreateCardElementResponse = self.client.cardkit.v1.card_element.create(request)
+            if response.success():
+                cache_service = self.app_controller.get_service(ServiceNames.CACHE)
+                cache_service.update_message_id_card_id_mapping(message_id, card_id)
+                cache_service.save_message_id_card_id_mapping()
+                # 要保存card_id和element_id的映射，不然取不到。
+                return True
+
+            debug_utils.log_and_print(f"❌ 添加卡片元素失败: {response.code} - {response.msg}", log_level="ERROR")
+            return False
+
+        if delay_seconds:
+            return self.async_task_manager.schedule_task(_add_card_element_impl, delay_seconds)
+        else:
+            return _add_card_element_impl()
+
+    def delete_card_element(self, card_id: str, element_id: str, sequence: int, delay_seconds: float = None, message_id: str = None):
+        """删除卡片元素"""
+        def _delete_card_element_impl():
+            request: DeleteCardElementRequest = DeleteCardElementRequest.builder() \
+                .card_id(card_id) \
+                .element_id(element_id) \
+                .request_body(DeleteCardElementRequestBody.builder()
+                    .sequence(sequence)
+                    .build()) \
+                .build()
+            response: DeleteCardElementResponse = self.client.cardkit.v1.card_element.delete(request)
+            if response.success():
+                cache_service = self.app_controller.get_service(ServiceNames.CACHE)
+                cache_service.update_message_id_card_id_mapping(message_id, card_id)
+                cache_service.save_message_id_card_id_mapping()
+                return True
+            debug_utils.log_and_print(f"❌ 删除卡片元素失败: {response.code} - {response.msg}", log_level="ERROR")
+            return False
+
+        if delay_seconds:
+            return self.async_task_manager.schedule_task(_delete_card_element_impl, delay_seconds)
+        else:
+            return _delete_card_element_impl()
+
+    def update_card_content(self, card_id: str, card_content: Dict[str, Any], sequence: int, delay_seconds: float = None, message_id: str = None):
+        """更新卡片内容"""
+        def _update_card_content_impl():
+            content_json = json.dumps(card_content, ensure_ascii=False)
+            request: UpdateCardRequest = UpdateCardRequest.builder() \
+                .card_id(card_id) \
+                .request_body(UpdateCardRequestBody.builder() \
+                    .card(Card.builder() \
+                        .type("card_json") \
+                        .data(content_json) \
+                        .build()) \
+                    .sequence(sequence) \
+                    .build()) \
+                .build()
+            response: UpdateCardResponse = self.client.cardkit.v1.card.update(request)
+            if response.success():
+                cache_service = self.app_controller.get_service(ServiceNames.CACHE)
+                cache_service.update_message_id_card_id_mapping(message_id, card_id)
+                cache_service.save_message_id_card_id_mapping()
+                return True
+            debug_utils.log_and_print(f"❌ 更新卡片内容失败: {response.code} - {response.msg}", log_level="ERROR")
+            return False
+
+        if delay_seconds:
+            return self.async_task_manager.schedule_task(_update_card_content_impl, delay_seconds)
+        else:
+            return _update_card_content_impl()

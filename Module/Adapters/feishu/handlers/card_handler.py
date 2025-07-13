@@ -89,7 +89,7 @@ class CardHandler:
             # return 可以不用P2CardActionTriggerResponse，直接return
             return
 
-        if context.metadata.get('action_value').get('card_config_key') in [CardConfigKeys.DESIGN_PLAN, CardConfigKeys.BILIBILI_VIDEO_INFO]:
+        if context.metadata.get('action_value').get('card_config_key') in [CardConfigKeys.DESIGN_PLAN, CardConfigKeys.BILIBILI_VIDEO_INFO, CardConfigKeys.ROUTINE_QUICK_RECORD]:
             message_before_action = context.metadata.get('action_value',{}).get('message_before_action', '')
             if message_before_action:
                 # 看起来是冗余的检测，但胜在增加了可读性，也确保了外层的局部可靠
@@ -97,10 +97,6 @@ class CardHandler:
 
             card_action = context.metadata.get('action_value').get('card_action')
             card_config_key = context.metadata.get('action_value').get('card_config_key')
-            if not card_config_key:
-                return P2CardActionTriggerResponse({
-                    "toast": {"type": "error", "content": "缺少卡片配置键"}
-                })
             # 获取card_manager
             card_manager = self.card_registry.get_manager(card_config_key)
             if not card_manager:
@@ -380,9 +376,10 @@ class CardHandler:
         """
         card_manager = self.card_registry.get_manager(card_config_key)
         if not card_manager:
+            debug_utils.log_and_print(f"❌ 未找到卡片管理器: {card_config_key}", log_level="ERROR")
             return ProcessResult.error_result(f"未找到卡片管理器: {card_config_key}")
-        method_name = f"handle_{card_action}"
-        if hasattr(card_manager, method_name):
-            return getattr(card_manager, method_name)(result, context_refactor)
+        if hasattr(card_manager, card_action):
+            return getattr(card_manager, card_action)(result, context_refactor, **kwargs)
         else:
+            debug_utils.log_and_print(f"❌ 未支持的动作: {card_action}", log_level="ERROR")
             return ProcessResult.error_result(f"未支持的动作: {card_action}")

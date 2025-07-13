@@ -11,4 +11,5 @@ cache/notion_bili_cache.json
 cache/processed_events.json
 cache/user_cache.json
 cache/pending_operations.json
+cache/message_id_card_id_mapping.json
 user_data/

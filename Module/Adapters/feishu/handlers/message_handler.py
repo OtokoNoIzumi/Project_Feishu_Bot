@@ -364,7 +364,7 @@ class MessageHandler:
                 if self.card_handler:
                     self.card_handler.dispatch_card_response(
                         card_config_key="design_plan",
-                        card_action="send_confirm_card",
+                        card_action="handle_send_confirm_card",
                         result=result,
                         context_refactor=context_refactor
                     )

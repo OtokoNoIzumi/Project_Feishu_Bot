@@ -26,6 +26,32 @@
       "timeout_seconds": 60,
       "description": "智能家居设计方案确认",
       "default_action": "confirm"
+    },
+    "routine_new_event": {
+      "response_type": "routine_new_event_card",
+      "card_config_key": "routine_new_event",
+      "timeout_seconds": 300,
+      "description": "新建日常事项定义",
+      "default_action": "confirm"
+    },
+    "routine_quick_record": {
+      "response_type": "routine_quick_record_card",
+      "card_config_key": "routine_quick_record",
+      "timeout_seconds": 60,
+      "description": "快速记录确认",
+      "default_action": "confirm"
+    },
+    "routine_quick_select": {
+      "response_type": "routine_quick_select_card",
+      "card_config_key": "routine_quick_select",
+      "timeout_seconds": 120,
+      "description": "快速选择记录事项"
+    },
+    "routine_query_results": {
+      "response_type": "routine_query_results_card",
+      "card_config_key": "routine_query_results",
+      "timeout_seconds": 300,
+      "description": "日常事项查询结果展示"
     }
   },
 
@@ -53,6 +79,22 @@
       "card_name": "设计方案确认",
       "template_id": "AAqdn6SINMKfr",
       "template_version": "1.0.5"
+    },
+    "routine_new_event": {
+      "reply_mode": "reply",
+      "card_name": "新建日常事项"
+    },
+    "routine_quick_record": {
+      "reply_mode": "reply",
+      "card_name": "快速记录确认"
+    },
+    "routine_quick_select": {
+      "reply_mode": "new",
+      "card_name": "快速选择记录"
+    },
+    "routine_query_results": {
+      "reply_mode": "reply",
+      "card_name": "日常事项查询"
     }
   },
   "config_version": "3.1.0",

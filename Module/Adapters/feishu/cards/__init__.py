@@ -18,6 +18,7 @@ from .bilibili_cards import BilibiliCardManager
 from .user_update_cards import UserUpdateCardManager
 from .ads_update_cards import AdsUpdateCardManager
 from .design_plan_cards import DesignPlanCardManager
+from .routine_cards import RoutineCardManager
 
 # 导出主要组件
 __all__ = [
@@ -26,7 +27,8 @@ __all__ = [
     'BilibiliCardManager',
     'UserUpdateCardManager',
     'AdsUpdateCardManager',
-    'DesignPlanCardManager'
+    'DesignPlanCardManager',
+    'RoutineCardManager'
 ]
 
 # ✅ 属地化：卡片类静态映射表（替换动态导入）
@@ -35,6 +37,10 @@ CARD_CLASS_MAPPING = {
     'ads_update': AdsUpdateCardManager,
     'bilibili_video_info': BilibiliCardManager,
     'design_plan': DesignPlanCardManager,
+    'routine_new_event': RoutineCardManager,
+    'routine_quick_record': RoutineCardManager,
+    'routine_quick_select': RoutineCardManager,
+    'routine_query_results': RoutineCardManager,
 }
 
 # 创建全局卡片注册中心

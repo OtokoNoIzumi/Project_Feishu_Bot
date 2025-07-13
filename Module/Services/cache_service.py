@@ -8,9 +8,9 @@
 import os
 import json
 import time
+import datetime
 from typing import Dict, Any, Optional
 
-from Module.Common.scripts.common import debug_utils
 from .service_decorators import service_operation_safe, file_processing_safe, cache_operation_safe
 
 
@@ -27,6 +27,7 @@ class CacheService:
         self.cache_dir = cache_dir
         self.user_cache_file = os.path.join(cache_dir, "user_cache.json")
         self.event_cache_file = os.path.join(cache_dir, "processed_events.json")
+        self.message_id_card_id_mapping_file = os.path.join(cache_dir, "message_id_card_id_mapping.json")
 
         # 用户缓存结构：{open_id: {"name": str, "timestamp": float}}
         self.user_cache: Dict[str, Dict] = self._load_user_cache()
@@ -34,6 +35,12 @@ class CacheService:
         # 事件缓存结构：{event_id: timestamp}
         self.event_cache: Dict[str, float] = self._load_event_cache()
 
+        # message_id和card_id的映射
+        self.message_id_card_id_mapping: Dict[str, Dict[str, Any]] = self._load_message_id_card_id_mapping()
+
+        self.clear_expired()
+
+    # ===============缓存加载=================
     @cache_operation_safe("用户缓存加载失败", return_value={})
     def _load_user_cache(self) -> Dict:
         """
@@ -64,19 +71,24 @@ class CacheService:
             with open(self.event_cache_file, "r", encoding="utf-8") as f:
                 raw_data = json.load(f)
 
-            # 兼容旧版事件缓存格式（列表转字典）
-            if isinstance(raw_data, list):
-                return {k: time.time() for k in raw_data}
-
             cutoff = time.time() - 32 * 3600
             return {k: float(v) for k, v in raw_data.items() if float(v) > cutoff}
 
+        return {}
+
+    @cache_operation_safe("message_id和card_id的映射加载失败", return_value={})
+    def _load_message_id_card_id_mapping(self) -> Dict[str, str]:
+        """加载message_id和card_id的映射"""
+        if os.path.exists(self.message_id_card_id_mapping_file):
+            with open(self.message_id_card_id_mapping_file, "r", encoding="utf-8") as f:
+                return json.load(f)
         return {}
 
     def save_all(self):
         """保存所有缓存"""
         self.save_user_cache()
         self.save_event_cache()
+        self.save_message_id_card_id_mapping()
 
     def save_user_cache(self):
         """保存用户缓存"""
@@ -86,6 +98,10 @@ class CacheService:
         """保存事件缓存，保持与旧格式兼容"""
         processed_events = {k: str(v) for k, v in self.event_cache.items()}
         self._atomic_save(self.event_cache_file, processed_events)
+
+    def save_message_id_card_id_mapping(self):
+        """保存message_id和card_id的映射"""
+        self._atomic_save(self.message_id_card_id_mapping_file, self.message_id_card_id_mapping)
 
     @file_processing_safe("缓存文件保存失败")
     def _atomic_save(self, filename: str, data: Dict):
@@ -102,6 +118,7 @@ class CacheService:
             json.dump(data, f, indent=2, ensure_ascii=False)
         os.replace(temp_file, filename)
 
+    # ===============用户相关=================
     # 原有接口保持不变
     def get_user_name(self, user_id: str) -> Optional[str]:
         """
@@ -131,6 +148,7 @@ class CacheService:
             "timestamp": time.time()
         }
 
+    # ===============事件id相关=================
     def check_event(self, event_id: str) -> bool:
         """
         检查事件是否已处理
@@ -161,16 +179,36 @@ class CacheService:
         """
         self.event_cache[event_id] = time.time()
 
+    # ===============卡片相关=================
+    # 新增：message_id和card_id的映射
+    def update_message_id_card_id_mapping(self, message_id: str, card_id: str):
+        info = self.get_card_info(message_id)
+        sequence = info.get("sequence", 0) + 1
+        create_date = info.get("create_date") or datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        self.message_id_card_id_mapping[message_id] = {
+            "card_id": card_id,
+            "sequence": sequence,
+            "create_date": create_date
+        }
+
+    def get_card_info(self, message_id: str) -> Optional[Dict[str, Any]]:
+        """获取card_id"""
+        return self.message_id_card_id_mapping.get(message_id, {})
+
+    # ===============管理缓存=================
     # 新增：简单的状态查询方法（为后续API做准备）
     def get_status(self) -> Dict[str, Any]:
         """获取缓存状态信息"""
         return {
             "user_cache_size": len(self.user_cache),
             "event_cache_size": len(self.event_cache),
+            "message_id_card_id_mapping_size": len(self.message_id_card_id_mapping),
             "cache_dir": self.cache_dir,
             "files": {
                 "user_cache_exists": os.path.exists(self.user_cache_file),
-                "event_cache_exists": os.path.exists(self.event_cache_file)
+                "event_cache_exists": os.path.exists(self.event_cache_file),
+                "message_id_card_id_mapping_exists": os.path.exists(self.message_id_card_id_mapping_file)
             }
         }
 
@@ -183,6 +221,8 @@ class CacheService:
             k: v for k, v in self.user_cache.items()
             if v.get("timestamp", 0) > cutoff_user
         }
+        if before_user != len(self.user_cache):
+            self.save_user_cache()
 
         # 清理过期事件缓存（32小时）
         cutoff_event = time.time() - 32 * 3600
@@ -191,11 +231,21 @@ class CacheService:
             k: v for k, v in self.event_cache.items()
             if v > cutoff_event
         }
+        if before_event != len(self.event_cache):
+            self.save_event_cache()
 
-        # 保存清理后的缓存
-        self.save_all()
+        # 清理过期message_id和card_id的映射（1天）
+        cutoff_message_id_card_id_mapping = datetime.datetime.now() - datetime.timedelta(days=1)
+        before_message_id_card_id_mapping = len(self.message_id_card_id_mapping)
+        self.message_id_card_id_mapping = {
+            k: v for k, v in self.message_id_card_id_mapping.items()
+            if datetime.datetime.strptime(v.get("create_date", "1970-01-01 00:00:00"), "%Y-%m-%d %H:%M:%S") >= cutoff_message_id_card_id_mapping
+        }
+        if before_message_id_card_id_mapping != len(self.message_id_card_id_mapping):
+            self.save_message_id_card_id_mapping()
 
         return {
             "user_cache_cleared": before_user - len(self.user_cache),
-            "event_cache_cleared": before_event - len(self.event_cache)
+            "event_cache_cleared": before_event - len(self.event_cache),
+            "message_id_card_id_mapping_cleared": before_message_id_card_id_mapping - len(self.message_id_card_id_mapping)
         }

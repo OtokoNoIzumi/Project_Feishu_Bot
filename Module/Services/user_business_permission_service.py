@@ -8,6 +8,7 @@
 """
 
 from typing import Dict, Any
+from collections import OrderedDict
 from Module.Common.scripts.common import debug_utils
 from .service_decorators import service_operation_safe
 from Module.Services.constants import EnvVars, ServiceNames
@@ -26,6 +27,7 @@ class UserBusinessPermissionService:
         # 硬编码权限配置（用户ID在最外层，便于用户视角管理）
         self.app_controller = app_controller
         self.admin_id = self.app_controller.get_service(ServiceNames.CONFIG).get(EnvVars.ADMIN_ID)
+        self.max_card_cache_size = 2
         self._user_permissions = {
             # 不同的app_id对应不同的openid，这里develop的是08158e2f511912a18063fc6072ce42da，release的是ou_bb1ec32fbd4660b4d7ca36b3640f6fde
             self.admin_id: {
@@ -130,3 +132,42 @@ class UserBusinessPermissionService:
                 enabled_users.append(user_id)
 
         return enabled_users
+
+    def save_new_card_data(self, user_id: str, card_id: str, card_data: Dict[str, Any]):
+        """
+        保存新卡片信息
+
+        Args:
+            user_id: 用户ID
+            card_id: 卡片ID
+            card_data: 卡片数据
+        """
+        if "card_cache" not in self._user_permissions[user_id]:
+            self._user_permissions[user_id]["card_cache"] = OrderedDict()
+
+        card_cache = self._user_permissions[user_id]["card_cache"]
+
+        # 如果已存在，先删除旧记录
+        if card_id in card_cache:
+            del card_cache[card_id]
+
+        # 添加新记录
+        card_cache[card_id] = card_data
+
+        # 维护最大容量
+        while len(card_cache) > self.max_card_cache_size:
+            card_cache.popitem(last=False)  # FIFO: 删除最早的
+
+    def get_card_data(self, user_id: str, card_id: str) -> Dict[str, Any]:
+        """
+        获取卡片数据
+        """
+        card_cache = self._user_permissions[user_id].get("card_cache", {})
+        return card_cache.get(card_id, {})
+
+    def del_card_data(self, user_id: str, card_id: str):
+        """
+        删除卡片数据
+        """
+        card_cache = self._user_permissions[user_id].get("card_cache", {})
+        card_cache.pop(card_id, None)

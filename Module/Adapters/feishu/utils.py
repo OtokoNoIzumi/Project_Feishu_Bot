@@ -133,7 +133,7 @@ ROUTE_KNOWLEDGE_MAPPING = {
         "method": "dispatch_card_response",
         "call_params": {
             "card_config_key": "bilibili_video_info",
-            "card_action": "generate_new_card"
+            "card_action": "handle_generate_new_card"
         },
         "is_async": True  # 标记为异步处理
     },
@@ -157,5 +157,38 @@ ROUTE_KNOWLEDGE_MAPPING = {
         "handler": "sender",
         "method": "send_feishu_message_reply",
         "call_params": {}
+    },
+    # Routine 相关路由配置
+    "routine_new_event_card": {
+        "handler": "card_handler",
+        "method": "dispatch_card_response",
+        "call_params": {
+            "card_config_key": "routine_new_event",
+            "card_action": "build_card"
+        }
+    },
+    "routine_quick_record_card": {
+        "handler": "card_handler",
+        "method": "dispatch_card_response",
+        "call_params": {
+            "card_config_key": "routine_quick_record",
+            "card_action": "build_card"
+        }
+    },
+    "routine_quick_select_card": {
+        "handler": "card_handler",
+        "method": "dispatch_card_response",
+        "call_params": {
+            "card_config_key": "routine_quick_select",
+            "card_action": "build_card"
+        }
+    },
+    "routine_query_results_card": {
+        "handler": "card_handler",
+        "method": "dispatch_card_response",
+        "call_params": {
+            "card_config_key": "routine_query_results",
+            "card_action": "build_card"
+        }
     }
 }
