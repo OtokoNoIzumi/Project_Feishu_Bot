@@ -10,6 +10,7 @@ import json
 import time
 import datetime
 from typing import Dict, Any, Optional
+from collections import OrderedDict
 
 from .service_decorators import service_operation_safe, file_processing_safe, cache_operation_safe
 
@@ -36,7 +37,7 @@ class CacheService:
         self.event_cache: Dict[str, float] = self._load_event_cache()
 
         # message_id和card_id的映射
-        self.message_id_card_id_mapping: Dict[str, Dict[str, Any]] = self._load_message_id_card_id_mapping()
+        self.message_id_card_id_mapping: OrderedDict[str, Dict[str, Any]] = self._load_message_id_card_id_mapping()
 
         self.clear_expired()
 
@@ -76,13 +77,22 @@ class CacheService:
 
         return {}
 
-    @cache_operation_safe("message_id和card_id的映射加载失败", return_value={})
-    def _load_message_id_card_id_mapping(self) -> Dict[str, str]:
-        """加载message_id和card_id的映射"""
+    @cache_operation_safe("message_id和card_id的映射加载失败", return_value=OrderedDict())
+    def _load_message_id_card_id_mapping(self) -> OrderedDict[str, Dict[str, Any]]:
+        """加载message_id和card_id的映射，按创建时间倒序排列"""
         if os.path.exists(self.message_id_card_id_mapping_file):
             with open(self.message_id_card_id_mapping_file, "r", encoding="utf-8") as f:
-                return json.load(f)
-        return {}
+                data = json.load(f)
+
+            # 按create_date倒序排序，最新的在前面
+            sorted_items = sorted(
+                data.items(),
+                key=lambda x: x[1].get("create_date", "1970-01-01 00:00:00"),
+                reverse=True
+            )
+
+            return OrderedDict(sorted_items)
+        return OrderedDict()
 
     def save_all(self):
         """保存所有缓存"""
@@ -100,8 +110,15 @@ class CacheService:
         self._atomic_save(self.event_cache_file, processed_events)
 
     def save_message_id_card_id_mapping(self):
-        """保存message_id和card_id的映射"""
-        self._atomic_save(self.message_id_card_id_mapping_file, self.message_id_card_id_mapping)
+        """保存message_id和card_id的映射，按创建时间倒序保存"""
+        # 确保保存时按create_date倒序排列
+        sorted_items = sorted(
+            self.message_id_card_id_mapping.items(),
+            key=lambda x: x[1].get("create_date", "1970-01-01 00:00:00"),
+            reverse=True
+        )
+        ordered_data = OrderedDict(sorted_items)
+        self._atomic_save(self.message_id_card_id_mapping_file, ordered_data)
 
     @file_processing_safe("缓存文件保存失败")
     def _atomic_save(self, filename: str, data: Dict):
@@ -239,10 +256,11 @@ class CacheService:
         # 清理过期message_id和card_id的映射（1天）
         cutoff_message_id_card_id_mapping = datetime.datetime.now() - datetime.timedelta(days=1)
         before_message_id_card_id_mapping = len(self.message_id_card_id_mapping)
-        self.message_id_card_id_mapping = {
+        filtered_items = {
             k: v for k, v in self.message_id_card_id_mapping.items()
             if datetime.datetime.strptime(v.get("create_date", "1970-01-01 00:00:00"), "%Y-%m-%d %H:%M:%S") >= cutoff_message_id_card_id_mapping
         }
+        self.message_id_card_id_mapping = OrderedDict(filtered_items)
         if before_message_id_card_id_mapping != len(self.message_id_card_id_mapping):
             self.save_message_id_card_id_mapping()
 

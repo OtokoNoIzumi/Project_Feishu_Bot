@@ -249,13 +249,13 @@ class MessageSender:
     def send_direct_message(self, user_id: str, result: ProcessResult) -> bool:
         """发送直接消息（用于菜单点击等主动发送）"""
         if not result.response_content:
-            return True
+            return False, None
 
         # 转换响应内容为飞书格式
         content_json = json.dumps(result.response_content)
 
         # 复用_send_create_message方法，避免代码重复
-        return self._send_create_message(user_id, content_json, result.response_type, "open_id")[0]
+        return self._send_create_message(user_id, content_json, result.response_type, "open_id")
 
     @feishu_sdk_safe("发送交互式卡片失败", return_value=(False, None))
     def send_interactive_card(

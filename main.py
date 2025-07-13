@@ -85,10 +85,21 @@ def setup_application():
                     scheduler_type = event.data.get(SchedulerConstKeys.SCHEDULER_TYPE)
 
                     if scheduler_type == SchedulerTaskTypes.DAILY_SCHEDULE:
+                        # 尝试生成卡片再发送？
+                        card_data = result.response_content
+
                         for user_id in result.user_list:
-                            feishu_adapter.sender.send_direct_message(user_id, result)
+                            card_content = {"type": "card_json", "data": card_data}
+                            card_id = feishu_adapter.sender.create_card_entity(card_content)
+                            if card_id:
+                                result.response_content = {"type": "card", "data": {"card_id": card_id}}
+                            msg_success, msg_id =feishu_adapter.sender.send_direct_message(user_id, result)
+                            if card_id:
+                                app_controller.get_service(ServiceNames.CACHE).update_message_id_card_id_mapping(msg_id, card_id, "日报卡片")
+                                app_controller.get_service(ServiceNames.CACHE).save_message_id_card_id_mapping()
+
                     else:
-                        feishu_adapter.sender.send_direct_message(admin_id, result)
+                        _, msg_id =feishu_adapter.sender.send_direct_message(admin_id, result)
                     debug_utils.log_and_print(f"✅ 定时任务消息已发送: {scheduler_type}", log_level="INFO")
                 else:
                     debug_utils.log_and_print(f"❌ 消息生成失败: {result.error_message}", log_level="ERROR")
@@ -136,7 +147,7 @@ def setup_message_aggregation(app_controller, feishu_adapter):
             # 发送汇总消息
             result = ProcessResult.success_result("text", summary_content)
 
-            success = feishu_adapter.sender.send_direct_message(admin_id, result)
+            success, _ = feishu_adapter.sender.send_direct_message(admin_id, result)
 
             if success:
                 debug_utils.log_and_print(f"✅ 信息汇总消息已发送: {len(messages)}条消息", log_level="INFO")
