@@ -525,7 +525,7 @@ class RoutineRecord(BaseProcessor):
             route_type=RouteTypes.ROUTINE_QUERY_RESULTS_CARD,
             route_params={
                 "card_type": "query_results",
-                "card_data": card_data
+                "business_data": card_data
             }
         )
 
@@ -633,7 +633,7 @@ class RoutineRecord(BaseProcessor):
                 route_type=RouteTypes.ROUTINE_QUICK_RECORD_CARD,
                 route_params={
                     "card_type": "quick_record_confirm",
-                    "card_data": routine_record_data
+                    "business_data": routine_record_data
                 }
             )
             return route_result
@@ -644,7 +644,7 @@ class RoutineRecord(BaseProcessor):
                 route_type=RouteTypes.ROUTINE_NEW_EVENT_CARD,
                 route_params={
                     "card_type": "new_event_definition",
-                    "card_data": card_data
+                    "business_data": card_data
                 }
             )
             return route_result
@@ -959,7 +959,7 @@ class RoutineRecord(BaseProcessor):
             route_type=RouteTypes.ROUTINE_QUICK_SELECT_CARD,
             route_params={
                 "card_type": "quick_select_record",
-                "card_data": card_data
+                "business_data": card_data
             }
         )
 

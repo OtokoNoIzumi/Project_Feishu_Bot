@@ -55,18 +55,18 @@ class RoutineCardManager(BaseCardManager):
     def build_card(self, route_result: RouteResult, context: MessageContext_Refactor, **kwargs) -> Dict[str, Any]:
         """构建日常事项卡片"""
         # 虽然有调用，但应该把这个视作特别业务的最后一步，后面是通用的流程，那么这里需要构建的信息就是card_content。
-        card_data = kwargs.get('card_data', {})
+        business_data = kwargs.get('business_data', {})
         card_type = kwargs.get('card_type', RoutineCardMode.NEW_EVENT_DEFINITION.value)
 
         match card_type:
             case RoutineCardMode.NEW_EVENT_DEFINITION.value:
-                card_content = self._build_new_event_definition_card(card_data)
+                card_content = self._build_new_event_definition_card(business_data)
             case RoutineCardMode.QUICK_RECORD_CONFIRM.value:
-                card_content = self._build_quick_record_confirm_card(card_data)
+                card_content = self._build_quick_record_confirm_card(business_data)
             case RoutineCardMode.QUICK_SELECT_RECORD.value:
-                card_content = self._build_quick_select_record_card(card_data)
+                card_content = self._build_quick_select_record_card(business_data)
             case RoutineCardMode.QUERY_RESULTS.value:
-                card_content = self._build_query_results_card(card_data)
+                card_content = self._build_query_results_card(business_data)
             case _:
                 debug_utils.log_and_print(f"未知的routine卡片类型: {card_type}", log_level="WARNING")
                 card_content = {}
@@ -85,7 +85,7 @@ class RoutineCardManager(BaseCardManager):
             update_toast_type='success',
             user_id=context.user_id,
             message_id=context.message_id,
-            card_core_data=card_data
+            business_data=business_data
         )
 
     def _build_new_event_definition_card(self, data: Dict[str, Any]) -> Dict[str, Any]:
@@ -264,7 +264,7 @@ class RoutineCardManager(BaseCardManager):
 
         return elements
 
-    def _build_quick_record_confirm_card(self, data: Dict[str, Any]) -> Dict[str, Any]:
+    def _build_quick_record_confirm_card(self, business_data: Dict[str, Any]) -> Dict[str, Any]:
         """构建快速记录确认卡片"""
         # 这里写一下加工属性的条件思路，还要注意卡片需要更新，在这里先跑通element_id的更新，否则就要全量了
         # 信息分展示、条件展示和交互，大概对应固定信息，stats信息和有效的record值。
@@ -272,9 +272,9 @@ class RoutineCardManager(BaseCardManager):
         # 如果是纯动态，这个方法就不会被反复调用；如果会反复调用，那么在卡片里要存的就不是record，而是data。
         # 对于enable的刷新也是全量更新比较有效率，而不是一个一个改的吗？
         # 如果要重新生成，那么也就意味着每一个子模块回调事件里的逻辑在主逻辑也有有一份。
-        event_name = data.get('event_name', '')
-        is_confirmed = data.get('is_confirmed', False)
-        result = data.get('result', '取消')
+        event_name = business_data.get('event_name', '')
+        is_confirmed = business_data.get('is_confirmed', False)
+        result = business_data.get('result', '取消')
         card_status = result if is_confirmed else "确认中"
 
         match card_status:
@@ -297,7 +297,7 @@ class RoutineCardManager(BaseCardManager):
             "body": {
                 "direction": "vertical",
                 "padding": "16px 16px 16px 16px",
-                "elements": self._build_quick_record_elements(event_name, data, card_status)
+                "elements": self._build_quick_record_elements(event_name, business_data, card_status)
             },
             "header": {
                 "title": {"tag": "plain_text", "content": f"添加记录：{event_name}"},
@@ -308,19 +308,19 @@ class RoutineCardManager(BaseCardManager):
         }
         return card_dsl
 
-    def _build_quick_record_elements(self, event_name: str, data: Dict[str, Any], card_status: str) -> List[Dict[str, Any]]:
+    def _build_quick_record_elements(self, event_name: str, business_data: Dict[str, Any], card_status: str) -> List[Dict[str, Any]]:
         """构建快速记录表单元素 - 条件化展示丰富信息"""
         # 解析业务层传递的数据
         # 等提交之后一口气用最新数据更新一次卡片。
-        event_def = data.get('event_definition', {})
-        user_id = data.get('user_id', '')
-        is_confirmed = data.get('is_confirmed', False)
+        event_def = business_data.get('event_definition', {})
+        user_id = business_data.get('user_id', '')
+        is_confirmed = business_data.get('is_confirmed', False)
 
         # 业务层计算好的智能数据
-        avg_duration = data.get('avg_duration', 0.0)
-        degree_info = data.get('degree_info', {})
-        cycle_info = data.get('cycle_info', {})
-        new_record = data.get('new_record', {})
+        avg_duration = business_data.get('avg_duration', 0.0)
+        degree_info = business_data.get('degree_info', {})
+        cycle_info = business_data.get('cycle_info', {})
+        new_record = business_data.get('new_record', {})
         event_type = event_def.get('type', RoutineTypes.INSTANT)
 
         elements = []
@@ -339,7 +339,7 @@ class RoutineCardManager(BaseCardManager):
         # === 确认输入部分 ===
         # 4. 条件化展示：程度选择器（如果有程度选项）
         if degree_info:
-            elements.extend(self._build_degree_selection_section(degree_info, data, is_confirmed))
+            elements.extend(self._build_degree_selection_section(degree_info, business_data, is_confirmed))
             # 是其他的时候才出现，节省面积。有了更新组件的属性，这里其实一开始就要创建一个空元素。
             # 改成用add来解决。
             selected_degree = degree_info.get('selected_degree', '')
@@ -361,7 +361,7 @@ class RoutineCardManager(BaseCardManager):
             elements.append(self._build_record_action_buttons(user_id, event_name))
             elements.append({"tag": "markdown", "content": "**💡 重要提示** 输入之后请按回车或蓝色剪头提交，未提交的值会在其他选项变更后丢失！"})
         else:
-            elements.append(self._build_confirmation_message(data, card_status))
+            elements.append(self._build_confirmation_message(card_status))
 
 
         return elements
@@ -496,7 +496,7 @@ class RoutineCardManager(BaseCardManager):
 
         return elements
 
-    def _build_degree_selection_section(self, degree_info: Dict[str, Any], data: Dict[str, Any], is_confirmed: bool) -> List[Dict[str, Any]]:
+    def _build_degree_selection_section(self, degree_info: Dict[str, Any], business_data: Dict[str, Any], is_confirmed: bool) -> List[Dict[str, Any]]:
         """构建程度选择区域"""
         elements = []
 
@@ -504,7 +504,7 @@ class RoutineCardManager(BaseCardManager):
         if '其他' not in degree_options:
             degree_options.append('其他')
         default_degree = degree_info.get('default_degree', '')
-        event_name = data.get('event_name', '')
+        event_name = business_data.get('event_name', '')
 
         # 构建选项
         degree_select_options = []
@@ -515,7 +515,7 @@ class RoutineCardManager(BaseCardManager):
             })
 
         # 智能默认值：用户上次选择 > 系统默认 > 第一个选项
-        initial_degree = data['degree_info'].get('selected_degree',"") or default_degree
+        initial_degree = business_data['degree_info'].get('selected_degree',"") or default_degree
 
         elements.append(self._build_form_row(
             "选择方式",
@@ -886,7 +886,7 @@ class RoutineCardManager(BaseCardManager):
             toast_message="操作已取消"
         )
 
-    def _build_confirmation_message(self, data: Dict[str, Any], card_status: str) -> Dict[str, Any]:
+    def _build_confirmation_message(self, card_status: str) -> Dict[str, Any]:
         """构建确认成功提示"""
         result_msg = {
             "确认": "✅ 记录成功！",

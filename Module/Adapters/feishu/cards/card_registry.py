@@ -89,12 +89,12 @@ class BaseCardManager(ABC):
                 if card_id:
                     # 在这里储存cardid和core_data，存到内存里的user的里面，还有一个堆栈——基本和pending是一套逻辑。
                     user_service = self.app_controller.get_service(ServiceNames.USER_BUSINESS_PERMISSION)
-                    user_service.save_new_card_data(kwargs.get("user_id"), card_id, kwargs.get("card_core_data", {}))
+                    user_service.save_new_card_data(kwargs.get("user_id"), card_id, kwargs.get("business_data", {}))
                     card_content = {"type": "card", "data": {"card_id": card_id}}
                 # 用card_id发送卡片之后，这个值还需要另外找地方写下来，也就是需要管理message_id和card_id的映射，这个映射的管理可能也要写到cache里持久化。不然取不到。
                 send_params = {"card_content": card_content, "reply_mode": self.card_info.get('reply_mode', ReplyModes.REPLY)}
                 send_params.update(kwargs)
-                send_params.pop("card_core_data", None)
+                send_params.pop("business_data", None)
                 # 尝试用新方法先创建卡片实体，在发卡片id试试。
                 success, message_id = self.sender.send_interactive_card(**send_params)
                 if not success:
