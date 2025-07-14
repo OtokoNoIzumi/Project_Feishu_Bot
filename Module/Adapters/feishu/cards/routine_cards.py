@@ -554,15 +554,6 @@ class RoutineCardManager(BaseCardManager):
 
         return elements
 
-    def _get_core_data(self, context: MessageContext_Refactor):
-        message_id = context.message_id
-        cache_service = self.app_controller.get_service(ServiceNames.CACHE)
-        card_info = cache_service.get_card_info(message_id)
-        card_id = card_info.get('card_id', '')
-        user_service = self.app_controller.get_service(ServiceNames.USER_BUSINESS_PERMISSION)
-        card_data = user_service.get_card_data(context.user_id, card_id)
-        return card_data, card_id, card_info
-
     def update_record_degree(self, context: MessageContext_Refactor):
         """处理记录方式更新"""
         # 对于选择其他的情况，要在卡片界面显示一个新元素，让用户输入。这很可能要全面更新卡片，因为没有元素。
@@ -691,7 +682,6 @@ class RoutineCardManager(BaseCardManager):
             update_toast_type=ToastTypes.SUCCESS,
             toast_message=f"耗时更新成功！"
         )
-
 
     def _build_note_input_section(self, initial_value: str = '', is_confirmed: bool = False) -> List[Dict[str, Any]]:
         """构建备注输入区域"""
@@ -937,8 +927,6 @@ class RoutineCardManager(BaseCardManager):
             "border": "1px solid green",
         }
 
-
-
     def _build_quick_select_record_card(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """构建快速选择记录卡片"""
         quick_events = data.get('quick_events', [])
@@ -1171,49 +1159,6 @@ class RoutineCardManager(BaseCardManager):
             # elements.append(collapsible_element)
 
         return elements
-
-    # 辅助方法
-    def _build_form_row(self, label: str, element: Dict[str, Any], width_list: List[str] = None, element_id: str = '') -> Dict[str, Any]:
-        """构建表单行"""
-
-        if width_list is None:
-            width_list = ["80px", "auto"]
-
-        return {
-            "tag": "column_set",
-            "horizontal_spacing": "8px",
-            "horizontal_align": "left",
-            "element_id": element_id,
-            "columns": [
-                {
-                    "tag": "column",
-                    "width": width_list[0],
-                    "elements": [{
-                        "tag": "markdown",
-                        "content": f"**{label}**",
-                        "text_align": "left",
-                        "text_size": "normal_v2"
-                    }],
-                    "vertical_align": "center"
-                },
-                {
-                    "tag": "column",
-                    "width": width_list[1],
-                    "elements": [element]
-                }
-            ],
-        }
-
-    def _build_input_element(self, placeholder: str, initial_value: str, disabled: bool, action_data: Dict[str, Any], element_id: str = '') -> Dict[str, Any]:
-        """构建输入框元素"""
-        return {
-            "tag": "input",
-            "element_id": element_id,
-            "placeholder": {"tag": "plain_text", "content": placeholder},
-            "default_value": str(initial_value),
-            "disabled": disabled,
-            "behaviors": [{"type": "callback", "value": action_data}]
-        }
 
     def _build_select_element(self, placeholder: str, options: List[Dict[str, Any]], initial_value: str, disabled: bool, action_data: Dict[str, Any], element_id: str = '') -> Dict[str, Any]:
         """构建选择器元素"""
