@@ -228,10 +228,10 @@ class DesignPlanCardManager(BaseCardManager):
             'finished': True,
             'result': " | 结束检查"
         }
-
+        new_card_content = self.build_card(new_card_data)
         # 使用基类的通用卡片操作方法
         return self._handle_card_operation_common(
-            card_content=self.build_card(new_card_data),
+            card_content=new_card_content,
             card_operation_type=CardOperationTypes.UPDATE_RESPONSE,
             update_toast_type='info',
             toast_message="已结束对设计方案的检查"

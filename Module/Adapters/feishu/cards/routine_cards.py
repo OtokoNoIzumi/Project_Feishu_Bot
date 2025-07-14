@@ -313,7 +313,7 @@ class RoutineCardManager(BaseCardManager):
             "config": {"update_multi": True, "wide_screen_mode": True},
             "body": {
                 "direction": "vertical",
-                "padding": "16px 16px 16px 16px",
+                "padding": "12px",
                 "elements": self._build_quick_record_elements(event_name, business_data, card_status)
             },
             "header": {
@@ -357,29 +357,36 @@ class RoutineCardManager(BaseCardManager):
         # 4. 条件化展示：程度选择器（如果有程度选项）
         if degree_info:
             elements.extend(self._build_degree_selection_section(degree_info, business_data, is_confirmed))
-            # 是其他的时候才出现，节省面积。有了更新组件的属性，这里其实一开始就要创建一个空元素。
-            # 改成用add来解决。
+
+        # 创建表单容器
+        form_elements = {
+            "tag": "form",
+            "elements": [],
+            "name": "record_form"
+        }
+
+        # 5. 条件化展示：程度输入区域（如果有程度选项且选择了"其他"）
+        if degree_info:
             selected_degree = degree_info.get('selected_degree', '')
             if selected_degree == '其他':
-                elements.extend(self._build_degree_input_section(new_record.get('custom_degree', ''), is_confirmed))
+                form_elements['elements'].extend(self._build_degree_input_section(new_record.get('custom_degree', ''), is_confirmed))
 
-        # 5. 条件化展示：持续时间输入区域，其实开始也是可以有持续时间的哈哈。。。半天不开始。
+        # 6. 条件化展示：持续时间输入区域
         if event_type in [RoutineTypes.INSTANT, RoutineTypes.END, RoutineTypes.START]:
-            elements.extend(self._build_duration_input_section(new_record.get('duration', ''), is_confirmed))
+            form_elements['elements'].extend(self._build_duration_input_section(new_record.get('duration', ''), is_confirmed))
 
-        # 6. 条件化展示：备注输入区域
-        elements.extend(self._build_note_input_section(new_record.get('note', ''), is_confirmed))
-
-        # 7. 分割线
-        elements.append({"tag": "hr", "margin": "6px 0px"})
+        # 7. 条件化展示：备注输入区域
+        form_elements['elements'].extend(self._build_note_input_section(new_record.get('note', ''), is_confirmed))
 
         # 8. 操作按钮或确认提示
+        # if not is_confirmed:  对于表单组件，必须要有提交按钮，否则会报错，所以要用disabled来控制，而不是省略。
+        form_elements['elements'].append(self._build_record_action_buttons(user_id, event_name, is_confirmed))
+
+        # 只有当表单有内容时才添加表单容器
+        if form_elements['elements']:
+            elements.append(form_elements)
         if not is_confirmed:
-            elements.append(self._build_record_action_buttons(user_id, event_name))
-            elements.append({"tag": "markdown", "content": "**💡 重要提示** 输入之后请按回车或蓝色剪头提交，未提交的值会在其他选项变更后丢失！"})
-        else:
-            # 如果真的需要增加成功提交后的消息，那么最好不要改上面的内容，而是加在这里。
-            elements.append(self._build_confirmation_message(card_status))
+            elements.append({"tag": "markdown", "content": "**💡 重要提示** 请先选择完成日程的方式，这会清除下面所有的值！"})
 
         return elements
 
@@ -593,7 +600,8 @@ class RoutineCardManager(BaseCardManager):
                     "card_action": "add_new_degree",
                     "card_config_key": CardConfigKeys.ROUTINE_RECORD,
                 },
-                element_id="degree_input"
+                element_id="degree_input",
+                name="custom_degree"
             ),
             width_list=["80px", "180px"],
             element_id="degree_input_row"
@@ -635,7 +643,8 @@ class RoutineCardManager(BaseCardManager):
                     "card_action": "update_record_duration",
                     "card_config_key": CardConfigKeys.ROUTINE_RECORD,
                 },
-                element_id="duration_input"
+                element_id="duration_input",
+                name="duration"
             ),
             width_list=["80px", "180px"]
         ))
@@ -676,7 +685,8 @@ class RoutineCardManager(BaseCardManager):
                     "card_action": "update_record_note",
                     "card_config_key": CardConfigKeys.ROUTINE_RECORD,
                 },
-                element_id="note_input"
+                element_id="note_input",
+                name="note"
             ),
             width_list=["80px", "180px"]
         ))
@@ -703,12 +713,11 @@ class RoutineCardManager(BaseCardManager):
             toast_message=f"备注更新成功！"
         )
 
-    def _build_record_action_buttons(self, user_id: str, event_name: str) -> Dict[str, Any]:
+    def _build_record_action_buttons(self, user_id: str, event_name: str, is_confirmed: bool = False) -> Dict[str, Any]:
         """构建记录操作按钮组"""
         return {
             "tag": "column_set",
-            "flex_mode": "stretch",
-            "horizontal_spacing": "8px",
+            "horizontal_align": "left",
             "columns": [
                 {
                     "tag": "column",
@@ -718,17 +727,36 @@ class RoutineCardManager(BaseCardManager):
                         "text": {"tag": "plain_text", "content": "取消"},
                         "type": "danger",
                         "width": "default",
-                        "size": "medium",
                         "icon": {"tag": "standard_icon", "token": "close-bold_outlined"},
+                        "disabled": is_confirmed,
                         "behaviors": [{
                             "type": "callback",
                             "value": {
                                 "card_action": "cancel_record",
                                 "card_config_key": CardConfigKeys.ROUTINE_RECORD,
                             }
-                        }]
+                        }],
+                        "name": "cancel_record"
                     }],
-                    "horizontal_align": "left"
+                    "vertical_spacing": "8px",
+                    "horizontal_align": "left",
+                    "vertical_align": "top"
+                },
+                {
+                    "tag": "column",
+                    "width": "auto",
+                    "elements": [{
+                        "tag": "button",
+                        "text": {"tag": "plain_text", "content": "重置"},
+                        "type": "default",
+                        "width": "default",
+                        "disabled": is_confirmed,
+                        "form_action_type": "reset",
+                        "name": "reset_form"
+                    }],
+                    "vertical_spacing": "8px",
+                    "horizontal_align": "left",
+                    "vertical_align": "top"
                 },
                 {
                     "tag": "column",
@@ -738,8 +766,8 @@ class RoutineCardManager(BaseCardManager):
                         "text": {"tag": "plain_text", "content": "确认"},
                         "type": "primary",
                         "width": "default",
-                        "size": "medium",
                         "icon": {"tag": "standard_icon", "token": "done_outlined"},
+                        "disabled": is_confirmed,
                         "behaviors": [{
                             "type": "callback",
                             "value": {
@@ -747,9 +775,13 @@ class RoutineCardManager(BaseCardManager):
                                 "card_config_key": CardConfigKeys.ROUTINE_RECORD,
                                 "event_name": event_name
                             }
-                        }]
+                        }],
+                        "form_action_type": "submit",
+                        "name": "confirm_record"
                     }],
-                    "horizontal_align": "right"
+                    "vertical_spacing": "8px",
+                    "horizontal_align": "left",
+                    "vertical_align": "top"
                 }
             ]
         }
@@ -774,7 +806,7 @@ class RoutineCardManager(BaseCardManager):
             )
 
         event_def = card_data.get('event_definition', {})
-
+        form_data = context.content.form_data
 
         user_id = context.user_id
         new_degree = core_data.get('degree', '')
@@ -782,11 +814,13 @@ class RoutineCardManager(BaseCardManager):
             if new_degree == '其他':
                 # 其他留空的情况不增加定义
 
-                core_data['degree'] = core_data.get('custom_degree', "其他")
-                if core_data.get('custom_degree', "其他") != "其他":
-                    event_def['properties']['degree_options'].append(core_data.get('custom_degree', "其他"))
+                core_data['degree'] = form_data.get('custom_degree', "其他")
+                if form_data.get('custom_degree', "其他") != "其他":
+                    event_def['properties']['degree_options'].append(form_data.get('custom_degree', "其他"))
             else:
                 core_data['degree'] = new_degree
+        core_data['duration'] = int(form_data.get('duration', 0))
+        core_data['note'] = form_data.get('note', "")
 
         # 开始写入数据
         # 先写入记录

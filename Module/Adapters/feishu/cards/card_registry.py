@@ -140,7 +140,7 @@ class BaseCardManager(ABC):
         card_data = user_service.get_card_data(context.user_id, card_id)
         return card_data, card_id, card_info
 
-    def _build_input_element(self, placeholder: str, initial_value: str, disabled: bool, action_data: Dict[str, Any], element_id: str = '') -> Dict[str, Any]:
+    def _build_input_element(self, placeholder: str, initial_value: str, disabled: bool, action_data: Dict[str, Any], element_id: str = '', name: str = '') -> Dict[str, Any]:
         """构建输入框元素"""
         return {
             "tag": "input",
@@ -148,6 +148,7 @@ class BaseCardManager(ABC):
             "placeholder": {"tag": "plain_text", "content": placeholder},
             "default_value": str(initial_value),
             "disabled": disabled,
+            "name": name,
             "behaviors": [{"type": "callback", "value": action_data}]
         }
 
