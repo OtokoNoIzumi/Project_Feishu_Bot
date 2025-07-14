@@ -563,34 +563,13 @@ class RoutineCardManager(BaseCardManager):
         if not card_data:
             debug_utils.log_and_print(f"🔍 update_record_degree - 卡片数据为空", log_level="WARNING")
             return
-        message_id = context.message_id
         new_option = context.content.value.get('option')
 
-        new_record = card_data.get('new_record', {})
-        before_degree = new_record.get('degree', '')
         card_data['new_record']['degree'] = new_option
         card_data['degree_info']['selected_degree'] = new_option
         user_service = self.app_controller.get_service(ServiceNames.USER_BUSINESS_PERMISSION)
         user_service.save_new_card_data(context.user_id, card_id, card_data)
-        new_card_dsl = {"message": "异步更新中..."}
-        if (card_id):
-            if new_option == '其他' and before_degree != '其他':
-                result = self.sender.add_card_element(
-                    card_id=card_id,
-                    element_id="degree_select_row",
-                    element=self._build_degree_input_section(initial_value=new_record.get("custom_degree", "")),
-                    sequence=card_info.get('sequence', 1),
-                    message_id=message_id,
-                    delay_seconds=0.5
-                )
-            elif new_option != '其他' and before_degree == '其他':
-                result = self.sender.delete_card_element(
-                    card_id=card_id,
-                    element_id="degree_input_row",
-                    sequence=card_info.get('sequence', 1),
-                    message_id=message_id,
-                    delay_seconds=0.5
-                )
+        new_card_dsl = self._build_quick_record_confirm_card(card_data)
 
         return self._handle_card_operation_common(
             card_content=new_card_dsl,
@@ -787,13 +766,6 @@ class RoutineCardManager(BaseCardManager):
             card_data['result'] = "取消"
             new_card_dsl = self._build_quick_record_confirm_card(card_data)
 
-            self.sender.update_card_content(
-                card_id=card_id,
-                card_content=new_card_dsl,
-                sequence=card_info.get('sequence', 1),
-                message_id=context.message_id,
-                delay_seconds=0.5
-            )
             return self._handle_card_operation_common(
                 card_content=new_card_dsl,
                 card_operation_type=CardOperationTypes.UPDATE_RESPONSE,
@@ -861,16 +833,9 @@ class RoutineCardManager(BaseCardManager):
         user_service = self.app_controller.get_service(ServiceNames.USER_BUSINESS_PERMISSION)
         user_service.del_card_data(context.user_id, card_id)
 
-        self.sender.update_card_content(
-            card_id=card_id,
-            card_content=new_card_dsl,
-            sequence=card_info.get('sequence', 1),
-            message_id=context.message_id,
-            delay_seconds=0.5
-        )
 
         return self._handle_card_operation_common(
-            card_content={"message": "记录创建功能开发中..."},
+            card_content=new_card_dsl,
             card_operation_type=CardOperationTypes.UPDATE_RESPONSE,
             update_toast_type=ToastTypes.SUCCESS,
             toast_message=f"'{event_name}' 记录成功！"
@@ -888,15 +853,7 @@ class RoutineCardManager(BaseCardManager):
 
         user_service = self.app_controller.get_service(ServiceNames.USER_BUSINESS_PERMISSION)
         user_service.del_card_data(context.user_id, card_id)
-        self.sender.update_card_content(
-            card_id=card_id,
-            card_content=new_card_dsl,
-            sequence=card_info.get('sequence', 1),
-            message_id=context.message_id,
-            delay_seconds=0.5
-        )
-        # card_content = {"type": "raw", "data": new_card_dsl}
-        card_content = {"message": "记录创建功能开发中..."}
+
         return self._handle_card_operation_common(
             card_content=new_card_dsl,
             card_operation_type=CardOperationTypes.UPDATE_RESPONSE,
@@ -924,7 +881,6 @@ class RoutineCardManager(BaseCardManager):
                 "text_align": "center",
                 "text_color": result_color.get(card_status, 'grey')
             },
-            "border": "1px solid green",
         }
 
     def _build_quick_select_record_card(self, data: Dict[str, Any]) -> Dict[str, Any]:
