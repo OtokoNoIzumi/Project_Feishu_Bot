@@ -90,7 +90,8 @@ class BilibiliCardManager(BaseCardManager):
                 "is_read": video.get('is_read', False),
                 "url": video.get('url', ''),
                 "android_url": video.get('android_url', ''),
-                "action_info": additional_videos_cached_data
+                "action_info": additional_videos_cached_data,
+                "element_id": f"bili_video_{i + 1}"
             }
             template_params["addtional_videos"].append(video_item)
 
