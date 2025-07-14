@@ -148,9 +148,7 @@ class NotionService:
             Dict: B站视频信息
         """
         # 检查缓存是否有效
-        if not self._is_cache_valid() or not self.cache_data.get(self.bili_cache_key):
-            # 更新缓存是异步的，这里同步执行一次
-            self._update_bili_cache_sync()
+        self.update_bili_cache()
 
         videos = self.cache_data.get(self.bili_cache_key, [])
         if not videos:
@@ -175,6 +173,13 @@ class NotionService:
             "summary": video.get("summary", ""),
             "upload_date": video.get("upload_date", ""),
         }
+
+    def update_bili_cache(self) -> None:
+        """
+        根据需要更新B站视频缓存
+        """
+        if not self._is_cache_valid() or not self.cache_data.get(self.bili_cache_key):
+            self._update_bili_cache_sync()
 
     @external_api_safe("Notion数据更新失败", api_name="Notion")
     def _update_bili_cache_sync(self) -> None:
@@ -469,10 +474,7 @@ class NotionService:
         Returns:
             Dict: 包含主视频和额外视频列表的结果
         """
-        # 检查缓存是否有效
-        if not self._is_cache_valid() or not self.cache_data.get(self.bili_cache_key):
-            # 更新缓存是异步的，这里同步执行一次
-            self._update_bili_cache_sync()
+        self.update_bili_cache()
 
         videos = self.cache_data.get(self.bili_cache_key, [])
         if not videos:

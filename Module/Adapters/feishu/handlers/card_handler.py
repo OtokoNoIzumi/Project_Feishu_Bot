@@ -19,6 +19,7 @@ from Module.Services.constants import (
     Messages, CardActions, UIElements, FieldNames, DefaultValues, MessageTypes,
     DesignPlanConstants, AdapterNames
 )
+from Module.Business.daily_summary_business import DailySummaryBusiness
 from ..decorators import (
     card_operation_safe, message_conversion_safe
 )
@@ -107,6 +108,11 @@ class CardHandler:
             if hasattr(card_manager, card_action):
                 return getattr(card_manager, card_action)(context_refactor)
 
+        # 特殊类型处理
+        card_action = context_refactor.content.card_action_key
+        if hasattr(self, card_action):
+            return getattr(self, card_action)(context_refactor)
+
         # 调用业务处理器，由业务层判断处理类型
         result = self.message_router.process_message(context)
         # 统一处理成功和失败的响应，减少分支嵌套
@@ -118,25 +124,6 @@ class CardHandler:
                         result_content=result.response_content,
                         card_operation_type=CardOperationTypes.UPDATE_RESPONSE
                     )
-                case ResponseTypes.SCHEDULER_CARD_UPDATE_BILI_BUTTON:
-                    response_content = result.response_content
-                    if response_content.get('remove_element_id',""):
-                        # 有这个属性说明是v2方法进来的，执行异步的删除指令
-                        message_id = context_refactor.message_id
-                        cache_service = self.app_controller.get_service(ServiceNames.CACHE)
-                        card_info = cache_service.get_card_info(message_id)
-                        card_id = card_info.get('card_id', '')
-                        self.sender.delete_card_element(
-                            card_id=card_id,
-                            element_id=response_content.get('remove_element_id'),
-                            sequence=card_info.get('sequence', 1),
-                            message_id=message_id,
-                            delay_seconds=0.3
-                        )
-                        result.response_content.pop('remove_element_id')
-                        result.response_content.pop('text_element_id')
-
-                    return P2CardActionTriggerResponse(result.response_content)
 
                 case _:
                     # 默认成功响应
@@ -400,3 +387,47 @@ class CardHandler:
         else:
             debug_utils.log_and_print(f"❌ 未支持的动作: {card_action}", log_level="ERROR")
             return ProcessResult.error_result(f"未支持的动作: {card_action}")
+
+    @card_operation_safe("标记B站视频为已读失败")
+    def mark_bili_read_in_daily_summary(self, context_refactor: MessageContext_Refactor) -> P2CardActionTriggerResponse:
+        """
+        直接处理标记B站视频为已读事件，调用业务层方法
+        因为没有特地新建daily_summary的卡片模块，所以直接在这里处理。
+
+        Args:
+            context_refactor: 消息上下文
+
+        Returns:
+            P2CardActionTriggerResponse: 处理结果
+        """
+        # 调用业务层方法处理标记已读逻辑
+        daily_summary_business = DailySummaryBusiness(app_controller=self.app_controller)
+        action_value = context_refactor.content.value
+        result = daily_summary_business.mark_bili_read_v2(action_value)
+
+        if not result.success:
+            return P2CardActionTriggerResponse({
+                "toast": {"type": "error", "content": result.error_message or "标记为已读失败"}
+            })
+
+        # 处理业务层返回的响应内容
+        response_content = result.response_content
+
+        message_id = context_refactor.message_id
+        cache_service = self.app_controller.get_service(ServiceNames.CACHE)
+        card_info = cache_service.get_card_info(message_id)
+        card_id = card_info.get('card_id', '')
+
+        self.sender.delete_card_element(
+            card_id=card_id,
+            element_id=response_content.get('remove_element_id'),
+            sequence=card_info.get('sequence', 1),
+            message_id=message_id,
+            delay_seconds=0.3
+        )
+
+        # 移除不需要返回给飞书的字段
+        response_content.pop('remove_element_id', None)
+        response_content.pop('text_element_id', None)
+
+        return P2CardActionTriggerResponse(response_content)
