@@ -364,7 +364,7 @@ class RoutineCardManager(BaseCardManager):
 
         # 5. 条件化展示：程度输入区域（如果有程度选项且选择了"其他"）
         if degree_info:
-            selected_degree = degree_info.get('selected_degree', '')
+            selected_degree = new_record.get('degree', '')
             if selected_degree == '其他':
                 form_elements['elements'].extend(self._build_degree_input_section(new_record.get('custom_degree', ''), is_confirmed))
 
@@ -562,7 +562,7 @@ class RoutineCardManager(BaseCardManager):
             })
 
         # 智能默认值：用户上次选择 > 系统默认 > 第一个选项
-        initial_degree = business_data['degree_info'].get('selected_degree',"") or default_degree
+        initial_degree = business_data['new_record'].get('degree',"") or default_degree
 
         elements.append(self._build_form_row(
             "选择方式",
@@ -596,7 +596,6 @@ class RoutineCardManager(BaseCardManager):
         new_option = context.content.value.get('option')
 
         business_data['new_record']['degree'] = new_option
-        business_data['degree_info']['selected_degree'] = new_option
         user_service = self.app_controller.get_service(ServiceNames.USER_BUSINESS_PERMISSION)
         user_service.save_new_card_business_data(context.user_id, card_id, business_data)
         new_card_dsl = self._build_quick_record_confirm_card(business_data)
@@ -791,11 +790,12 @@ class RoutineCardManager(BaseCardManager):
         if new_degree:
             if new_degree == '其他':
                 # 其他留空的情况不增加定义
-
-                core_data['degree'] = form_data.get('custom_degree', "其他")
-                if form_data.get('custom_degree', "其他") != "其他":
-                    business_data['event_definition']['properties']['degree_options'].append(form_data.get('custom_degree', "其他"))
-                    business_data['degree_info']['selected_degree'] = form_data.get('custom_degree', "其他")
+                new_custom_degree = form_data.get('custom_degree', "其他")
+                if new_custom_degree != "其他" and new_custom_degree != "":
+                    core_data['degree'] = new_custom_degree
+                    degree_options = business_data['event_definition']['properties']['degree_options']
+                    if new_custom_degree not in degree_options:
+                        degree_options.append(new_custom_degree)
             else:
                 core_data['degree'] = new_degree
 

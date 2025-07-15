@@ -203,7 +203,7 @@ class RoutineRecord(BaseProcessor):
         next_num = count + 1
         return f"{event_name}_{next_num:05d}"
 
-    def _create_event_record(self, event_name: str, user_id: str, degree: str = None, note: str = "", related_records: List[str] = None) -> Dict[str, Any]:
+    def _create_event_record(self, event_name: str, user_id: str, degree: str = "", note: str = "", related_records: List[str] = None) -> Dict[str, Any]:
         """
         创建事件记录
 
@@ -708,8 +708,7 @@ class RoutineRecord(BaseProcessor):
         if has_degrees:
             degree_info = {
                 "degree_options": event_def.get('properties',{}).get('degree_options',[]),
-                "default_degree": event_def.get('properties',{}).get('default_degree',""),
-                "selected_degree": "",
+                "default_degree": event_def.get('properties',{}).get('default_degree',"")
             }
         else:
             degree_info = {}
@@ -1211,7 +1210,7 @@ class RoutineRecord(BaseProcessor):
             new_record = self._create_event_record(
                 event_name=event_name,
                 user_id=user_id,
-                degree=form_data.get('selected_degree', ''),
+                degree=form_data.get('custom_degree', ''),
                 note=form_data.get('record_note', '')
             )
 
