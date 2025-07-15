@@ -639,7 +639,6 @@ class RoutineRecord(BaseProcessor):
             route_result = RouteResult.create_route_result(
                 route_type=RouteTypes.ROUTINE_QUICK_RECORD_CARD,
                 route_params={
-                    # "card_type": "quick_record_confirm",
                     "business_data": routine_record_data
                 }
             )
@@ -1037,7 +1036,6 @@ class RoutineRecord(BaseProcessor):
         route_result = RouteResult.create_route_result(
             route_type=RouteTypes.ROUTINE_QUICK_SELECT_CARD,
             route_params={
-                "card_type": "quick_select_record",
                 "business_data": card_data
             }
         )
@@ -1045,77 +1043,65 @@ class RoutineRecord(BaseProcessor):
         return route_result
 
     @safe_execute("构建快速选择记录卡片数据失败")
-    def build_quick_select_card_data(self, user_id: str) -> Dict[str, Any]:
+    def build_quick_select_card_data(self, user_id: str, max_items: int = 5) -> Dict[str, Any]:
         """
         构建快速选择记录卡片数据
 
         Args:
             user_id: 用户ID
-            operation_id: 操作ID
 
         Returns:
             Dict[str, Any]: 卡片数据
         """
         # 获取快速事项列表
-        quick_events = self.get_quick_access_events(user_id, max_items=5)
+        # 整体的逻辑要尝试复用 build_quick_record_data，只不过多一个额外的头部element和回调。
+        # 要考虑必要的业务信息有哪些，如果真要完全抛开的话，感觉是要传递全量数据啊？似乎不符合飞书卡片要求，也很浪费。
+        # 关键是要有一个查询已有事件清单的入口。 defination.keys()？
+        definitions_data = self.load_event_definitions(user_id)
+        if not definitions_data:
+            quick_events = []
+        else:
+            definitions = definitions_data.get("definitions", {})
+            if not definitions:
+                quick_events = []
+            else:
+                # 1. 先获取快捷访问事项（最多3个）
+                quick_access_events = []
+                recent_events = []
+
+                for event_name, event_def in definitions.items():
+                    if event_def.get('properties', {}).get('quick_access', False):
+                        quick_access_events.append({
+                            'name': event_name,
+                            'type': event_def.get('type', RoutineTypes.INSTANT),
+                            'properties': event_def.get('properties', {}),
+                            'last_updated': event_def.get('last_updated', '')
+                        })
+                    else:
+                        recent_events.append({
+                            'name': event_name,
+                            'type': event_def.get('type', RoutineTypes.INSTANT),
+                            'properties': event_def.get('properties', {}),
+                            'last_updated': event_def.get('last_updated', '')
+                        })
+
+                # 2. 按最后更新时间排序
+                quick_access_events.sort(key=lambda x: x['last_updated'], reverse=True)
+                recent_events.sort(key=lambda x: x['last_updated'], reverse=True)
+
+                # 3. 组合结果：最多3个快捷访问 + 填充到5个的最近事项
+                result = quick_access_events[:3]
+                remaining_slots = max_items - len(result)
+
+                if remaining_slots > 0:
+                    result.extend(recent_events[:remaining_slots])
+
+                quick_events = result
 
         return {
             "user_id": user_id,
             "quick_events": quick_events
         }
-
-    @safe_execute("获取快速事项列表失败")
-    def get_quick_access_events(self, user_id: str, max_items: int = 5) -> List[Dict[str, Any]]:
-        """
-        获取用户的快速访问事项列表
-
-        Args:
-            user_id: 用户ID
-            max_items: 最大返回数量
-
-        Returns:
-            List[Dict[str, Any]]: 快速事项列表
-        """
-        definitions_data = self.load_event_definitions(user_id)
-        if not definitions_data:
-            return []
-
-        definitions = definitions_data.get("definitions", {})
-        if not definitions:
-            return []
-
-        # 1. 先获取快捷访问事项（最多3个）
-        quick_access_events = []
-        recent_events = []
-
-        for event_name, event_def in definitions.items():
-            if event_def.get('properties', {}).get('quick_access', False):
-                quick_access_events.append({
-                    'name': event_name,
-                    'type': event_def.get('type', RoutineTypes.INSTANT),
-                    'properties': event_def.get('properties', {}),
-                    'last_updated': event_def.get('last_updated', '')
-                })
-            else:
-                recent_events.append({
-                    'name': event_name,
-                    'type': event_def.get('type', RoutineTypes.INSTANT),
-                    'properties': event_def.get('properties', {}),
-                    'last_updated': event_def.get('last_updated', '')
-                })
-
-        # 2. 按最后更新时间排序
-        quick_access_events.sort(key=lambda x: x['last_updated'], reverse=True)
-        recent_events.sort(key=lambda x: x['last_updated'], reverse=True)
-
-        # 3. 组合结果：最多3个快捷访问 + 填充到5个的最近事项
-        result = quick_access_events[:3]
-        remaining_slots = max_items - len(result)
-
-        if remaining_slots > 0:
-            result.extend(recent_events[:remaining_slots])
-
-        return result
 
 
     @safe_execute("处理事件创建业务逻辑失败")

@@ -27,8 +27,6 @@ from Module.Adapters.feishu.utils import safe_float
 class RoutineCardMode(Enum):
     """日常事项卡片模式"""
     NEW_EVENT_DEFINITION = "new_event_definition"      # 新事件定义
-    QUICK_RECORD_CONFIRM = "quick_record_confirm"      # 快速记录确认
-    QUICK_SELECT_RECORD = "quick_select_record"        # 快速选择记录
     QUERY_RESULTS = "query_results"                    # 查询结果展示
 
 
@@ -65,6 +63,21 @@ class RoutineCardManager(BaseCardManager):
             business_data=business_data
         )
 
+    @card_build_safe("菜单快速记录日常卡片构建失败")
+    def build_quick_select_record_card(self, route_result: RouteResult, context: MessageContext_Refactor, business_data: Dict[str, Any]) -> Dict[str, Any]:
+        """构建快速选择记录卡片"""
+        card_data = self._build_quick_select_record_card(business_data)
+        card_content = {"type": "card_json", "data": card_data}
+
+        return self._handle_card_operation_common(
+            card_content=card_content,
+            card_operation_type=CardOperationTypes.SEND,
+            update_toast_type='success',
+            user_id=context.user_id,
+            message_id=context.message_id,
+            business_data=business_data
+        )
+
     @card_build_safe("日常事项卡片构建失败")
     def build_card(self, route_result: RouteResult, context: MessageContext_Refactor, **kwargs) -> Dict[str, Any]:
         """构建日常事项卡片"""
@@ -75,8 +88,6 @@ class RoutineCardManager(BaseCardManager):
         match card_type:
             case RoutineCardMode.NEW_EVENT_DEFINITION.value:
                 card_data = self._build_new_event_definition_card(business_data)
-            case RoutineCardMode.QUICK_SELECT_RECORD.value:
-                card_data = self._build_quick_select_record_card(business_data)
             case RoutineCardMode.QUERY_RESULTS.value:
                 card_data = self._build_query_results_card(business_data)
             case _:
@@ -156,7 +167,8 @@ class RoutineCardManager(BaseCardManager):
                 placeholder="输入事项名称",
                 initial_value=form_data.get('event_name', ''),
                 disabled=is_confirmed,
-                action_data={"action": "update_event_name", "operation_id": operation_id}
+                action_data={"action": "update_event_name", "operation_id": operation_id},
+                name="event_name"
             )
         ))
 
@@ -229,7 +241,8 @@ class RoutineCardManager(BaseCardManager):
                     placeholder="输入程度选项，用逗号分隔（如：简单,中等,复杂）",
                     initial_value=form_data.get('degree_options', ''),
                     disabled=is_confirmed,
-                    action_data={"action": "update_degree_options", "operation_id": operation_id}
+                    action_data={"action": "update_degree_options", "operation_id": operation_id},
+                    name="degree_options"
                 )
             ))
 
@@ -240,7 +253,8 @@ class RoutineCardManager(BaseCardManager):
                 placeholder="添加备注信息（可选）",
                 initial_value=form_data.get('notes', ''),
                 disabled=is_confirmed,
-                action_data={"action": "update_notes", "operation_id": operation_id}
+                action_data={"action": "update_notes", "operation_id": operation_id},
+                name="notes"
             )
         ))
 
@@ -894,11 +908,11 @@ class RoutineCardManager(BaseCardManager):
             },
         }
 
-    def _build_quick_select_record_card(self, data: Dict[str, Any]) -> Dict[str, Any]:
+    def _build_quick_select_record_card(self, business_data: Dict[str, Any]) -> Dict[str, Any]:
         """构建快速选择记录卡片"""
-        quick_events = data.get('quick_events', [])
-        operation_id = data.get('operation_id', str(uuid.uuid4()))
-        user_id = data.get('user_id', '')
+        quick_events = business_data.get('quick_events', [])
+        operation_id = business_data.get('operation_id', str(uuid.uuid4()))
+        user_id = business_data.get('user_id', '')
 
         card_dsl = {
             "schema": "2.0",
@@ -940,7 +954,8 @@ class RoutineCardManager(BaseCardManager):
                 placeholder="输入新事项名称",
                 initial_value="",
                 disabled=False,
-                action_data={"action": "new_event_input", "operation_id": operation_id}
+                action_data={"action": "new_event_input", "operation_id": operation_id},
+                name="new_event_name"
             )
         ))
 

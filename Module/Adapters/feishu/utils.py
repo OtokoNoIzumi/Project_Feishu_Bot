@@ -182,12 +182,12 @@ ROUTE_KNOWLEDGE_MAPPING = {
             "card_action": "build_quick_record_confirm_card"
         }
     },
-    "routine_quick_select_card": {
+    RouteTypes.ROUTINE_QUICK_SELECT_CARD: {
         "handler": "card_handler",
         "method": "dispatch_card_response",
         "call_params": {
             "card_config_key": "routine_quick_select",
-            "card_action": "build_card"
+            "card_action": "build_quick_select_record_card"
         }
     },
     "routine_query_results_card": {
