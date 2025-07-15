@@ -538,73 +538,55 @@ class RoutineRecord(BaseProcessor):
         return route_result
 
     @safe_execute("构建查询结果卡片数据失败")
-    def build_query_results_card_data(self, user_id: str, query_type: str = "recent") -> Dict[str, Any]:
+    def build_query_results_card_data(self, user_id: str, query_type: str = "recent" , max_items: int = 10) -> Dict[str, Any]:
         """
         构建查询结果卡片数据
 
         Args:
             user_id: 用户ID
             query_type: 查询类型
-            operation_id: 操作ID
 
         Returns:
             Dict[str, Any]: 卡片数据
         """
-        # 获取查询结果
-        results = self.get_query_results_data(user_id, max_items=10)
+        definitions_data = self.load_event_definitions(user_id)
+        records_data = self.load_event_records(user_id)
+
+        if not definitions_data:
+            results = []
+        else:
+            definitions = definitions_data.get("definitions", {})
+            if not definitions:
+                results = []
+            else:
+                # 按最后更新时间排序
+                sorted_definitions = sorted(
+                    definitions.items(),
+                    key=lambda x: x[1].get("last_updated", ""),
+                    reverse=True
+                )[:max_items]
+
+                results = []
+                for event_name, event_def in sorted_definitions:
+                    # 获取该事件的最新记录
+                    event_records = [r for r in records_data.get("records", []) if r["event_name"] == event_name]
+                    last_record = None
+
+                    if event_records:
+                        event_records.sort(key=lambda x: x["timestamp"], reverse=True)
+                        last_record = event_records[0]
+
+                    results.append({
+                        "event_name": event_name,
+                        "event_definition": event_def,
+                        "last_record": last_record
+                    })
 
         return {
             "user_id": user_id,
             "query_type": query_type,
             "results": results
         }
-
-    @safe_execute("获取查询结果数据失败")
-    def get_query_results_data(self, user_id: str, max_items: int = 10) -> List[Dict[str, Any]]:
-        """
-        获取查询结果数据，用于卡片展示
-
-        Args:
-            user_id: 用户ID
-            max_items: 最大返回数量
-
-        Returns:
-            List[Dict[str, Any]]: 查询结果数据
-        """
-        definitions_data = self.load_event_definitions(user_id)
-        records_data = self.load_event_records(user_id)
-
-        if not definitions_data:
-            return []
-
-        definitions = definitions_data.get("definitions", {})
-        if not definitions:
-            return []
-
-        # 按最后更新时间排序
-        sorted_definitions = sorted(
-            definitions.items(),
-            key=lambda x: x[1].get("last_updated", ""),
-            reverse=True
-        )[:max_items]
-
-        results = []
-        for event_name, event_def in sorted_definitions:
-            # 获取该事件的最新记录
-            event_records = [r for r in records_data.get("records", []) if r["event_name"] == event_name]
-            last_record = None
-
-            if event_records:
-                event_records.sort(key=lambda x: x["timestamp"], reverse=True)
-                last_record = event_records[0]
-
-            results.append({
-                "event_name": event_name,
-                "event_definition": event_def,
-                "last_record": last_record
-            })
-
-        return results
 
     @safe_execute("处理事项创建失败")
     def process_routine_create(self, user_id: str, item_name: str):
@@ -1031,12 +1013,16 @@ class RoutineRecord(BaseProcessor):
         if not self.check_user_permission(user_id):
             return ProcessResult.error_result("您暂无使用日常事项记录功能的权限")
 
-        card_data = self.build_quick_select_card_data(user_id)
+        # 构建卡片数据，支持集成模式
+        menu_shortcut_data = self.build_quick_select_card_data(
+            user_id=user_id,
+        )
+
         # 构建路由结果，指向routine卡片的快速选择模式
         route_result = RouteResult.create_route_result(
             route_type=RouteTypes.ROUTINE_QUICK_SELECT_CARD,
             route_params={
-                "business_data": card_data
+                "business_data": menu_shortcut_data
             }
         )
 
@@ -1045,64 +1031,59 @@ class RoutineRecord(BaseProcessor):
     @safe_execute("构建快速选择记录卡片数据失败")
     def build_quick_select_card_data(self, user_id: str, max_items: int = 5) -> Dict[str, Any]:
         """
-        构建快速选择记录卡片数据
+        构建快速选择记录卡片数据（扩展版本：支持集成模式）
 
         Args:
             user_id: 用户ID
+            max_items: 最大显示事件数量
 
         Returns:
             Dict[str, Any]: 卡片数据
         """
-        # 获取快速事项列表
-        # 整体的逻辑要尝试复用 build_quick_record_data，只不过多一个额外的头部element和回调。
-        # 要考虑必要的业务信息有哪些，如果真要完全抛开的话，感觉是要传递全量数据啊？似乎不符合飞书卡片要求，也很浪费。
-        # 关键是要有一个查询已有事件清单的入口。 defination.keys()？
+        # 业务数据未必都需要在这里定义，是否连续更新是前端的事，取值或者设定值，这里是业务逻辑的数据。
+        # menu两次点击，而且不需要等待，所以没必要快选？
+        # 比较长的时间应该不会在这个业务里加上自动识别吧。
         definitions_data = self.load_event_definitions(user_id)
-        if not definitions_data:
-            quick_events = []
-        else:
-            definitions = definitions_data.get("definitions", {})
-            if not definitions:
-                quick_events = []
-            else:
-                # 1. 先获取快捷访问事项（最多3个）
-                quick_access_events = []
-                recent_events = []
+        quick_events = []
+        definitions = definitions_data.get("definitions", {})
 
-                for event_name, event_def in definitions.items():
-                    if event_def.get('properties', {}).get('quick_access', False):
-                        quick_access_events.append({
-                            'name': event_name,
-                            'type': event_def.get('type', RoutineTypes.INSTANT),
-                            'properties': event_def.get('properties', {}),
-                            'last_updated': event_def.get('last_updated', '')
-                        })
-                    else:
-                        recent_events.append({
-                            'name': event_name,
-                            'type': event_def.get('type', RoutineTypes.INSTANT),
-                            'properties': event_def.get('properties', {}),
-                            'last_updated': event_def.get('last_updated', '')
-                        })
+        if definitions:
+            # 分离快速访问事件和最近事件
+            quick_access_events = []
+            recent_events = []
 
-                # 2. 按最后更新时间排序
-                quick_access_events.sort(key=lambda x: x['last_updated'], reverse=True)
-                recent_events.sort(key=lambda x: x['last_updated'], reverse=True)
+            for event_name, event_def in definitions.items():
+                event_info = {
+                    'name': event_name,
+                    'type': event_def.get('type', RoutineTypes.INSTANT),
+                    'properties': event_def.get('properties', {}),
+                    'last_updated': event_def.get('last_updated', ''),
+                    'definition': event_def  # 保留完整定义，用于快速记录
+                }
 
-                # 3. 组合结果：最多3个快捷访问 + 填充到5个的最近事项
-                result = quick_access_events[:3]
-                remaining_slots = max_items - len(result)
+                if event_def.get('properties', {}).get('quick_access', False):
+                    quick_access_events.append(event_info)
+                else:
+                    recent_events.append(event_info)
 
-                if remaining_slots > 0:
-                    result.extend(recent_events[:remaining_slots])
+            # 排序并合并事件列表
+            quick_access_events.sort(key=lambda x: x['last_updated'], reverse=True)
+            recent_events.sort(key=lambda x: x['last_updated'], reverse=True)
 
-                quick_events = result
+            # 确保快速访问事件优先显示
+            result = quick_access_events[:3]
+            remaining_slots = max_items - len(result)
+            if remaining_slots > 0:
+                result.extend(recent_events[:remaining_slots])
+            quick_events = result
 
-        return {
+        # 构建基础卡片数据
+        quick_select_data = {
             "user_id": user_id,
             "quick_events": quick_events
         }
 
+        return quick_select_data
 
     @safe_execute("处理事件创建业务逻辑失败")
     def create_new_event_from_form(self, user_id: str, form_data: Dict[str, Any]) -> Tuple[bool, str]:

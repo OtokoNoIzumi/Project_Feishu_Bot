@@ -228,6 +228,7 @@ class CardConfigKeys:
     BILIBILI_VIDEO_INFO = "bilibili_video_info"
     DESIGN_PLAN = "design_plan"
     ROUTINE_RECORD = "routine_record"
+    ROUTINE_QUICK_SELECT = "routine_quick_select"
 
 # ========== 卡片操作类型常量 ==========
 class CardOperationTypes:

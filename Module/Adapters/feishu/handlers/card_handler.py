@@ -90,7 +90,7 @@ class CardHandler:
             # return 可以不用P2CardActionTriggerResponse，直接return
             return
 
-        if context_refactor.content.card_config_key in [CardConfigKeys.DESIGN_PLAN, CardConfigKeys.BILIBILI_VIDEO_INFO, CardConfigKeys.ROUTINE_RECORD]:
+        if context_refactor.content.card_config_key in [CardConfigKeys.DESIGN_PLAN, CardConfigKeys.BILIBILI_VIDEO_INFO, CardConfigKeys.ROUTINE_RECORD, CardConfigKeys.ROUTINE_QUICK_SELECT]:
             message_before_action = context_refactor.content.value.get('message_before_action', '')
             if message_before_action:
                 # 看起来是冗余的检测，但胜在增加了可读性，也确保了外层的局部可靠

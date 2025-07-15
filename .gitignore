@@ -13,3 +13,4 @@ cache/user_cache.json
 cache/pending_operations.json
 cache/message_id_card_id_mapping.json
 user_data/
+.kiro/
