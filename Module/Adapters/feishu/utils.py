@@ -16,6 +16,13 @@ from Module.Services.constants import RouteTypes
 # P2ImMessageReceiveV1对象调试开关现在从配置服务获取
 
 
+def safe_float(s):
+    """安全转换为 float，失败返回 None"""
+    if not s:
+        return None
+    cleaned = s.lstrip('-').replace('.', '', 1)
+    return float(s) if cleaned.isdigit() and cleaned != '' else None
+
 def extract_timestamp(data) -> datetime.datetime:
     """
     提取通用的上下文数据（时间戳和用户名）

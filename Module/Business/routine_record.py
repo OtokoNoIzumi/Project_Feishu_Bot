@@ -159,7 +159,10 @@ class RoutineRecord(BaseProcessor):
                 "check_cycle": None,
                 "custom_cycle_config": None,
                 "target_type": None, #次数/时长
-                "target_value": None #目标值
+                "target_value": None, #目标值
+
+                # 指标属性
+                "progress_type": "" # 进度类型
             },
             "stats": {
                 "record_count": 0,
@@ -176,6 +179,7 @@ class RoutineRecord(BaseProcessor):
                 "last_note": ""  # 记录最近一次的备注
             },
             "created_time": current_time,
+            "last_record_time": None,
             "last_updated": current_time
         }
 
@@ -626,9 +630,10 @@ class RoutineRecord(BaseProcessor):
         if item_name in definitions_data.get("definitions", {}):
             # 事项已存在，直接记录，这里要封装原始数据
             event_def = definitions_data["definitions"][item_name]
+            last_record_time = definitions_data.get("last_record_time", None)
             # 这里出现了第一个要澄清的card相关的概念。按照架构，这里应该是完备的业务数据，不涉及前端逻辑。
             # 并且这里要能够直接绕过前端直接对接业务——本来前端就是多一层中转和丰富信息，也就是如果这个不routeresult，而是直接到业务也应该OK。
-            routine_record_data = self.build_quick_record_data(user_id, item_name, event_def)
+            routine_record_data = self.build_quick_record_data(user_id, item_name, event_def, last_record_time)
             route_result = RouteResult.create_route_result(
                 route_type=RouteTypes.ROUTINE_QUICK_RECORD_CARD,
                 route_params={
@@ -676,7 +681,7 @@ class RoutineRecord(BaseProcessor):
         }
 
     @safe_execute("构建快速记录确认卡片数据失败")
-    def build_quick_record_data(self, user_id: str, event_name: str, event_def: Dict[str, Any]) -> Dict[str, Any]:
+    def build_quick_record_data(self, user_id: str, event_name: str, event_def: Dict[str, Any], last_record_time: str = None) -> Dict[str, Any]:
         """
         构建快速记录确认卡片数据
 
@@ -693,10 +698,7 @@ class RoutineRecord(BaseProcessor):
         # 距离累计目标如何，包括每天第一次更新的数值重置和历史成果的说明
         # 预计的时间
         # 不同的程度，后面还有需求再加就好了。关键是数据结构了。
-        record_id = self._get_next_record_id(user_id, event_name)
         new_record = self._create_event_record(event_name, user_id)
-        new_record["record_id"] = record_id
-        new_record["timestamp"] = self._get_formatted_time()
         # 先不继续加字段了，反正event_def里也有。
         # new_record["last_progress_value"] = event_def.get('stats',{}).get('last_progress_value', None)
         # new_record["last_note"] = event_def.get('stats',{}).get('last_note', "")
@@ -717,7 +719,11 @@ class RoutineRecord(BaseProcessor):
         if check_cycle:
             cycle_count = event_def.get('stats',{}).get('cycle_count',0)
             last_refresh_date = event_def.get('stats',{}).get('last_refresh_date',None)
-            if self._check_need_refresh_cycle(last_refresh_date, check_cycle):
+
+            # 统一分析周期状态
+            cycle_status = self._analyze_cycle_status(last_refresh_date, check_cycle)
+
+            if cycle_status["need_refresh"]:
                 last_cycle_count = cycle_count
                 last_refresh_date = self._get_formatted_time()
                 cycle_count = 0
@@ -728,9 +734,9 @@ class RoutineRecord(BaseProcessor):
             target_value = event_def.get('properties',{}).get('target_value',0)
 
             if target_type:
-                last_cycle_info = f'前一{check_cycle}的情况：{last_cycle_count}/{target_value}'
+                last_cycle_info = f'{cycle_status["description"]}的情况：{last_cycle_count}/{target_value}'
             else:
-                last_cycle_info = f'前一{check_cycle}的情况：{last_cycle_count}'
+                last_cycle_info = f'{cycle_status["description"]}的情况：{last_cycle_count}'
 
             cycle_info = {
                 "cycle_count": cycle_count,
@@ -743,6 +749,12 @@ class RoutineRecord(BaseProcessor):
         else:
             cycle_info = {}
 
+        if last_record_time:
+            last_record_time = datetime.strptime(last_record_time, "%Y-%m-%d %H:%M:%S")
+            diff_minutes = round((datetime.now() - last_record_time).total_seconds() / 60, 1)
+        else:
+            diff_minutes = 0
+
         return {
             "user_id": user_id,
             "event_name": event_name,
@@ -751,6 +763,7 @@ class RoutineRecord(BaseProcessor):
             "avg_duration": avg_duration,
             "degree_info": degree_info,
             "cycle_info": cycle_info,
+            "diff_minutes": diff_minutes,
         }
 
     def _calculate_average_duration(self, user_id: str, event_name: str) -> float:
@@ -764,32 +777,97 @@ class RoutineRecord(BaseProcessor):
         avg_duration = sum(event_duration_records) / len(event_duration_records)
         return avg_duration
 
-    def _check_need_refresh_cycle(self, last_refresh_date: str, check_cycle: str) -> bool:
+    def _analyze_cycle_status(self, last_refresh_date: str, check_cycle: str) -> Dict[str, Any]:
         """
-        检查事项的检查周期是否需要刷新
+        分析周期状态，统一处理周期相关的所有计算
+
+        Args:
+            last_refresh_date: 上次刷新时间
+            check_cycle: 检查周期
+
+        Returns:
+            Dict[str, Any]: 包含以下字段的字典
+                - need_refresh: bool - 是否需要刷新
+                - cycle_gap: int - 跨越的周期数量
+                - description: str - 周期描述
         """
         if not check_cycle:
-            return False
+            return {
+                "need_refresh": False,
+                "cycle_gap": 0,
+                "description": ""
+            }
+
         if not last_refresh_date:
-            return True
-        last_refresh_date = datetime.strptime(last_refresh_date, "%Y-%m-%d %H:%M:%S")
+            return {
+                "need_refresh": True,
+                "cycle_gap": 0,
+                "description": f"前一{check_cycle}"
+            }
+
+        last_refresh = datetime.strptime(last_refresh_date, "%Y-%m-%d %H:%M:%S")
         now = datetime.now()
+
+        # 统一计算周期差异
+        cycle_gap = 0
+        need_refresh = False
 
         match check_cycle:
             case RoutineCheckCycle.DAILY:
-                return last_refresh_date.date() != now.date()
+                days_diff = (now.date() - last_refresh.date()).days
+                cycle_gap = max(0, days_diff)
+                need_refresh = days_diff > 0
             case RoutineCheckCycle.WEEKLY:
-                return last_refresh_date.isocalendar()[1] != now.isocalendar()[1] or last_refresh_date.year != now.year
+                last_week = last_refresh.isocalendar()[1]
+                current_week = now.isocalendar()[1]
+                last_year = last_refresh.year
+                current_year = now.year
+
+                if current_year == last_year:
+                    cycle_gap = max(0, current_week - last_week)
+                else:
+                    # 跨年计算
+                    weeks_in_last_year = 52 if last_year % 4 != 0 else 53
+                    cycle_gap = max(0, (current_week - 1) + (weeks_in_last_year - last_week))
+                need_refresh = cycle_gap > 0
             case RoutineCheckCycle.MONTHLY:
-                return last_refresh_date.month != now.month or last_refresh_date.year != now.year
+                months_diff = (current_year - last_year) * 12 + (now.month - last_refresh.month)
+                cycle_gap = max(0, months_diff)
+                need_refresh = cycle_gap > 0
             case RoutineCheckCycle.SEASONALLY:
-                last_season = (last_refresh_date.month - 1) // 3
+                last_season = (last_refresh.month - 1) // 3
                 current_season = (now.month - 1) // 3
-                return last_season != current_season or last_refresh_date.year != now.year
+                seasons_diff = (current_year - last_year) * 4 + (current_season - last_season)
+                cycle_gap = max(0, seasons_diff)
+                need_refresh = cycle_gap > 0
             case RoutineCheckCycle.YEARLY:
-                return last_refresh_date.year != now.year
+                cycle_gap = max(0, current_year - last_year)
+                need_refresh = cycle_gap > 0
             case _:
                 raise ValueError(f"不支持的 check_cycle: {check_cycle}")
+
+        # 生成描述
+        gap_description = "前一" if cycle_gap <= 1 else f"前{cycle_gap}"
+
+        match check_cycle:
+            case RoutineCheckCycle.DAILY:
+                description = f"{gap_description}天"
+            case RoutineCheckCycle.WEEKLY:
+                description = f"{gap_description}周"
+            case RoutineCheckCycle.MONTHLY:
+                description = f"{gap_description}个月"
+            case RoutineCheckCycle.SEASONALLY:
+                description = f"{gap_description}个季度"
+            case RoutineCheckCycle.YEARLY:
+                description = f"{gap_description}年"
+            case _:
+                description = f"{gap_description}个{check_cycle}"
+
+        return {
+            "need_refresh": need_refresh,
+            "cycle_gap": cycle_gap,
+            "description": description
+        }
 
     @safe_execute("处理数字选择失败")
     def process_number_selection(self, user_id: str, number: int, message_text: str) -> Optional[ProcessResult]:

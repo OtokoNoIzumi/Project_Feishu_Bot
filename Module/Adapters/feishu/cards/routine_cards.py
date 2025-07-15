@@ -11,7 +11,7 @@
 import uuid
 from typing import Dict, Any, List, Optional
 from enum import Enum
-import json
+import copy
 
 from .card_registry import BaseCardManager
 from ..decorators import card_build_safe
@@ -23,6 +23,7 @@ from Module.Business.processors import ProcessResult, MessageContext_Refactor, R
 from Module.Services.service_decorators import require_service
 from Module.Common.scripts.common import debug_utils
 from lark_oapi.event.callback.model.p2_card_action_trigger import P2CardActionTriggerResponse
+from Module.Adapters.feishu.utils import safe_float
 
 
 class RoutineCardMode(Enum):
@@ -338,16 +339,20 @@ class RoutineCardManager(BaseCardManager):
         degree_info = business_data.get('degree_info', {})
         cycle_info = business_data.get('cycle_info', {})
         new_record = business_data.get('new_record', {})
+        diff_minutes = business_data.get('diff_minutes', 0)
         event_type = event_def.get('type', RoutineTypes.INSTANT)
+        progress_type = event_def.get('properties', {}).get('progress_type', "")
+        last_progress_value = event_def.get('stats', {}).get('last_progress_value', 0)
+        total_progress_value = event_def.get('stats', {}).get('total_progress_value', 0)
 
         elements = []
 
         # 1. 基础信息卡片
-        elements.extend(self._build_basic_info_section(event_def, new_record))
+        elements.extend(self._build_basic_info_section(event_def, new_record, diff_minutes))
 
-        # 2. 条件化展示：时间预估信息（如果有历史数据，后续可以考虑做提交日志后动态重算，但现在还是算了）
-        if avg_duration > 0:
-            elements.extend(self._build_duration_info_section(avg_duration))
+        # 2. 条件化展示：时间预估和进度信息（合并到一个组件中）
+        if avg_duration > 0 or (progress_type and (last_progress_value or total_progress_value)):
+            elements.extend(self._build_duration_and_progress_section(avg_duration, progress_type, last_progress_value, total_progress_value))
 
         # 3. 条件化展示：目标进度信息（如果有目标设置）
         if cycle_info:
@@ -375,10 +380,14 @@ class RoutineCardManager(BaseCardManager):
         if event_type in [RoutineTypes.INSTANT, RoutineTypes.END, RoutineTypes.START]:
             form_elements['elements'].extend(self._build_duration_input_section(new_record.get('duration', ''), is_confirmed))
 
-        # 7. 条件化展示：备注输入区域
+        # 7. 条件化展示：进度类型选择区域
+        if progress_type:
+            form_elements['elements'].extend(self._build_progress_type_selection_section(new_record.get('progress_value', ''), is_confirmed))
+
+        # 8. 条件化展示：备注输入区域
         form_elements['elements'].extend(self._build_note_input_section(new_record.get('note', ''), is_confirmed))
 
-        # 8. 操作按钮或确认提示
+        # 9. 操作按钮或确认提示
         # if not is_confirmed:  对于表单组件，必须要有提交按钮，否则会报错，所以要用disabled来控制，而不是省略。
         form_elements['elements'].append(self._build_record_action_buttons(user_id, event_name, is_confirmed))
 
@@ -390,7 +399,7 @@ class RoutineCardManager(BaseCardManager):
 
         return elements
 
-    def _build_basic_info_section(self, event_def: Dict[str, Any], new_record: Dict[str, Any]) -> List[Dict[str, Any]]:
+    def _build_basic_info_section(self, event_def: Dict[str, Any], new_record: Dict[str, Any], diff_minutes: int) -> List[Dict[str, Any]]:
         """构建基础信息区域"""
         elements = []
 
@@ -400,11 +409,6 @@ class RoutineCardManager(BaseCardManager):
         # 基础信息卡片
         info_content = f"**事项类型：** {self._get_type_display_name(event_type)}\n"
 
-        # 显示记录ID（用户友好的序号）
-        if new_record.get('record_id'):
-            record_number = new_record['record_id'].split('_')[-1]  # 提取序号部分
-            info_content += f"**记录编号：** #{record_number}\n"
-
         # 显示记录时间
         if new_record.get('timestamp'):
             timestamp = new_record['timestamp']
@@ -412,6 +416,8 @@ class RoutineCardManager(BaseCardManager):
             date_str = split_timestamp[0][5:10]
             time_str = split_timestamp[1][0:5]
             info_content += f"**记录时间：** {date_str} {time_str}\n" # 格式化时间显示：今天 14:30
+            if diff_minutes > 0:
+                info_content += f"**上次记录距今：** {diff_minutes}分钟\n"
 
         # 显示分类（如果有）
         category = event_def.get('category', '')
@@ -428,33 +434,57 @@ class RoutineCardManager(BaseCardManager):
 
         return elements
 
-    def _build_duration_info_section(self, avg_duration: float) -> List[Dict[str, Any]]:
-        """构建时间预估信息区域"""
+    def _build_duration_and_progress_section(self, avg_duration: float, progress_type: str, last_progress_value: float, total_progress_value: float) -> List[Dict[str, Any]]:
+        """构建时间预估和进度信息区域（合并到一个组件中）"""
         elements = []
+        content_parts = []
 
         # 格式化时长显示，更加用户友好
-        if avg_duration >= 1440:  # 超过24小时
-            duration_str = f"{avg_duration/1440:.1f}天"
-        elif avg_duration >= 60:  # 超过1小时
-            hours = int(avg_duration // 60)
-            minutes = int(avg_duration % 60)
-            if minutes > 0:
-                duration_str = f"{hours}小时{minutes}分钟"
-            else:
-                duration_str = f"{hours}小时"
-        elif avg_duration >= 1:  # 1分钟以上
-            duration_str = f"{avg_duration:.0f}分钟"
-        else:  # 小于1分钟
-            duration_str = f"{avg_duration*60:.0f}秒"
+        if avg_duration > 0:
+            if avg_duration >= 1440:  # 超过24小时
+                duration_str = f"{avg_duration/1440:.1f}天"
+            elif avg_duration >= 60:  # 超过1小时
+                hours = int(avg_duration // 60)
+                minutes = int(avg_duration % 60)
+                if minutes > 0:
+                    duration_str = f"{hours}小时{minutes}分钟"
+                else:
+                    duration_str = f"{hours}小时"
+            elif avg_duration >= 1:  # 1分钟以上
+                duration_str = f"{avg_duration:.0f}分钟"
+            else:  # 小于1分钟
+                duration_str = f"{avg_duration*60:.0f}秒"
 
-        elements.append({
-            "tag": "div",
-            "text": {
-                "tag": "lark_md",
-                "content": f"⏱️ **预估用时：** {duration_str}"
-            },
-            "element_id": "duration_info"
-        })
+            content_parts.append(f"⏱️ **预估用时：** {duration_str}")
+
+        # 格式化进度信息
+        if progress_type and last_progress_value:
+            match progress_type:
+                case 'value':
+                    progress_str = f"{round(last_progress_value, 1)}"
+                case 'diff':
+                    if last_progress_value > 0:
+                        progress_str = f"增加 {round(last_progress_value, 1)}，累计 {round(total_progress_value, 1)}"
+                    elif last_progress_value < 0:
+                        progress_str = f"减少 {round(last_progress_value, 1)}，累计 {round(total_progress_value, 1)}"
+                    else:
+                        progress_str = f"累计 {round(total_progress_value, 1)}"
+                case _:
+                    progress_str = f"{round(last_progress_value, 1)}"
+
+            content_parts.append(f"🎯 **上次指标情况：** {progress_str}")
+
+        # 合并内容，用换行符分隔
+        if content_parts:
+            combined_content = "\n".join(content_parts)
+            elements.append({
+                "tag": "div",
+                "text": {
+                    "tag": "lark_md",
+                    "content": combined_content
+                },
+                "element_id": "extra_info"
+            })
 
         return elements
 
@@ -671,6 +701,26 @@ class RoutineCardManager(BaseCardManager):
             toast_message=f"耗时更新成功！"
         )
 
+    def _build_progress_type_selection_section(self, initial_value: str = '', is_confirmed: bool = False) -> List[Dict[str, Any]]:
+        """构建进度类型选择区域"""
+        elements = []
+
+        elements.append(self._build_form_row(
+            "🎯 指标值",
+            self._build_input_element(
+                placeholder="添加指标值",
+                initial_value=initial_value,
+                disabled=is_confirmed,
+                action_data={
+                },
+                element_id="progress_value_input",
+                name="progress_value"
+            ),
+            width_list=["80px", "180px"]
+        ))
+
+        return elements
+
     def _build_note_input_section(self, initial_value: str = '', is_confirmed: bool = False) -> List[Dict[str, Any]]:
         """构建备注输入区域"""
         elements = []
@@ -805,7 +855,8 @@ class RoutineCardManager(BaseCardManager):
                 toast_message="操作已失效"
             )
 
-        event_def = card_data.get('event_definition', {})
+        card_data['is_confirmed'] = True
+        card_data['result'] = "确认"
         form_data = context.content.form_data
 
         user_id = context.user_id
@@ -816,12 +867,39 @@ class RoutineCardManager(BaseCardManager):
 
                 core_data['degree'] = form_data.get('custom_degree', "其他")
                 if form_data.get('custom_degree', "其他") != "其他":
-                    event_def['properties']['degree_options'].append(form_data.get('custom_degree', "其他"))
+                    card_data['event_definition']['properties']['degree_options'].append(form_data.get('custom_degree', "其他"))
+                    card_data['degree_info']['selected_degree'] = form_data.get('custom_degree', "其他")
             else:
                 core_data['degree'] = new_degree
-        core_data['duration'] = int(form_data.get('duration', 0))
+
+        # 并不需要格式化最新的结果，但输入值需要保留，也就是定义的部分要复制
+        # 创建深拷贝以避免修改原始数据
+        event_def = copy.deepcopy(card_data.get('event_definition', {}))
+
+        duration_str = form_data.get('duration', "")
+        new_duration = safe_float(duration_str)
+        if new_duration is not None:
+            core_data['duration'] = new_duration
+        else:
+            debug_utils.log_and_print(f"🔍 confirm_record - 耗时转换失败: [{duration_str}]", log_level="WARNING")
+
+        progress_type = event_def.get('properties', {}).get('progress_type', "")
+        if progress_type:
+            progress_value_str = str(form_data.get('progress_value', "")).strip()
+            progress_value = safe_float(progress_value_str)
+            if progress_value is not None:
+                core_data['progress_value'] = progress_value
+                if progress_type == 'value':
+                    event_def['stats']['last_progress_value'] = progress_value
+                elif (progress_type == 'diff') and (progress_value != 0):
+                    event_def['stats']['total_progress_value'] = round(event_def['stats']['total_progress_value'] + progress_value, 3)
+                    event_def['stats']['last_progress_value'] = progress_value
+            else:
+                debug_utils.log_and_print(f"🔍 confirm_record - 进度值转换失败: [{progress_value_str}]", log_level="WARNING")
+
         core_data['note'] = form_data.get('note', "")
 
+        new_card_dsl = self._build_quick_record_confirm_card(card_data)
         # 开始写入数据
         # 先写入记录
         records_data = self.message_router.routine_record._load_event_records(user_id)
@@ -834,7 +912,6 @@ class RoutineCardManager(BaseCardManager):
             event_def['stats']['last_cycle_count'] = cycle_info.get('last_cycle_count', 0)
             event_def['stats']['last_refresh_date'] = cycle_info.get('last_refresh_date', "")
 
-        # event_def['stats']['last_progress_value'] = event_def.get('stats',{}).get('last_progress_value', 0) + core_data.get('duration', 0)
         event_def['stats']['last_note'] = core_data.get('note', "")
 
         new_duration = core_data.get('duration', 0)
@@ -857,13 +934,11 @@ class RoutineCardManager(BaseCardManager):
         full_event_def = self.message_router.routine_record._load_event_definitions(user_id)
         full_event_def['definitions'][event_def['name']] = event_def
         full_event_def['last_updated'] = self.message_router.routine_record._get_formatted_time()
+        full_event_def['last_record_time'] = self.message_router.routine_record._get_formatted_time()
         self.message_router.routine_record._save_event_definitions(user_id, full_event_def)
 
-        card_data['is_confirmed'] = True
-        card_data['result'] = "确认"
         event_name = context.content.value.get('event_name', '')
 
-        new_card_dsl = self._build_quick_record_confirm_card(card_data)
         user_service = self.app_controller.get_service(ServiceNames.USER_BUSINESS_PERMISSION)
         user_service.del_card_data(context.user_id, card_id)
 
