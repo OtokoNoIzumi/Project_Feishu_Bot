@@ -309,3 +309,7 @@ class RoutineCheckCycle:
     MONTHLY = "月"
     SEASONALLY = "季"  # 保持与业务层一致
     YEARLY = "年"
+
+class RoutineProgressTypes:
+    VALUE = "value"
+    MODIFY = "modify"

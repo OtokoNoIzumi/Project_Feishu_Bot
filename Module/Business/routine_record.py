@@ -194,7 +194,7 @@ class RoutineRecord(BaseProcessor):
         Returns:
             str: 记录ID，格式为 event_name_序号
         """
-        definitions_data = self._load_event_definitions(user_id)
+        definitions_data = self.load_event_definitions(user_id)
 
         # 计算该事件的现有记录数量
         count = definitions_data.get("definitions", {}).get(event_name, {}).get("stats",{}).get("record_count", 0)
@@ -230,7 +230,7 @@ class RoutineRecord(BaseProcessor):
         }
 
     @safe_execute("加载事件定义失败")
-    def _load_event_definitions(self, user_id: str) -> Dict[str, Any]:
+    def load_event_definitions(self, user_id: str) -> Dict[str, Any]:
         """
         加载用户的事件定义
 
@@ -252,7 +252,7 @@ class RoutineRecord(BaseProcessor):
                 "created_time": current_time,
                 "last_updated": current_time
             }
-            self._save_event_definitions(user_id, default_data)
+            self.save_event_definitions(user_id, default_data)
             return default_data
 
         try:
@@ -267,7 +267,7 @@ class RoutineRecord(BaseProcessor):
             return {}
 
     @safe_execute("加载事件记录失败")
-    def _load_event_records(self, user_id: str) -> Dict[str, Any]:
+    def load_event_records(self, user_id: str) -> Dict[str, Any]:
         """
         加载用户的事件记录
 
@@ -288,7 +288,7 @@ class RoutineRecord(BaseProcessor):
                 "created_time": current_time,
                 "last_updated": current_time
             }
-            self._save_event_records(user_id, default_data)
+            self.save_event_records(user_id, default_data)
             return default_data
 
         try:
@@ -300,7 +300,7 @@ class RoutineRecord(BaseProcessor):
             return {}
 
     @safe_execute("保存事件定义失败")
-    def _save_event_definitions(self, user_id: str, data: Dict[str, Any]) -> bool:
+    def save_event_definitions(self, user_id: str, data: Dict[str, Any]) -> bool:
         """
         保存用户的事件定义
 
@@ -314,7 +314,8 @@ class RoutineRecord(BaseProcessor):
         file_path = self._get_event_definitions_file_path(user_id)
 
         # 更新最后修改时间
-        data["last_updated"] = self._get_formatted_time()
+        if "last_updated" not in data:
+            data["last_updated"] = self._get_formatted_time()
 
         try:
             with open(file_path, 'w', encoding='utf-8') as f:
@@ -325,7 +326,7 @@ class RoutineRecord(BaseProcessor):
             return False
 
     @safe_execute("保存事件记录失败")
-    def _save_event_records(self, user_id: str, data: Dict[str, Any]) -> bool:
+    def save_event_records(self, user_id: str, data: Dict[str, Any]) -> bool:
         """
         保存用户的事件记录
 
@@ -339,7 +340,8 @@ class RoutineRecord(BaseProcessor):
         file_path = self._get_event_records_file_path(user_id)
 
         # 更新最后修改时间
-        data["last_updated"] = self._get_formatted_time()
+        if "last_updated" not in data:
+            data["last_updated"] = self._get_formatted_time()
 
         try:
             with open(file_path, 'w', encoding='utf-8') as f:
@@ -401,7 +403,7 @@ class RoutineRecord(BaseProcessor):
         Returns:
             List[Dict[str, Any]]: 开始事项选项列表
         """
-        definitions_data = self._load_event_definitions(user_id)
+        definitions_data = self.load_event_definitions(user_id)
         if not definitions_data:
             return []
 
@@ -569,8 +571,8 @@ class RoutineRecord(BaseProcessor):
         Returns:
             List[Dict[str, Any]]: 查询结果数据
         """
-        definitions_data = self._load_event_definitions(user_id)
-        records_data = self._load_event_records(user_id)
+        definitions_data = self.load_event_definitions(user_id)
+        records_data = self.load_event_records(user_id)
 
         if not definitions_data:
             return []
@@ -621,7 +623,7 @@ class RoutineRecord(BaseProcessor):
             return ProcessResult.error_result("您暂无使用日常事项记录功能的权限")
 
         # 直接使用新架构加载数据
-        definitions_data = self._load_event_definitions(user_id)
+        definitions_data = self.load_event_definitions(user_id)
 
         if not definitions_data:
             return ProcessResult.error_result("加载事件定义失败")
@@ -769,7 +771,7 @@ class RoutineRecord(BaseProcessor):
         """
         计算事项的平均耗时
         """
-        definitions_data = self._load_event_definitions(user_id)
+        definitions_data = self.load_event_definitions(user_id)
         event_duration_records = definitions_data.get("definitions", {}).get(event_name, {}).get('stats',{}).get('duration',{}).get('recent_values',[])
         if not event_duration_records:
             return 0.0
@@ -918,8 +920,8 @@ class RoutineRecord(BaseProcessor):
         selected_routine = routine_names[number - 1]
 
         # 使用新架构加载数据
-        definitions_data = self._load_event_definitions(user_id)
-        records_data = self._load_event_records(user_id)
+        definitions_data = self.load_event_definitions(user_id)
+        records_data = self.load_event_records(user_id)
 
         if selected_routine not in definitions_data.get("definitions", {}):
             return ProcessResult.error_result("选择的事项不存在")
@@ -980,8 +982,8 @@ class RoutineRecord(BaseProcessor):
 
 
         # 使用新架构创建事项
-        definitions_data = self._load_event_definitions(user_id)
-        records_data = self._load_event_records(user_id)
+        definitions_data = self.load_event_definitions(user_id)
+        records_data = self.load_event_records(user_id)
 
         current_time = self._get_formatted_time()
 
@@ -1009,7 +1011,7 @@ class RoutineRecord(BaseProcessor):
         self._clear_query_context(user_id)
 
         # 保存数据
-        if self._save_event_definitions(user_id, definitions_data) and self._save_event_records(user_id, records_data):
+        if self.save_event_definitions(user_id, definitions_data) and self.save_event_records(user_id, records_data):
             response_text = f"✅ 已创建 '{item_name}' ({type_name}) 并记录首次使用 - {current_time[11:16]}"
             return ProcessResult.success_result(ResponseTypes.TEXT, {"text": response_text})
         else:
@@ -1074,7 +1076,7 @@ class RoutineRecord(BaseProcessor):
         Returns:
             List[Dict[str, Any]]: 快速事项列表
         """
-        definitions_data = self._load_event_definitions(user_id)
+        definitions_data = self.load_event_definitions(user_id)
         if not definitions_data:
             return []
 
@@ -1139,7 +1141,7 @@ class RoutineRecord(BaseProcessor):
                 return False, "无效的事项类型"
 
             # 加载数据
-            definitions_data = self._load_event_definitions(user_id)
+            definitions_data = self.load_event_definitions(user_id)
             if event_name in definitions_data.get("definitions", {}):
                 return False, f"事项 '{event_name}' 已存在"
 
@@ -1175,7 +1177,7 @@ class RoutineRecord(BaseProcessor):
 
             # 保存数据
             definitions_data["definitions"][event_name] = new_event_def
-            if self._save_event_definitions(user_id, definitions_data):
+            if self.save_event_definitions(user_id, definitions_data):
                 return True, f"成功创建事项 '{event_name}'"
             else:
                 return False, "保存事项失败"
@@ -1199,8 +1201,8 @@ class RoutineRecord(BaseProcessor):
         """
         try:
             # 加载数据
-            definitions_data = self._load_event_definitions(user_id)
-            records_data = self._load_event_records(user_id)
+            definitions_data = self.load_event_definitions(user_id)
+            records_data = self.load_event_records(user_id)
 
             if event_name not in definitions_data.get("definitions", {}):
                 return False, f"事项 '{event_name}' 不存在"
@@ -1223,7 +1225,7 @@ class RoutineRecord(BaseProcessor):
             event_def["last_updated"] = current_time
 
             # 保存数据
-            if self._save_event_definitions(user_id, definitions_data) and self._save_event_records(user_id, records_data):
+            if self.save_event_definitions(user_id, definitions_data) and self.save_event_records(user_id, records_data):
                 return True, f"成功记录 '{event_name}' - {current_time[11:16]}"
             else:
                 return False, "保存记录失败"
