@@ -133,14 +133,14 @@ class UserBusinessPermissionService:
 
         return enabled_users
 
-    def save_new_card_data(self, user_id: str, card_id: str, card_data: Dict[str, Any]):
+    def save_new_card_business_data(self, user_id: str, card_id: str, business_data: Dict[str, Any]):
         """
         保存新卡片信息
 
         Args:
             user_id: 用户ID
             card_id: 卡片ID
-            card_data: 卡片数据
+            business_data: 卡片的原始业务数据，可以用来build card
         """
         if "card_cache" not in self._user_permissions[user_id]:
             self._user_permissions[user_id]["card_cache"] = OrderedDict()
@@ -152,20 +152,20 @@ class UserBusinessPermissionService:
             del card_cache[card_id]
 
         # 添加新记录
-        card_cache[card_id] = card_data
+        card_cache[card_id] = business_data
 
         # 维护最大容量
         while len(card_cache) > self.max_card_cache_size:
             card_cache.popitem(last=False)  # FIFO: 删除最早的
 
-    def get_card_data(self, user_id: str, card_id: str) -> Dict[str, Any]:
+    def get_card_business_data(self, user_id: str, card_id: str) -> Dict[str, Any]:
         """
         获取卡片数据
         """
         card_cache = self._user_permissions[user_id].get("card_cache", {})
         return card_cache.get(card_id, {})
 
-    def del_card_data(self, user_id: str, card_id: str):
+    def del_card_business_data(self, user_id: str, card_id: str):
         """
         删除卡片数据
         """

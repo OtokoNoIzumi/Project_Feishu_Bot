@@ -55,7 +55,6 @@ class RoutineCardManager(BaseCardManager):
     @card_build_safe("日常事项卡片构建失败")
     def build_quick_record_confirm_card(self, route_result: RouteResult, context: MessageContext_Refactor, business_data: Dict[str, Any]) -> Dict[str, Any]:
         """构建日常事项卡片"""
-        # card_data是来自内部的方法，无论是用模板，还是raw。
         card_data = self._build_quick_record_confirm_card(business_data)
         card_content = {"type": "card_json", "data": card_data}
         # 接下来是把这个data处理到外部……这里不封装一层type和data，目前是为了后续步骤处理data。
@@ -89,13 +88,6 @@ class RoutineCardManager(BaseCardManager):
                 debug_utils.log_and_print(f"未知的routine卡片类型: {card_type}", log_level="WARNING")
                 card_content = {}
         card_content = {"type": "card_json", "data": card_content}
-        # card_id = self.sender.create_card_entity(card_content)
-        # if card_id:
-        #     user_service = self.app_controller.get_service(ServiceNames.USER_BUSINESS_PERMISSION)
-        #     user_service.save_new_card_data(context.user_id, card_id, card_data)
-        #     card_content = {"type": "card", "data": {"card_id": card_id}}
-        # else:
-        #     debug_utils.log_and_print(f"❌ 创建卡片实体失败", log_level="ERROR")
 
         return self._handle_card_operation_common(
             card_content=card_content,
@@ -597,17 +589,17 @@ class RoutineCardManager(BaseCardManager):
         # 对于选择其他的情况，要在卡片界面显示一个新元素，让用户输入。这很可能要全面更新卡片，因为没有元素。
         # origin_data = context.content.value.get('origin_data', {})
         # 避免重复值触发。
-        card_data, card_id, card_info = self._get_core_data(context)
-        if not card_data:
-            debug_utils.log_and_print(f"🔍 update_record_degree - 卡片数据为空", log_level="WARNING")
+        business_data, card_id, _ = self._get_core_data(context)
+        if not business_data:
+            debug_utils.log_and_print(f"🔍 update_record_degree - 卡片业务数据为空", log_level="WARNING")
             return
         new_option = context.content.value.get('option')
 
-        card_data['new_record']['degree'] = new_option
-        card_data['degree_info']['selected_degree'] = new_option
+        business_data['new_record']['degree'] = new_option
+        business_data['degree_info']['selected_degree'] = new_option
         user_service = self.app_controller.get_service(ServiceNames.USER_BUSINESS_PERMISSION)
-        user_service.save_new_card_data(context.user_id, card_id, card_data)
-        new_card_dsl = self._build_quick_record_confirm_card(card_data)
+        user_service.save_new_card_business_data(context.user_id, card_id, business_data)
+        new_card_dsl = self._build_quick_record_confirm_card(business_data)
 
         return self._handle_card_operation_common(
             card_content=new_card_dsl,
@@ -774,14 +766,14 @@ class RoutineCardManager(BaseCardManager):
     def confirm_record(self, context: MessageContext_Refactor) -> ProcessResult:
         """处理记录确认"""
 
-        card_data, card_id, card_info = self._get_core_data(context)
-        core_data = card_data.get('new_record', {})
+        business_data, card_id, _ = self._get_core_data(context)
+        core_data = business_data.get('new_record', {})
         if not core_data:
             # 其实应该假设card_id也失效了，用message_id直接batch，但是这里先不处理。
             debug_utils.log_and_print(f"🔍 confirm_record - 卡片数据为空", log_level="WARNING")
-            card_data['is_confirmed'] = True
-            card_data['result'] = "取消"
-            new_card_dsl = self._build_quick_record_confirm_card(card_data)
+            business_data['is_confirmed'] = True
+            business_data['result'] = "取消"
+            new_card_dsl = self._build_quick_record_confirm_card(business_data)
 
             return self._handle_card_operation_common(
                 card_content=new_card_dsl,
@@ -790,8 +782,8 @@ class RoutineCardManager(BaseCardManager):
                 toast_message="操作已失效"
             )
 
-        card_data['is_confirmed'] = True
-        card_data['result'] = "确认"
+        business_data['is_confirmed'] = True
+        business_data['result'] = "确认"
         form_data = context.content.form_data
 
         user_id = context.user_id
@@ -802,14 +794,14 @@ class RoutineCardManager(BaseCardManager):
 
                 core_data['degree'] = form_data.get('custom_degree', "其他")
                 if form_data.get('custom_degree', "其他") != "其他":
-                    card_data['event_definition']['properties']['degree_options'].append(form_data.get('custom_degree', "其他"))
-                    card_data['degree_info']['selected_degree'] = form_data.get('custom_degree', "其他")
+                    business_data['event_definition']['properties']['degree_options'].append(form_data.get('custom_degree', "其他"))
+                    business_data['degree_info']['selected_degree'] = form_data.get('custom_degree', "其他")
             else:
                 core_data['degree'] = new_degree
 
         # 并不需要格式化最新的结果，但输入值需要保留，也就是定义的部分要复制
         # 创建深拷贝以避免修改原始数据
-        event_def = copy.deepcopy(card_data.get('event_definition', {}))
+        event_def = copy.deepcopy(business_data.get('event_definition', {}))
 
         duration_str = form_data.get('duration', "")
         new_duration = safe_float(duration_str)
@@ -834,14 +826,14 @@ class RoutineCardManager(BaseCardManager):
 
         core_data['note'] = form_data.get('note', "")
 
-        new_card_dsl = self._build_quick_record_confirm_card(card_data)
+        new_card_dsl = self._build_quick_record_confirm_card(business_data)
         # 开始写入数据
         # 先写入记录
         records_data = self.message_router.routine_record._load_event_records(user_id)
         records_data['records'].append(core_data)
         # 再写入事件定义，做聚合类计算
         event_def['stats']['record_count'] = event_def.get('stats',{}).get('record_count', 0) + 1
-        cycle_info = card_data.get('cycle_info', {})
+        cycle_info = business_data.get('cycle_info', {})
         if cycle_info:
             event_def['stats']['cycle_count'] = cycle_info.get('cycle_count', 0) + 1
             event_def['stats']['last_cycle_count'] = cycle_info.get('last_cycle_count', 0)
@@ -875,7 +867,7 @@ class RoutineCardManager(BaseCardManager):
         event_name = context.content.value.get('event_name', '')
 
         user_service = self.app_controller.get_service(ServiceNames.USER_BUSINESS_PERMISSION)
-        user_service.del_card_data(context.user_id, card_id)
+        user_service.del_card_business_data(context.user_id, card_id)
 
 
         return self._handle_card_operation_common(
@@ -887,16 +879,16 @@ class RoutineCardManager(BaseCardManager):
 
     def cancel_record(self, context: MessageContext_Refactor) -> ProcessResult:
         """处理取消操作"""
-        card_data, card_id, card_info = self._get_core_data(context)
-        if not card_data:
+        business_data, card_id, _ = self._get_core_data(context)
+        if not business_data:
             debug_utils.log_and_print(f"🔍 cancel_record - 卡片数据为空", log_level="WARNING")
 
-        card_data['is_confirmed'] = True
-        card_data['result'] = "取消"
-        new_card_dsl = self._build_quick_record_confirm_card(card_data)
+        business_data['is_confirmed'] = True
+        business_data['result'] = "取消"
+        new_card_dsl = self._build_quick_record_confirm_card(business_data)
 
         user_service = self.app_controller.get_service(ServiceNames.USER_BUSINESS_PERMISSION)
-        user_service.del_card_data(context.user_id, card_id)
+        user_service.del_card_business_data(context.user_id, card_id)
 
         return self._handle_card_operation_common(
             card_content=new_card_dsl,
