@@ -382,7 +382,7 @@ class RoutineCardManager(BaseCardManager):
 
         # 7. 条件化展示：进度类型选择区域
         if progress_type:
-            form_elements['elements'].extend(self._build_progress_type_selection_section(new_record.get('progress_value', ''), is_confirmed))
+            form_elements['elements'].extend(self._build_progress_value_input_section(new_record.get('progress_value', ''), is_confirmed))
 
         # 8. 条件化展示：备注输入区域
         form_elements['elements'].extend(self._build_note_input_section(new_record.get('note', ''), is_confirmed))
@@ -529,7 +529,8 @@ class RoutineCardManager(BaseCardManager):
             # 进度条
             filled_blocks = int(progress_percent // 10)
             progress_bar = "●" * filled_blocks + "○" * (10 - filled_blocks)
-            progress_content_parts.append(f"📊 <font color={color}>{progress_bar}</font> {progress_percent:.0f}% {status_emoji}")
+            real_progress_percent = round(cycle_count / target_val * 100, 1)
+            progress_content_parts.append(f"📊 <font color={color}>{progress_bar}</font> {real_progress_percent}% {status_emoji}")
         else:
             # 无目标：显示累计进度
             unit_display = {"count": "次", "duration": "分钟", "other": ""}.get(target_type, "")
@@ -627,8 +628,6 @@ class RoutineCardManager(BaseCardManager):
                 initial_value=initial_value,
                 disabled=is_confirmed,
                 action_data={
-                    "card_action": "add_new_degree",
-                    "card_config_key": CardConfigKeys.ROUTINE_RECORD,
                 },
                 element_id="degree_input",
                 name="custom_degree"
@@ -638,26 +637,6 @@ class RoutineCardManager(BaseCardManager):
         ))
 
         return elements
-
-    def add_new_degree(self, context: MessageContext_Refactor):
-        """处理记录耗时更新"""
-        card_data, card_id, _ = self._get_core_data(context)
-        if not card_data:
-            debug_utils.log_and_print(f"🔍 add_new_degree - 卡片数据为空", log_level="WARNING")
-            return
-        new_degree = context.content.value.get('value')
-        new_card_dsl = {"message": "异步更新中..."}
-        if  new_degree:
-            card_data['new_record']['custom_degree'] = new_degree
-            user_service = self.app_controller.get_service(ServiceNames.USER_BUSINESS_PERMISSION)
-            user_service.save_new_card_data(context.user_id, card_id, card_data)
-
-        return self._handle_card_operation_common(
-            card_content=new_card_dsl,
-            card_operation_type=CardOperationTypes.UPDATE_RESPONSE,
-            update_toast_type=ToastTypes.SUCCESS,
-            toast_message=f"添加新的完成方式成功！"
-        )
 
     def _build_duration_input_section(self,initial_value: str = '', is_confirmed: bool = False) -> List[Dict[str, Any]]:
         """构建持续时间输入区域"""
@@ -670,8 +649,6 @@ class RoutineCardManager(BaseCardManager):
                 initial_value=initial_value,
                 disabled=is_confirmed,
                 action_data={
-                    "card_action": "update_record_duration",
-                    "card_config_key": CardConfigKeys.ROUTINE_RECORD,
                 },
                 element_id="duration_input",
                 name="duration"
@@ -681,27 +658,7 @@ class RoutineCardManager(BaseCardManager):
 
         return elements
 
-    def update_record_duration(self, context: MessageContext_Refactor):
-        """处理记录耗时更新"""
-        card_data, card_id, _ = self._get_core_data(context)
-        if not card_data:
-            debug_utils.log_and_print(f"🔍 update_record_duration - 卡片数据为空", log_level="WARNING")
-            return
-        new_duration = context.content.value.get('value')
-        new_card_dsl = {"message": "异步更新中..."}
-        if  new_duration.strip().isdigit():
-            card_data['new_record']['duration'] = int(new_duration)
-            user_service = self.app_controller.get_service(ServiceNames.USER_BUSINESS_PERMISSION)
-            user_service.save_new_card_data(context.user_id, card_id, card_data)
-
-        return self._handle_card_operation_common(
-            card_content=new_card_dsl,
-            card_operation_type=CardOperationTypes.UPDATE_RESPONSE,
-            update_toast_type=ToastTypes.SUCCESS,
-            toast_message=f"耗时更新成功！"
-        )
-
-    def _build_progress_type_selection_section(self, initial_value: str = '', is_confirmed: bool = False) -> List[Dict[str, Any]]:
+    def _build_progress_value_input_section(self, initial_value: str = '', is_confirmed: bool = False) -> List[Dict[str, Any]]:
         """构建进度类型选择区域"""
         elements = []
 
@@ -732,8 +689,6 @@ class RoutineCardManager(BaseCardManager):
                 initial_value=initial_value,
                 disabled=is_confirmed,
                 action_data={
-                    "card_action": "update_record_note",
-                    "card_config_key": CardConfigKeys.ROUTINE_RECORD,
                 },
                 element_id="note_input",
                 name="note"
@@ -742,26 +697,6 @@ class RoutineCardManager(BaseCardManager):
         ))
 
         return elements
-
-    def update_record_note(self, context: MessageContext_Refactor):
-        """处理记录耗时更新"""
-        card_data, card_id, _ = self._get_core_data(context)
-        if not card_data:
-            debug_utils.log_and_print(f"🔍 update_record_note - 卡片数据为空", log_level="WARNING")
-            return
-        new_note = context.content.value.get('value')
-        new_card_dsl = {"message": "异步更新中..."}
-        if  new_note:
-            card_data['new_record']['note'] = new_note
-            user_service = self.app_controller.get_service(ServiceNames.USER_BUSINESS_PERMISSION)
-            user_service.save_new_card_data(context.user_id, card_id, card_data)
-
-        return self._handle_card_operation_common(
-            card_content=new_card_dsl,
-            card_operation_type=CardOperationTypes.UPDATE_RESPONSE,
-            update_toast_type=ToastTypes.SUCCESS,
-            toast_message=f"备注更新成功！"
-        )
 
     def _build_record_action_buttons(self, user_id: str, event_name: str, is_confirmed: bool = False) -> Dict[str, Any]:
         """构建记录操作按钮组"""
