@@ -165,6 +165,32 @@ class BaseCardManager(ABC):
             "behaviors": [{"type": "callback", "value": action_data}]
         }
 
+    def _build_card_header(self, title: str, subtitle: str = "", template: str = "blue", icon: str = "") -> Dict[str, Any]:
+        """构建通用卡片头部"""
+        header = {
+            "title": {"tag": "plain_text", "content": title},
+            "template": template
+        }
+
+        if subtitle:
+            header["subtitle"] = {"tag": "plain_text", "content": subtitle}
+
+        if icon:
+            header["icon"] = {"tag": "standard_icon", "token": icon}
+
+        return header
+
+    def _build_status_based_header(self, base_title: str, is_confirmed: bool, result: str, confirmed_prefix: str = "") -> Dict[str, Any]:
+        """构建基于状态的卡片头部 - 适用于确认类卡片"""
+        if not is_confirmed:
+            return self._build_card_header(base_title, "请确认记录信息", "blue", "edit_outlined")
+
+        if result == "确认":
+            title = f"{confirmed_prefix}{base_title}" if confirmed_prefix else base_title
+            return self._build_card_header(title, "记录信息已确认并保存", "green", "done_outlined")
+
+        return self._build_card_header("操作已取消", "", "grey", "close_outlined")
+
     # 辅助方法
     def _build_form_row(self, label: str, element: Dict[str, Any], width_list: List[str] = None, element_id: str = '') -> Dict[str, Any]:
         """构建表单行"""
@@ -195,6 +221,51 @@ class BaseCardManager(ABC):
                     "elements": [element]
                 }
             ],
+        }
+
+    def _build_select_element(self, placeholder: str, options: List[Dict[str, Any]], initial_value: str, disabled: bool, action_data: Dict[str, Any], element_id: str = '', name: str = '') -> Dict[str, Any]:
+        """构建选择器元素"""
+        # 查找初始选择索引，对飞书来说，索引从1开始，所以需要+1
+        initial_index = -1
+        for i, option in enumerate(options):
+            if option.get('value') == initial_value:
+                initial_index = i + 1
+                break
+
+        return {
+            "tag": "select_static",
+            "element_id": element_id,
+            "placeholder": {"tag": "plain_text", "content": placeholder},
+            "options": options,
+            "initial_index": initial_index if initial_index >= 0 else None,
+            "width": "fill",
+            "disabled": disabled,
+            "name": name or element_id,
+            "behaviors": [{"type": "callback", "value": action_data}]
+        }
+
+    def _build_date_picker_element(self, placeholder: str, initial_date: str, disabled: bool, action_data: Dict[str, Any]) -> Dict[str, Any]:
+        """构建日期选择器元素"""
+        element = {
+            "tag": "date_picker",
+            "placeholder": {"tag": "plain_text", "content": placeholder},
+            "disabled": disabled,
+            "behaviors": [{"type": "callback", "value": action_data}]
+        }
+
+        if initial_date:
+            element["initial_date"] = initial_date
+
+        return element
+
+    def _build_checkbox_element(self, text: str, checked: bool, disabled: bool, action_data: Dict[str, Any]) -> Dict[str, Any]:
+        """构建复选框元素"""
+        return {
+            "tag": "checkbox",
+            "text": {"tag": "plain_text", "content": text},
+            "checked": checked,
+            "disabled": disabled,
+            "behaviors": [{"type": "callback", "value": action_data}]
         }
 
 

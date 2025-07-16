@@ -13,8 +13,6 @@ from typing import Dict, Any, List
 from enum import Enum
 import copy
 
-from .card_registry import BaseCardManager
-from ..decorators import card_build_safe
 from Module.Services.constants import (
     CardOperationTypes, ServiceNames, RoutineTypes,
     ToastTypes, CardConfigKeys, RoutineProgressTypes
@@ -22,6 +20,9 @@ from Module.Services.constants import (
 from Module.Business.processors import ProcessResult, MessageContext_Refactor, RouteResult
 from Module.Common.scripts.common import debug_utils
 from Module.Adapters.feishu.utils import safe_float
+
+from .card_registry import BaseCardManager
+from ..decorators import card_build_safe
 
 
 class RoutineCardMode(Enum):
@@ -124,26 +125,10 @@ class RoutineCardManager(BaseCardManager):
         if selected_type == RoutineTypes.END and self.message_router:
             related_start_items = self.message_router.routine_record.get_related_start_events(user_id)
 
-        # 构建卡片DSL
-        card_dsl = {
-            "schema": "2.0",
-            "config": {
-                "update_multi": True,
-                "wide_screen_mode": True
-            },
-            "body": {
-                "direction": "vertical",
-                "padding": "16px 16px 16px 16px",
-                "elements": self._build_new_event_form_elements(form_data, operation_id, user_id, selected_type, is_confirmed, related_start_items)
-            },
-            "header": {
-                "title": {"tag": "plain_text", "content": "📝 新建日常事项"},
-                "subtitle": {"tag": "plain_text", "content": "请填写事项信息"},
-                "template": "blue",
-                "icon": {"tag": "standard_icon", "token": "add-bold_outlined"}
-            }
-        }
-        return card_dsl
+        header = self._build_card_header("📝 新建日常事项", "请填写事项信息", "blue", "add-bold_outlined")
+        elements = self._build_new_event_form_elements(form_data, operation_id, user_id, selected_type, is_confirmed, related_start_items)
+
+        return self._build_base_card_structure(elements, header, "16px")
 
     def _build_new_event_form_elements(self, form_data: Dict[str, Any], operation_id: str, user_id: str, selected_type: str, is_confirmed: bool, related_start_items: List[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
         """构建新事件定义表单元素"""
@@ -180,7 +165,8 @@ class RoutineCardManager(BaseCardManager):
                 options=self._get_event_type_options(),
                 initial_value=selected_type,
                 disabled=is_confirmed,
-                action_data={"action": "update_event_type", "operation_id": operation_id}
+                action_data={"action": "update_event_type", "operation_id": operation_id},
+                name="event_type"
             )
         ))
 
@@ -192,7 +178,8 @@ class RoutineCardManager(BaseCardManager):
                 options=self.default_categories,
                 initial_value=form_data.get('category', ''),
                 disabled=is_confirmed,
-                action_data={"action": "update_category", "operation_id": operation_id}
+                action_data={"action": "update_category", "operation_id": operation_id},
+                name="category"
             )
         ))
 
@@ -205,7 +192,8 @@ class RoutineCardManager(BaseCardManager):
                     options=related_start_items or [],
                     initial_value=form_data.get('related_start_event', ''),
                     disabled=is_confirmed,
-                    action_data={"action": "update_related_start", "operation_id": operation_id}
+                    action_data={"action": "update_related_start", "operation_id": operation_id},
+                    name="related_start_event"
                 )
             ))
 
@@ -269,47 +257,18 @@ class RoutineCardManager(BaseCardManager):
 
     def _build_quick_record_confirm_card(self, business_data: Dict[str, Any]) -> Dict[str, Any]:
         """构建快速记录确认卡片"""
-        # 如果要重新生成，比如多disable，那么也就意味着每一个子模块回调事件里的逻辑在主逻辑也有有一份，现在也是这么处理的。
         event_name = business_data.get('event_name', '')
         is_confirmed = business_data.get('is_confirmed', False)
         result = business_data.get('result', '取消')
-        card_status = result if is_confirmed else "确认中"
 
-        match card_status:
-            case "确认":
-                subtitle = "记录信息确认成功"
-                color = "green"
-                icon = "done_outlined"
-            case "取消":
-                subtitle = "操作已取消"
-                color = "grey"
-                icon = "close_outlined"
-            case "确认中":
-                subtitle = "请确认记录信息"
-                color = "blue"
-                icon = "edit_outlined"
+        base_title = f"添加记录：{event_name}" if event_name else "添加记录"
+        header = self._build_status_based_header(base_title, is_confirmed, result)
 
-        if event_name:
-            title = f"添加记录：{event_name}"
-        else:
-            title = subtitle
-            subtitle = ""
-        card_dsl = {
-            "schema": "2.0",
-            "config": {"update_multi": True, "wide_screen_mode": True},
-            "body": {
-                "direction": "vertical",
-                "padding": "12px",
-                "elements": self._build_quick_record_elements(business_data)
-            },
-            "header": {
-                "title": {"tag": "plain_text", "content": title},
-                "subtitle": {"tag": "plain_text", "content": subtitle},
-                "template": color,
-                "icon": {"tag": "standard_icon", "token": icon}
-            }
-        }
-        return card_dsl
+        return self._build_base_card_structure(
+            elements=self._build_quick_record_elements(business_data),
+            header=header,
+            padding="12px"
+        )
 
     def _build_quick_record_elements(self, business_data: Dict[str, Any]) -> List[Dict[str, Any]]:
         """构建快速记录表单元素 - 条件化展示丰富信息"""
@@ -929,18 +888,8 @@ class RoutineCardManager(BaseCardManager):
         workflow_state = business_data.get('workflow_state', 'initial')
         input_text = business_data.get('input_text', '')
 
-        # 构建基础卡片结构
-        card_dsl = {
-            "schema": "2.0",
-            "config": {"update_multi": True, "wide_screen_mode": True},
-            "body": {
-                "direction": "vertical",
-                "padding": "12px",
-                "elements": []
-            },
-            "header": self._build_card_header(workflow_state, event_name, is_confirmed, result)
-        }
-        elements = card_dsl['body']['elements']
+        header = self._build_workflow_header(workflow_state, event_name, is_confirmed, result)
+        elements = []
 
         elements.append(self._build_form_row(
             "✏️ 事项",
@@ -1012,68 +961,33 @@ class RoutineCardManager(BaseCardManager):
             })
             elements.extend(sub_elements)
 
-        return card_dsl
+        return self._build_base_card_structure(elements, header, "12px")
 
-    def _build_card_header(self, workflow_state: str, event_name: str, is_confirmed: bool = False, result: str = "取消") -> Dict[str, Any]:
-        """构建卡片头部，根据集成模式和状态显示不同内容"""
+    def _build_workflow_header(self, workflow_state: str, event_name: str, is_confirmed: bool = False, result: str = "取消") -> Dict[str, Any]:
+        """构建工作流程卡片头部"""
         if workflow_state == "quick_record" and event_name:
-            return {
-                "title": {"tag": "plain_text", "content": f"📝 记录：{event_name}"},
-                "subtitle": {"tag": "plain_text", "content": "确认记录信息"},
-                "template": "blue",
-                "icon": {"tag": "standard_icon", "token": "edit_outlined"}
-            }
-        elif workflow_state == "new_event_option":
-            return {
-                "title": {"tag": "plain_text", "content": "🆕 新建事项"},
-                "subtitle": {"tag": "plain_text", "content": "事项不存在，是否新建？"},
-                "template": "orange",
-                "icon": {"tag": "standard_icon", "token": "add_outlined"}
-            }
-        else:
-            if is_confirmed:
-                if result == "确认":
-                    title = "记录信息确认成功"
-                    template = "green"
-                    icon = "done_outlined"
-                else:
-                    title = "操作已取消"
-                    template = "grey"
-                    icon = "close_outlined"
-                return {
-                    "title": {"tag": "plain_text", "content": title},
-                    "template": template,
-                    "icon": {"tag": "standard_icon", "token": icon}
-                }
-            else:
-                return {
-                    "title": {"tag": "plain_text", "content": "🚀 快速记录"},
-                    "subtitle": {"tag": "plain_text", "content": "输入或选择事项"},
-                    "template": "purple",
-                }
+            return self._build_card_header(f"📝 记录：{event_name}", "确认记录信息", "blue", "edit_outlined")
+        if workflow_state == "new_event_option":
+            return self._build_card_header("🆕 新建事项", "事项不存在，是否新建？", "orange", "add_outlined")
+        if is_confirmed:
+            return self._build_status_based_header("", is_confirmed, result)
+
+        return self._build_card_header("🚀 快速记录", "输入或选择事项", "purple")
 
     def _build_query_results_card(self, business_data: Dict[str, Any]) -> Dict[str, Any]:
         """构建查询结果展示卡片"""
         results = business_data.get('results', [])
         query_type = business_data.get('query_type', 'recent')
 
-        card_dsl = {
-            "schema": "2.0",
-            "config": {"update_multi": True, "wide_screen_mode": True},
-            "body": {
-                "direction": "vertical",
-                "padding": "16px 16px 16px 16px",
-                "elements": self._build_query_results_elements(results, query_type)
-            },
-            "header": {
-                "title": {"tag": "plain_text", "content": "📋 日常事项查询结果"},
-                "subtitle": {"tag": "plain_text", "content": f"共找到 {len(results)} 个事项"},
-                "template": "cyan",
-                "icon": {"tag": "standard_icon", "token": "search_outlined"}
-            }
-        }
+        header = self._build_card_header(
+            "📋 日常事项查询结果",
+            f"共找到 {len(results)} 个事项",
+            "cyan",
+            "search_outlined"
+        )
+        elements = self._build_query_results_elements(results, query_type)
 
-        return card_dsl
+        return self._build_base_card_structure(elements, header, "16px")
 
     def _build_query_results_elements(self, results: List[Dict[str, Any]], query_type: str) -> List[Dict[str, Any]]:
         """构建查询结果元素"""
@@ -1176,40 +1090,6 @@ class RoutineCardManager(BaseCardManager):
             # elements.append(collapsible_element)
 
         return elements
-
-    def _build_select_element(self, placeholder: str, options: List[Dict[str, Any]], initial_value: str, disabled: bool, action_data: Dict[str, Any], element_id: str = '') -> Dict[str, Any]:
-        """构建选择器元素"""
-        # 查找初始选择索引，对飞书来说，索引从1开始，所以需要+1
-        initial_index = -1
-        for i, option in enumerate(options):
-            if option.get('value') == initial_value:
-                initial_index = i + 1
-                break
-
-        return {
-            "tag": "select_static",
-            "element_id": element_id,
-            "placeholder": {"tag": "plain_text", "content": placeholder},
-            "options": options,
-            "initial_index": initial_index if initial_index >= 0 else None,
-            "width": "fill",
-            "disabled": disabled,
-            "behaviors": [{"type": "callback", "value": action_data}]
-        }
-
-    def _build_date_picker_element(self, placeholder: str, initial_date: str, disabled: bool, action_data: Dict[str, Any]) -> Dict[str, Any]:
-        """构建日期选择器元素"""
-        element = {
-            "tag": "date_picker",
-            "placeholder": {"tag": "plain_text", "content": placeholder},
-            "disabled": disabled,
-            "behaviors": [{"type": "callback", "value": action_data}]
-        }
-
-        if initial_date:
-            element["initial_date"] = initial_date
-
-        return element
 
     def _build_action_buttons(self, operation_id: str, user_id: str) -> Dict[str, Any]:
         """构建操作按钮组"""
