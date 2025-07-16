@@ -140,6 +140,19 @@ class BaseCardManager(ABC):
         business_data = user_service.get_card_business_data(context.user_id, card_id)
         return business_data, card_id, card_info
 
+    def _build_base_card_structure(self, elements: List[Dict[str, Any]], header: Dict[str, Any], padding: str = "12px") -> Dict[str, Any]:
+        """构建基础卡片结构"""
+        return {
+            "schema": "2.0",
+            "config": {"update_multi": True, "wide_screen_mode": True},
+            "body": {
+                "direction": "vertical",
+                "padding": padding,
+                "elements": elements
+            },
+            "header": header
+        }
+
     def _build_input_element(self, placeholder: str, initial_value: str, disabled: bool, action_data: Dict[str, Any], name: str = '', element_id: str = '') -> Dict[str, Any]:
         """构建输入框元素"""
         return {

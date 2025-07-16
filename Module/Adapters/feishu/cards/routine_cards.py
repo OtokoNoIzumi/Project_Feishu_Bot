@@ -774,6 +774,10 @@ class RoutineCardManager(BaseCardManager):
         is_container_mode = bool(sub_business_data)
         data_source = sub_business_data if is_container_mode else business_data
         build_method_name = business_data.get('container_build_method', '_build_quick_record_confirm_card')
+        if hasattr(self, build_method_name):
+            build_method = getattr(self, build_method_name)
+        else:
+            build_method = self._build_quick_record_confirm_card
 
         business_data['is_confirmed'] = True
 
@@ -782,10 +786,7 @@ class RoutineCardManager(BaseCardManager):
             # 其实应该假设card_id也失效了，用message_id直接batch，但是这里先不处理。
             debug_utils.log_and_print("🔍 confirm_record - 卡片数据为空", log_level="WARNING")
             business_data['result'] = "取消"
-            if hasattr(self, build_method_name):
-                new_card_dsl = getattr(self, build_method_name)(business_data)
-            else:
-                new_card_dsl = self._build_quick_record_confirm_card(business_data)
+            new_card_dsl = build_method(business_data)
 
             return self._handle_card_operation_common(
                 card_content=new_card_dsl,
@@ -839,10 +840,7 @@ class RoutineCardManager(BaseCardManager):
 
         core_data['note'] = form_data.get('note', "")
 
-        if hasattr(self, build_method_name):
-            new_card_dsl = getattr(self, build_method_name)(business_data)
-        else:
-            new_card_dsl = self._build_quick_record_confirm_card(business_data)
+        new_card_dsl = build_method(business_data)
 
         # 开始写入数据
         # 先写入记录
@@ -925,7 +923,6 @@ class RoutineCardManager(BaseCardManager):
         event_name = business_data.get('selected_event_name', '')
         is_confirmed = business_data.get('is_confirmed', False)
         result = business_data.get('result', '取消')
-        card_status = result if is_confirmed else "运行中"
         quick_events = business_data.get('quick_events', [])
 
         # 提取集成模式相关数据，和后台业务无关的初始数据在这里初始化
@@ -941,7 +938,7 @@ class RoutineCardManager(BaseCardManager):
                 "padding": "12px",
                 "elements": []
             },
-            "header": self._build_card_header(workflow_state, event_name)
+            "header": self._build_card_header(workflow_state, event_name, is_confirmed, result)
         }
         elements = card_dsl['body']['elements']
 
@@ -1017,7 +1014,7 @@ class RoutineCardManager(BaseCardManager):
 
         return card_dsl
 
-    def _build_card_header(self, workflow_state: str, event_name: str) -> Dict[str, Any]:
+    def _build_card_header(self, workflow_state: str, event_name: str, is_confirmed: bool = False, result: str = "取消") -> Dict[str, Any]:
         """构建卡片头部，根据集成模式和状态显示不同内容"""
         if workflow_state == "quick_record" and event_name:
             return {
@@ -1034,12 +1031,26 @@ class RoutineCardManager(BaseCardManager):
                 "icon": {"tag": "standard_icon", "token": "add_outlined"}
             }
         else:
-            return {
-                "title": {"tag": "plain_text", "content": "🚀 快速记录"},
-                "subtitle": {"tag": "plain_text", "content": "输入或选择事项"},
-                "template": "purple",
-            }
-
+            if is_confirmed:
+                if result == "确认":
+                    title = "记录信息确认成功"
+                    template = "green"
+                    icon = "done_outlined"
+                else:
+                    title = "操作已取消"
+                    template = "grey"
+                    icon = "close_outlined"
+                return {
+                    "title": {"tag": "plain_text", "content": title},
+                    "template": template,
+                    "icon": {"tag": "standard_icon", "token": icon}
+                }
+            else:
+                return {
+                    "title": {"tag": "plain_text", "content": "🚀 快速记录"},
+                    "subtitle": {"tag": "plain_text", "content": "输入或选择事项"},
+                    "template": "purple",
+                }
 
     def _build_query_results_card(self, business_data: Dict[str, Any]) -> Dict[str, Any]:
         """构建查询结果展示卡片"""

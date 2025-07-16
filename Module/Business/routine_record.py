@@ -1041,8 +1041,6 @@ class RoutineRecord(BaseProcessor):
             Dict[str, Any]: 卡片数据
         """
         # 业务数据未必都需要在这里定义，是否连续更新是前端的事，取值或者设定值，这里是业务逻辑的数据。
-        # menu两次点击，而且不需要等待，所以没必要快选？
-        # 比较长的时间应该不会在这个业务里加上自动识别吧。
         definitions_data = self.load_event_definitions(user_id)
         quick_events = []
         definitions = definitions_data.get("definitions", {})
