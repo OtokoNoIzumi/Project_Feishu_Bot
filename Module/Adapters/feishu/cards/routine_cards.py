@@ -300,7 +300,7 @@ class RoutineCardManager(BaseCardManager):
             "body": {
                 "direction": "vertical",
                 "padding": "12px",
-                "elements": self._build_quick_record_elements(event_name, business_data)
+                "elements": self._build_quick_record_elements(business_data)
             },
             "header": {
                 "title": {"tag": "plain_text", "content": title},
@@ -311,21 +311,26 @@ class RoutineCardManager(BaseCardManager):
         }
         return card_dsl
 
-    def _build_quick_record_elements(self, event_name: str, business_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+    def _build_quick_record_elements(self, business_data: Dict[str, Any]) -> List[Dict[str, Any]]:
         """构建快速记录表单元素 - 条件化展示丰富信息"""
-        # 解析业务层传递的数据
+        # 解析业务层传递的数据 - 支持容器模式和常规模式
         sub_business_data = business_data.get('sub_business_data', {})
-        # 如果有sub，那么基本每个数据都要从sub走，但关键指标又也要覆盖到原始的business，因为数据槽位只有一个。
+        is_container_mode = bool(sub_business_data)
 
-        event_def = business_data.get('event_definition', {})
+        # 数据源选择：容器模式使用sub_business_data，常规模式使用business_data
+        data_source = sub_business_data if is_container_mode else business_data
+
+        # 交互状态和结果统一使用外层容器数据
         is_confirmed = business_data.get('is_confirmed', False)
 
-        # 业务层计算好的智能数据
-        avg_duration = business_data.get('avg_duration', 0.0)
-        degree_info = business_data.get('degree_info', {})
-        cycle_info = business_data.get('cycle_info', {})
-        new_record = business_data.get('new_record', {})
-        diff_minutes = business_data.get('diff_minutes', 0)
+        # 从对应数据源获取业务数据
+        event_name = data_source.get('event_name', '')
+        event_def = data_source.get('event_definition', {})
+        avg_duration = data_source.get('avg_duration', 0.0)
+        degree_info = data_source.get('degree_info', {})
+        cycle_info = data_source.get('cycle_info', {})
+        new_record = data_source.get('new_record', {})
+        diff_minutes = data_source.get('diff_minutes', 0)
         event_type = event_def.get('type', RoutineTypes.INSTANT)
         progress_type = event_def.get('properties', {}).get('progress_type', "")
         last_progress_value = event_def.get('stats', {}).get('last_progress_value', 0)
@@ -347,7 +352,7 @@ class RoutineCardManager(BaseCardManager):
         # === 确认输入部分 ===
         # 4. 条件化展示：程度选择器（如果有程度选项）
         if degree_info:
-            elements.extend(self._build_degree_selection_section(degree_info, business_data, is_confirmed))
+            elements.extend(self._build_degree_selection_section(degree_info, data_source, is_confirmed))
 
         # 创建表单容器
         form_elements = {
@@ -537,7 +542,7 @@ class RoutineCardManager(BaseCardManager):
 
         return elements
 
-    def _build_degree_selection_section(self, degree_info: Dict[str, Any], business_data: Dict[str, Any], is_confirmed: bool) -> List[Dict[str, Any]]:
+    def _build_degree_selection_section(self, degree_info: Dict[str, Any], data_source: Dict[str, Any], is_confirmed: bool) -> List[Dict[str, Any]]:
         """构建程度选择区域"""
         elements = []
 
@@ -545,7 +550,7 @@ class RoutineCardManager(BaseCardManager):
         if '其他' not in degree_options:
             degree_options.append('其他')
         default_degree = degree_info.get('default_degree', '')
-        event_name = business_data.get('event_name', '')
+        event_name = data_source.get('event_name', '')
 
         # 构建选项
         degree_select_options = []
@@ -556,7 +561,7 @@ class RoutineCardManager(BaseCardManager):
             })
 
         # 智能默认值：用户上次选择 > 系统默认 > 第一个选项
-        initial_degree = business_data['new_record'].get('degree', "") or default_degree
+        initial_degree = data_source['new_record'].get('degree', "") or default_degree
 
         elements.append(self._build_form_row(
             "选择方式",
@@ -567,8 +572,7 @@ class RoutineCardManager(BaseCardManager):
                 disabled=is_confirmed,
                 action_data={
                     "card_action": "update_record_degree",
-                    "card_config_key": CardConfigKeys.ROUTINE_RECORD,
-                    # "origin_data": data
+                    "card_config_key": CardConfigKeys.ROUTINE_RECORD
                 },
                 element_id="degree_select"
             ),
@@ -580,17 +584,25 @@ class RoutineCardManager(BaseCardManager):
 
     def update_record_degree(self, context: MessageContext_Refactor):
         """处理记录方式更新"""
-        # 避免重复值触发。
         business_data, card_id, _ = self._get_core_data(context)
         if not business_data:
             debug_utils.log_and_print("🔍 update_record_degree - 卡片业务数据为空", log_level="WARNING")
             return
+
+        sub_business_data = business_data.get('sub_business_data', {})
+        is_container_mode = bool(sub_business_data)
+        data_source = sub_business_data if is_container_mode else business_data
         new_option = context.content.value.get('option')
 
-        business_data['new_record']['degree'] = new_option
+        build_method_name = business_data.get('container_build_method', '_build_quick_record_confirm_card')
+
+        data_source['new_record']['degree'] = new_option
         user_service = self.app_controller.get_service(ServiceNames.USER_BUSINESS_PERMISSION)
         user_service.save_new_card_business_data(context.user_id, card_id, business_data)
-        new_card_dsl = self._build_quick_record_confirm_card(business_data)
+        if hasattr(self, build_method_name):
+            new_card_dsl = getattr(self, build_method_name)(business_data)
+        else:
+            new_card_dsl = self._build_quick_record_confirm_card(business_data)
 
         return self._handle_card_operation_common(
             card_content=new_card_dsl,
@@ -758,13 +770,22 @@ class RoutineCardManager(BaseCardManager):
         """处理记录确认"""
 
         business_data, card_id, _ = self._get_core_data(context)
-        core_data = business_data.get('new_record', {})
+        sub_business_data = business_data.get('sub_business_data', {})
+        is_container_mode = bool(sub_business_data)
+        data_source = sub_business_data if is_container_mode else business_data
+        build_method_name = business_data.get('container_build_method', '_build_quick_record_confirm_card')
+
+        business_data['is_confirmed'] = True
+
+        core_data = data_source.get('new_record', {})
         if not core_data:
             # 其实应该假设card_id也失效了，用message_id直接batch，但是这里先不处理。
             debug_utils.log_and_print("🔍 confirm_record - 卡片数据为空", log_level="WARNING")
-            business_data['is_confirmed'] = True
             business_data['result'] = "取消"
-            new_card_dsl = self._build_quick_record_confirm_card(business_data)
+            if hasattr(self, build_method_name):
+                new_card_dsl = getattr(self, build_method_name)(business_data)
+            else:
+                new_card_dsl = self._build_quick_record_confirm_card(business_data)
 
             return self._handle_card_operation_common(
                 card_content=new_card_dsl,
@@ -773,8 +794,8 @@ class RoutineCardManager(BaseCardManager):
                 toast_message="操作已失效"
             )
 
-        business_data['is_confirmed'] = True
         business_data['result'] = "确认"
+
         form_data = context.content.form_data
 
         user_id = context.user_id
@@ -785,7 +806,7 @@ class RoutineCardManager(BaseCardManager):
                 new_custom_degree = form_data.get('custom_degree', "其他")
                 if new_custom_degree not in ["其他", ""]:
                     core_data['degree'] = new_custom_degree
-                    degree_options = business_data['event_definition']['properties']['degree_options']
+                    degree_options = data_source['event_definition']['properties']['degree_options']
                     if new_custom_degree not in degree_options:
                         degree_options.append(new_custom_degree)
             else:
@@ -793,7 +814,7 @@ class RoutineCardManager(BaseCardManager):
 
         # 并不需要格式化最新的结果，但输入值需要保留，也就是定义的部分要复制
         # 创建深拷贝以避免修改原始数据
-        event_def = copy.deepcopy(business_data.get('event_definition', {}))
+        event_def = copy.deepcopy(data_source.get('event_definition', {}))
 
         duration_str = form_data.get('duration', "")
         new_duration = safe_float(duration_str)
@@ -818,7 +839,11 @@ class RoutineCardManager(BaseCardManager):
 
         core_data['note'] = form_data.get('note', "")
 
-        new_card_dsl = self._build_quick_record_confirm_card(business_data)
+        if hasattr(self, build_method_name):
+            new_card_dsl = getattr(self, build_method_name)(business_data)
+        else:
+            new_card_dsl = self._build_quick_record_confirm_card(business_data)
+
         # 开始写入数据
         # 先写入记录
         routine_business = self.message_router.routine_record
@@ -826,7 +851,7 @@ class RoutineCardManager(BaseCardManager):
         records_data['records'].append(core_data)
         # 再写入事件定义，做聚合类计算
         event_def['stats']['record_count'] = event_def.get('stats', {}).get('record_count', 0) + 1
-        cycle_info = business_data.get('cycle_info', {})
+        cycle_info = data_source.get('cycle_info', {})
         if cycle_info:
             event_def['stats']['cycle_count'] = cycle_info.get('cycle_count', 0) + 1
             event_def['stats']['last_cycle_count'] = cycle_info.get('last_cycle_count', 0)
@@ -875,9 +900,14 @@ class RoutineCardManager(BaseCardManager):
         if not business_data:
             debug_utils.log_and_print("🔍 cancel_record - 卡片数据为空", log_level="WARNING")
 
+        build_method_name = business_data.get('container_build_method', '_build_quick_record_confirm_card')
         business_data['is_confirmed'] = True
         business_data['result'] = "取消"
-        new_card_dsl = self._build_quick_record_confirm_card(business_data)
+
+        if hasattr(self, build_method_name):
+            new_card_dsl = getattr(self, build_method_name)(business_data)
+        else:
+            new_card_dsl = self._build_quick_record_confirm_card(business_data)
 
         user_service = self.app_controller.get_service(ServiceNames.USER_BUSINESS_PERMISSION)
         user_service.del_card_business_data(context.user_id, card_id)
@@ -890,9 +920,7 @@ class RoutineCardManager(BaseCardManager):
         )
 
     def _build_quick_select_record_card(self, business_data: Dict[str, Any]) -> Dict[str, Any]:
-        """构建快速选择记录卡片（扩展版本：支持集成模式）"""
-        # 提取基础数据，这个方法是能够完整生成卡片的第一入口，所以要选择合适的结构。
-        # 其中一个核心的参数就是sub_data_build_method/sub_business_data，这个是用来构建子卡片的数据的。
+        """构建快速选择记录卡片"""
 
         event_name = business_data.get('selected_event_name', '')
         is_confirmed = business_data.get('is_confirmed', False)
@@ -965,6 +993,7 @@ class RoutineCardManager(BaseCardManager):
                 "type": "primary" if is_quick_access else "default",
                 "width": "fill",
                 "size": "medium",
+                "disabled": is_confirmed,
                 "behaviors": [{
                     "type": "callback",
                     "value": {
@@ -977,10 +1006,8 @@ class RoutineCardManager(BaseCardManager):
 
         # 集成模式：根据工作流程状态显示不同内容
         sub_business_build_method = business_data.get('sub_business_build_method', '')
-        sub_business_data = business_data.get('sub_business_data', {})
-        if sub_business_build_method and hasattr(self, sub_business_build_method) and sub_business_data:
-            sub_event_name = sub_business_data.get('event_name', '')
-            sub_elements = getattr(self, sub_business_build_method)(sub_event_name, sub_business_data)
+        if sub_business_build_method and hasattr(self, sub_business_build_method):
+            sub_elements = getattr(self, sub_business_build_method)(business_data)
 
             elements.append({
                 "tag": "hr",
@@ -1335,6 +1362,7 @@ class RoutineCardManager(BaseCardManager):
             business_data['workflow_state'] = 'quick_record'  # 集成模式状态，这个姑且先保留吧，稍微冗余一点点
             business_data['sub_business_data'] = quick_record_data
             business_data['sub_business_build_method'] = '_build_quick_record_elements'
+            business_data['container_build_method'] = '_build_quick_select_record_card'
 
             # 更新卡片显示
             new_card_dsl = self._build_quick_select_record_card(business_data)
@@ -1392,6 +1420,7 @@ class RoutineCardManager(BaseCardManager):
             business_data['workflow_state'] = 'quick_record'  # 集成模式状态，这个姑且先保留吧，稍微冗余一点点
             business_data['sub_business_data'] = quick_record_data
             business_data['sub_business_build_method'] = '_build_quick_record_elements'
+            business_data['container_build_method'] = '_build_quick_select_record_card'
 
             # 更新卡片显示
             new_card_dsl = self._build_quick_select_record_card(business_data)
