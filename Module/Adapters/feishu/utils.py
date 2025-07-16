@@ -15,6 +15,11 @@ from Module.Services.constants import RouteTypes
 
 # P2ImMessageReceiveV1对象调试开关现在从配置服务获取
 
+def debug_dict_print(data):
+    """
+    调试字典的详细信息输出
+    """
+    pprint.pprint(data, indent=2, width=120)
 
 def safe_float(s):
     """安全转换为 float，失败返回 None"""

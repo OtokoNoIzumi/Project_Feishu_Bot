@@ -64,8 +64,6 @@ class RoutineRecord(BaseProcessor):
         self.user_permission_service = self.app_controller.get_service(ServiceNames.USER_BUSINESS_PERMISSION)
         self.storage = JSONEventStorage()
 
-        # 内存中的查询上下文，按用户ID存储
-        self.query_contexts = {}
 
     def _get_formatted_time(self) -> str:
         """

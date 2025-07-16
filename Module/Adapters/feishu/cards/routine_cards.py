@@ -12,6 +12,7 @@ import uuid
 from typing import Dict, Any, List
 from enum import Enum
 import copy
+import pprint
 
 from Module.Services.constants import (
     CardOperationTypes, ServiceNames, RoutineTypes,
@@ -106,8 +107,8 @@ class RoutineCardManager(BaseCardManager):
                 "behaviors": [{
                     "type": "callback",
                     "value": {
-                        "card_action": "handle_quick_event_query",
-                        "card_config_key": CardConfigKeys.ROUTINE_QUICK_SELECT,
+                        "card_action": "show_query_info",
+                        "card_config_key": CardConfigKeys.ROUTINE_QUICK_SELECT
                     }
                 }]
             },
@@ -235,7 +236,9 @@ class RoutineCardManager(BaseCardManager):
         """处理快速事件选择"""
         action_value = context.content.value
         user_id = context.user_id  # 从 context 中获取 user_id
+        parent_business_name = action_value.get('card_config_key', CardConfigKeys.ROUTINE_QUICK_SELECT)
         event_name = action_value.get('event_name', '')
+
         container_build_method = action_value.get('container_build_method', '_build_quick_select_record_card')
         if hasattr(self, container_build_method):
             build_method = getattr(self, container_build_method)
@@ -267,12 +270,12 @@ class RoutineCardManager(BaseCardManager):
 
             business_data['workflow_state'] = 'quick_record'  # 集成模式状态，这个姑且先保留吧，稍微冗余一点点
             business_data['container_build_method'] = container_build_method
-            # 获取到最底层的数据，在那里添加子业务
-            data_source, _ = self._safe_get_business_data(business_data, "")
 
-            data_source['sub_business_data'] = quick_record_data
-            data_source['sub_business_name'] = CardConfigKeys.ROUTINE_RECORD
-            data_source['sub_business_build_method'] = '_build_quick_record_elements'
+            parent_data, _ = self._safe_get_business_data(business_data, parent_business_name)
+
+            parent_data['sub_business_data'] = quick_record_data
+            parent_data['sub_business_name'] = CardConfigKeys.ROUTINE_RECORD
+            parent_data['sub_business_build_method'] = '_build_quick_record_elements'
 
             # 更新卡片显示
             new_card_dsl = build_method(business_data)
@@ -300,8 +303,9 @@ class RoutineCardManager(BaseCardManager):
     def select_record_by_input(self, context: MessageContext_Refactor) -> ProcessResult:
         """处理输入框事件名称输入"""
         action_value = context.content.value
-        event_name = context.content.input_value
         user_id = context.user_id
+        parent_business_name = action_value.get('card_config_key', CardConfigKeys.ROUTINE_QUICK_SELECT)
+        event_name = context.content.input_value
 
         container_build_method = action_value.get('container_build_method', '_build_quick_select_record_card')
         if hasattr(self, container_build_method):
@@ -336,10 +340,10 @@ class RoutineCardManager(BaseCardManager):
             business_data['workflow_state'] = 'quick_record'  # 集成模式状态，这个姑且先保留吧，稍微冗余一点点
             business_data['container_build_method'] = container_build_method
 
-            data_source, _ = self._safe_get_business_data(business_data, "")
-            data_source['sub_business_data'] = quick_record_data
-            data_source['sub_business_name'] = CardConfigKeys.ROUTINE_RECORD
-            data_source['sub_business_build_method'] = '_build_quick_record_elements'
+            parent_data, _ = self._safe_get_business_data(business_data, parent_business_name)
+            parent_data['sub_business_data'] = quick_record_data
+            parent_data['sub_business_name'] = CardConfigKeys.ROUTINE_RECORD
+            parent_data['sub_business_build_method'] = '_build_quick_record_elements'
 
             # 更新卡片显示
             new_card_dsl = build_method(business_data)
@@ -360,6 +364,85 @@ class RoutineCardManager(BaseCardManager):
             update_toast_type=ToastTypes.INFO,
             toast_message=f"'{event_name}' 是新事项，可以创建新定义"
         )
+
+    def show_query_info(self, context: MessageContext_Refactor) -> ProcessResult:
+        """处理输入框事件名称输入"""
+        action_value = context.content.value
+        user_id = context.user_id
+        parent_business_name = action_value.get('card_config_key', CardConfigKeys.ROUTINE_QUICK_SELECT)
+
+        container_build_method = action_value.get('container_build_method', '_build_quick_select_record_card')
+        if hasattr(self, container_build_method):
+            build_method = getattr(self, container_build_method)
+        else:
+            build_method = self._build_quick_select_record_card
+
+        # 获取当前卡片的业务数据——待处理成通用方法
+        business_data, card_id, _ = self._get_core_data(context)
+        if not business_data:
+            debug_utils.log_and_print("🔍 show_query_info - 卡片数据为空", log_level="WARNING")
+            business_data['is_confirmed'] = True
+            business_data['result'] = "取消"
+            new_card_dsl = build_method(business_data)
+
+            return self._handle_card_operation_common(
+                card_content=new_card_dsl,
+                card_operation_type=CardOperationTypes.UPDATE_RESPONSE,
+                update_toast_type=ToastTypes.ERROR,
+                toast_message="操作已失效"
+            )
+
+        routine_business = self.message_router.routine_record
+        definitions_data = routine_business.load_event_definitions(user_id)
+
+        if definitions_data:
+            # 事件存在，进入快速记录模式
+            business_data['workflow_state'] = 'quick_record'  # 集成模式状态，这个姑且先保留吧，稍微冗余一点点
+            business_data['container_build_method'] = container_build_method
+
+            parent_data, _ = self._safe_get_business_data(business_data, parent_business_name)
+
+            # query 的数据结构非常简单，就是definitions_data
+            new_query_node_data = definitions_data
+
+            # 1. 准备工作：检查并“抢救”需要保留的孙子节点
+            #    只有当父节点的子业务本身就是QUERY，且这个QUERY下面还有子业务（即孙子节点）时，我们才需要保留。
+            existing_sub_name = parent_data.get('sub_business_name')
+            existing_sub_data = parent_data.get('sub_business_data')
+
+            if (existing_sub_name == CardConfigKeys.ROUTINE_QUERY and
+                existing_sub_data and
+                existing_sub_data.get('sub_business_data')):
+
+                # 找到了需要保留的孙子节点，我们把它从旧的结构中取出来
+                grandchild_data = existing_sub_data.get('sub_business_data')
+                grandchild_name = existing_sub_data.get('sub_business_name')
+                grandchild_method = existing_sub_data.get('sub_business_build_method')
+
+                # 将孙子节点挂载到我们即将使用的新查询节点上
+                new_query_node_data['sub_business_data'] = grandchild_data
+                new_query_node_data['sub_business_name'] = grandchild_name
+                new_query_node_data['sub_business_build_method'] = grandchild_method
+
+            # 2. 执行操作：用准备好的新查询节点覆盖父节点的子业务
+            #    无论之前是什么情况（没有子业务、子业务不是QUERY、子业务是QUERY但没有孙子），
+            #    父节点的子业务都会被设置为我们刚刚准备好的新查询节点。
+            parent_data['sub_business_data'] = new_query_node_data
+            parent_data['sub_business_name'] = CardConfigKeys.ROUTINE_QUERY
+            parent_data['sub_business_build_method'] = '_build_query_elements'
+
+            # 更新卡片显示
+            new_card_dsl = build_method(business_data)
+            user_service = self.app_controller.get_service(ServiceNames.USER_BUSINESS_PERMISSION)
+            user_service.save_new_card_business_data(user_id, card_id, business_data)
+
+            return self._handle_card_operation_common(
+                card_content=new_card_dsl,
+                card_operation_type=CardOperationTypes.UPDATE_RESPONSE,
+                update_toast_type=ToastTypes.SUCCESS,
+                toast_message=f""
+            )
+
 
     def _build_quick_record_elements(self, business_data: Dict[str, Any]) -> List[Dict[str, Any]]:
         """构建快速记录表单元素 - 条件化展示丰富信息"""
@@ -1023,7 +1106,7 @@ class RoutineCardManager(BaseCardManager):
         # 待增加一个筛选结果和一件清楚筛选。
         elements.append({"tag": "hr", "margin": "0px 0px 6px 0px"})
 
-        default_expanded = len(filtered)
+        default_expanded = bool(filtered)
         if has_query_business_data:
             default_expanded = False
 
@@ -1057,7 +1140,7 @@ class RoutineCardManager(BaseCardManager):
                         "type": "callback",
                         "value": {
                             "card_action": "quick_record_select",
-                            "card_config_key": CardConfigKeys.ROUTINE_QUICK_SELECT,
+                            "card_config_key": CardConfigKeys.ROUTINE_QUERY,
                             "event_name": name,
                             "container_build_method": container_build_method
                         }
