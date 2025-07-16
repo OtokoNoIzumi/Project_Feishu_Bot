@@ -8,7 +8,7 @@ from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional, List
 from lark_oapi.event.callback.model.p2_card_action_trigger import P2CardActionTriggerResponse
 from Module.Common.scripts.common import debug_utils
-from Module.Services.constants import ServiceNames, CardOperationTypes, ReplyModes
+from Module.Services.constants import ServiceNames, CardOperationTypes, ReplyModes, ToastTypes
 from Module.Business.processors import MessageContext_Refactor
 # 配置驱动的管理器映射 - 从配置文件获取
 
@@ -139,6 +139,77 @@ class BaseCardManager(ABC):
         user_service = self.app_controller.get_service(ServiceNames.USER_BUSINESS_PERMISSION)
         business_data = user_service.get_card_business_data(context.user_id, card_id)
         return business_data, card_id, card_info
+
+    def _safe_get_business_data(self, business_data: Dict[str, Any], sub_business_name: str = '', max_depth: int = 10) -> Dict[str, Any]:
+        """
+        安全地从容器里获取到自己业务数据，最多递归 max_depth 层。
+
+        如果提供 sub_business_name，则一直向下查找同名节点；
+        如果未提供，则直接定位到最深一层 sub_business_data。
+        返回 (data, is_container_mode)。
+        """
+        node = business_data
+        for _ in range(max_depth):
+            if sub_business_name:
+                # 按名字找：当前节点就是目标就结束
+                if node.get('sub_business_name') == sub_business_name:
+                    return node.get('sub_business_data', {}), True
+            # 继续往下走
+            child = node.get('sub_business_data')
+            if not child or not isinstance(child, dict):
+                break
+            node = child
+
+        # 循环结束：
+        #   - 如果给了名字但没找到，说明不存在，直接返回原数据
+        #   - 如果没给名字，node 此时就是最深一层
+        is_container_mode = node is not business_data
+        data = node if not sub_business_name else business_data
+        return data, is_container_mode
+
+    def _update_field_and_refresh(
+        self,
+        context: MessageContext_Refactor,
+        *,
+        field_key: str,
+        extracted_value,
+        toast_message: str = "",
+        sub_business_name: str = "",
+        default_build_method: str = "_build_query_results_card",
+    ):
+        """
+        统一模板：更新 data_source 中的某个字段 -> 落库 -> 重新渲染卡片
+        """
+        business_data, card_id, _ = self._get_core_data(context)
+        if not business_data:
+            debug_utils.log_and_print(
+                f"🔍 {field_key} - 卡片业务数据为空", log_level="WARNING"
+            )
+            return
+
+        data_source, _ = self._safe_get_business_data(
+            business_data, sub_business_name
+        )
+
+        # 更新字段
+        data_source[field_key] = extracted_value
+
+        # 落库
+        user_service = self.app_controller.get_service(
+            ServiceNames.USER_BUSINESS_PERMISSION
+        )
+        user_service.save_new_card_business_data(context.user_id, card_id, business_data)
+
+        # 重新渲染
+        builder = getattr(self, default_build_method)
+        new_card_dsl = builder(business_data)
+
+        return self._handle_card_operation_common(
+            card_content=new_card_dsl,
+            card_operation_type=CardOperationTypes.UPDATE_RESPONSE,
+            update_toast_type=ToastTypes.INFO,
+            toast_message=toast_message,
+        )
 
     def _build_base_card_structure(self, elements: List[Dict[str, Any]], header: Dict[str, Any], padding: str = "12px") -> Dict[str, Any]:
         """构建基础卡片结构"""

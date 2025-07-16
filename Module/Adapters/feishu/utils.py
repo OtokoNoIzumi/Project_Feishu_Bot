@@ -190,12 +190,12 @@ ROUTE_KNOWLEDGE_MAPPING = {
             "card_action": "build_quick_select_record_card"
         }
     },
-    "routine_query_results_card": {
+    RouteTypes.ROUTINE_QUERY_RESULTS_CARD: {
         "handler": "card_handler",
         "method": "dispatch_card_response",
         "call_params": {
-            "card_config_key": "routine_query_results",
-            "card_action": "build_card"
+            "card_config_key": "routine_query",
+            "card_action": "build_query_results_card"
         }
     }
 }

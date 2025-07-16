@@ -40,7 +40,7 @@ CARD_CLASS_MAPPING = {
     'routine_new_event': RoutineCardManager,
     'routine_record': RoutineCardManager,
     'routine_quick_select': RoutineCardManager,
-    'routine_query_results': RoutineCardManager,
+    'routine_query': RoutineCardManager,
 }
 
 # 创建全局卡片注册中心

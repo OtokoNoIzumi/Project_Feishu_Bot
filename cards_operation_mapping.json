@@ -40,9 +40,9 @@
       "timeout_seconds": 120,
       "description": "快速选择记录事项"
     },
-    "routine_query_results": {
+    "routine_query": {
       "response_type": "routine_query_results_card",
-      "card_config_key": "routine_query_results",
+      "card_config_key": "routine_query",
       "timeout_seconds": 300,
       "description": "日常事项查询结果展示"
     }
@@ -85,7 +85,7 @@
       "reply_mode": "new",
       "card_name": "快速选择记录"
     },
-    "routine_query_results": {
+    "routine_query": {
       "reply_mode": "reply",
       "card_name": "日常事项查询"
     }

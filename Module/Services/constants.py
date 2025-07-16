@@ -229,6 +229,7 @@ class CardConfigKeys:
     DESIGN_PLAN = "design_plan"
     ROUTINE_RECORD = "routine_record"
     ROUTINE_QUICK_SELECT = "routine_quick_select"
+    ROUTINE_QUERY = "routine_query"
 
 # ========== 卡片操作类型常量 ==========
 class CardOperationTypes:

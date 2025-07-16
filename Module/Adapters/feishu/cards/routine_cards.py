@@ -28,7 +28,6 @@ from ..decorators import card_build_safe
 class RoutineCardMode(Enum):
     """日常事项卡片模式"""
     NEW_EVENT_DEFINITION = "new_event_definition"      # 新事件定义
-    QUERY_RESULTS = "query_results"                    # 查询结果展示
 
 
 class RoutineCardManager(BaseCardManager):
@@ -79,6 +78,20 @@ class RoutineCardManager(BaseCardManager):
             business_data=business_data
         )
 
+    def build_query_results_card(self, route_result: RouteResult, context: MessageContext_Refactor, business_data: Dict[str, Any]) -> Dict[str, Any]:
+        """构建查询结果卡片"""
+        card_data = self._build_query_results_card(business_data)
+        card_content = {"type": "card_json", "data": card_data}
+
+        return self._handle_card_operation_common(
+            card_content=card_content,
+            card_operation_type=CardOperationTypes.SEND,
+            update_toast_type='success',
+            user_id=context.user_id,
+            message_id=context.message_id,
+            business_data=business_data
+        )
+
     @card_build_safe("日常事项卡片构建失败")
     def build_card(self, route_result: RouteResult, context: MessageContext_Refactor, **kwargs) -> Dict[str, Any]:
         """构建日常事项卡片"""
@@ -89,8 +102,6 @@ class RoutineCardManager(BaseCardManager):
         match card_type:
             case RoutineCardMode.NEW_EVENT_DEFINITION.value:
                 card_data = self._build_new_event_definition_card(business_data)
-            case RoutineCardMode.QUERY_RESULTS.value:
-                card_data = self._build_query_results_card(business_data)
             case _:
                 debug_utils.log_and_print(f"未知的routine卡片类型: {card_type}", log_level="WARNING")
                 card_data = {}
@@ -273,14 +284,9 @@ class RoutineCardManager(BaseCardManager):
     def _build_quick_record_elements(self, business_data: Dict[str, Any]) -> List[Dict[str, Any]]:
         """构建快速记录表单元素 - 条件化展示丰富信息"""
         # 解析业务层传递的数据 - 支持容器模式和常规模式
-        sub_business_data = business_data.get('sub_business_data', {})
-        is_container_mode = bool(sub_business_data)
-
-        # 数据源选择：容器模式使用sub_business_data，常规模式使用business_data
-        data_source = sub_business_data if is_container_mode else business_data
-
         # 交互状态和结果统一使用外层容器数据
         is_confirmed = business_data.get('is_confirmed', False)
+        data_source, _ = self._safe_get_business_data(business_data, CardConfigKeys.ROUTINE_RECORD)
 
         # 从对应数据源获取业务数据
         event_name = data_source.get('event_name', '')
@@ -548,9 +554,7 @@ class RoutineCardManager(BaseCardManager):
             debug_utils.log_and_print("🔍 update_record_degree - 卡片业务数据为空", log_level="WARNING")
             return
 
-        sub_business_data = business_data.get('sub_business_data', {})
-        is_container_mode = bool(sub_business_data)
-        data_source = sub_business_data if is_container_mode else business_data
+        data_source, _ = self._safe_get_business_data(business_data, CardConfigKeys.ROUTINE_RECORD)
         new_option = context.content.value.get('option')
 
         build_method_name = business_data.get('container_build_method', '_build_quick_record_confirm_card')
@@ -729,14 +733,13 @@ class RoutineCardManager(BaseCardManager):
         """处理记录确认"""
 
         business_data, card_id, _ = self._get_core_data(context)
-        sub_business_data = business_data.get('sub_business_data', {})
-        is_container_mode = bool(sub_business_data)
-        data_source = sub_business_data if is_container_mode else business_data
         build_method_name = business_data.get('container_build_method', '_build_quick_record_confirm_card')
         if hasattr(self, build_method_name):
             build_method = getattr(self, build_method_name)
         else:
             build_method = self._build_quick_record_confirm_card
+
+        data_source, _ = self._safe_get_business_data(business_data, CardConfigKeys.ROUTINE_RECORD)
 
         business_data['is_confirmed'] = True
 
@@ -806,6 +809,7 @@ class RoutineCardManager(BaseCardManager):
         routine_business = self.message_router.routine_record
         records_data = routine_business.load_event_records(user_id)
         records_data['records'].append(core_data)
+        records_data['last_updated'] = core_data.get('timestamp')
         # 再写入事件定义，做聚合类计算
         event_def['stats']['record_count'] = event_def.get('stats', {}).get('record_count', 0) + 1
         cycle_info = data_source.get('cycle_info', {})
@@ -878,7 +882,7 @@ class RoutineCardManager(BaseCardManager):
 
     def _build_quick_select_record_card(self, business_data: Dict[str, Any]) -> Dict[str, Any]:
         """构建快速选择记录卡片"""
-
+        # 1级入口，不需要嵌套，但其实也可以来一个？嵌套应该是通用能力？等第4个做的时候再改吧。
         event_name = business_data.get('selected_event_name', '')
         is_confirmed = business_data.get('is_confirmed', False)
         result = business_data.get('result', '取消')
@@ -898,7 +902,7 @@ class RoutineCardManager(BaseCardManager):
                 initial_value=input_text,
                 disabled=is_confirmed,
                 action_data={
-                    "card_action": "handle_input_event_name",
+                    "card_action": "select_record_by_input",
                     "card_config_key": CardConfigKeys.ROUTINE_QUICK_SELECT,
                 },
                 element_id="new_event_name",
@@ -945,7 +949,8 @@ class RoutineCardManager(BaseCardManager):
                     "value": {
                         "card_action": "quick_record_select",
                         "card_config_key": CardConfigKeys.ROUTINE_QUICK_SELECT,
-                        "event_name": event_name_btn
+                        "event_name": event_name_btn,
+                        "container_build_method": "_build_quick_select_record_card"
                     }
                 }]
             })
@@ -974,122 +979,220 @@ class RoutineCardManager(BaseCardManager):
 
         return self._build_card_header("🚀 快速记录", "输入或选择事项", "purple")
 
-    def _build_query_results_card(self, business_data: Dict[str, Any]) -> Dict[str, Any]:
-        """构建查询结果展示卡片"""
-        results = business_data.get('results', [])
-        query_type = business_data.get('query_type', 'recent')
+    def _build_query_elements(self, business_data: Dict[str, Any]) -> list:
+        """单独生成类型定义筛选的 elements 列表，可独立用于子卡片等场景"""
 
-        header = self._build_card_header(
-            "📋 日常事项查询结果",
-            f"共找到 {len(results)} 个事项",
-            "cyan",
-            "search_outlined"
-        )
-        elements = self._build_query_results_elements(results, query_type)
+        is_confirmed = business_data.get('is_confirmed', False)
+        container_build_method = business_data.get('container_build_method', '_build_query_results_card')
+        data_source, _ = self._safe_get_business_data(business_data, CardConfigKeys.ROUTINE_QUERY)
 
-        return self._build_base_card_structure(elements, header, "16px")
+        # 特地从中途取出数据再判断子业务，用来判断要不要修改展开的默认状态。
+        query_business_data = data_source.get('sub_business_data', {})
+        has_query_business_data = bool(query_business_data)
 
-    def _build_query_results_elements(self, results: List[Dict[str, Any]], query_type: str) -> List[Dict[str, Any]]:
-        """构建查询结果元素"""
+        definitions = data_source.get('definitions', {})
+        selected_category = data_source.get('selected_category', '')
+        type_name_filter = data_source.get('type_name_filter', '')
+
+        all_categories = set()
+        for d in definitions.values():
+            all_categories.add(d.get('category', '未分类'))
+
+        category_options = [
+            {"text": {"tag": "plain_text", "content": c or '未分类'}, "value": c or '未分类'}
+            for c in sorted(all_categories)
+        ]
+        filtered = []
+
+        for name, d in definitions.items():
+            if selected_category and d.get('category', '未分类') != selected_category:
+                continue
+            if type_name_filter:
+                keywords = [k for k in type_name_filter.strip().split() if k]
+                if not all(k in name for k in keywords):
+                    continue
+            filtered.append((name, d))
+
+        filtered = filtered[:10]
+
         elements = []
+        elements.append(self._build_form_row(
+            "类型筛选",
+            self._build_select_element(
+                placeholder="选择类型",
+                options=category_options,
+                initial_value=selected_category,
+                disabled=is_confirmed,
+                action_data={"card_action": "update_category_filter", "card_config_key": CardConfigKeys.ROUTINE_QUERY},
+                name="category_filter"
+            ),
+            width_list=["80px", "180px"]
+        ))
+        elements.append(self._build_form_row(
+            "名称筛选",
+            self._build_input_element(
+                placeholder="输入空格取消筛选",
+                initial_value=type_name_filter,
+                disabled=is_confirmed,
+                action_data={"card_action": "update_type_name_filter", "card_config_key": CardConfigKeys.ROUTINE_QUERY},
+                name="type_name_filter"
+            ),
+            width_list=["80px", "180px"]
+        ))
+        # 待增加一个筛选结果和一件清楚筛选。
+        elements.append({"tag": "hr", "margin": "0px 0px 6px 0px"})
 
-        if not results:
-            elements.append({
-                "tag": "markdown",
-                "content": "**📝 暂无事项记录**\n\n使用菜单或发送 'r 事项名称' 来创建第一个记录",
-                "text_align": "center",
-                "margin": "20px 0px 20px 0px"
-            })
-            return elements
+        default_expanded = len(filtered)
+        if has_query_business_data:
+            default_expanded = False
 
-        # 标题
-        elements.append({
-            "tag": "markdown",
-            "content": f"**📋 {query_type.upper()}事项列表**",
-            "text_align": "left",
-            "text_size": "heading",
-            "margin": "0px 0px 12px 0px"
-        })
-
-        elements.append({"tag": "hr", "margin": "0px 0px 16px 0px"})
-
-        # 结果列表
-        for i, item in enumerate(results):
-            event_name = item.get('event_name', '')
-            event_def = item.get('event_definition', {})
-            last_record = item.get('last_record', {})
-
-            event_type = event_def.get('type', RoutineTypes.INSTANT)
-            type_emoji = {"instant": "⚡", "start": "▶️", "end": "⏹️", "ongoing": "🔄", "future": "📅"}.get(event_type, "📝")
-
-            # 格式化最后记录时间
-            last_time = "无记录"
-            if last_record:
-                timestamp = last_record.get('timestamp', '')
-                if len(timestamp) >= 16:
-                    last_time = f"{timestamp[5:10]} {timestamp[11:16]}"
-
-            # 记录数量
-            record_count = event_def.get('record_count', 0)
-
-            # 可折叠的详情卡片
-            detail_elements = [
+        for name, d in filtered:
+            stats = d.get('stats', {})
+            stat_lines = []
+            if 'record_count' in stats:
+                stat_lines.append(f"总记录: {stats.get('record_count', 0)}")
+            if 'cycle_count' in stats:
+                stat_lines.append(f"周期数: {stats.get('cycle_count', 0)}")
+            if 'last_refresh_date' in stats and stats.get('last_refresh_date'):
+                stat_lines.append(f"上次重置时间: {stats.get('last_refresh_date')}")
+            if 'avg_all_time' in stats.get('duration', {}):
+                stat_lines.append(f"平均耗时: {round(stats['duration'].get('avg_all_time', 0), 1)}")
+            progress_type = d.get('properties', {}).get('progress_type', "")
+            if progress_type:
+                if 'last_progress_value' in stats:
+                    stat_lines.append(f"最近进度: {stats.get('last_progress_value', '-')}")
+                if 'total_progress_value' in stats:
+                    stat_lines.append(f"累计进度: {stats.get('total_progress_value', '-')}")
+            content = []
+            content.append(
                 {
-                    "tag": "column_set",
-                    "horizontal_spacing": "8px",
-                    "columns": [
-                        {
-                            "tag": "column",
-                            "width": "auto",
-                            "elements": [{
-                                "tag": "markdown",
-                                "content": f"**{type_emoji} {event_name}**",
-                                "text_size": "normal_v2"
-                            }]
-                        },
-                        {
-                            "tag": "column",
-                            "width": "auto",
-                            "elements": [{
-                                "tag": "markdown",
-                                "content": f"共{record_count}次 | 最近: {last_time}",
-                                "text_size": "small",
-                                "text_color": "grey"
-                            }]
+                    "tag": "button",
+                    "text": {"tag": "plain_text", "content": f"记录 {name}"},
+                    "type": "primary",
+                    "width": "default",
+                    "size": "small",
+                    "disabled": is_confirmed,
+                    "behaviors": [{
+                        "type": "callback",
+                        "value": {
+                            "card_action": "quick_record_select",
+                            "card_config_key": CardConfigKeys.ROUTINE_QUICK_SELECT,
+                            "event_name": name,
+                            "container_build_method": container_build_method
                         }
-                    ]
+                    }]
                 }
-            ]
+            )
+            if stat_lines:
+                content.append({"tag": "markdown", "content": "\n".join(stat_lines), "text_size": "small"})
+            head_info = f"**{name}**"
+            last_update_date = d.get('last_updated', '')
+            if last_update_date:
+                last_update_date = last_update_date.split(" ")[0] + " " + last_update_date.split(" ")[1][:5]
+                head_info += f" 上次完成: {last_update_date}"
+            elements.append({
+                "tag": "collapsible_panel",
+                "expanded": default_expanded,
+                "header": {
+                    "title": {"tag": "markdown", "content": head_info},
+                    "icon": {
+                        "tag": "standard_icon",
+                        "token": "down-small-ccm_outlined",
+                        "color": "",
+                        "size": "16px 16px"
+                    },
+                    "icon_position": "right",
+                    "icon_expanded_angle": -180
+                },
+                "elements": content,
+            })
+        if not filtered:
+            elements.append({
+                "tag": "div",
+                "text": {"tag": "lark_md", "content": "**📝 没有符合条件的日程**"}
+            })
 
-            # 如果有程度选项，显示
-            degree_options = event_def.get('properties', {}).get('degree_options', [])
-            if degree_options:
-                detail_elements.append({
-                    "tag": "markdown",
-                    "content": f"**程度选项：** {', '.join(degree_options)}",
-                    "text_size": "small",
-                    "margin": "4px 0px 0px 0px"
-                })
+        # 集成模式：根据工作流程状态显示不同内容
+        sub_business_build_method = data_source.get('sub_business_build_method', '')
+        if sub_business_build_method and hasattr(self, sub_business_build_method):
+            # 这里必须要用business_data，有很多最外层的通用方法在这里，不要偷懒。
+            sub_elements = getattr(self, sub_business_build_method)(business_data)
 
-            # # 折叠元素
-            # collapsible_element = {
-            #     "tag": "collapsible_panel",
-            #     "expanded": False,
-            #     "header": {
-            #         "elements": detail_elements[:1]  # 只显示标题行
-            #     },
-            #     "body": {
-            #         "direction": "vertical",
-            #         "elements": detail_elements[1:] if len(detail_elements) > 1 else [
-            #             {"tag": "markdown", "content": "暂无更多详细信息", "text_size": "small", "text_color": "grey"}
-            #         ]
-            #     },
-            #     "margin": "0px 0px 8px 0px"
-            # }
-
-            # elements.append(collapsible_element)
+            elements.append({
+                "tag": "hr",
+                "margin": "6px 0px"
+            })
+            elements.extend(sub_elements)
 
         return elements
+
+    def _build_query_results_card(self, business_data: Dict[str, Any]) -> Dict[str, Any]:
+        """重写：构建类型定义筛选与展示卡片，支持sub嵌套下title/header信息处理"""
+        definitions = business_data.get('definitions', {})
+        subtitle = f"共有 {len(definitions)} 个已知日程"
+        header = self._build_card_header(
+            "🔍 快速查询日程",
+            subtitle,
+            "wathet",
+        )
+        elements = self._build_query_elements(business_data)
+        return self._build_base_card_structure(elements, header, "12px")
+
+    def update_category_filter(self, context: MessageContext_Refactor) -> ProcessResult:
+        """处理类型筛选更新"""
+        business_data, card_id, _ = self._get_core_data(context)
+        if not business_data:
+            debug_utils.log_and_print("🔍 update_category_filter - 卡片业务数据为空", log_level="WARNING")
+            return
+
+        data_source, _ = self._safe_get_business_data(business_data, CardConfigKeys.ROUTINE_QUERY)
+
+        new_option = context.content.value.get('option', '')
+        data_source['selected_category'] = new_option
+
+        user_service = self.app_controller.get_service(ServiceNames.USER_BUSINESS_PERMISSION)
+        user_service.save_new_card_business_data(context.user_id, card_id, business_data)
+
+        build_method_name = business_data.get('container_build_method', '_build_query_results_card')
+        if hasattr(self, build_method_name):
+            new_card_dsl = getattr(self, build_method_name)(business_data)
+        else:
+            new_card_dsl = self._build_query_results_card(business_data)
+
+        return self._handle_card_operation_common(
+            card_content=new_card_dsl,
+            card_operation_type=CardOperationTypes.UPDATE_RESPONSE,
+            update_toast_type=ToastTypes.INFO,
+            toast_message=""
+        )
+
+    def update_type_name_filter(self, context: MessageContext_Refactor) -> ProcessResult:
+        """处理名称筛选更新"""
+        business_data, card_id, _ = self._get_core_data(context)
+        if not business_data:
+            debug_utils.log_and_print("🔍 update_type_name_filter - 卡片业务数据为空", log_level="WARNING")
+            return
+
+        data_source, _ = self._safe_get_business_data(business_data, CardConfigKeys.ROUTINE_QUERY)
+
+        filter_value = context.content.value.get('value', '').strip()
+        data_source['type_name_filter'] = filter_value
+
+        user_service = self.app_controller.get_service(ServiceNames.USER_BUSINESS_PERMISSION)
+        user_service.save_new_card_business_data(context.user_id, card_id, business_data)
+
+        build_method_name = business_data.get('container_build_method', '_build_query_results_card')
+        if hasattr(self, build_method_name):
+            new_card_dsl = getattr(self, build_method_name)(business_data)
+        else:
+            new_card_dsl = self._build_query_results_card(business_data)
+
+        return self._handle_card_operation_common(
+            card_content=new_card_dsl,
+            card_operation_type=CardOperationTypes.UPDATE_RESPONSE,
+            update_toast_type=ToastTypes.INFO,
+            toast_message="已完成筛选"
+        )
 
     def _build_action_buttons(self, operation_id: str, user_id: str) -> Dict[str, Any]:
         """构建操作按钮组"""
@@ -1222,6 +1325,11 @@ class RoutineCardManager(BaseCardManager):
         action_value = context.content.value
         user_id = context.user_id  # 从 context 中获取 user_id
         event_name = action_value.get('event_name', '')
+        container_build_method = action_value.get('container_build_method', '_build_quick_select_record_card')
+        if hasattr(self, container_build_method):
+            build_method = getattr(self, container_build_method)
+        else:
+            build_method = self._build_quick_select_record_card
 
         # 获取当前卡片的业务数据
         business_data, card_id, _ = self._get_core_data(context)
@@ -1229,7 +1337,7 @@ class RoutineCardManager(BaseCardManager):
             debug_utils.log_and_print("🔍 quick_record_select - 卡片数据为空", log_level="WARNING")
             business_data['is_confirmed'] = True
             business_data['result'] = "取消"
-            new_card_dsl = self._build_quick_select_record_card(business_data)
+            new_card_dsl = build_method(business_data)
 
             return self._handle_card_operation_common(
                 card_content=new_card_dsl,
@@ -1237,10 +1345,6 @@ class RoutineCardManager(BaseCardManager):
                 update_toast_type=ToastTypes.ERROR,
                 toast_message="操作已失效"
             )
-
-        # 本质的步骤就是替换/添加sub_business_data，然后更新卡片。
-        # 需要添加的第一个肯定是raw_data，第二个是向后兼容的workflow_state
-        # 然后是一些控制参数，两层business_data都要考虑，这样就完成了传参。当然也有一种情况，本来就可以通过sub来区别，也就不用管传参了。
 
         # 加载事件定义
         routine_business = self.message_router.routine_record
@@ -1251,12 +1355,16 @@ class RoutineCardManager(BaseCardManager):
             quick_record_data = routine_business.build_quick_record_data(user_id, event_name, event_def, last_record_time)
 
             business_data['workflow_state'] = 'quick_record'  # 集成模式状态，这个姑且先保留吧，稍微冗余一点点
-            business_data['sub_business_data'] = quick_record_data
-            business_data['sub_business_build_method'] = '_build_quick_record_elements'
-            business_data['container_build_method'] = '_build_quick_select_record_card'
+            business_data['container_build_method'] = container_build_method
+            # 获取到最底层的数据，在那里添加子业务
+            data_source, _ = self._safe_get_business_data(business_data, "")
+
+            data_source['sub_business_data'] = quick_record_data
+            data_source['sub_business_name'] = CardConfigKeys.ROUTINE_RECORD
+            data_source['sub_business_build_method'] = '_build_quick_record_elements'
 
             # 更新卡片显示
-            new_card_dsl = self._build_quick_select_record_card(business_data)
+            new_card_dsl = build_method(business_data)
             user_service = self.app_controller.get_service(ServiceNames.USER_BUSINESS_PERMISSION)
             user_service.save_new_card_business_data(user_id, card_id, business_data)
 
@@ -1278,11 +1386,17 @@ class RoutineCardManager(BaseCardManager):
             toast_message=f"输入了新事项 '{event_name}'"
         )
 
-    def handle_input_event_name(self, context: MessageContext_Refactor) -> ProcessResult:
+    def select_record_by_input(self, context: MessageContext_Refactor) -> ProcessResult:
         """处理输入框事件名称输入"""
-        # 先做一个兼容select的，再考虑event。
+        action_value = context.content.value
         event_name = context.content.input_value
         user_id = context.user_id
+
+        container_build_method = action_value.get('container_build_method', '_build_quick_select_record_card')
+        if hasattr(self, container_build_method):
+            build_method = getattr(self, container_build_method)
+        else:
+            build_method = self._build_quick_select_record_card
 
         # 获取当前卡片的业务数据——待处理成通用方法
         business_data, card_id, _ = self._get_core_data(context)
@@ -1290,7 +1404,7 @@ class RoutineCardManager(BaseCardManager):
             debug_utils.log_and_print("🔍 quick_record_select - 卡片数据为空", log_level="WARNING")
             business_data['is_confirmed'] = True
             business_data['result'] = "取消"
-            new_card_dsl = self._build_quick_select_record_card(business_data)
+            new_card_dsl = build_method(business_data)
 
             return self._handle_card_operation_common(
                 card_content=new_card_dsl,
@@ -1309,12 +1423,15 @@ class RoutineCardManager(BaseCardManager):
             quick_record_data = routine_business.build_quick_record_data(user_id, event_name, event_def, last_record_time)
 
             business_data['workflow_state'] = 'quick_record'  # 集成模式状态，这个姑且先保留吧，稍微冗余一点点
-            business_data['sub_business_data'] = quick_record_data
-            business_data['sub_business_build_method'] = '_build_quick_record_elements'
-            business_data['container_build_method'] = '_build_quick_select_record_card'
+            business_data['container_build_method'] = container_build_method
+
+            data_source, _ = self._safe_get_business_data(business_data, "")
+            data_source['sub_business_data'] = quick_record_data
+            data_source['sub_business_name'] = CardConfigKeys.ROUTINE_RECORD
+            data_source['sub_business_build_method'] = '_build_quick_record_elements'
 
             # 更新卡片显示
-            new_card_dsl = self._build_quick_select_record_card(business_data)
+            new_card_dsl = build_method(business_data)
             user_service = self.app_controller.get_service(ServiceNames.USER_BUSINESS_PERMISSION)
             user_service.save_new_card_business_data(user_id, card_id, business_data)
 
@@ -1324,12 +1441,11 @@ class RoutineCardManager(BaseCardManager):
                 update_toast_type=ToastTypes.SUCCESS,
                 toast_message=f"正在记录 '{event_name}'..."
             )
-        else:
-            # 事件不存在，显示新建提示但保持在选择模式
 
-            return self._handle_card_operation_common(
-                card_content={"message": "请输入事项名称"},
-                card_operation_type=CardOperationTypes.UPDATE_RESPONSE,
-                update_toast_type=ToastTypes.INFO,
-                toast_message=f"'{event_name}' 是新事项，可以创建新定义"
-            )
+        # 事件不存在，显示新建提示但保持在选择模式
+        return self._handle_card_operation_common(
+            card_content={"message": "请输入事项名称"},
+            card_operation_type=CardOperationTypes.UPDATE_RESPONSE,
+            update_toast_type=ToastTypes.INFO,
+            toast_message=f"'{event_name}' 是新事项，可以创建新定义"
+        )
