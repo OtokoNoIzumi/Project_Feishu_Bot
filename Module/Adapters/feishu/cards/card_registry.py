@@ -167,47 +167,27 @@ class BaseCardManager(ABC):
         data = node if not sub_business_name else business_data
         return data, is_container_mode
 
-    def _update_field_and_refresh(
-        self,
-        context: MessageContext_Refactor,
-        *,
-        field_key: str,
-        extracted_value,
-        toast_message: str = "",
-        sub_business_name: str = "",
-        default_build_method: str = "_build_query_results_card",
-    ):
-        """
-        统一模板：更新 data_source 中的某个字段 -> 落库 -> 重新渲染卡片
-        """
-        business_data, card_id, _ = self._get_core_data(context)
-        if not business_data:
-            debug_utils.log_and_print(
-                f"🔍 {field_key} - 卡片业务数据为空", log_level="WARNING"
-            )
-            return
-
-        data_source, _ = self._safe_get_business_data(
-            business_data, sub_business_name
-        )
-
-        # 更新字段
-        data_source[field_key] = extracted_value
-
-        # 落库
-        user_service = self.app_controller.get_service(
-            ServiceNames.USER_BUSINESS_PERMISSION
-        )
-        user_service.save_new_card_business_data(context.user_id, card_id, business_data)
-
-        # 重新渲染
-        builder = getattr(self, default_build_method)
-        new_card_dsl = builder(business_data)
+    def _save_and_respond_with_update(self, user_id, card_id: str, business_data: dict, new_card_dsl: dict, toast_message: str, toast_type: str):
+        """负责保存数据并响应卡片更新。"""
+        user_service = self.app_controller.get_service(ServiceNames.USER_BUSINESS_PERMISSION)
+        user_service.save_new_card_business_data(user_id, card_id, business_data)
 
         return self._handle_card_operation_common(
             card_content=new_card_dsl,
             card_operation_type=CardOperationTypes.UPDATE_RESPONSE,
-            update_toast_type=ToastTypes.INFO,
+            update_toast_type=toast_type,
+            toast_message=toast_message,
+        )
+
+    def _delete_and_respond_with_update(self, user_id, card_id: str, new_card_dsl: dict, toast_message: str, toast_type: str):
+        """负责删除数据并响应卡片更新。"""
+        user_service = self.app_controller.get_service(ServiceNames.USER_BUSINESS_PERMISSION)
+        user_service.del_card_business_data(user_id, card_id)
+
+        return self._handle_card_operation_common(
+            card_content=new_card_dsl,
+            card_operation_type=CardOperationTypes.UPDATE_RESPONSE,
+            update_toast_type=toast_type,
             toast_message=toast_message,
         )
 

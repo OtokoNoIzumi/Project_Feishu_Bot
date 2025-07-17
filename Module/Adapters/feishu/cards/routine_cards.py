@@ -49,6 +49,42 @@ class RoutineCardManager(BaseCardManager):
             {"text": {"tag": "plain_text", "content": "其他"}, "value": "other", "icon": {"tag": "standard_icon", "token": "more_outlined"}}
         ]
 
+    def _routine_update_field_and_refresh(self, context: MessageContext_Refactor, field_key: str, extracted_value, sub_business_name: str = "", toast_message: str = ""):
+        """routine业务专用的字段更新和刷新模板"""
+        business_data, card_id, _ = self._get_core_data(context)
+        if not business_data:
+            debug_utils.log_and_print(f"🔍 {field_key} - 卡片业务数据为空", log_level="WARNING")
+            return
+
+        data_source, _ = self._safe_get_business_data(business_data, sub_business_name)
+        data_source[field_key] = extracted_value
+
+        # 获取构建方法
+        build_method_name = business_data.get('container_build_method', '_build_query_results_card')
+        if hasattr(self, build_method_name):
+            new_card_dsl = getattr(self, build_method_name)(business_data)
+        else:
+            new_card_dsl = self._build_query_results_card(business_data)
+
+        return self._save_and_respond_with_update(
+            context.user_id, card_id, business_data, new_card_dsl, toast_message, ToastTypes.INFO
+        )
+
+    def _routine_get_build_method_and_execute(self, business_data: Dict[str, Any], default_method: str = '_build_quick_record_confirm_card'):
+        """获取构建方法并执行"""
+        build_method_name = business_data.get('container_build_method', default_method)
+        if hasattr(self, build_method_name):
+            return getattr(self, build_method_name)(business_data)
+        else:
+            return getattr(self, default_method)(business_data)
+
+    def _routine_handle_empty_data_with_cancel(self, business_data: Dict[str, Any], method_name: str, default_method: str = '_build_quick_record_confirm_card'):
+        """处理空数据情况，设置取消状态"""
+        debug_utils.log_and_print(f"🔍 {method_name} - 卡片数据为空", log_level="WARNING")
+        business_data['is_confirmed'] = True
+        business_data['result'] = "取消"
+        return self._routine_get_build_method_and_execute(business_data, default_method)
+
     @card_build_safe("菜单快速记录日常卡片构建失败")
     def build_quick_select_record_card(self, route_result: RouteResult, context: MessageContext_Refactor, business_data: Dict[str, Any]) -> Dict[str, Any]:
         """构建快速选择记录卡片"""
@@ -235,24 +271,19 @@ class RoutineCardManager(BaseCardManager):
     def quick_record_select(self, context: MessageContext_Refactor) -> ProcessResult:
         """处理快速事件选择"""
         action_value = context.content.value
-        user_id = context.user_id  # 从 context 中获取 user_id
+        user_id = context.user_id
         parent_business_name = action_value.get('card_config_key', CardConfigKeys.ROUTINE_QUICK_SELECT)
         event_name = action_value.get('event_name', '')
-
         container_build_method = action_value.get('container_build_method', '_build_quick_select_record_card')
-        if hasattr(self, container_build_method):
-            build_method = getattr(self, container_build_method)
-        else:
-            build_method = self._build_quick_select_record_card
 
         # 获取当前卡片的业务数据
         business_data, card_id, _ = self._get_core_data(context)
         if not business_data:
-            debug_utils.log_and_print("🔍 quick_record_select - 卡片数据为空", log_level="WARNING")
-            business_data['is_confirmed'] = True
-            business_data['result'] = "取消"
-            new_card_dsl = build_method(business_data)
-
+            new_card_dsl = self._routine_handle_empty_data_with_cancel(
+                business_data or {},
+                method_name="quick_record_select",
+                default_method=container_build_method
+            )
             return self._handle_card_operation_common(
                 card_content=new_card_dsl,
                 card_operation_type=CardOperationTypes.UPDATE_RESPONSE,
@@ -278,15 +309,10 @@ class RoutineCardManager(BaseCardManager):
             parent_data['sub_business_build_method'] = '_build_quick_record_elements'
 
             # 更新卡片显示
-            new_card_dsl = build_method(business_data)
-            user_service = self.app_controller.get_service(ServiceNames.USER_BUSINESS_PERMISSION)
-            user_service.save_new_card_business_data(user_id, card_id, business_data)
-
-            return self._handle_card_operation_common(
-                card_content=new_card_dsl,
-                card_operation_type=CardOperationTypes.UPDATE_RESPONSE,
-                update_toast_type=ToastTypes.SUCCESS,
-                toast_message=f"开始记录 [{event_name}]"
+            new_card_dsl = self._routine_get_build_method_and_execute(business_data, container_build_method)
+            return self._save_and_respond_with_update(
+                context.user_id, card_id, business_data,
+                new_card_dsl, ToastTypes.SUCCESS, f"开始记录 [{event_name}]"
             )
 
         # 如果事件不存在，保持在选择模式
@@ -306,21 +332,16 @@ class RoutineCardManager(BaseCardManager):
         user_id = context.user_id
         parent_business_name = action_value.get('card_config_key', CardConfigKeys.ROUTINE_QUICK_SELECT)
         event_name = context.content.input_value
-
         container_build_method = action_value.get('container_build_method', '_build_quick_select_record_card')
-        if hasattr(self, container_build_method):
-            build_method = getattr(self, container_build_method)
-        else:
-            build_method = self._build_quick_select_record_card
 
-        # 获取当前卡片的业务数据——待处理成通用方法
+        # 获取当前卡片的业务数据
         business_data, card_id, _ = self._get_core_data(context)
         if not business_data:
-            debug_utils.log_and_print("🔍 quick_record_select - 卡片数据为空", log_level="WARNING")
-            business_data['is_confirmed'] = True
-            business_data['result'] = "取消"
-            new_card_dsl = build_method(business_data)
-
+            new_card_dsl = self._routine_handle_empty_data_with_cancel(
+                business_data or {},
+                method_name="select_record_by_input",
+                default_method=container_build_method
+            )
             return self._handle_card_operation_common(
                 card_content=new_card_dsl,
                 card_operation_type=CardOperationTypes.UPDATE_RESPONSE,
@@ -346,15 +367,10 @@ class RoutineCardManager(BaseCardManager):
             parent_data['sub_business_build_method'] = '_build_quick_record_elements'
 
             # 更新卡片显示
-            new_card_dsl = build_method(business_data)
-            user_service = self.app_controller.get_service(ServiceNames.USER_BUSINESS_PERMISSION)
-            user_service.save_new_card_business_data(user_id, card_id, business_data)
-
-            return self._handle_card_operation_common(
-                card_content=new_card_dsl,
-                card_operation_type=CardOperationTypes.UPDATE_RESPONSE,
-                update_toast_type=ToastTypes.SUCCESS,
-                toast_message=f"正在记录 '{event_name}'..."
+            new_card_dsl = self._routine_get_build_method_and_execute(business_data, container_build_method)
+            return self._save_and_respond_with_update(
+                context.user_id, card_id, business_data,
+                new_card_dsl, ToastTypes.SUCCESS, f"正在记录 【{event_name}】"
             )
 
         # 事件不存在，显示新建提示但保持在选择模式
@@ -366,25 +382,16 @@ class RoutineCardManager(BaseCardManager):
         )
 
     def show_query_info(self, context: MessageContext_Refactor) -> ProcessResult:
-        """处理输入框事件名称输入"""
+        """处理查询信息显示"""
         action_value = context.content.value
         user_id = context.user_id
         parent_business_name = action_value.get('card_config_key', CardConfigKeys.ROUTINE_QUICK_SELECT)
-
         container_build_method = action_value.get('container_build_method', '_build_quick_select_record_card')
-        if hasattr(self, container_build_method):
-            build_method = getattr(self, container_build_method)
-        else:
-            build_method = self._build_quick_select_record_card
 
-        # 获取当前卡片的业务数据——待处理成通用方法
+        # 获取当前卡片的业务数据
         business_data, card_id, _ = self._get_core_data(context)
         if not business_data:
-            debug_utils.log_and_print("🔍 show_query_info - 卡片数据为空", log_level="WARNING")
-            business_data['is_confirmed'] = True
-            business_data['result'] = "取消"
-            new_card_dsl = build_method(business_data)
-
+            new_card_dsl = self._routine_handle_empty_data_with_cancel(business_data or {}, "show_query_info", container_build_method)
             return self._handle_card_operation_common(
                 card_content=new_card_dsl,
                 card_operation_type=CardOperationTypes.UPDATE_RESPONSE,
@@ -432,15 +439,10 @@ class RoutineCardManager(BaseCardManager):
             parent_data['sub_business_build_method'] = '_build_query_elements'
 
             # 更新卡片显示
-            new_card_dsl = build_method(business_data)
-            user_service = self.app_controller.get_service(ServiceNames.USER_BUSINESS_PERMISSION)
-            user_service.save_new_card_business_data(user_id, card_id, business_data)
-
-            return self._handle_card_operation_common(
-                card_content=new_card_dsl,
-                card_operation_type=CardOperationTypes.UPDATE_RESPONSE,
-                update_toast_type=ToastTypes.SUCCESS,
-                toast_message=f""
+            new_card_dsl = self._routine_get_build_method_and_execute(business_data, container_build_method)
+            return self._save_and_respond_with_update(
+                context.user_id, card_id, business_data,
+                new_card_dsl, ToastTypes.SUCCESS, ""
             )
 
 
@@ -719,22 +721,12 @@ class RoutineCardManager(BaseCardManager):
 
         data_source, _ = self._safe_get_business_data(business_data, CardConfigKeys.ROUTINE_RECORD)
         new_option = context.content.value.get('option')
-
-        build_method_name = business_data.get('container_build_method', '_build_quick_record_confirm_card')
-
         data_source['new_record']['degree'] = new_option
-        user_service = self.app_controller.get_service(ServiceNames.USER_BUSINESS_PERMISSION)
-        user_service.save_new_card_business_data(context.user_id, card_id, business_data)
-        if hasattr(self, build_method_name):
-            new_card_dsl = getattr(self, build_method_name)(business_data)
-        else:
-            new_card_dsl = self._build_quick_record_confirm_card(business_data)
 
-        return self._handle_card_operation_common(
-            card_content=new_card_dsl,
-            card_operation_type=CardOperationTypes.UPDATE_RESPONSE,
-            update_toast_type=ToastTypes.SUCCESS,
-            toast_message="完成方式更新成功！"
+        new_card_dsl = self._routine_get_build_method_and_execute(business_data, '_build_quick_record_confirm_card')
+        return self._save_and_respond_with_update(
+            context.user_id, card_id, business_data,
+            new_card_dsl, "完成方式更新成功！", ToastTypes.SUCCESS
         )
 
     def _build_degree_input_section(self, initial_value: str = '', is_confirmed: bool = False) -> List[Dict[str, Any]]:
@@ -894,13 +886,8 @@ class RoutineCardManager(BaseCardManager):
 
     def confirm_record(self, context: MessageContext_Refactor) -> ProcessResult:
         """处理记录确认"""
-
         business_data, card_id, _ = self._get_core_data(context)
         build_method_name = business_data.get('container_build_method', '_build_quick_record_confirm_card')
-        if hasattr(self, build_method_name):
-            build_method = getattr(self, build_method_name)
-        else:
-            build_method = self._build_quick_record_confirm_card
 
         data_source, _ = self._safe_get_business_data(business_data, CardConfigKeys.ROUTINE_RECORD)
 
@@ -908,11 +895,7 @@ class RoutineCardManager(BaseCardManager):
 
         core_data = data_source.get('new_record', {})
         if not core_data:
-            # 其实应该假设card_id也失效了，用message_id直接batch，但是这里先不处理。
-            debug_utils.log_and_print("🔍 confirm_record - 卡片数据为空", log_level="WARNING")
-            business_data['result'] = "取消"
-            new_card_dsl = build_method(business_data)
-
+            new_card_dsl = self._routine_handle_empty_data_with_cancel(business_data, "confirm_record", build_method_name)
             return self._handle_card_operation_common(
                 card_content=new_card_dsl,
                 card_operation_type=CardOperationTypes.UPDATE_RESPONSE,
@@ -965,7 +948,7 @@ class RoutineCardManager(BaseCardManager):
 
         core_data['note'] = form_data.get('note', "")
 
-        new_card_dsl = build_method(business_data)
+        new_card_dsl = self._routine_get_build_method_and_execute(business_data, build_method_name)
 
         # 开始写入数据
         # 先写入记录
@@ -1008,14 +991,9 @@ class RoutineCardManager(BaseCardManager):
 
         event_name = context.content.value.get('event_name', '')
 
-        user_service = self.app_controller.get_service(ServiceNames.USER_BUSINESS_PERMISSION)
-        user_service.del_card_business_data(context.user_id, card_id)
-
-        return self._handle_card_operation_common(
-            card_content=new_card_dsl,
-            card_operation_type=CardOperationTypes.UPDATE_RESPONSE,
-            update_toast_type=ToastTypes.SUCCESS,
-            toast_message=f"'{event_name}' 记录成功！"
+        return self._delete_and_respond_with_update(
+            context.user_id, card_id, new_card_dsl,
+            ToastTypes.SUCCESS, f"【{event_name}】 记录成功！"
         )
 
     def cancel_record(self, context: MessageContext_Refactor) -> ProcessResult:
@@ -1028,19 +1006,11 @@ class RoutineCardManager(BaseCardManager):
         business_data['is_confirmed'] = True
         business_data['result'] = "取消"
 
-        if hasattr(self, build_method_name):
-            new_card_dsl = getattr(self, build_method_name)(business_data)
-        else:
-            new_card_dsl = self._build_quick_record_confirm_card(business_data)
+        new_card_dsl = self._routine_get_build_method_and_execute(business_data, build_method_name)
 
-        user_service = self.app_controller.get_service(ServiceNames.USER_BUSINESS_PERMISSION)
-        user_service.del_card_business_data(context.user_id, card_id)
-
-        return self._handle_card_operation_common(
-            card_content=new_card_dsl,
-            card_operation_type=CardOperationTypes.UPDATE_RESPONSE,
-            update_toast_type=ToastTypes.INFO,
-            toast_message="操作已取消"
+        return self._delete_and_respond_with_update(
+            context.user_id, card_id, new_card_dsl,
+            ToastTypes.INFO, "操作已取消"
         )
 
     def _build_query_elements(self, business_data: Dict[str, Any]) -> list:
@@ -1204,58 +1174,18 @@ class RoutineCardManager(BaseCardManager):
 
     def update_category_filter(self, context: MessageContext_Refactor) -> ProcessResult:
         """处理类型筛选更新"""
-        business_data, card_id, _ = self._get_core_data(context)
-        if not business_data:
-            debug_utils.log_and_print("🔍 update_category_filter - 卡片业务数据为空", log_level="WARNING")
-            return
-
-        data_source, _ = self._safe_get_business_data(business_data, CardConfigKeys.ROUTINE_QUERY)
-
         new_option = context.content.value.get('option', '')
-        data_source['selected_category'] = new_option
-
-        user_service = self.app_controller.get_service(ServiceNames.USER_BUSINESS_PERMISSION)
-        user_service.save_new_card_business_data(context.user_id, card_id, business_data)
-
-        build_method_name = business_data.get('container_build_method', '_build_query_results_card')
-        if hasattr(self, build_method_name):
-            new_card_dsl = getattr(self, build_method_name)(business_data)
-        else:
-            new_card_dsl = self._build_query_results_card(business_data)
-
-        return self._handle_card_operation_common(
-            card_content=new_card_dsl,
-            card_operation_type=CardOperationTypes.UPDATE_RESPONSE,
-            update_toast_type=ToastTypes.INFO,
-            toast_message=""
+        return self._routine_update_field_and_refresh(
+            context,
+            field_key='selected_category', extracted_value=new_option,
+            sub_business_name=CardConfigKeys.ROUTINE_QUERY, toast_message=""
         )
 
     def update_type_name_filter(self, context: MessageContext_Refactor) -> ProcessResult:
         """处理名称筛选更新"""
-        business_data, card_id, _ = self._get_core_data(context)
-        if not business_data:
-            debug_utils.log_and_print("🔍 update_type_name_filter - 卡片业务数据为空", log_level="WARNING")
-            return
-
-        data_source, _ = self._safe_get_business_data(business_data, CardConfigKeys.ROUTINE_QUERY)
-
         filter_value = context.content.value.get('value', '').strip()
-        data_source['type_name_filter'] = filter_value
-
-        user_service = self.app_controller.get_service(ServiceNames.USER_BUSINESS_PERMISSION)
-        user_service.save_new_card_business_data(context.user_id, card_id, business_data)
-
-        build_method_name = business_data.get('container_build_method', '_build_query_results_card')
-        if hasattr(self, build_method_name):
-            new_card_dsl = getattr(self, build_method_name)(business_data)
-        else:
-            new_card_dsl = self._build_query_results_card(business_data)
-
-        return self._handle_card_operation_common(
-            card_content=new_card_dsl,
-            card_operation_type=CardOperationTypes.UPDATE_RESPONSE,
-            update_toast_type=ToastTypes.INFO,
-            toast_message="已完成筛选"
+        return self._routine_update_field_and_refresh(
+            context, 'type_name_filter', filter_value, CardConfigKeys.ROUTINE_QUERY, "已完成筛选"
         )
 
     def _build_action_buttons(self, operation_id: str, user_id: str) -> Dict[str, Any]:
