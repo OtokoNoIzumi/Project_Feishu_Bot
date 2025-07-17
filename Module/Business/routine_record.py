@@ -557,7 +557,6 @@ class RoutineRecord(BaseProcessor):
         route_result = RouteResult.create_route_result(
             route_type=RouteTypes.ROUTINE_NEW_EVENT_CARD,
             route_params={
-                "card_type": "new_event_definition",
                 "business_data": card_data,
             },
         )

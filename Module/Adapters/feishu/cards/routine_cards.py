@@ -10,7 +10,6 @@
 
 import uuid
 from typing import Dict, Any, List
-from enum import Enum
 import copy
 
 from Module.Services.constants import (
@@ -30,12 +29,6 @@ from Module.Adapters.feishu.utils import safe_float
 
 from .card_registry import BaseCardManager
 from ..decorators import card_build_safe
-
-
-class RoutineCardMode(Enum):
-    """日常事项卡片模式"""
-
-    NEW_EVENT_DEFINITION = "new_event_definition"  # 新事件定义
 
 
 class RoutineCardManager(BaseCardManager):
@@ -151,6 +144,26 @@ class RoutineCardManager(BaseCardManager):
             business_data=business_data,
         )
 
+    @card_build_safe("查询结果卡片构建失败")
+    def build_new_event_definition_card(
+        self,
+        route_result: RouteResult,
+        context: MessageContext_Refactor,
+        business_data: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """构建新事件定义卡片"""
+        card_data = self._build_new_event_definition_card(business_data)
+        card_content = {"type": "card_json", "data": card_data}
+
+        return self._handle_card_operation_common(
+            card_content=card_content,
+            card_operation_type=CardOperationTypes.SEND,
+            update_toast_type="success",
+            user_id=context.user_id,
+            message_id=context.message_id,
+            business_data=business_data,
+        )
+
     @card_build_safe("日常事项卡片构建失败")
     def build_card(
         self, route_result: RouteResult, context: MessageContext_Refactor, **kwargs
@@ -158,11 +171,9 @@ class RoutineCardManager(BaseCardManager):
         """构建日常事项卡片"""
         # 后续应该可以从这里拆分掉
         business_data = kwargs.get("business_data", {})
-        card_type = kwargs.get("card_type", RoutineCardMode.NEW_EVENT_DEFINITION.value)
+        card_type = kwargs.get("card_type", "")
 
         match card_type:
-            case RoutineCardMode.NEW_EVENT_DEFINITION.value:
-                card_data = self._build_new_event_definition_card(business_data)
             case _:
                 debug_utils.log_and_print(
                     f"未知的routine卡片类型: {card_type}", log_level="WARNING"

@@ -171,12 +171,12 @@ ROUTE_KNOWLEDGE_MAPPING = {
         "call_params": {}
     },
     # Routine 相关路由配置
-    "routine_new_event_card": {
+    RouteTypes.ROUTINE_NEW_EVENT_CARD: {
         "handler": "card_handler",
         "method": "dispatch_card_response",
         "call_params": {
             "card_config_key": "routine_new_event",
-            "card_action": "build_card"
+            "card_action": "build_new_event_definition_card"
         }
     },
     RouteTypes.ROUTINE_QUICK_RECORD_CARD: {
