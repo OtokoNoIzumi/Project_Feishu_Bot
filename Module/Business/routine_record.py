@@ -15,8 +15,17 @@ from typing import Dict, Any, List, Optional, Tuple
 from datetime import datetime
 
 from Module.Common.scripts.common import debug_utils
-from Module.Services.constants import ServiceNames, RoutineTypes, RouteTypes, RoutineCheckCycle
-from Module.Business.processors.base_processor import BaseProcessor, ProcessResult, safe_execute
+from Module.Services.constants import (
+    ServiceNames,
+    RoutineTypes,
+    RouteTypes,
+    RoutineCheckCycle,
+)
+from Module.Business.processors.base_processor import (
+    BaseProcessor,
+    ProcessResult,
+    safe_execute,
+)
 from Module.Business.processors import RouteResult
 
 
@@ -61,9 +70,10 @@ class RoutineRecord(BaseProcessor):
         """初始化日常事项记录业务"""
         super().__init__(app_controller)
         self.config_service = self.app_controller.get_service(ServiceNames.CONFIG)
-        self.user_permission_service = self.app_controller.get_service(ServiceNames.USER_BUSINESS_PERMISSION)
+        self.user_permission_service = self.app_controller.get_service(
+            ServiceNames.USER_BUSINESS_PERMISSION
+        )
         self.storage = JSONEventStorage()
-
 
     def _get_formatted_time(self) -> str:
         """
@@ -84,7 +94,9 @@ class RoutineRecord(BaseProcessor):
         Returns:
             str: 用户数据文件夹路径
         """
-        storage_path = self.config_service.get("routine_record.storage_path", "user_data/")
+        storage_path = self.config_service.get(
+            "routine_record.storage_path", "user_data/"
+        )
 
         # 如果不是绝对路径，基于项目根路径解析
         if not os.path.isabs(storage_path):
@@ -124,7 +136,9 @@ class RoutineRecord(BaseProcessor):
         user_folder = self._get_user_data_path(user_id)
         return os.path.join(user_folder, "event_records.json")
 
-    def _create_event_definition(self, event_name: str, event_type: str = RoutineTypes.INSTANT) -> Dict[str, Any]:
+    def _create_event_definition(
+        self, event_name: str, event_type: str = RoutineTypes.INSTANT
+    ) -> Dict[str, Any]:
         """
         创建事件定义
 
@@ -146,48 +160,42 @@ class RoutineRecord(BaseProcessor):
                 # 关联属性
                 "related_start_event": None,
                 "related_events": [],
-
                 # 显示属性
                 "include_in_daily_check": False,
-
                 # 快捷访问属性
                 "quick_access": False,
-
                 # 程度/层次属性
                 "has_degrees": False,
                 "degree_options": [],
-                "default_degree": '',
-
+                "default_degree": "",
                 # 时间属性
                 "future_date": None,
                 "estimated_duration": None,
-
                 # 目标属性
                 "check_cycle": None,
                 "custom_cycle_config": None,
                 "target_type": None,  # 次数/时长
                 "target_value": None,  # 目标值
-
                 # 指标属性
-                "progress_type": ""  # 进度类型
+                "progress_type": "",  # 进度类型
             },
             "stats": {
                 "record_count": 0,
                 "cycle_count": 0,
                 "last_target_count": 0,
                 "duration": {
-                    "recent_values": [],        # 最近N次的耗时值
-                    "window_size": 10,          # 滑动窗口大小
-                    "duration_count": 0,        # 有耗时记录的次数
-                    "avg_all_time": None        # 历史平均耗时
+                    "recent_values": [],  # 最近N次的耗时值
+                    "window_size": 10,  # 滑动窗口大小
+                    "duration_count": 0,  # 有耗时记录的次数
+                    "avg_all_time": None,  # 历史平均耗时
                 },
                 "last_refresh_date": None,
                 "last_progress_value": None,
-                "last_note": ""  # 记录最近一次的备注
+                "last_note": "",  # 记录最近一次的备注
             },
             "created_time": current_time,
             "last_record_time": None,
-            "last_updated": current_time
+            "last_updated": current_time,
         }
 
     def _get_next_record_id(self, user_id: str, event_name: str) -> str:
@@ -204,13 +212,25 @@ class RoutineRecord(BaseProcessor):
         definitions_data = self.load_event_definitions(user_id)
 
         # 计算该事件的现有记录数量
-        count = definitions_data.get("definitions", {}).get(event_name, {}).get("stats", {}).get("record_count", 0)
+        count = (
+            definitions_data.get("definitions", {})
+            .get(event_name, {})
+            .get("stats", {})
+            .get("record_count", 0)
+        )
 
         # 生成新的序号（从00001开始）
         next_num = count + 1
         return f"{event_name}_{next_num:05d}"
 
-    def _create_event_record(self, event_name: str, user_id: str, degree: str = "", note: str = "", related_records: List[str] = None) -> Dict[str, Any]:
+    def _create_event_record(
+        self,
+        event_name: str,
+        user_id: str,
+        degree: str = "",
+        note: str = "",
+        related_records: List[str] = None,
+    ) -> Dict[str, Any]:
         """
         创建事件记录
 
@@ -257,13 +277,13 @@ class RoutineRecord(BaseProcessor):
                 "definitions": {},
                 "categories": [],
                 "created_time": current_time,
-                "last_updated": current_time
+                "last_updated": current_time,
             }
             self.save_event_definitions(user_id, default_data)
             return default_data
 
         try:
-            with open(file_path, 'r', encoding='utf-8') as f:
+            with open(file_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
                 # 确保基本字段存在
                 if "categories" not in data:
@@ -293,13 +313,13 @@ class RoutineRecord(BaseProcessor):
                 "user_id": user_id,
                 "records": [],
                 "created_time": current_time,
-                "last_updated": current_time
+                "last_updated": current_time,
             }
             self.save_event_records(user_id, default_data)
             return default_data
 
         try:
-            with open(file_path, 'r', encoding='utf-8') as f:
+            with open(file_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
                 return data
         except (json.JSONDecodeError, FileNotFoundError) as e:
@@ -325,7 +345,7 @@ class RoutineRecord(BaseProcessor):
             data["last_updated"] = self._get_formatted_time()
 
         try:
-            with open(file_path, 'w', encoding='utf-8') as f:
+            with open(file_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
             return True
         except Exception as e:
@@ -351,7 +371,7 @@ class RoutineRecord(BaseProcessor):
             data["last_updated"] = self._get_formatted_time()
 
         try:
-            with open(file_path, 'w', encoding='utf-8') as f:
+            with open(file_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
             return True
         except Exception as e:
@@ -377,11 +397,13 @@ class RoutineRecord(BaseProcessor):
         start_events = []
 
         for event_name, event_def in definitions.items():
-            if event_def.get('type') == RoutineTypes.START:
-                start_events.append({
-                    "text": {"tag": "plain_text", "content": event_name},
-                    "value": event_name
-                })
+            if event_def.get("type") == RoutineTypes.START:
+                start_events.append(
+                    {
+                        "text": {"tag": "plain_text", "content": event_name},
+                        "value": event_name,
+                    }
+                )
 
         return start_events
 
@@ -399,7 +421,9 @@ class RoutineRecord(BaseProcessor):
             debug_utils.log_and_print("用户权限服务不可用", log_level="WARNING")
             return False
 
-        return self.user_permission_service.check_business_permission(user_id, "routine_record")
+        return self.user_permission_service.check_business_permission(
+            user_id, "routine_record"
+        )
 
     @safe_execute("检测前置指令失败")
     def detect_prefix_command(self, message_text: str) -> Optional[Tuple[str, str]]:
@@ -454,10 +478,15 @@ class RoutineRecord(BaseProcessor):
             command_type, item_name = command_result
             match command_type:
                 case "create":
-                    debug_utils.log_and_print(f"📝 {context.user_name} 触发日程创建指令：{item_name}", log_level="INFO")
+                    debug_utils.log_and_print(
+                        f"📝 {context.user_name} 触发日程创建指令：{item_name}",
+                        log_level="INFO",
+                    )
                     return self.process_routine_create(context.user_id, item_name)
                 case "query":
-                    debug_utils.log_and_print(f"📋 {context.user_name} 触发日程查询指令", log_level="INFO")
+                    debug_utils.log_and_print(
+                        f"📋 {context.user_name} 触发日程查询指令", log_level="INFO"
+                    )
                     return self.process_routine_query(context.user_id)
 
         return None
@@ -481,9 +510,7 @@ class RoutineRecord(BaseProcessor):
         # 构建路由结果，指向查询结果卡片
         route_result = RouteResult.create_route_result(
             route_type=RouteTypes.ROUTINE_QUERY_RESULTS_CARD,
-            route_params={
-                "business_data": query_data
-            }
+            route_params={"business_data": query_data},
         )
 
         return route_result
@@ -516,12 +543,12 @@ class RoutineRecord(BaseProcessor):
             event_def = definitions_data["definitions"][item_name]
             last_record_time = definitions_data.get("last_record_time", None)
             # 并且这里要能够直接绕过前端直接对接业务——本来前端就是多一层中转和丰富信息，也就是如果这个不routeresult，而是直接到业务也应该OK。
-            routine_record_data = self.build_quick_record_data(user_id, item_name, event_def, last_record_time)
+            routine_record_data = self.build_quick_record_data(
+                user_id, item_name, event_def, last_record_time
+            )
             route_result = RouteResult.create_route_result(
                 route_type=RouteTypes.ROUTINE_QUICK_RECORD_CARD,
-                route_params={
-                    "business_data": routine_record_data
-                }
+                route_params={"business_data": routine_record_data},
             )
             return route_result
 
@@ -531,13 +558,15 @@ class RoutineRecord(BaseProcessor):
             route_type=RouteTypes.ROUTINE_NEW_EVENT_CARD,
             route_params={
                 "card_type": "new_event_definition",
-                "business_data": card_data
-            }
+                "business_data": card_data,
+            },
         )
         return route_result
 
     @safe_execute("构建新事件定义卡片数据失败")
-    def build_new_event_card_data(self, user_id: str, initial_event_name: str = '') -> Dict[str, Any]:
+    def build_new_event_card_data(
+        self, user_id: str, initial_event_name: str = ""
+    ) -> Dict[str, Any]:
         """
         构建新事件定义卡片数据
 
@@ -558,12 +587,18 @@ class RoutineRecord(BaseProcessor):
                 "category": "",
                 "include_in_daily_check": False,
                 "degree_options": "",
-                "notes": ""
-            }
+                "notes": "",
+            },
         }
 
     @safe_execute("构建快速记录确认卡片数据失败")
-    def build_quick_record_data(self, user_id: str, event_name: str, event_def: Dict[str, Any], last_record_time: str = None) -> Dict[str, Any]:
+    def build_quick_record_data(
+        self,
+        user_id: str,
+        event_name: str,
+        event_def: Dict[str, Any],
+        last_record_time: str = None,
+    ) -> Dict[str, Any]:
         """
         构建快速记录确认卡片数据
 
@@ -579,20 +614,26 @@ class RoutineRecord(BaseProcessor):
         new_record = self._create_event_record(event_name, user_id)
 
         avg_duration = self._calculate_average_duration(user_id, event_name)
-        has_degrees = event_def.get('properties', {}).get('has_degrees', False)
+        has_degrees = event_def.get("properties", {}).get("has_degrees", False)
         if has_degrees:
             degree_info = {
-                "degree_options": event_def.get('properties', {}).get('degree_options', []),
-                "default_degree": event_def.get('properties', {}).get('default_degree', "")
+                "degree_options": event_def.get("properties", {}).get(
+                    "degree_options", []
+                ),
+                "default_degree": event_def.get("properties", {}).get(
+                    "default_degree", ""
+                ),
             }
         else:
             degree_info = {}
 
         # 这里的顺序要改一下，首先是累计值和重置，然后是有没有目标。
-        check_cycle = event_def.get('properties', {}).get('check_cycle', None)
+        check_cycle = event_def.get("properties", {}).get("check_cycle", None)
         if check_cycle:
-            cycle_count = event_def.get('stats', {}).get('cycle_count', 0)
-            last_refresh_date = event_def.get('stats', {}).get('last_refresh_date', None)
+            cycle_count = event_def.get("stats", {}).get("cycle_count", 0)
+            last_refresh_date = event_def.get("stats", {}).get(
+                "last_refresh_date", None
+            )
 
             # 统一分析周期状态
             cycle_status = self._analyze_cycle_status(last_refresh_date, check_cycle)
@@ -602,15 +643,19 @@ class RoutineRecord(BaseProcessor):
                 last_refresh_date = self._get_formatted_time()
                 cycle_count = 0
             else:
-                last_cycle_count = event_def.get('stats', {}).get('last_cycle_count', 0)
+                last_cycle_count = event_def.get("stats", {}).get("last_cycle_count", 0)
 
-            target_type = event_def.get('properties', {}).get('target_type', None)  # 决定了是不是要输入值，所以要保留的。
-            target_value = event_def.get('properties', {}).get('target_value', 0)
+            target_type = event_def.get("properties", {}).get(
+                "target_type", None
+            )  # 决定了是不是要输入值，所以要保留的。
+            target_value = event_def.get("properties", {}).get("target_value", 0)
 
             if target_type:
                 last_cycle_info = f'{cycle_status["description"]}的情况：{last_cycle_count}/{target_value}'
             else:
-                last_cycle_info = f'{cycle_status["description"]}的情况：{last_cycle_count}'
+                last_cycle_info = (
+                    f'{cycle_status["description"]}的情况：{last_cycle_count}'
+                )
 
             cycle_info = {
                 "cycle_count": cycle_count,
@@ -618,14 +663,16 @@ class RoutineRecord(BaseProcessor):
                 "target_type": target_type,
                 "target_value": target_value,
                 "last_cycle_info": last_cycle_info,
-                "last_refresh_date": last_refresh_date
+                "last_refresh_date": last_refresh_date,
             }
         else:
             cycle_info = {}
 
         if last_record_time:
             last_record_time = datetime.strptime(last_record_time, "%Y-%m-%d %H:%M:%S")
-            diff_minutes = round((datetime.now() - last_record_time).total_seconds() / 60, 1)
+            diff_minutes = round(
+                (datetime.now() - last_record_time).total_seconds() / 60, 1
+            )
         else:
             diff_minutes = 0
 
@@ -645,14 +692,23 @@ class RoutineRecord(BaseProcessor):
         计算事项的平均耗时
         """
         definitions_data = self.load_event_definitions(user_id)
-        event_duration_records = definitions_data.get("definitions", {}).get(event_name, {}).\
-            get('stats', {}).get('duration', {}).get('recent_values', [])
+        event_duration_records = (
+            definitions_data.get("definitions", {})
+            .get(event_name, {})
+            .get("stats", {})
+            .get("duration", {})
+            .get("recent_values", [])
+        )
         if not event_duration_records:
             return 0.0
-        avg_duration = round(sum(event_duration_records) / len(event_duration_records), 1)
+        avg_duration = round(
+            sum(event_duration_records) / len(event_duration_records), 1
+        )
         return avg_duration
 
-    def _analyze_cycle_status(self, last_refresh_date: str, check_cycle: str) -> Dict[str, Any]:
+    def _analyze_cycle_status(
+        self, last_refresh_date: str, check_cycle: str
+    ) -> Dict[str, Any]:
         """
         分析周期状态，统一处理周期相关的所有计算
 
@@ -667,17 +723,13 @@ class RoutineRecord(BaseProcessor):
                 - description: str - 周期描述
         """
         if not check_cycle:
-            return {
-                "need_refresh": False,
-                "cycle_gap": 0,
-                "description": ""
-            }
+            return {"need_refresh": False, "cycle_gap": 0, "description": ""}
 
         if not last_refresh_date:
             return {
                 "need_refresh": True,
                 "cycle_gap": 0,
-                "description": f"前一{check_cycle}"
+                "description": f"前一{check_cycle}",
             }
 
         last_refresh = datetime.strptime(last_refresh_date, "%Y-%m-%d %H:%M:%S")
@@ -703,16 +755,22 @@ class RoutineRecord(BaseProcessor):
                 else:
                     # 跨年计算
                     weeks_in_last_year = 52 if last_year % 4 != 0 else 53
-                    cycle_gap = max(0, (current_week - 1) + (weeks_in_last_year - last_week))
+                    cycle_gap = max(
+                        0, (current_week - 1) + (weeks_in_last_year - last_week)
+                    )
                 need_refresh = cycle_gap > 0
             case RoutineCheckCycle.MONTHLY:
-                months_diff = (current_year - last_year) * 12 + (now.month - last_refresh.month)
+                months_diff = (current_year - last_year) * 12 + (
+                    now.month - last_refresh.month
+                )
                 cycle_gap = max(0, months_diff)
                 need_refresh = cycle_gap > 0
             case RoutineCheckCycle.SEASONALLY:
                 last_season = (last_refresh.month - 1) // 3
                 current_season = (now.month - 1) // 3
-                seasons_diff = (current_year - last_year) * 4 + (current_season - last_season)
+                seasons_diff = (current_year - last_year) * 4 + (
+                    current_season - last_season
+                )
                 cycle_gap = max(0, seasons_diff)
                 need_refresh = cycle_gap > 0
             case RoutineCheckCycle.YEARLY:
@@ -740,7 +798,7 @@ class RoutineRecord(BaseProcessor):
         return {
             "need_refresh": need_refresh,
             "cycle_gap": cycle_gap,
-            "description": description
+            "description": description,
         }
 
     @safe_execute("处理快速记录菜单路由失败")
@@ -766,15 +824,15 @@ class RoutineRecord(BaseProcessor):
         # 构建路由结果，指向routine卡片的快速选择模式
         route_result = RouteResult.create_route_result(
             route_type=RouteTypes.ROUTINE_QUICK_SELECT_CARD,
-            route_params={
-                "business_data": menu_shortcut_data
-            }
+            route_params={"business_data": menu_shortcut_data},
         )
 
         return route_result
 
     @safe_execute("构建快速选择记录卡片数据失败")
-    def build_quick_select_card_data(self, user_id: str, max_items: int = 5) -> Dict[str, Any]:
+    def build_quick_select_card_data(
+        self, user_id: str, max_items: int = 5
+    ) -> Dict[str, Any]:
         """
         构建快速选择记录卡片数据（扩展版本：支持集成模式）
 
@@ -797,21 +855,21 @@ class RoutineRecord(BaseProcessor):
 
             for event_name, event_def in definitions.items():
                 event_info = {
-                    'name': event_name,
-                    'type': event_def.get('type', RoutineTypes.INSTANT),
-                    'properties': event_def.get('properties', {}),
-                    'last_updated': event_def.get('last_updated', ''),
-                    'definition': event_def  # 保留完整定义，用于快速记录
+                    "name": event_name,
+                    "type": event_def.get("type", RoutineTypes.INSTANT),
+                    "properties": event_def.get("properties", {}),
+                    "last_updated": event_def.get("last_updated", ""),
+                    "definition": event_def,  # 保留完整定义，用于快速记录
                 }
 
-                if event_def.get('properties', {}).get('quick_access', False):
+                if event_def.get("properties", {}).get("quick_access", False):
                     quick_access_events.append(event_info)
                 else:
                     recent_events.append(event_info)
 
             # 排序并合并事件列表
-            quick_access_events.sort(key=lambda x: x['last_updated'], reverse=True)
-            recent_events.sort(key=lambda x: x['last_updated'], reverse=True)
+            quick_access_events.sort(key=lambda x: x["last_updated"], reverse=True)
+            recent_events.sort(key=lambda x: x["last_updated"], reverse=True)
 
             # 确保快速访问事件优先显示
             result = quick_access_events[:3]
@@ -821,15 +879,14 @@ class RoutineRecord(BaseProcessor):
             quick_events = result
 
         # 构建基础卡片数据
-        quick_select_data = {
-            "user_id": user_id,
-            "quick_events": quick_events
-        }
+        quick_select_data = {"user_id": user_id, "quick_events": quick_events}
 
         return quick_select_data
 
     @safe_execute("处理事件创建业务逻辑失败")
-    def create_new_event_from_form(self, user_id: str, form_data: Dict[str, Any]) -> Tuple[bool, str]:
+    def create_new_event_from_form(
+        self, user_id: str, form_data: Dict[str, Any]
+    ) -> Tuple[bool, str]:
         """
         根据表单数据创建新事件
 
@@ -842,11 +899,11 @@ class RoutineRecord(BaseProcessor):
         """
         try:
             # 验证必填字段
-            event_name = form_data.get('event_name', '').strip()
+            event_name = form_data.get("event_name", "").strip()
             if not event_name:
                 return False, "事项名称不能为空"
 
-            event_type = form_data.get('event_type', RoutineTypes.INSTANT)
+            event_type = form_data.get("event_type", RoutineTypes.INSTANT)
             if not isinstance(event_type, RoutineTypes):
                 return False, "无效的事项类型"
 
@@ -859,26 +916,32 @@ class RoutineRecord(BaseProcessor):
             new_event_def = self._create_event_definition(event_name, event_type)
 
             # 更新属性
-            new_event_def["category"] = form_data.get('category', '')
-            new_event_def["description"] = form_data.get('notes', '')
+            new_event_def["category"] = form_data.get("category", "")
+            new_event_def["description"] = form_data.get("notes", "")
 
             # 根据事项类型设置特定属性
             properties = new_event_def["properties"]
 
             if event_type == RoutineTypes.END:
-                properties["related_start_event"] = form_data.get('related_start_event')
+                properties["related_start_event"] = form_data.get("related_start_event")
 
             if event_type in [RoutineTypes.INSTANT, RoutineTypes.ONGOING]:
-                properties["include_in_daily_check"] = form_data.get('include_in_daily_check', False)
+                properties["include_in_daily_check"] = form_data.get(
+                    "include_in_daily_check", False
+                )
 
             if event_type == RoutineTypes.FUTURE:
-                properties["future_date"] = form_data.get('future_date')
+                properties["future_date"] = form_data.get("future_date")
 
             if event_type != RoutineTypes.FUTURE:
                 # 处理程度选项
-                degree_options_str = form_data.get('degree_options', '').strip()
+                degree_options_str = form_data.get("degree_options", "").strip()
                 if degree_options_str:
-                    degree_options = [opt.strip() for opt in degree_options_str.split(',') if opt.strip()]
+                    degree_options = [
+                        opt.strip()
+                        for opt in degree_options_str.split(",")
+                        if opt.strip()
+                    ]
                     properties["has_degrees"] = len(degree_options) > 0
                     properties["degree_options"] = degree_options
                     if degree_options:
@@ -896,7 +959,9 @@ class RoutineRecord(BaseProcessor):
             return False, f"创建事项失败: {str(e)}"
 
     @safe_execute("处理记录创建业务逻辑失败")
-    def create_record_from_form(self, user_id: str, event_name: str, form_data: Dict[str, Any]) -> Tuple[bool, str]:
+    def create_record_from_form(
+        self, user_id: str, event_name: str, form_data: Dict[str, Any]
+    ) -> Tuple[bool, str]:
         """
         根据表单数据创建新记录
 
@@ -921,8 +986,8 @@ class RoutineRecord(BaseProcessor):
             new_record = self._create_event_record(
                 event_name=event_name,
                 user_id=user_id,
-                degree=form_data.get('custom_degree', ''),
-                note=form_data.get('record_note', '')
+                degree=form_data.get("custom_degree", ""),
+                note=form_data.get("record_note", ""),
             )
 
             # 添加记录
@@ -934,7 +999,9 @@ class RoutineRecord(BaseProcessor):
             event_def["last_updated"] = current_time
 
             # 保存数据
-            if self.save_event_definitions(user_id, definitions_data) and self.save_event_records(user_id, records_data):
+            if self.save_event_definitions(
+                user_id, definitions_data
+            ) and self.save_event_records(user_id, records_data):
                 return True, f"成功记录 '{event_name}' - {current_time[11:16]}"
 
             return False, "保存记录失败"
