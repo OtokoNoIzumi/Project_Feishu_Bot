@@ -408,12 +408,12 @@ class BaseCardManager(ABC):
 
         return element
 
-    def _build_checkbox_element(
+    def _build_checker_element(
         self, text: str, checked: bool, disabled: bool, action_data: Dict[str, Any]
     ) -> Dict[str, Any]:
         """构建复选框元素"""
         return {
-            "tag": "checkbox",
+            "tag": "checker",
             "text": {"tag": "plain_text", "content": text},
             "checked": checked,
             "disabled": disabled,

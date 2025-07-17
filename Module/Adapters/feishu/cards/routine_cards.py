@@ -8,7 +8,6 @@
 4. 查询结果展示卡片 - 替代文字查询的可视化界面
 """
 
-import uuid
 from typing import Dict, Any, List
 import copy
 
@@ -354,7 +353,9 @@ class RoutineCardManager(BaseCardManager):
 
         return self._build_card_header("🚀 快速记录", "输入或选择事项", "purple")
 
-    # ===== 卡片元素构筑方法 =====
+    # endregion
+
+    # region 卡片元素构筑方法
 
     def _build_query_elements(self, business_data: Dict[str, Any]) -> list:
         """单独生成类型定义筛选的 elements 列表，可独立用于子卡片等场景"""
@@ -1574,7 +1575,7 @@ class RoutineCardManager(BaseCardManager):
 
     # region 待完成的新事件定义卡片构筑方法
 
-    def _build_action_buttons(self, operation_id: str, user_id: str) -> Dict[str, Any]:
+    def _build_action_buttons(self) -> Dict[str, Any]:
         """构建操作按钮组"""
         return {
             "tag": "column_set",
@@ -1599,8 +1600,7 @@ class RoutineCardManager(BaseCardManager):
                                 {
                                     "type": "callback",
                                     "value": {
-                                        "action": "cancel_new_event",
-                                        "operation_id": operation_id,
+                                        "action": "cancel_new_event"
                                     },
                                 }
                             ],
@@ -1623,9 +1623,7 @@ class RoutineCardManager(BaseCardManager):
                                 {
                                     "type": "callback",
                                     "value": {
-                                        "action": "confirm_new_event",
-                                        "operation_id": operation_id,
-                                        "user_id": user_id,
+                                        "action": "confirm_new_event"
                                     },
                                 }
                             ],
@@ -1684,7 +1682,6 @@ class RoutineCardManager(BaseCardManager):
         """处理新事件表单更新"""
         action_value = context.content.value
         action = action_value.get("action", "")
-        operation_id = action_value.get("operation_id", "")
 
         # 这里需要从业务层获取当前表单状态并更新
         # 具体实现将在后续步骤中与业务层配合完成
@@ -1702,8 +1699,6 @@ class RoutineCardManager(BaseCardManager):
     ) -> ProcessResult:
         """处理新事件确认"""
         action_value = context.content.value
-        operation_id = action_value.get("operation_id", "")
-        user_id = action_value.get("user_id", "")
 
         # 这里需要调用业务层创建新事件
         # 具体实现将在后续步骤中完成
@@ -1718,7 +1713,6 @@ class RoutineCardManager(BaseCardManager):
     def _build_new_event_definition_card(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """构建新事件定义卡片"""
         form_data = data.get("form_data", {})
-        operation_id = data.get("operation_id", str(uuid.uuid4()))
         user_id = data.get("user_id", "")
         is_confirmed = data.get("is_confirmed", False)
 
@@ -1742,7 +1736,6 @@ class RoutineCardManager(BaseCardManager):
         )
         elements = self._build_new_event_form_elements(
             form_data,
-            operation_id,
             user_id,
             selected_type,
             is_confirmed,
@@ -1754,8 +1747,6 @@ class RoutineCardManager(BaseCardManager):
     def _build_new_event_form_elements(
         self,
         form_data: Dict[str, Any],
-        operation_id: str,
-        user_id: str,
         selected_type: str,
         is_confirmed: bool,
         related_start_items: List[Dict[str, Any]] = None,
@@ -1786,7 +1777,6 @@ class RoutineCardManager(BaseCardManager):
                     disabled=is_confirmed,
                     action_data={
                         "action": "update_event_name",
-                        "operation_id": operation_id,
                     },
                     name="event_name",
                 ),
@@ -1804,7 +1794,6 @@ class RoutineCardManager(BaseCardManager):
                     disabled=is_confirmed,
                     action_data={
                         "action": "update_event_type",
-                        "operation_id": operation_id,
                     },
                     name="event_type",
                 ),
@@ -1822,7 +1811,6 @@ class RoutineCardManager(BaseCardManager):
                     disabled=is_confirmed,
                     action_data={
                         "action": "update_category",
-                        "operation_id": operation_id,
                     },
                     name="category",
                 ),
@@ -1841,7 +1829,6 @@ class RoutineCardManager(BaseCardManager):
                         disabled=is_confirmed,
                         action_data={
                             "action": "update_related_start",
-                            "operation_id": operation_id,
                         },
                         name="related_start_event",
                     ),
@@ -1871,7 +1858,6 @@ class RoutineCardManager(BaseCardManager):
                         disabled=is_confirmed,
                         action_data={
                             "action": "update_future_date",
-                            "operation_id": operation_id,
                         },
                     ),
                 )
@@ -1888,7 +1874,6 @@ class RoutineCardManager(BaseCardManager):
                         disabled=is_confirmed,
                         action_data={
                             "action": "update_degree_options",
-                            "operation_id": operation_id,
                         },
                         name="degree_options",
                     ),
@@ -1905,7 +1890,6 @@ class RoutineCardManager(BaseCardManager):
                     disabled=is_confirmed,
                     action_data={
                         "action": "update_notes",
-                        "operation_id": operation_id,
                     },
                     name="notes",
                 ),
@@ -1917,7 +1901,7 @@ class RoutineCardManager(BaseCardManager):
 
         # 操作按钮
         if not is_confirmed:
-            elements.append(self._build_action_buttons(operation_id, user_id))
+            elements.append(self._build_action_buttons())
 
         return elements
 
