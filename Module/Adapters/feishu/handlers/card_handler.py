@@ -56,7 +56,6 @@ class CardHandler:
             self.debug_p2im_object = noop_debug
 
 
-
     @card_operation_safe("飞书卡片处理失败")
     def handle_feishu_card(self, data) -> P2CardActionTriggerResponse:
         """

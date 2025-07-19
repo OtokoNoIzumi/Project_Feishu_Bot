@@ -13,7 +13,6 @@ from .notion import NotionService
 from .llm import LLMService
 from .router import RouterService
 from .pending_cache_service import PendingCacheService
-from .card_operation_mapping_service import CardOperationMappingService
 from .message_aggregation_service import MessageAggregationService
 from .user_business_permission_service import UserBusinessPermissionService
 from .bili_adskip_service import BiliAdskipService
@@ -29,7 +28,6 @@ __all__ = [
     'LLMService',
     'RouterService',
     'PendingCacheService',
-    'CardOperationMappingService',
     'MessageAggregationService',
     'UserBusinessPermissionService',
     'BiliAdskipService'
@@ -46,7 +44,6 @@ AVAILABLE_SERVICES = {
     ServiceNames.LLM: LLMService,
     ServiceNames.ROUTER: RouterService,
     ServiceNames.PENDING_CACHE: PendingCacheService,
-    ServiceNames.CARD_OPERATION_MAPPING: CardOperationMappingService,
     ServiceNames.MESSAGE_AGGREGATION: MessageAggregationService,
     ServiceNames.USER_BUSINESS_PERMISSION: UserBusinessPermissionService,
     ServiceNames.BILI_ADSKIP: BiliAdskipService
