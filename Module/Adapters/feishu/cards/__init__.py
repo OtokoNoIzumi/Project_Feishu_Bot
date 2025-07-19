@@ -21,87 +21,75 @@ from .routine_cards import RoutineCardManager
 
 # 导出主要组件
 __all__ = [
-    'BaseCardManager',
-    'FeishuCardRegistry',
-    'BilibiliCardManager',
-    'UserUpdateCardManager',
-    'AdsUpdateCardManager',
-    'DesignPlanCardManager',
-    'RoutineCardManager'
+    "BaseCardManager",
+    "FeishuCardRegistry",
+    "BilibiliCardManager",
+    "UserUpdateCardManager",
+    "AdsUpdateCardManager",
+    "DesignPlanCardManager",
+    "RoutineCardManager",
 ]
 
 # ✅ 属地化：卡片类静态映射表，包含完整的配置信息
 CARD_CLASS_MAPPING = {
-    'user_update': {
-        'class': UserUpdateCardManager,
-        'config': {
-            'reply_mode': 'reply',
-            'card_name': '用户更新',
-            'template_id': 'AAqdbwJ2cflOp',
-            'template_version': '1.1.0'
-        }
+    "user_update": {
+        "class": UserUpdateCardManager,
+        "config": {
+            "reply_mode": "reply",
+            "card_name": "用户更新",
+            "template_id": "AAqdbwJ2cflOp",
+            "template_version": "1.1.0",
+        },
     },
-    'ads_update': {
-        'class': AdsUpdateCardManager,
-        'config': {
-            'reply_mode': 'reply',
-            'card_name': '广告更新',
-            'template_id': 'AAqdJvEYwMDQ3',
-            'template_version': '1.0.0'
-        }
+    "ads_update": {
+        "class": AdsUpdateCardManager,
+        "config": {
+            "reply_mode": "reply",
+            "card_name": "广告更新",
+            "template_id": "AAqdJvEYwMDQ3",
+            "template_version": "1.0.0",
+        },
     },
-    'bilibili_video_info': {
-        'class': BilibiliCardManager,
-        'config': {
-            'reply_mode': 'new',
-            'card_name': 'B站',
-            'template_id': 'AAqBPdq4sxIy5',
-            'template_version': '1.0.9'
-        }
+    "bilibili_video_info": {
+        "class": BilibiliCardManager,
+        "config": {
+            "reply_mode": "new",
+            "card_name": "B站",
+            "template_id": "AAqBPdq4sxIy5",
+            "template_version": "1.0.9",
+        },
     },
-    'design_plan': {
-        'class': DesignPlanCardManager,
-        'config': {
-            'reply_mode': 'reply',
-            'card_name': '设计方案确认',
-            'template_id': 'AAqdn6SINMKfr',
-            'template_version': '1.0.5'
-        }
+    "design_plan": {
+        "class": DesignPlanCardManager,
+        "config": {
+            "reply_mode": "reply",
+            "card_name": "设计方案确认",
+            "template_id": "AAqdn6SINMKfr",
+            "template_version": "1.0.5",
+        },
     },
-    'routine_new_event': {
-        'class': RoutineCardManager,
-        'config': {
-            'reply_mode': 'reply',
-            'card_name': '新建日常事项'
-        }
+    "routine_new_event": {
+        "class": RoutineCardManager,
+        "config": {"reply_mode": "reply", "card_name": "新建日常事项"},
     },
-    'routine_record': {
-        'class': RoutineCardManager,
-        'config': {
-            'reply_mode': 'reply',
-            'card_name': '快速记录确认'
-        }
+    "routine_record": {
+        "class": RoutineCardManager,
+        "config": {"reply_mode": "reply", "card_name": "快速记录确认"},
     },
-    'routine_quick_select': {
-        'class': RoutineCardManager,
-        'config': {
-            'reply_mode': 'new',
-            'card_name': '快速选择记录'
-        }
+    "routine_quick_select": {
+        "class": RoutineCardManager,
+        "config": {"reply_mode": "new", "card_name": "快速选择记录"},
     },
-    'routine_query': {
-        'class': RoutineCardManager,
-        'config': {
-            'reply_mode': 'reply',
-            'card_name': '日常事项查询'
-        }
+    "routine_query": {
+        "class": RoutineCardManager,
+        "config": {"reply_mode": "reply", "card_name": "日常事项查询"},
     },
 }
 
 # ✅ 操作类型到卡片配置键的映射 - 替代后端服务调用
 OPERATION_TYPE_TO_CARD_CONFIG_MAPPING = {
-    'update_user': 'user_update',
-    'update_ads': 'ads_update'
+    "update_user": "user_update",
+    "update_ads": "ads_update",
 }
 
 # 创建全局卡片注册中心
@@ -135,14 +123,16 @@ def initialize_card_managers(app_controller=None, sender=None, message_router=No
         return card_registry
 
     if not app_controller:
-        debug_utils.log_and_print("⚠️ 缺少配置服务，跳过卡片管理器注册", log_level="WARNING")
+        debug_utils.log_and_print(
+            "⚠️ 缺少配置服务，跳过卡片管理器注册", log_level="WARNING"
+        )
         return card_registry
 
     # ✅ 使用属地化配置，不再依赖外部JSON文件
     for card_type, card_info in CARD_CLASS_MAPPING.items():
         try:
-            manager_class = card_info['class']
-            card_definition = card_info['config']
+            manager_class = card_info["class"]
+            card_definition = card_info["config"]
 
             # 创建管理器实例（传入app_controller和sender），同样作为业务终端，需要获取独立执行和调用的能力。
             manager_instance = manager_class(
@@ -150,14 +140,16 @@ def initialize_card_managers(app_controller=None, sender=None, message_router=No
                 card_info=card_definition,
                 card_config_key=card_type,
                 sender=sender,
-                message_router=message_router
+                message_router=message_router,
             )
 
             # 注册管理器
             card_registry.register_manager(card_type, manager_instance)
 
         except Exception as e:
-            debug_utils.log_and_print(f"❌ 注册管理器失败 {card_type}: {e}", log_level="ERROR")
+            debug_utils.log_and_print(
+                f"❌ 注册管理器失败 {card_type}: {e}", log_level="ERROR"
+            )
 
     # 标记为已初始化
     _CARD_REGISTRY_INITIALIZED = True

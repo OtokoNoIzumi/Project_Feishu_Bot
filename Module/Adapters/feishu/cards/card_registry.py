@@ -44,7 +44,6 @@ class BaseCardManager(ABC):
     @abstractmethod
     def build_card(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """构建卡片内容 - 子类必须实现"""
-        pass
 
     def get_card_type_name(self) -> str:
         """获取卡片类型名称 - 默认返回card_name，子类可根据需要重写"""
@@ -248,6 +247,7 @@ class BaseCardManager(ABC):
             toast_message=toast_message,
         )
 
+    # region json卡片方法
     def _build_base_card_structure(
         self,
         elements: List[Dict[str, Any]],
@@ -420,6 +420,8 @@ class BaseCardManager(ABC):
             "behaviors": [{"type": "callback", "value": action_data}],
         }
 
+    # endregion
+
 
 class FeishuCardRegistry:
     """飞书卡片管理器注册表"""
@@ -441,8 +443,6 @@ class FeishuCardRegistry:
     def get_all_managers(self) -> Dict[str, BaseCardManager]:
         """获取所有已注册的管理器"""
         return self._managers.copy()
-
-
 
 
 # 全局注册表实例
