@@ -11,7 +11,7 @@ from functools import partial
 
 from Module.Common.scripts.common import debug_utils
 from Module.Application.app_utils import custom_serializer
-from Module.Services.constants import RouteTypes
+from Module.Services.constants import RouteTypes, CardConfigKeys
 
 # P2ImMessageReceiveV1对象调试开关现在从配置服务获取
 
@@ -172,7 +172,7 @@ ROUTE_KNOWLEDGE_MAPPING = {
         "handler": "card_handler",
         "method": "dispatch_card_response",
         "call_params": {
-            "card_config_key": "bilibili_video_info",
+            "card_config_key": CardConfigKeys.BILIBILI_VIDEO_INFO,
             "card_action": "handle_generate_new_card",
         },
         "is_async": True,  # 标记为异步处理
@@ -211,7 +211,7 @@ ROUTE_KNOWLEDGE_MAPPING = {
         "handler": "card_handler",
         "method": "dispatch_card_response",
         "call_params": {
-            "card_config_key": "routine_record",
+            "card_config_key": CardConfigKeys.ROUTINE_RECORD,
             "card_action": "build_quick_record_confirm_card",
         },
     },
@@ -219,7 +219,7 @@ ROUTE_KNOWLEDGE_MAPPING = {
         "handler": "card_handler",
         "method": "dispatch_card_response",
         "call_params": {
-            "card_config_key": "routine_quick_select",
+            "card_config_key": CardConfigKeys.ROUTINE_QUICK_SELECT,
             "card_action": "build_quick_select_record_card",
         },
     },
@@ -227,7 +227,7 @@ ROUTE_KNOWLEDGE_MAPPING = {
         "handler": "card_handler",
         "method": "dispatch_card_response",
         "call_params": {
-            "card_config_key": "routine_query",
+            "card_config_key": CardConfigKeys.ROUTINE_QUERY,
             "card_action": "build_query_results_card",
         },
     },

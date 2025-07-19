@@ -18,6 +18,7 @@ from .user_update_cards import UserUpdateCardManager
 from .ads_update_cards import AdsUpdateCardManager
 from .design_plan_cards import DesignPlanCardManager
 from .routine_cards import RoutineCardManager
+from Module.Services.constants import CardConfigKeys
 
 # 导出主要组件
 __all__ = [
@@ -32,7 +33,7 @@ __all__ = [
 
 # ✅ 属地化：卡片类静态映射表，包含完整的配置信息
 CARD_CLASS_MAPPING = {
-    "user_update": {
+    CardConfigKeys.USER_UPDATE: {
         "class": UserUpdateCardManager,
         "config": {
             "reply_mode": "reply",
@@ -41,7 +42,7 @@ CARD_CLASS_MAPPING = {
             "template_version": "1.1.0",
         },
     },
-    "ads_update": {
+    CardConfigKeys.ADS_UPDATE: {
         "class": AdsUpdateCardManager,
         "config": {
             "reply_mode": "reply",
@@ -50,7 +51,7 @@ CARD_CLASS_MAPPING = {
             "template_version": "1.0.0",
         },
     },
-    "bilibili_video_info": {
+    CardConfigKeys.BILIBILI_VIDEO_INFO: {
         "class": BilibiliCardManager,
         "config": {
             "reply_mode": "new",
@@ -59,7 +60,7 @@ CARD_CLASS_MAPPING = {
             "template_version": "1.0.9",
         },
     },
-    "design_plan": {
+    CardConfigKeys.DESIGN_PLAN: {
         "class": DesignPlanCardManager,
         "config": {
             "reply_mode": "reply",
@@ -72,15 +73,15 @@ CARD_CLASS_MAPPING = {
         "class": RoutineCardManager,
         "config": {"reply_mode": "reply", "card_name": "新建日常事项"},
     },
-    "routine_record": {
+    CardConfigKeys.ROUTINE_RECORD: {
         "class": RoutineCardManager,
         "config": {"reply_mode": "reply", "card_name": "快速记录确认"},
     },
-    "routine_quick_select": {
+    CardConfigKeys.ROUTINE_QUICK_SELECT: {
         "class": RoutineCardManager,
         "config": {"reply_mode": "new", "card_name": "快速选择记录"},
     },
-    "routine_query": {
+    CardConfigKeys.ROUTINE_QUERY: {
         "class": RoutineCardManager,
         "config": {"reply_mode": "reply", "card_name": "日常事项查询"},
     },
