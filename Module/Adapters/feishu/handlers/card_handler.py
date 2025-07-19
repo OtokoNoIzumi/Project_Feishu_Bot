@@ -24,6 +24,7 @@ from ..decorators import (
     card_operation_safe, message_conversion_safe
 )
 from ..utils import noop_debug
+from ..cards import get_card_config_key_by_operation_type
 
 
 class CardHandler:
@@ -54,12 +55,7 @@ class CardHandler:
         else:
             self.debug_p2im_object = noop_debug
 
-    @property
-    def card_mapping_service(self):
-        """获取卡片业务映射服务"""
-        if self.app_controller:
-            return self.app_controller.get_service(ServiceNames.CARD_OPERATION_MAPPING)
-        return None
+
 
     @card_operation_safe("飞书卡片处理失败")
     def handle_feishu_card(self, data) -> P2CardActionTriggerResponse:
@@ -282,10 +278,17 @@ class CardHandler:
                 return False, None
             return False
 
-        # 使用配置驱动获取卡片管理器
-        card_manager = self.card_registry.get_manager_by_operation_type(operation_type, self.app_controller)
+        # ✅ 使用属地化配置获取卡片管理器
+        card_config_key = get_card_config_key_by_operation_type(operation_type)
+        if not card_config_key:
+            debug_utils.log_and_print(f"❌ 未找到操作类型对应的卡片配置键: {operation_type}", log_level="ERROR")
+            if card_operation_type == CardOperationTypes.SEND:
+                return False, None
+            return False
+
+        card_manager = self.card_registry.get_manager(card_config_key)
         if not card_manager:
-            debug_utils.log_and_print(f"❌ 未找到业务ID对应的管理器: {operation_type}", log_level="ERROR")
+            debug_utils.log_and_print(f"❌ 未找到卡片管理器: {card_config_key}", log_level="ERROR")
             if card_operation_type == CardOperationTypes.SEND:
                 return False, None
             return False
@@ -321,11 +324,16 @@ class CardHandler:
                     debug_utils.log_and_print(f"❌ 卡片更新失败: 缺少ui_message_id [{operation.operation_id[:20]}...]", log_level="ERROR")
                     return False
 
-                # 使用配置驱动获取卡片管理器和构建方法
+                # ✅ 使用属地化配置获取卡片管理器
                 operation_type = operation.operation_data.get('operation_type', '')
-                card_manager = self.card_registry.get_manager_by_operation_type(operation_type, self.app_controller)
+                card_config_key = get_card_config_key_by_operation_type(operation_type)
+                if not card_config_key:
+                    debug_utils.log_and_print(f"❌ 卡片更新失败: 未找到操作类型对应的卡片配置键 {operation_type}", log_level="ERROR")
+                    return False
+
+                card_manager = self.card_registry.get_manager(card_config_key)
                 if not card_manager:
-                    debug_utils.log_and_print(f"❌ 卡片更新失败: 未找到操作类型对应的管理器 {operation_type}", log_level="ERROR")
+                    debug_utils.log_and_print(f"❌ 卡片更新失败: 未找到卡片管理器 {card_config_key}", log_level="ERROR")
                     return False
 
                 # 构建卡片内容

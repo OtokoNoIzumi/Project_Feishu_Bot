@@ -311,12 +311,14 @@ class RoutineRecord(BaseProcessor):
             current_time = self._get_formatted_time()
             default_data = {
                 "user_id": user_id,
+                "active_records": [],
                 "records": [],
                 "created_time": current_time,
                 "last_updated": current_time,
             }
             self.save_event_records(user_id, default_data)
             return default_data
+
 
         try:
             with open(file_path, "r", encoding="utf-8") as f:

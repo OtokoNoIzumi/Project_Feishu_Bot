@@ -26,12 +26,21 @@ class AdminProcessor(BaseProcessor):
         self._load_config()
         self._register_pending_operations()
 
-    @property
-    def card_mapping_service(self):
-        """获取卡片业务映射服务"""
-        if self.app_controller:
-            return self.app_controller.get_service(ServiceNames.CARD_OPERATION_MAPPING)
-        return None
+    # ✅ 属地化：操作类型配置映射
+    OPERATION_CONFIG_MAPPING = {
+        'update_user': {
+            'timeout_seconds': 30,
+            'response_type': 'admin_card_send',
+            'default_action': 'confirm',
+            'description': '管理员用户状态更新确认'
+        },
+        'update_ads': {
+            'timeout_seconds': 30,
+            'response_type': 'admin_card_send',
+            'default_action': 'confirm',
+            'description': 'B站广告时间戳更新确认'
+        }
+    }
 
     def _load_config(self):
         """加载配置"""
@@ -195,7 +204,7 @@ class AdminProcessor(BaseProcessor):
         pending_cache_service = self.app_controller.get_service(ServiceNames.PENDING_CACHE)
 
         # 从卡片业务映射配置获取配置信息
-        config = self.card_mapping_service.get_operation_config(operation_type)
+        config = self.OPERATION_CONFIG_MAPPING.get(operation_type)
         if not config:
             return ProcessResult.error_result(f"未找到业务配置: {operation_type}")
 

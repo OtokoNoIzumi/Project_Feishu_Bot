@@ -47,12 +47,7 @@ class MessageHandler:
         self.debug_parent_id_analysis = debug_functions.get('debug_parent_id_analysis', noop_debug)
         self.card_handler = None  # 将由adapter注入
 
-    @property
-    def card_mapping_service(self):
-        """获取卡片业务映射服务"""
-        if self.app_controller:
-            return self.app_controller.get_service(ServiceNames.CARD_OPERATION_MAPPING)
-        return None
+
 
     def set_card_handler(self, card_handler):
         """注入CardHandler实例"""

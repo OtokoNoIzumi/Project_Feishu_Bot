@@ -50,12 +50,7 @@ class MessageRouter(BaseProcessor):
         # 初始化Action分发表
         self._init_action_dispatchers()
 
-    @property
-    def card_mapping_service(self):
-        """获取卡片业务映射服务"""
-        if self.app_controller:
-            return self.app_controller.get_service(ServiceNames.CARD_OPERATION_MAPPING)
-        return None
+
 
     @require_app_controller("系统服务不可用")
     @safe_execute("消息处理失败")
