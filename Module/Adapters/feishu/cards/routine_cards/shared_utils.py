@@ -47,7 +47,9 @@ class SharedUtils:
         toast_message: str = "",
     ):
         """routine业务专用的字段更新和刷新模板"""
-        build_method_name = context.content.value.get("container_build_method", self.default_update_build_method)
+        build_method_name = context.content.value.get(
+            "container_build_method", self.default_update_build_method
+        )
         business_data, card_id, error_response = self.ensure_valid_context(
             context, "update_card_field", build_method_name
         )
