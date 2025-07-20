@@ -24,6 +24,7 @@ class QuickSelectCard:
 
     def __init__(self, parent_manager):
         self.parent = parent_manager  # 访问主管理器的共享方法和属性
+        self.default_update_build_method = "update_quick_select_record_card"  # 目前是对接主容器里的方法，最终调用在那边，这里只是传标识
 
     def build_quick_select_record_card(
         self, business_data: Dict[str, Any]
@@ -118,7 +119,7 @@ class QuickSelectCard:
                                 "card_action": "quick_record_select",
                                 "card_config_key": CardConfigKeys.ROUTINE_QUICK_SELECT,
                                 "event_name": event_name_btn,
-                                "container_build_method": "update_quick_select_record_card",
+                                "container_build_method": self.default_update_build_method,
                             },
                         }
                     ],
@@ -150,13 +151,13 @@ class QuickSelectCard:
         )
         event_name = action_value.get("event_name", "")
         container_build_method = action_value.get(
-            "container_build_method", "update_quick_select_record_card"
+            "container_build_method", self.default_update_build_method
         )
 
         # 获取当前卡片的业务数据
         business_data, card_id, _ = self.parent.get_core_data(context)
         if not business_data:
-            new_card_dsl = self.parent.routine_handle_empty_data_with_cancel(
+            new_card_dsl = self.parent.build_cancel_update_card_data(
                 business_data or {},
                 method_name="quick_record_select",
                 default_method=container_build_method,
@@ -197,7 +198,7 @@ class QuickSelectCard:
             parent_data["sub_business_build_method"] = sub_business_build_method
 
             # 更新卡片显示
-            new_card_dsl = self.parent.routine_get_build_method_and_execute(
+            new_card_dsl = self.parent.build_update_card_data(
                 business_data, container_build_method
             )
             return self.parent.save_and_respond_with_update(
@@ -231,13 +232,13 @@ class QuickSelectCard:
         )
         event_name = context.content.input_value
         container_build_method = action_value.get(
-            "container_build_method", "update_quick_select_record_card"
+            "container_build_method", self.default_update_build_method
         )
 
         # 获取当前卡片的业务数据
         business_data, card_id, _ = self.parent.get_core_data(context)
         if not business_data:
-            new_card_dsl = self.parent.routine_handle_empty_data_with_cancel(
+            new_card_dsl = self.parent.build_cancel_update_card_data(
                 business_data or {},
                 method_name="select_record_by_input",
                 default_method=container_build_method,
@@ -276,7 +277,7 @@ class QuickSelectCard:
             parent_data["sub_business_build_method"] = sub_business_build_method
 
             # 更新卡片显示
-            new_card_dsl = self.parent.routine_get_build_method_and_execute(
+            new_card_dsl = self.parent.build_update_card_data(
                 business_data, container_build_method
             )
             return self.parent.save_and_respond_with_update(
@@ -307,13 +308,13 @@ class QuickSelectCard:
             "card_config_key", CardConfigKeys.ROUTINE_QUICK_SELECT
         )
         container_build_method = action_value.get(
-            "container_build_method", "update_quick_select_record_card"
+            "container_build_method", self.default_update_build_method
         )
 
         # 获取当前卡片的业务数据
         business_data, card_id, _ = self.parent.get_core_data(context)
         if not business_data:
-            new_card_dsl = self.parent.routine_handle_empty_data_with_cancel(
+            new_card_dsl = self.parent.build_cancel_update_card_data(
                 business_data or {}, "show_query_info", container_build_method
             )
             return self.parent.handle_card_operation_common(
@@ -372,7 +373,7 @@ class QuickSelectCard:
             parent_data["sub_business_build_method"] = sub_business_build_method
 
             # 更新卡片显示
-            new_card_dsl = self.parent.routine_get_build_method_and_execute(
+            new_card_dsl = self.parent.build_update_card_data(
                 business_data, container_build_method
             )
             return self.parent.save_and_respond_with_update(

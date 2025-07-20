@@ -18,7 +18,7 @@ class SharedUtils:
     def __init__(self, parent_manager):
         self.parent = parent_manager  # 访问主管理器的共享方法和属性
 
-    def routine_update_field_and_refresh(
+    def update_card_field(
         self,
         context: MessageContext_Refactor,
         field_key: str,
@@ -43,10 +43,10 @@ class SharedUtils:
         build_method_name = business_data.get(
             "container_build_method", "update_query_results_card"
         )
-        if hasattr(self.parent, build_method_name):
-            new_card_dsl = getattr(self.parent, build_method_name)(business_data)
-        else:
-            new_card_dsl = self.parent.update_query_results_card(business_data)
+
+        new_card_dsl = self.parent.build_update_card_data(
+            business_data, build_method_name
+        )
 
         return self.parent.save_and_respond_with_update(
             context.user_id,

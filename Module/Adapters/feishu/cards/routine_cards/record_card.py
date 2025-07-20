@@ -28,6 +28,7 @@ class RecordCard:
 
     def __init__(self, parent_manager):
         self.parent = parent_manager  # 访问主管理器的共享方法和属性
+        self.default_update_build_method = "update_record_confirm_card"  # 目前是对接主容器里的方法，最终调用在那边，这里只是传标识
 
     def build_quick_record_confirm_card(
         self, business_data: Dict[str, Any]
@@ -565,7 +566,7 @@ class RecordCard:
         """处理记录确认"""
         business_data, card_id, _ = self.parent.get_core_data(context)
         build_method_name = business_data.get(
-            "container_build_method", "update_record_confirm_card"
+            "container_build_method", self.default_update_build_method
         )
 
         data_source, _ = self.parent.safe_get_business_data(
@@ -576,7 +577,7 @@ class RecordCard:
 
         core_data = data_source.get("new_record", {})
         if not core_data:
-            new_card_dsl = self.parent.routine_handle_empty_data_with_cancel(
+            new_card_dsl = self.parent.build_cancel_update_card_data(
                 business_data, "confirm_record", build_method_name
             )
             return self.parent.handle_card_operation_common(
@@ -643,7 +644,7 @@ class RecordCard:
 
         core_data["note"] = form_data.get("note", "")
 
-        new_card_dsl = self.parent.routine_get_build_method_and_execute(
+        new_card_dsl = self.parent.build_update_card_data(
             business_data, build_method_name
         )
 
@@ -719,13 +720,10 @@ class RecordCard:
             )
 
         build_method_name = business_data.get(
-            "container_build_method", "update_record_confirm_card"
+            "container_build_method", self.default_update_build_method
         )
-        business_data["is_confirmed"] = True
-        business_data["result"] = "取消"
-
-        new_card_dsl = self.parent.routine_get_build_method_and_execute(
-            business_data, build_method_name
+        new_card_dsl = self.parent.build_cancel_update_card_data(
+            business_data, "cancel_record", build_method_name, verbose=False
         )
 
         return self.parent.delete_and_respond_with_update(
@@ -747,8 +745,8 @@ class RecordCard:
         new_option = context.content.value.get("option")
         data_source["new_record"]["degree"] = new_option
 
-        new_card_dsl = self.parent.routine_get_build_method_and_execute(
-            business_data, "update_record_confirm_card"
+        new_card_dsl = self.parent.build_update_card_data(
+            business_data, self.default_update_build_method
         )
         return self.parent.save_and_respond_with_update(
             context.user_id,

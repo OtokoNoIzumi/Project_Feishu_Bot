@@ -18,6 +18,7 @@ class QueryResultsCard:
 
     def __init__(self, parent_manager):
         self.parent = parent_manager  # 访问主管理器的共享方法和属性
+        self.default_update_build_method = "update_query_results_card"  # 目前是对接主容器里的方法，最终调用在那边，这里只是传标识
 
     def build_query_results_card(
         self, business_data: Dict[str, Any]
@@ -42,7 +43,7 @@ class QueryResultsCard:
 
         is_confirmed = business_data.get("is_confirmed", False)
         container_build_method = business_data.get(
-            "container_build_method", "update_query_results_card"
+            "container_build_method", self.default_update_build_method
         )
         data_source, _ = self.parent.safe_get_business_data(
             business_data, CardConfigKeys.ROUTINE_QUERY
@@ -227,7 +228,7 @@ class QueryResultsCard:
     def update_category_filter(self, context: MessageContext_Refactor):
         """处理类型筛选更新"""
         new_option = context.content.value.get("option", "")
-        return self.parent.routine_update_field_and_refresh(
+        return self.parent.update_card_field(
             context,
             field_key="selected_category",
             extracted_value=new_option,
@@ -238,7 +239,7 @@ class QueryResultsCard:
     def update_type_name_filter(self, context: MessageContext_Refactor):
         """处理名称筛选更新"""
         filter_value = context.content.value.get("value", "").strip()
-        return self.parent.routine_update_field_and_refresh(
+        return self.parent.update_card_field(
             context,
             "type_name_filter",
             filter_value,

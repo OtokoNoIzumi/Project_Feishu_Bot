@@ -111,7 +111,7 @@ class RoutineCardManager(BaseCardManager):
             workflow_state, event_name, is_confirmed, result
         )
 
-    def routine_update_field_and_refresh(
+    def update_card_field(
         self,
         context: MessageContext_Refactor,
         field_key: str,
@@ -120,7 +120,7 @@ class RoutineCardManager(BaseCardManager):
         toast_message: str,
     ):
         """代理到共享工具"""
-        return self.shared_utils.routine_update_field_and_refresh(
+        return self.shared_utils.update_card_field(
             context, field_key, extracted_value, sub_business_name, toast_message
         )
 
@@ -128,7 +128,7 @@ class RoutineCardManager(BaseCardManager):
         """获取事件类型显示名称"""
         return self.shared_utils.get_type_display_name(event_type)
 
-    def routine_get_build_method_and_execute(
+    def build_update_card_data(
         self,
         business_data: Dict[str, Any],
         default_method: str = "update_record_confirm_card",
@@ -140,19 +140,21 @@ class RoutineCardManager(BaseCardManager):
 
         return getattr(self, default_method)(business_data)
 
-    def routine_handle_empty_data_with_cancel(
+    def build_cancel_update_card_data(
         self,
         business_data: Dict[str, Any],
         method_name: str,
         default_method: str = "update_record_confirm_card",
+        verbose: bool = True,
     ):
         """处理空数据情况，设置取消状态"""
-        debug_utils.log_and_print(
-            f"🔍 {method_name} - 卡片数据为空", log_level="WARNING"
-        )
+        if verbose:
+            debug_utils.log_and_print(
+                f"🔍 {method_name} - 卡片数据为空", log_level="WARNING"
+            )
         business_data["is_confirmed"] = True
         business_data["result"] = "取消"
-        return self.routine_get_build_method_and_execute(business_data, default_method)
+        return self.build_update_card_data(business_data, default_method)
 
     # endregion
 
@@ -213,6 +215,7 @@ class RoutineCardManager(BaseCardManager):
             card_config_key=CardConfigKeys.ROUTINE_RECORD,
         )
 
+    # 嵌套的两个关键方法段落，容器的card和嵌套的element
     # ----- 配套的card子方法，会被card_action里包含的的container_build_method方式调用 -----
     def update_quick_select_record_card(
         self, business_data: Dict[str, Any]
