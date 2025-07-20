@@ -33,6 +33,9 @@ class QuickSelectCard:
         快速选择记录卡片核心构建逻辑
         """
         # 1级入口，不需要嵌套，但其实也可以来一个？嵌套应该是通用能力？等第4个做的时候再改吧。
+        build_method_name = business_data.get(
+            "container_build_method", self.default_update_build_method
+        )
         event_name = business_data.get("selected_event_name", "")
         is_confirmed = business_data.get("is_confirmed", False)
         result = business_data.get("result", "取消")
@@ -57,6 +60,7 @@ class QuickSelectCard:
                     action_data={
                         "card_action": "select_record_by_input",
                         "card_config_key": CardConfigKeys.ROUTINE_QUICK_SELECT,
+                        "container_build_method": build_method_name,
                     },
                     element_id="new_event_name",
                     name="new_event_name",
@@ -81,6 +85,7 @@ class QuickSelectCard:
                             "value": {
                                 "card_action": "show_query_info",
                                 "card_config_key": CardConfigKeys.ROUTINE_QUICK_SELECT,
+                                "container_build_method": build_method_name,
                             },
                         }
                     ],
@@ -119,7 +124,7 @@ class QuickSelectCard:
                                 "card_action": "quick_record_select",
                                 "card_config_key": CardConfigKeys.ROUTINE_QUICK_SELECT,
                                 "event_name": event_name_btn,
-                                "container_build_method": self.default_update_build_method,
+                                "container_build_method": build_method_name,
                             },
                         }
                     ],
@@ -155,19 +160,11 @@ class QuickSelectCard:
         )
 
         # 获取当前卡片的业务数据
-        business_data, card_id, _ = self.parent.get_core_data(context)
-        if not business_data:
-            new_card_dsl = self.parent.build_cancel_update_card_data(
-                business_data or {},
-                method_name="quick_record_select",
-                default_method=container_build_method,
-            )
-            return self.parent.handle_card_operation_common(
-                card_content=new_card_dsl,
-                card_operation_type=CardOperationTypes.UPDATE_RESPONSE,
-                update_toast_type=ToastTypes.ERROR,
-                toast_message="操作已失效",
-            )
+        business_data, card_id, error_response = self.parent.ensure_valid_context(
+            context, "quick_record_select", container_build_method
+        )
+        if error_response:
+            return error_response
 
         # 加载事件定义
         routine_business = self.parent.message_router.routine_record
@@ -236,19 +233,11 @@ class QuickSelectCard:
         )
 
         # 获取当前卡片的业务数据
-        business_data, card_id, _ = self.parent.get_core_data(context)
-        if not business_data:
-            new_card_dsl = self.parent.build_cancel_update_card_data(
-                business_data or {},
-                method_name="select_record_by_input",
-                default_method=container_build_method,
-            )
-            return self.parent.handle_card_operation_common(
-                card_content=new_card_dsl,
-                card_operation_type=CardOperationTypes.UPDATE_RESPONSE,
-                update_toast_type=ToastTypes.ERROR,
-                toast_message="操作已失效",
-            )
+        business_data, card_id, error_response = self.parent.ensure_valid_context(
+            context, "select_record_by_input", container_build_method
+        )
+        if error_response:
+            return error_response
 
         routine_business = self.parent.message_router.routine_record
         definitions_data = routine_business.load_event_definitions(user_id)
@@ -312,17 +301,11 @@ class QuickSelectCard:
         )
 
         # 获取当前卡片的业务数据
-        business_data, card_id, _ = self.parent.get_core_data(context)
-        if not business_data:
-            new_card_dsl = self.parent.build_cancel_update_card_data(
-                business_data or {}, "show_query_info", container_build_method
-            )
-            return self.parent.handle_card_operation_common(
-                card_content=new_card_dsl,
-                card_operation_type=CardOperationTypes.UPDATE_RESPONSE,
-                update_toast_type=ToastTypes.ERROR,
-                toast_message="操作已失效",
-            )
+        business_data, card_id, error_response = self.parent.ensure_valid_context(
+            context, "show_query_info", container_build_method
+        )
+        if error_response:
+            return error_response
 
         routine_business = self.parent.message_router.routine_record
         definitions_data = routine_business.load_event_definitions(user_id)

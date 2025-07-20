@@ -128,6 +128,12 @@ class RoutineCardManager(BaseCardManager):
         """获取事件类型显示名称"""
         return self.shared_utils.get_type_display_name(event_type)
 
+    def ensure_valid_context(self, context, method_name, default_method):
+        """确保上下文有效，失效时自动处理"""
+        return self.shared_utils.ensure_valid_context(
+            context, method_name, default_method
+        )
+
     def build_update_card_data(
         self,
         business_data: Dict[str, Any],
@@ -164,9 +170,7 @@ class RoutineCardManager(BaseCardManager):
         self, result, context: MessageContext_Refactor, business_data: Dict[str, Any]
     ):
         """构建快速选择记录卡片 - 代理到子模块"""
-        card_data = self.quick_select_card.build_quick_select_record_card(
-            business_data
-        )
+        card_data = self.quick_select_card.build_quick_select_record_card(business_data)
         card_content = {"type": "card_json", "data": card_data}
 
         return self.handle_card_operation_common(
@@ -200,9 +204,7 @@ class RoutineCardManager(BaseCardManager):
         self, result, context: MessageContext_Refactor, business_data: Dict[str, Any]
     ):
         """构建快速记录确认卡片 - 代理到子模块"""
-        card_data = self.record_card.build_quick_record_confirm_card(
-            business_data
-        )
+        card_data = self.record_card.build_quick_record_confirm_card(business_data)
         card_content = {"type": "card_json", "data": card_data}
 
         return self.handle_card_operation_common(

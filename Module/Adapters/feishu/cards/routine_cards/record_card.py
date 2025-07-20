@@ -41,9 +41,7 @@ class RecordCard:
         result = business_data.get("result", "取消")
 
         base_title = f"添加记录：{event_name}" if event_name else "添加记录"
-        header = self.parent.build_status_based_header(
-            base_title, is_confirmed, result
-        )
+        header = self.parent.build_status_based_header(base_title, is_confirmed, result)
 
         return self.parent.build_base_card_structure(
             elements=self.build_quick_record_elements(business_data),
@@ -55,9 +53,10 @@ class RecordCard:
         self, business_data: Dict[str, Any]
     ) -> List[Dict[str, Any]]:
         """构建快速记录表单元素 - 条件化展示丰富信息"""
-        # 解析业务层传递的数据 - 支持容器模式和常规模式
-        # 交互状态和结果统一使用外层容器数据
         is_confirmed = business_data.get("is_confirmed", False)
+        build_method_name = business_data.get(
+            "container_build_method", self.default_update_build_method
+        )
         data_source, _ = self.parent.safe_get_business_data(
             business_data, CardConfigKeys.ROUTINE_RECORD
         )
@@ -104,7 +103,7 @@ class RecordCard:
         if degree_info:
             elements.extend(
                 self._build_degree_selection_section(
-                    degree_info, data_source, is_confirmed
+                    degree_info, data_source, is_confirmed, build_method_name
                 )
             )
 
@@ -145,7 +144,9 @@ class RecordCard:
         # 9. 操作按钮或确认提示
         # if not is_confirmed:  对于表单组件，必须要有提交按钮，否则会报错，所以要用disabled来控制，而不是省略。
         form_elements["elements"].append(
-            self._build_record_action_buttons(event_name, is_confirmed)
+            self._build_record_action_buttons(
+                event_name, is_confirmed, build_method_name
+            )
         )
 
         # 只有当表单有内容时才添加表单容器
@@ -339,6 +340,7 @@ class RecordCard:
         degree_info: Dict[str, Any],
         data_source: Dict[str, Any],
         is_confirmed: bool,
+        build_method_name: str,
     ) -> List[Dict[str, Any]]:
         """构建程度选择区域"""
         elements = []
@@ -370,6 +372,7 @@ class RecordCard:
                     action_data={
                         "card_action": "update_record_degree",
                         "card_config_key": CardConfigKeys.ROUTINE_RECORD,
+                        "container_build_method": build_method_name,
                     },
                     element_id="degree_select",
                 ),
@@ -475,7 +478,7 @@ class RecordCard:
         return elements
 
     def _build_record_action_buttons(
-        self, event_name: str, is_confirmed: bool
+        self, event_name: str, is_confirmed: bool, build_method_name: str
     ) -> Dict[str, Any]:
         """构建记录操作按钮组"""
         return {
@@ -502,6 +505,7 @@ class RecordCard:
                                     "value": {
                                         "card_action": "cancel_record",
                                         "card_config_key": CardConfigKeys.ROUTINE_RECORD,
+                                        "container_build_method": build_method_name,
                                     },
                                 }
                             ],
@@ -548,6 +552,7 @@ class RecordCard:
                                         "card_action": "confirm_record",
                                         "card_config_key": CardConfigKeys.ROUTINE_RECORD,
                                         "event_name": event_name,
+                                        "container_build_method": build_method_name,
                                     },
                                 }
                             ],
@@ -564,10 +569,14 @@ class RecordCard:
 
     def confirm_record(self, context: MessageContext_Refactor) -> ProcessResult:
         """处理记录确认"""
-        business_data, card_id, _ = self.parent.get_core_data(context)
-        build_method_name = business_data.get(
+        build_method_name = context.content.value.get(
             "container_build_method", self.default_update_build_method
         )
+        business_data, card_id, error_response = self.parent.ensure_valid_context(
+            context, "confirm_record", build_method_name
+        )
+        if error_response:
+            return error_response
 
         data_source, _ = self.parent.safe_get_business_data(
             business_data, CardConfigKeys.ROUTINE_RECORD
@@ -713,15 +722,15 @@ class RecordCard:
 
     def cancel_record(self, context: MessageContext_Refactor) -> ProcessResult:
         """处理取消操作"""
-        business_data, card_id, _ = self.parent.get_core_data(context)
-        if not business_data:
-            debug_utils.log_and_print(
-                "🔍 cancel_record - 卡片数据为空", log_level="WARNING"
-            )
-
-        build_method_name = business_data.get(
+        build_method_name = context.content.value.get(
             "container_build_method", self.default_update_build_method
         )
+        business_data, card_id, error_response = self.parent.ensure_valid_context(
+            context, "cancel_record", build_method_name
+        )
+        if error_response:
+            return error_response
+
         new_card_dsl = self.parent.build_cancel_update_card_data(
             business_data, "cancel_record", build_method_name, verbose=False
         )
@@ -732,12 +741,14 @@ class RecordCard:
 
     def update_record_degree(self, context: MessageContext_Refactor):
         """处理记录方式更新"""
-        business_data, card_id, _ = self.parent.get_core_data(context)
-        if not business_data:
-            debug_utils.log_and_print(
-                "🔍 update_record_degree - 卡片业务数据为空", log_level="WARNING"
-            )
-            return
+        build_method_name = context.content.value.get(
+            "container_build_method", self.default_update_build_method
+        )
+        business_data, card_id, error_response = self.parent.ensure_valid_context(
+            context, "update_record_degree", build_method_name
+        )
+        if error_response:
+            return error_response
 
         data_source, _ = self.parent.safe_get_business_data(
             business_data, CardConfigKeys.ROUTINE_RECORD

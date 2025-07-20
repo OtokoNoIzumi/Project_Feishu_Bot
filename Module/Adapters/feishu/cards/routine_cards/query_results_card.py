@@ -20,9 +20,7 @@ class QueryResultsCard:
         self.parent = parent_manager  # 访问主管理器的共享方法和属性
         self.default_update_build_method = "update_query_results_card"  # 目前是对接主容器里的方法，最终调用在那边，这里只是传标识
 
-    def build_query_results_card(
-        self, business_data: Dict[str, Any]
-    ) -> Dict[str, Any]:
+    def build_query_results_card(self, business_data: Dict[str, Any]) -> Dict[str, Any]:
         """
         查询结果卡片核心构建逻辑
         """
@@ -42,7 +40,7 @@ class QueryResultsCard:
         """
 
         is_confirmed = business_data.get("is_confirmed", False)
-        container_build_method = business_data.get(
+        build_method_name = business_data.get(
             "container_build_method", self.default_update_build_method
         )
         data_source, _ = self.parent.safe_get_business_data(
@@ -93,6 +91,7 @@ class QueryResultsCard:
                     action_data={
                         "card_action": "update_category_filter",
                         "card_config_key": CardConfigKeys.ROUTINE_QUERY,
+                        "container_build_method": build_method_name,
                     },
                     name="category_filter",
                 ),
@@ -109,6 +108,7 @@ class QueryResultsCard:
                     action_data={
                         "card_action": "update_type_name_filter",
                         "card_config_key": CardConfigKeys.ROUTINE_QUERY,
+                        "container_build_method": build_method_name,
                     },
                     name="type_name_filter",
                 ),
@@ -161,7 +161,7 @@ class QueryResultsCard:
                                 "card_action": "quick_record_select",
                                 "card_config_key": CardConfigKeys.ROUTINE_QUERY,
                                 "event_name": name,
-                                "container_build_method": container_build_method,
+                                "container_build_method": build_method_name,
                             },
                         }
                     ],

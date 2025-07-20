@@ -7,7 +7,7 @@ Shared Utilities for Routine Cards
 from typing import Dict, Any
 from Module.Business.processors.base_processor import MessageContext_Refactor
 from Module.Common.scripts.common import debug_utils
-from Module.Services.constants import ToastTypes, RoutineTypes
+from Module.Services.constants import ToastTypes, RoutineTypes, CardOperationTypes
 
 
 class SharedUtils:
@@ -17,6 +17,26 @@ class SharedUtils:
 
     def __init__(self, parent_manager):
         self.parent = parent_manager  # 访问主管理器的共享方法和属性
+        self.default_update_build_method = "update_query_results_card"
+
+    def ensure_valid_context(self, context, method_name, default_method):
+        """确保上下文有效，失效时自动处理"""
+        business_data, card_id, _ = self.parent.get_core_data(context)
+        if not business_data:
+            new_card_dsl = self.parent.build_cancel_update_card_data(
+                {}, method_name, default_method
+            )
+            return (
+                None,
+                None,
+                self.parent.handle_card_operation_common(
+                    card_content=new_card_dsl,
+                    card_operation_type=CardOperationTypes.UPDATE_RESPONSE,
+                    update_toast_type=ToastTypes.ERROR,
+                    toast_message="操作已失效",
+                ),
+            )
+        return business_data, card_id, None
 
     def update_card_field(
         self,
@@ -27,12 +47,12 @@ class SharedUtils:
         toast_message: str = "",
     ):
         """routine业务专用的字段更新和刷新模板"""
-        business_data, card_id, _ = self.parent.get_core_data(context)
-        if not business_data:
-            debug_utils.log_and_print(
-                f"🔍 {field_key} - 卡片业务数据为空", log_level="WARNING"
-            )
-            return
+        build_method_name = context.content.value.get("container_build_method", self.default_update_build_method)
+        business_data, card_id, error_response = self.ensure_valid_context(
+            context, "update_card_field", build_method_name
+        )
+        if error_response:
+            return error_response
 
         data_source, _ = self.parent.safe_get_business_data(
             business_data, sub_business_name
@@ -41,7 +61,7 @@ class SharedUtils:
 
         # 获取构建方法
         build_method_name = business_data.get(
-            "container_build_method", "update_query_results_card"
+            "container_build_method", self.default_update_build_method
         )
 
         new_card_dsl = self.parent.build_update_card_data(
