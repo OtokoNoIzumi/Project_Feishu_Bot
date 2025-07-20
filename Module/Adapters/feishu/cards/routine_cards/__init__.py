@@ -13,7 +13,7 @@ from .main_coordinator import RoutineCardManager
 from .shared_utils import SharedUtils
 from .query_results_card import QueryResultsCard
 from .quick_select_card import QuickSelectCard
-from .quick_record_card import QuickRecordCard
+from .record_card import RecordCard
 
 
 # 主要导出接口保持不变
@@ -22,5 +22,5 @@ __all__ = [
     "SharedUtils",  # 共享工具
     "QueryResultsCard",  # 查询结果卡片
     "QuickSelectCard",  # 快速选择卡片
-    "QuickRecordCard",  # 快速记录卡片
+    "RecordCard",  # 快速记录卡片
 ]

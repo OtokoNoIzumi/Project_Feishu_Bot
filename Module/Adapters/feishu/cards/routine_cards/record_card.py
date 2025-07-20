@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Quick Record Card
+Record Card
 快速记录卡片
 """
 
@@ -21,7 +21,7 @@ from Module.Common.scripts.common import debug_utils
 from Module.Adapters.feishu.utils import safe_float
 
 
-class QuickRecordCard:
+class RecordCard:
     """
     快速记录卡片管理器
     """
