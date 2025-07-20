@@ -143,7 +143,7 @@ def initialize_card_managers(app_controller=None, sender=None, message_router=No
             # 创建管理器实例（传入app_controller和sender），同样作为业务终端，需要获取独立执行和调用的能力。
             manager_instance = manager_class(
                 app_controller=app_controller,
-                card_static_info=card_static_config,
+                card_static_config=card_static_config,
                 card_config_key=card_type,
                 sender=sender,
                 message_router=message_router,

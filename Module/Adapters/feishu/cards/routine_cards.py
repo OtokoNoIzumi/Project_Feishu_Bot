@@ -36,14 +36,14 @@ class RoutineCardManager(BaseCardManager):
     def __init__(
         self,
         app_controller=None,
-        card_static_info=None,
+        card_static_config=None,
         card_config_key=None,
         sender=None,
         message_router=None,
         single_instance=False,
     ):
         super().__init__(
-            app_controller, card_static_info, card_config_key, sender, message_router, single_instance
+            app_controller, card_static_config, card_config_key, sender, message_router, single_instance
         )
         # routine卡片不使用模板，而是直接生成完整的卡片DSL
         self.templates = {}

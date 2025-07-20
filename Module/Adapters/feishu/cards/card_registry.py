@@ -22,14 +22,14 @@ class BaseCardManager(ABC):
     def __init__(
         self,
         app_controller=None,
-        card_static_info=None,
+        card_static_config=None,
         card_config_key=None,
         sender=None,
         message_router=None,
         single_instance=False,
     ):
         self.app_controller = app_controller
-        self.card_static_info = card_static_info or {}
+        self.card_static_config = card_static_config or {}
         self.sender = sender
         self.message_router = message_router
         self.single_instance = single_instance
@@ -39,8 +39,8 @@ class BaseCardManager(ABC):
             self._configs = {}
 
         # 直接从card_info获取配置，这个可以用在非单例的卡片管理器上，单例的特殊卡片管理器需要自己实现。
-        self.card_name = self.card_static_info.get("card_name", "未知卡片")
-        self.card_config_key = card_config_key or self.card_static_info.get(
+        self.card_name = self.card_static_config.get("card_name", "未知卡片")
+        self.card_config_key = card_config_key or self.card_static_config.get(
             "card_config_key", "unknown"
         )
 
@@ -63,7 +63,7 @@ class BaseCardManager(ABC):
         if self.single_instance:
             return self._configs.get(card_config_key, {}).get('reply_mode', ReplyModes.REPLY)
         else:
-            return self.card_static_info.get('reply_mode', ReplyModes.REPLY)
+            return self.card_static_config.get('reply_mode', ReplyModes.REPLY)
 
     def get_card_type_name(self) -> str:
         """获取卡片类型名称 - 默认返回card_name，子类可根据需要重写"""
@@ -72,10 +72,10 @@ class BaseCardManager(ABC):
     def _initialize_templates(self):
         """统一的配置驱动模板初始化 - 基于子类的card_config_key"""
         # 正好单例的特例模式业务太复杂，没有这套逻辑，暂时不用考虑兼容。
-        if self.card_static_info.get("template_id") and self.card_static_info.get("template_version"):
+        if self.card_static_config.get("template_id") and self.card_static_config.get("template_version"):
             self.templates = {
-                "template_id": self.card_static_info.get("template_id"),
-                "template_version": self.card_static_info.get("template_version"),
+                "template_id": self.card_static_config.get("template_id"),
+                "template_version": self.card_static_config.get("template_version"),
             }
         else:
             debug_utils.log_and_print(
@@ -124,10 +124,8 @@ class BaseCardManager(ABC):
         match card_operation_type:
             case CardOperationTypes.SEND:
                 # 构建发送参数
-                # 单例与否在方法内部有做处理，这里就不用重复检测了。
                 current_config_key = kwargs.get('card_config_key', self.card_config_key)
                 reply_mode = self.get_reply_mode_by_config_key(card_config_key=current_config_key)
-                # reply_mode = self.card_static_info.get("reply_mode", ReplyModes.REPLY)
 
                 card_id = self.sender.create_card_entity(card_content)
                 if card_id:
