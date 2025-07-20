@@ -22,19 +22,25 @@ class BaseCardManager(ABC):
     def __init__(
         self,
         app_controller=None,
-        card_info=None,
+        card_static_info=None,
         card_config_key=None,
         sender=None,
         message_router=None,
+        single_instance=False,
     ):
         self.app_controller = app_controller
-        self.card_info = card_info or {}
+        self.card_static_info = card_static_info or {}
         self.sender = sender
         self.message_router = message_router
+        self.single_instance = single_instance
 
-        # 直接从card_info获取配置
-        self.card_name = self.card_info.get("card_name", "未知卡片")
-        self.card_config_key = card_config_key or self.card_info.get(
+        # 存储所有配置
+        if not hasattr(self, '_configs'):
+            self._configs = {}
+
+        # 直接从card_info获取配置，这个可以用在非单例的卡片管理器上，单例的特殊卡片管理器需要自己实现。
+        self.card_name = self.card_static_info.get("card_name", "未知卡片")
+        self.card_config_key = card_config_key or self.card_static_info.get(
             "card_config_key", "unknown"
         )
 
@@ -45,16 +51,31 @@ class BaseCardManager(ABC):
     def build_card(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """构建卡片内容 - 子类必须实现"""
 
+    def get_card_name_by_config_key(self, card_config_key=None):
+        """获取指定配置键的卡片名称"""
+        if self.single_instance:
+            return self._configs.get(card_config_key, {}).get('card_name', '未知卡片')
+        else:
+            return self.card_name
+
+    def get_reply_mode_by_config_key(self, card_config_key=None):
+        """获取指定配置键的卡片名称"""
+        if self.single_instance:
+            return self._configs.get(card_config_key, {}).get('reply_mode', ReplyModes.REPLY)
+        else:
+            return self.card_static_info.get('reply_mode', ReplyModes.REPLY)
+
     def get_card_type_name(self) -> str:
         """获取卡片类型名称 - 默认返回card_name，子类可根据需要重写"""
         return self.card_name
 
     def _initialize_templates(self):
         """统一的配置驱动模板初始化 - 基于子类的card_config_key"""
-        if self.card_info.get("template_id") and self.card_info.get("template_version"):
+        # 正好单例的特例模式业务太复杂，没有这套逻辑，暂时不用考虑兼容。
+        if self.card_static_info.get("template_id") and self.card_static_info.get("template_version"):
             self.templates = {
-                "template_id": self.card_info.get("template_id"),
-                "template_version": self.card_info.get("template_version"),
+                "template_id": self.card_static_info.get("template_id"),
+                "template_version": self.card_static_info.get("template_version"),
             }
         else:
             debug_utils.log_and_print(
@@ -103,6 +124,11 @@ class BaseCardManager(ABC):
         match card_operation_type:
             case CardOperationTypes.SEND:
                 # 构建发送参数
+                # 单例与否在方法内部有做处理，这里就不用重复检测了。
+                current_config_key = kwargs.get('card_config_key', self.card_config_key)
+                reply_mode = self.get_reply_mode_by_config_key(card_config_key=current_config_key)
+                # reply_mode = self.card_static_info.get("reply_mode", ReplyModes.REPLY)
+
                 card_id = self.sender.create_card_entity(card_content)
                 if card_id:
                     # 在这里储存cardid和core_data，存到内存里的user的里面，还有一个堆栈——基本和pending是一套逻辑。
@@ -116,11 +142,12 @@ class BaseCardManager(ABC):
 
                 send_params = {
                     "card_content": card_content,
-                    "reply_mode": self.card_info.get("reply_mode", ReplyModes.REPLY),
+                    "reply_mode": reply_mode,
                 }
                 send_params.update(kwargs)
 
                 send_params.pop("business_data", None)
+                send_params.pop("card_config_key", None)
 
                 # 三种卡片结构的数据格式不同，template和card需要带一层type，raw不需要。
                 success, message_id = self.sender.send_interactive_card(**send_params)
@@ -431,10 +458,18 @@ class FeishuCardRegistry:
 
     def register_manager(self, card_type: str, manager: BaseCardManager):
         """注册卡片管理器"""
+        # 这里的业务目标就是两个，一个是注册一个字典，可以重复，一个是输出日志。
         self._managers[card_type] = manager
-        debug_utils.log_and_print(
-            f"✅ 注册{manager.get_card_type_name()}卡片管理器成功", log_level="INFO"
-        )
+        card_name = manager.get_card_name_by_config_key(card_type)
+        single_instance = manager.single_instance
+        if single_instance:
+            debug_utils.log_and_print(
+                f"✅ 单例卡片{manager.__class__.__name__}的{card_name}管理器复用注册成功", log_level="INFO"
+            )
+        else:
+            debug_utils.log_and_print(
+                f"✅ 注册{card_name}卡片管理器成功", log_level="INFO"
+            )
 
     def get_manager(self, card_type: str) -> Optional[BaseCardManager]:
         """获取卡片管理器"""

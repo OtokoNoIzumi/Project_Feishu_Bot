@@ -71,18 +71,22 @@ CARD_CLASS_MAPPING = {
     },
     "routine_new_event": {
         "class": RoutineCardManager,
+        "single_instance": True,
         "config": {"reply_mode": "reply", "card_name": "新建日常事项"},
     },
     CardConfigKeys.ROUTINE_RECORD: {
         "class": RoutineCardManager,
+        "single_instance": True,
         "config": {"reply_mode": "reply", "card_name": "快速记录确认"},
     },
     CardConfigKeys.ROUTINE_QUICK_SELECT: {
         "class": RoutineCardManager,
+        "single_instance": True,
         "config": {"reply_mode": "new", "card_name": "快速选择记录"},
     },
     CardConfigKeys.ROUTINE_QUERY: {
         "class": RoutineCardManager,
+        "single_instance": True,
         "config": {"reply_mode": "reply", "card_name": "日常事项查询"},
     },
 }
@@ -130,18 +134,20 @@ def initialize_card_managers(app_controller=None, sender=None, message_router=No
         return card_registry
 
     # ✅ 使用属地化配置，不再依赖外部JSON文件
-    for card_type, card_info in CARD_CLASS_MAPPING.items():
+    for card_type, card_static_info in CARD_CLASS_MAPPING.items():
         try:
-            manager_class = card_info["class"]
-            card_definition = card_info["config"]
+            manager_class = card_static_info["class"]
+            card_static_config = card_static_info["config"]
+            single_instance = card_static_info.get("single_instance", False)
 
             # 创建管理器实例（传入app_controller和sender），同样作为业务终端，需要获取独立执行和调用的能力。
             manager_instance = manager_class(
                 app_controller=app_controller,
-                card_info=card_definition,
+                card_static_info=card_static_config,
                 card_config_key=card_type,
                 sender=sender,
                 message_router=message_router,
+                single_instance=single_instance,
             )
 
             # 注册管理器
