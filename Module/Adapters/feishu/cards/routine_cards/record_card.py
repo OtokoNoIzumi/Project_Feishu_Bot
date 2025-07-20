@@ -29,7 +29,7 @@ class RecordCard:
     def __init__(self, parent_manager):
         self.parent = parent_manager  # 访问主管理器的共享方法和属性
 
-    def _build_quick_record_confirm_card(
+    def build_quick_record_confirm_card(
         self, business_data: Dict[str, Any]
     ) -> Dict[str, Any]:
         """
@@ -40,24 +40,24 @@ class RecordCard:
         result = business_data.get("result", "取消")
 
         base_title = f"添加记录：{event_name}" if event_name else "添加记录"
-        header = self.parent._build_status_based_header(
+        header = self.parent.build_status_based_header(
             base_title, is_confirmed, result
         )
 
-        return self.parent._build_base_card_structure(
-            elements=self._build_quick_record_elements(business_data),
+        return self.parent.build_base_card_structure(
+            elements=self.build_quick_record_elements(business_data),
             header=header,
             padding="12px",
         )
 
-    def _build_quick_record_elements(
+    def build_quick_record_elements(
         self, business_data: Dict[str, Any]
     ) -> List[Dict[str, Any]]:
         """构建快速记录表单元素 - 条件化展示丰富信息"""
         # 解析业务层传递的数据 - 支持容器模式和常规模式
         # 交互状态和结果统一使用外层容器数据
         is_confirmed = business_data.get("is_confirmed", False)
-        data_source, _ = self.parent._safe_get_business_data(
+        data_source, _ = self.parent.safe_get_business_data(
             business_data, CardConfigKeys.ROUTINE_RECORD
         )
 
@@ -171,7 +171,7 @@ class RecordCard:
 
         # 基础信息卡片
         info_content = (
-            f"**事项类型：** {self.parent._get_type_display_name(event_type)}\n"
+            f"**事项类型：** {self.parent.get_type_display_name(event_type)}\n"
         )
 
         # 显示记录时间
@@ -359,9 +359,9 @@ class RecordCard:
         initial_degree = data_source["new_record"].get("degree", "") or default_degree
 
         elements.append(
-            self.parent._build_form_row(
+            self.parent.build_form_row(
                 "选择方式",
-                self.parent._build_select_element(
+                self.parent.build_select_element(
                     placeholder=f"如何{event_name}？",
                     options=degree_select_options,
                     initial_value=initial_degree,
@@ -387,9 +387,9 @@ class RecordCard:
         elements = []
 
         elements.append(
-            self.parent._build_form_row(
+            self.parent.build_form_row(
                 "新方式",
-                self.parent._build_input_element(
+                self.parent.build_input_element(
                     placeholder="添加新方式",
                     initial_value=initial_value,
                     disabled=is_confirmed,
@@ -411,9 +411,9 @@ class RecordCard:
         elements = []
 
         elements.append(
-            self.parent._build_form_row(
+            self.parent.build_form_row(
                 "⏱️ 耗时",
-                self.parent._build_input_element(
+                self.parent.build_input_element(
                     placeholder="记录耗时(分钟)",
                     initial_value=initial_value,
                     disabled=is_confirmed,
@@ -434,9 +434,9 @@ class RecordCard:
         elements = []
 
         elements.append(
-            self.parent._build_form_row(
+            self.parent.build_form_row(
                 "🎯 指标值",
-                self.parent._build_input_element(
+                self.parent.build_input_element(
                     placeholder="添加指标值",
                     initial_value=initial_value,
                     disabled=is_confirmed,
@@ -457,9 +457,9 @@ class RecordCard:
         elements = []
 
         elements.append(
-            self.parent._build_form_row(
+            self.parent.build_form_row(
                 "📝 备注",
-                self.parent._build_input_element(
+                self.parent.build_input_element(
                     placeholder="添加备注信息",
                     initial_value=initial_value,
                     disabled=is_confirmed,
@@ -563,12 +563,12 @@ class RecordCard:
 
     def confirm_record(self, context: MessageContext_Refactor) -> ProcessResult:
         """处理记录确认"""
-        business_data, card_id, _ = self.parent._get_core_data(context)
+        business_data, card_id, _ = self.parent.get_core_data(context)
         build_method_name = business_data.get(
-            "container_build_method", "_build_quick_record_confirm_card"
+            "container_build_method", "update_record_confirm_card"
         )
 
-        data_source, _ = self.parent._safe_get_business_data(
+        data_source, _ = self.parent.safe_get_business_data(
             business_data, CardConfigKeys.ROUTINE_RECORD
         )
 
@@ -576,10 +576,10 @@ class RecordCard:
 
         core_data = data_source.get("new_record", {})
         if not core_data:
-            new_card_dsl = self.parent._routine_handle_empty_data_with_cancel(
+            new_card_dsl = self.parent.routine_handle_empty_data_with_cancel(
                 business_data, "confirm_record", build_method_name
             )
-            return self.parent._handle_card_operation_common(
+            return self.parent.handle_card_operation_common(
                 card_content=new_card_dsl,
                 card_operation_type=CardOperationTypes.UPDATE_RESPONSE,
                 update_toast_type=ToastTypes.ERROR,
@@ -643,7 +643,7 @@ class RecordCard:
 
         core_data["note"] = form_data.get("note", "")
 
-        new_card_dsl = self.parent._routine_get_build_method_and_execute(
+        new_card_dsl = self.parent.routine_get_build_method_and_execute(
             business_data, build_method_name
         )
 
@@ -702,7 +702,7 @@ class RecordCard:
 
         event_name = context.content.value.get("event_name", "")
 
-        return self.parent._delete_and_respond_with_update(
+        return self.parent.delete_and_respond_with_update(
             context.user_id,
             card_id,
             new_card_dsl,
@@ -712,45 +712,45 @@ class RecordCard:
 
     def cancel_record(self, context: MessageContext_Refactor) -> ProcessResult:
         """处理取消操作"""
-        business_data, card_id, _ = self.parent._get_core_data(context)
+        business_data, card_id, _ = self.parent.get_core_data(context)
         if not business_data:
             debug_utils.log_and_print(
                 "🔍 cancel_record - 卡片数据为空", log_level="WARNING"
             )
 
         build_method_name = business_data.get(
-            "container_build_method", "_build_quick_record_confirm_card"
+            "container_build_method", "update_record_confirm_card"
         )
         business_data["is_confirmed"] = True
         business_data["result"] = "取消"
 
-        new_card_dsl = self.parent._routine_get_build_method_and_execute(
+        new_card_dsl = self.parent.routine_get_build_method_and_execute(
             business_data, build_method_name
         )
 
-        return self.parent._delete_and_respond_with_update(
+        return self.parent.delete_and_respond_with_update(
             context.user_id, card_id, new_card_dsl, "操作已取消", ToastTypes.INFO
         )
 
     def update_record_degree(self, context: MessageContext_Refactor):
         """处理记录方式更新"""
-        business_data, card_id, _ = self.parent._get_core_data(context)
+        business_data, card_id, _ = self.parent.get_core_data(context)
         if not business_data:
             debug_utils.log_and_print(
                 "🔍 update_record_degree - 卡片业务数据为空", log_level="WARNING"
             )
             return
 
-        data_source, _ = self.parent._safe_get_business_data(
+        data_source, _ = self.parent.safe_get_business_data(
             business_data, CardConfigKeys.ROUTINE_RECORD
         )
         new_option = context.content.value.get("option")
         data_source["new_record"]["degree"] = new_option
 
-        new_card_dsl = self.parent._routine_get_build_method_and_execute(
-            business_data, "_build_quick_record_confirm_card"
+        new_card_dsl = self.parent.routine_get_build_method_and_execute(
+            business_data, "update_record_confirm_card"
         )
-        return self.parent._save_and_respond_with_update(
+        return self.parent.save_and_respond_with_update(
             context.user_id,
             card_id,
             business_data,

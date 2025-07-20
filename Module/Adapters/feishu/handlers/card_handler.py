@@ -294,7 +294,7 @@ class CardHandler:
         update_toast_type = result_content.get('result_type', 'success') if isinstance(result_content, dict) else 'success'
 
         # 使用通用卡片操作处理
-        return card_manager._handle_card_operation_common(
+        return card_manager.handle_card_operation_common(
             card_content=card_manager.build_card(admin_confirm_action_data=result_content),
             card_operation_type=card_operation_type,
             update_toast_type=update_toast_type,

@@ -2,13 +2,6 @@
 """
 Query Results Card
 查询结果卡片
-
-来源：routine_cards.py RoutineCardManager类
-迁移的方法：
-- _build_query_results_card (行号:315-358)
-- _build_query_elements (行号:360-448)
-- update_category_filter (行号:1483-1492)
-- update_type_name_filter (行号:1494-1509)
 """
 
 from typing import Dict, Any
@@ -26,7 +19,7 @@ class QueryResultsCard:
     def __init__(self, parent_manager):
         self.parent = parent_manager  # 访问主管理器的共享方法和属性
 
-    def _build_query_results_card(
+    def build_query_results_card(
         self, business_data: Dict[str, Any]
     ) -> Dict[str, Any]:
         """
@@ -34,24 +27,24 @@ class QueryResultsCard:
         """
         definitions = business_data.get("definitions", {})
         subtitle = f"共有 {len(definitions)} 个已知日程"
-        header = self.parent._build_card_header(
+        header = self.parent.build_card_header(
             "🔍 快速查询日程",
             subtitle,
             "wathet",
         )
-        elements = self._build_query_elements(business_data)
-        return self.parent._build_base_card_structure(elements, header, "12px")
+        elements = self.build_query_elements(business_data)
+        return self.parent.build_base_card_structure(elements, header, "12px")
 
-    def _build_query_elements(self, business_data: Dict[str, Any]) -> list:
+    def build_query_elements(self, business_data: Dict[str, Any]) -> list:
         """
         查询元素构建
         """
 
         is_confirmed = business_data.get("is_confirmed", False)
         container_build_method = business_data.get(
-            "container_build_method", "_build_query_results_card"
+            "container_build_method", "update_query_results_card"
         )
-        data_source, _ = self.parent._safe_get_business_data(
+        data_source, _ = self.parent.safe_get_business_data(
             business_data, CardConfigKeys.ROUTINE_QUERY
         )
 
@@ -89,9 +82,9 @@ class QueryResultsCard:
 
         elements = []
         elements.append(
-            self.parent._build_form_row(
+            self.parent.build_form_row(
                 "类型筛选",
-                self.parent._build_select_element(
+                self.parent.build_select_element(
                     placeholder="选择类型",
                     options=category_options,
                     initial_value=selected_category,
@@ -106,9 +99,9 @@ class QueryResultsCard:
             )
         )
         elements.append(
-            self.parent._build_form_row(
+            self.parent.build_form_row(
                 "名称筛选",
-                self.parent._build_input_element(
+                self.parent.build_input_element(
                     placeholder="输入空格取消筛选",
                     initial_value=type_name_filter,
                     disabled=is_confirmed,
@@ -234,7 +227,7 @@ class QueryResultsCard:
     def update_category_filter(self, context: MessageContext_Refactor):
         """处理类型筛选更新"""
         new_option = context.content.value.get("option", "")
-        return self.parent._routine_update_field_and_refresh(
+        return self.parent.routine_update_field_and_refresh(
             context,
             field_key="selected_category",
             extracted_value=new_option,
@@ -245,7 +238,7 @@ class QueryResultsCard:
     def update_type_name_filter(self, context: MessageContext_Refactor):
         """处理名称筛选更新"""
         filter_value = context.content.value.get("value", "").strip()
-        return self.parent._routine_update_field_and_refresh(
+        return self.parent.routine_update_field_and_refresh(
             context,
             "type_name_filter",
             filter_value,

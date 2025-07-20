@@ -101,7 +101,7 @@ class BaseCardManager(ABC):
             },
         }
 
-    def _handle_card_operation_common(
+    def handle_card_operation_common(
         self,
         card_content,
         card_operation_type: str,
@@ -186,7 +186,7 @@ class BaseCardManager(ABC):
                 )
                 return False, None
 
-    def _get_core_data(self, context: MessageContext_Refactor):
+    def get_core_data(self, context: MessageContext_Refactor):
         message_id = context.message_id
         cache_service = self.app_controller.get_service(ServiceNames.CACHE)
         card_info = cache_service.get_card_info(message_id)
@@ -197,7 +197,7 @@ class BaseCardManager(ABC):
         business_data = user_service.get_card_business_data(context.user_id, card_id)
         return business_data, card_id, card_info
 
-    def _safe_get_business_data(
+    def safe_get_business_data(
         self,
         business_data: Dict[str, Any],
         sub_business_name: str = "",
@@ -229,7 +229,7 @@ class BaseCardManager(ABC):
         data = node if not sub_business_name else business_data
         return data, is_container_mode
 
-    def _save_and_respond_with_update(
+    def save_and_respond_with_update(
         self,
         user_id,
         card_id: str,
@@ -244,14 +244,14 @@ class BaseCardManager(ABC):
         )
         user_service.save_new_card_business_data(user_id, card_id, business_data)
 
-        return self._handle_card_operation_common(
+        return self.handle_card_operation_common(
             card_content=new_card_dsl,
             card_operation_type=CardOperationTypes.UPDATE_RESPONSE,
             update_toast_type=toast_type,
             toast_message=toast_message,
         )
 
-    def _delete_and_respond_with_update(
+    def delete_and_respond_with_update(
         self,
         user_id,
         card_id: str,
@@ -265,7 +265,7 @@ class BaseCardManager(ABC):
         )
         user_service.del_card_business_data(user_id, card_id)
 
-        return self._handle_card_operation_common(
+        return self.handle_card_operation_common(
             card_content=new_card_dsl,
             card_operation_type=CardOperationTypes.UPDATE_RESPONSE,
             update_toast_type=toast_type,
@@ -273,7 +273,7 @@ class BaseCardManager(ABC):
         )
 
     # region json卡片方法
-    def _build_base_card_structure(
+    def build_base_card_structure(
         self,
         elements: List[Dict[str, Any]],
         header: Dict[str, Any],
@@ -287,7 +287,7 @@ class BaseCardManager(ABC):
             "header": header,
         }
 
-    def _build_input_element(
+    def build_input_element(
         self,
         placeholder: str,
         initial_value: str,
@@ -307,7 +307,7 @@ class BaseCardManager(ABC):
             "behaviors": [{"type": "callback", "value": action_data}],
         }
 
-    def _build_card_header(
+    def build_card_header(
         self, title: str, subtitle: str = "", template: str = "blue", icon: str = ""
     ) -> Dict[str, Any]:
         """构建通用卡片头部"""
@@ -324,7 +324,7 @@ class BaseCardManager(ABC):
 
         return header
 
-    def _build_status_based_header(
+    def build_status_based_header(
         self,
         base_title: str,
         is_confirmed: bool,
@@ -333,7 +333,7 @@ class BaseCardManager(ABC):
     ) -> Dict[str, Any]:
         """构建基于状态的卡片头部 - 适用于确认类卡片"""
         if not is_confirmed:
-            return self._build_card_header(
+            return self.build_card_header(
                 base_title, "请确认记录信息", "blue", "edit_outlined"
             )
 
@@ -341,14 +341,14 @@ class BaseCardManager(ABC):
             title = (
                 f"{confirmed_prefix}{base_title}" if confirmed_prefix else base_title
             )
-            return self._build_card_header(
+            return self.build_card_header(
                 title, "记录信息已确认并保存", "green", "done_outlined"
             )
 
-        return self._build_card_header("操作已取消", "", "grey", "close_outlined")
+        return self.build_card_header("操作已取消", "", "grey", "close_outlined")
 
     # 辅助方法
-    def _build_form_row(
+    def build_form_row(
         self,
         label: str,
         element: Dict[str, Any],
@@ -383,7 +383,7 @@ class BaseCardManager(ABC):
             ],
         }
 
-    def _build_select_element(
+    def build_select_element(
         self,
         placeholder: str,
         options: List[Dict[str, Any]],

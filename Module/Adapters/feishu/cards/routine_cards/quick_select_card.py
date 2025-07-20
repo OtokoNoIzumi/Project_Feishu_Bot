@@ -2,13 +2,6 @@
 """
 Quick Select Card
 快速选择卡片
-
-来源：routine_cards.py RoutineCardManager类
-迁移的方法：
-- _build_quick_select_record_card (行号:196-263)
-- quick_record_select (行号:1083-1157)
-- select_record_by_input (行号:1159-1228)
-- show_query_info (行号:1230-1310) - 需要修改business_data获取方式
 """
 
 from typing import Dict, Any
@@ -32,7 +25,7 @@ class QuickSelectCard:
     def __init__(self, parent_manager):
         self.parent = parent_manager  # 访问主管理器的共享方法和属性
 
-    def _build_quick_select_record_card(
+    def build_quick_select_record_card(
         self, business_data: Dict[str, Any]
     ) -> Dict[str, Any]:
         """
@@ -48,15 +41,15 @@ class QuickSelectCard:
         workflow_state = business_data.get("workflow_state", "initial")
         input_text = business_data.get("input_text", "")
 
-        header = self.parent._build_workflow_header(
+        header = self.parent.build_workflow_header(
             workflow_state, event_name, is_confirmed, result
         )
         elements = []
 
         elements.append(
-            self.parent._build_form_row(
+            self.parent.build_form_row(
                 "✏️ 事项",
-                self.parent._build_input_element(
+                self.parent.build_input_element(
                     placeholder="输入事项名称...",
                     initial_value=input_text,
                     disabled=is_confirmed,
@@ -72,7 +65,7 @@ class QuickSelectCard:
         )
 
         elements.append(
-            self.parent._build_form_row(
+            self.parent.build_form_row(
                 "快捷添加",
                 {
                     "tag": "button",
@@ -125,7 +118,7 @@ class QuickSelectCard:
                                 "card_action": "quick_record_select",
                                 "card_config_key": CardConfigKeys.ROUTINE_QUICK_SELECT,
                                 "event_name": event_name_btn,
-                                "container_build_method": "_build_quick_select_record_card",
+                                "container_build_method": "update_quick_select_record_card",
                             },
                         }
                     ],
@@ -144,7 +137,7 @@ class QuickSelectCard:
             elements.append({"tag": "hr", "margin": "6px 0px"})
             elements.extend(sub_elements)
 
-        return self.parent._build_base_card_structure(elements, header, "12px")
+        return self.parent.build_base_card_structure(elements, header, "12px")
 
     def quick_record_select(self, context: MessageContext_Refactor):
         """
@@ -157,18 +150,18 @@ class QuickSelectCard:
         )
         event_name = action_value.get("event_name", "")
         container_build_method = action_value.get(
-            "container_build_method", "_build_quick_select_record_card"
+            "container_build_method", "update_quick_select_record_card"
         )
 
         # 获取当前卡片的业务数据
-        business_data, card_id, _ = self.parent._get_core_data(context)
+        business_data, card_id, _ = self.parent.get_core_data(context)
         if not business_data:
-            new_card_dsl = self.parent._routine_handle_empty_data_with_cancel(
+            new_card_dsl = self.parent.routine_handle_empty_data_with_cancel(
                 business_data or {},
                 method_name="quick_record_select",
                 default_method=container_build_method,
             )
-            return self.parent._handle_card_operation_common(
+            return self.parent.handle_card_operation_common(
                 card_content=new_card_dsl,
                 card_operation_type=CardOperationTypes.UPDATE_RESPONSE,
                 update_toast_type=ToastTypes.ERROR,
@@ -192,7 +185,7 @@ class QuickSelectCard:
             )
             business_data["container_build_method"] = container_build_method
 
-            parent_data, _ = self.parent._safe_get_business_data(
+            parent_data, _ = self.parent.safe_get_business_data(
                 business_data, parent_business_name
             )
 
@@ -204,10 +197,10 @@ class QuickSelectCard:
             parent_data["sub_business_build_method"] = sub_business_build_method
 
             # 更新卡片显示
-            new_card_dsl = self.parent._routine_get_build_method_and_execute(
+            new_card_dsl = self.parent.routine_get_build_method_and_execute(
                 business_data, container_build_method
             )
-            return self.parent._save_and_respond_with_update(
+            return self.parent.save_and_respond_with_update(
                 context.user_id,
                 card_id,
                 business_data,
@@ -219,8 +212,8 @@ class QuickSelectCard:
         # 如果事件不存在，保持在选择模式
         business_data["selected_event_name"] = event_name
 
-        new_card_dsl = self._build_quick_select_record_card(business_data)
-        return self.parent._handle_card_operation_common(
+        new_card_dsl = self.build_quick_select_record_card(business_data)
+        return self.parent.handle_card_operation_common(
             card_content=new_card_dsl,
             card_operation_type=CardOperationTypes.UPDATE_RESPONSE,
             update_toast_type=ToastTypes.INFO,
@@ -238,18 +231,18 @@ class QuickSelectCard:
         )
         event_name = context.content.input_value
         container_build_method = action_value.get(
-            "container_build_method", "_build_quick_select_record_card"
+            "container_build_method", "update_quick_select_record_card"
         )
 
         # 获取当前卡片的业务数据
-        business_data, card_id, _ = self.parent._get_core_data(context)
+        business_data, card_id, _ = self.parent.get_core_data(context)
         if not business_data:
-            new_card_dsl = self.parent._routine_handle_empty_data_with_cancel(
+            new_card_dsl = self.parent.routine_handle_empty_data_with_cancel(
                 business_data or {},
                 method_name="select_record_by_input",
                 default_method=container_build_method,
             )
-            return self.parent._handle_card_operation_common(
+            return self.parent.handle_card_operation_common(
                 card_content=new_card_dsl,
                 card_operation_type=CardOperationTypes.UPDATE_RESPONSE,
                 update_toast_type=ToastTypes.ERROR,
@@ -272,7 +265,7 @@ class QuickSelectCard:
             )
             business_data["container_build_method"] = container_build_method
 
-            parent_data, _ = self.parent._safe_get_business_data(
+            parent_data, _ = self.parent.safe_get_business_data(
                 business_data, parent_business_name
             )
             parent_data["sub_business_data"] = quick_record_data
@@ -283,10 +276,10 @@ class QuickSelectCard:
             parent_data["sub_business_build_method"] = sub_business_build_method
 
             # 更新卡片显示
-            new_card_dsl = self.parent._routine_get_build_method_and_execute(
+            new_card_dsl = self.parent.routine_get_build_method_and_execute(
                 business_data, container_build_method
             )
-            return self.parent._save_and_respond_with_update(
+            return self.parent.save_and_respond_with_update(
                 context.user_id,
                 card_id,
                 business_data,
@@ -297,14 +290,14 @@ class QuickSelectCard:
 
         # 事件不存在，显示新建提示但保持在选择模式
         # 这里是下一个迭代的优化重点。
-        return self.parent._handle_card_operation_common(
+        return self.parent.handle_card_operation_common(
             card_content={"message": "请输入事项名称"},
             card_operation_type=CardOperationTypes.UPDATE_RESPONSE,
             update_toast_type=ToastTypes.INFO,
             toast_message=f"'{event_name}' 是新事项，可以创建新定义",
         )
 
-    def show_query_info(self, context: MessageContext_Refactor) -> ProcessResult:
+    def show_query_info(self, context: MessageContext_Refactor):
         """
         显示查询信息处理
         """
@@ -314,16 +307,16 @@ class QuickSelectCard:
             "card_config_key", CardConfigKeys.ROUTINE_QUICK_SELECT
         )
         container_build_method = action_value.get(
-            "container_build_method", "_build_quick_select_record_card"
+            "container_build_method", "update_quick_select_record_card"
         )
 
         # 获取当前卡片的业务数据
-        business_data, card_id, _ = self.parent._get_core_data(context)
+        business_data, card_id, _ = self.parent.get_core_data(context)
         if not business_data:
-            new_card_dsl = self.parent._routine_handle_empty_data_with_cancel(
+            new_card_dsl = self.parent.routine_handle_empty_data_with_cancel(
                 business_data or {}, "show_query_info", container_build_method
             )
-            return self.parent._handle_card_operation_common(
+            return self.parent.handle_card_operation_common(
                 card_content=new_card_dsl,
                 card_operation_type=CardOperationTypes.UPDATE_RESPONSE,
                 update_toast_type=ToastTypes.ERROR,
@@ -340,7 +333,7 @@ class QuickSelectCard:
             )
             business_data["container_build_method"] = container_build_method
 
-            parent_data, _ = self.parent._safe_get_business_data(
+            parent_data, _ = self.parent.safe_get_business_data(
                 business_data, parent_business_name
             )
 
@@ -379,10 +372,10 @@ class QuickSelectCard:
             parent_data["sub_business_build_method"] = sub_business_build_method
 
             # 更新卡片显示
-            new_card_dsl = self.parent._routine_get_build_method_and_execute(
+            new_card_dsl = self.parent.routine_get_build_method_and_execute(
                 business_data, container_build_method
             )
-            return self.parent._save_and_respond_with_update(
+            return self.parent.save_and_respond_with_update(
                 context.user_id,
                 card_id,
                 business_data,

@@ -80,7 +80,7 @@ CARD_CLASS_MAPPING = {
         "config": {
             "reply_mode": "reply",
             "card_name": "快速记录确认",
-            "sub_business_build_method": "_build_quick_record_elements",
+            "sub_business_build_method": "build_quick_record_elements",
         },
     },
     CardConfigKeys.ROUTINE_QUICK_SELECT: {
@@ -89,7 +89,7 @@ CARD_CLASS_MAPPING = {
         "config": {
             "reply_mode": "new",
             "card_name": "快速选择记录",
-            "sub_business_build_method": "_build_quick_select_record_card",
+            "sub_business_build_method": "build_quick_select_record_elements",  # 暂无此方法
         },
     },
     CardConfigKeys.ROUTINE_QUERY: {
@@ -98,7 +98,7 @@ CARD_CLASS_MAPPING = {
         "config": {
             "reply_mode": "reply",
             "card_name": "日常事项查询",
-            "sub_business_build_method": "_build_query_elements",
+            "sub_business_build_method": "build_query_elements",
         },
     },
 }

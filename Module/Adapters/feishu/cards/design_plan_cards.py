@@ -159,7 +159,7 @@ class DesignPlanCardManager(BaseCardManager):
         """
         new_card_data = result.response_content
         new_card_data['result'] = '| 待检查⏰'
-        return self._handle_card_operation_common(
+        return self.handle_card_operation_common(
             card_content=self.build_card(new_card_data),
             card_operation_type=CardOperationTypes.SEND,
             update_toast_type='success',
@@ -211,7 +211,7 @@ class DesignPlanCardManager(BaseCardManager):
         }
 
         # 使用基类的通用卡片操作方法
-        return self._handle_card_operation_common(
+        return self.handle_card_operation_common(
             card_content=self.build_card(new_card_data),
             card_operation_type=CardOperationTypes.UPDATE_RESPONSE,
             update_toast_type='success',
@@ -230,7 +230,7 @@ class DesignPlanCardManager(BaseCardManager):
         }
         new_card_content = self.build_card(new_card_data)
         # 使用基类的通用卡片操作方法
-        return self._handle_card_operation_common(
+        return self.handle_card_operation_common(
             card_content=new_card_content,
             card_operation_type=CardOperationTypes.UPDATE_RESPONSE,
             update_toast_type='info',

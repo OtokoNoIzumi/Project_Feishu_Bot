@@ -30,7 +30,7 @@ class BilibiliCardManager(BaseCardManager):
         """
         # 调用外部业务
         video_data = self.message_router.bili.process_bili_video_async()
-        return self._handle_card_operation_common(
+        return self.handle_card_operation_common(
             card_content=self.build_card(video_data),
             card_operation_type=CardOperationTypes.SEND,
             update_toast_type='success',
@@ -142,7 +142,7 @@ class BilibiliCardManager(BaseCardManager):
                 debug_utils.log_and_print(f"⚠️ 更新缓存数据已读状态失败: {e}", log_level="WARNING")
                 return
 
-            return self._handle_card_operation_common(
+            return self.handle_card_operation_common(
                 card_content=self.build_card(cached_video_data),
                 card_operation_type=CardOperationTypes.UPDATE_RESPONSE,
                 update_toast_type='success',

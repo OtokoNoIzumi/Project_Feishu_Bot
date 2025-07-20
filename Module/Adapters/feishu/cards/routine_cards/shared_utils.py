@@ -2,12 +2,6 @@
 """
 Shared Utilities for Routine Cards
 共享工具方法
-
-来源：routine_cards.py RoutineCardManager类
-迁移的方法：
-- _routine_update_field_and_refresh (行号:1511-1546)
-- _routine_get_build_method_and_execute (行号:1548-1558)
-- _routine_handle_empty_data_with_cancel (行号:1560-1575)
 """
 
 from typing import Dict, Any
@@ -24,7 +18,7 @@ class SharedUtils:
     def __init__(self, parent_manager):
         self.parent = parent_manager  # 访问主管理器的共享方法和属性
 
-    def _routine_update_field_and_refresh(
+    def routine_update_field_and_refresh(
         self,
         context: MessageContext_Refactor,
         field_key: str,
@@ -33,28 +27,28 @@ class SharedUtils:
         toast_message: str = "",
     ):
         """routine业务专用的字段更新和刷新模板"""
-        business_data, card_id, _ = self.parent._get_core_data(context)
+        business_data, card_id, _ = self.parent.get_core_data(context)
         if not business_data:
             debug_utils.log_and_print(
                 f"🔍 {field_key} - 卡片业务数据为空", log_level="WARNING"
             )
             return
 
-        data_source, _ = self.parent._safe_get_business_data(
+        data_source, _ = self.parent.safe_get_business_data(
             business_data, sub_business_name
         )
         data_source[field_key] = extracted_value
 
         # 获取构建方法
         build_method_name = business_data.get(
-            "container_build_method", "_build_query_results_card"
+            "container_build_method", "update_query_results_card"
         )
         if hasattr(self.parent, build_method_name):
             new_card_dsl = getattr(self.parent, build_method_name)(business_data)
         else:
-            new_card_dsl = self.parent._build_query_results_card(business_data)
+            new_card_dsl = self.parent.update_query_results_card(business_data)
 
-        return self.parent._save_and_respond_with_update(
+        return self.parent.save_and_respond_with_update(
             context.user_id,
             card_id,
             business_data,
@@ -63,7 +57,7 @@ class SharedUtils:
             ToastTypes.INFO,
         )
 
-    def _build_workflow_header(
+    def build_workflow_header(
         self,
         workflow_state: str,
         event_name: str,
@@ -72,19 +66,19 @@ class SharedUtils:
     ) -> Dict[str, Any]:
         """构建工作流程卡片头部"""
         if workflow_state == "quick_record" and event_name:
-            return self.parent._build_card_header(
+            return self.parent.build_card_header(
                 f"📝 记录：{event_name}", "确认记录信息", "blue", "edit_outlined"
             )
         if workflow_state == "new_event_option":
-            return self.parent._build_card_header(
+            return self.parent.build_card_header(
                 "🆕 新建事项", "事项不存在，是否新建？", "orange", "add_outlined"
             )
         if is_confirmed:
-            return self.parent._build_status_based_header("", is_confirmed, result)
+            return self.parent.build_status_based_header("", is_confirmed, result)
 
-        return self.parent._build_card_header("🚀 快速记录", "输入或选择事项", "purple")
+        return self.parent.build_card_header("🚀 快速记录", "输入或选择事项", "purple")
 
-    def _get_type_display_name(self, event_type: str) -> str:
+    def get_type_display_name(self, event_type: str) -> str:
         """获取事件类型显示名称"""
         type_names = {
             RoutineTypes.INSTANT: "⚡ 瞬间完成",

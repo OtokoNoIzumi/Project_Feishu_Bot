@@ -4,17 +4,6 @@ Main Coordinator
 主协调器
 
 来源：routine_cards.py RoutineCardManager类
-保留的方法：
-- __init__ (行号:1-50左右)
-- build_card (行号:51-194)
-- _get_core_data (行号:315-448)
-- handle_card_action (行号:1483-1574)
-- 其他公共接口方法
-
-新增功能：
-- 智能路由机制
-- 子卡片管理器协调
-- 共享资源管理
 """
 
 from typing import Dict, Any, List
@@ -97,7 +86,7 @@ class RoutineCardManager(BaseCardManager):
                 card_data = {}
         card_content = {"type": "card_json", "data": card_data}
 
-        return self._handle_card_operation_common(
+        return self.handle_card_operation_common(
             card_content=card_content,
             card_operation_type=CardOperationTypes.SEND,
             update_toast_type="success",
@@ -114,15 +103,15 @@ class RoutineCardManager(BaseCardManager):
             "sub_business_build_method", ""
         )
 
-    def _build_workflow_header(
+    def build_workflow_header(
         self, workflow_state: str, event_name: str, is_confirmed: bool, result: str
     ) -> Dict[str, Any]:
         """代理到共享工具"""
-        return self.shared_utils._build_workflow_header(
+        return self.shared_utils.build_workflow_header(
             workflow_state, event_name, is_confirmed, result
         )
 
-    def _routine_update_field_and_refresh(
+    def routine_update_field_and_refresh(
         self,
         context: MessageContext_Refactor,
         field_key: str,
@@ -131,18 +120,18 @@ class RoutineCardManager(BaseCardManager):
         toast_message: str,
     ):
         """代理到共享工具"""
-        return self.shared_utils._routine_update_field_and_refresh(
+        return self.shared_utils.routine_update_field_and_refresh(
             context, field_key, extracted_value, sub_business_name, toast_message
         )
 
-    def _get_type_display_name(self, event_type: str) -> str:
+    def get_type_display_name(self, event_type: str) -> str:
         """获取事件类型显示名称"""
-        return self.shared_utils._get_type_display_name(event_type)
+        return self.shared_utils.get_type_display_name(event_type)
 
-    def _routine_get_build_method_and_execute(
+    def routine_get_build_method_and_execute(
         self,
         business_data: Dict[str, Any],
-        default_method: str = "_build_quick_record_confirm_card",
+        default_method: str = "update_record_confirm_card",
     ):
         """获取构建方法并执行"""
         build_method_name = business_data.get("container_build_method", default_method)
@@ -151,11 +140,11 @@ class RoutineCardManager(BaseCardManager):
 
         return getattr(self, default_method)(business_data)
 
-    def _routine_handle_empty_data_with_cancel(
+    def routine_handle_empty_data_with_cancel(
         self,
         business_data: Dict[str, Any],
         method_name: str,
-        default_method: str = "_build_quick_record_confirm_card",
+        default_method: str = "update_record_confirm_card",
     ):
         """处理空数据情况，设置取消状态"""
         debug_utils.log_and_print(
@@ -163,7 +152,7 @@ class RoutineCardManager(BaseCardManager):
         )
         business_data["is_confirmed"] = True
         business_data["result"] = "取消"
-        return self._routine_get_build_method_and_execute(business_data, default_method)
+        return self.routine_get_build_method_and_execute(business_data, default_method)
 
     # endregion
 
@@ -173,12 +162,12 @@ class RoutineCardManager(BaseCardManager):
         self, result, context: MessageContext_Refactor, business_data: Dict[str, Any]
     ):
         """构建快速选择记录卡片 - 代理到子模块"""
-        card_data = self.quick_select_card._build_quick_select_record_card(
+        card_data = self.quick_select_card.build_quick_select_record_card(
             business_data
         )
         card_content = {"type": "card_json", "data": card_data}
 
-        return self._handle_card_operation_common(
+        return self.handle_card_operation_common(
             card_content=card_content,
             card_operation_type=CardOperationTypes.SEND,
             update_toast_type="success",
@@ -192,10 +181,10 @@ class RoutineCardManager(BaseCardManager):
         self, result, context: MessageContext_Refactor, business_data: Dict[str, Any]
     ):
         """构建查询结果卡片 - 代理到子模块"""
-        card_data = self.query_results_card._build_query_results_card(business_data)
+        card_data = self.query_results_card.build_query_results_card(business_data)
         card_content = {"type": "card_json", "data": card_data}
 
-        return self._handle_card_operation_common(
+        return self.handle_card_operation_common(
             card_content=card_content,
             card_operation_type=CardOperationTypes.SEND,
             update_toast_type="success",
@@ -209,12 +198,12 @@ class RoutineCardManager(BaseCardManager):
         self, result, context: MessageContext_Refactor, business_data: Dict[str, Any]
     ):
         """构建快速记录确认卡片 - 代理到子模块"""
-        card_data = self.record_card._build_quick_record_confirm_card(
+        card_data = self.record_card.build_quick_record_confirm_card(
             business_data
         )
         card_content = {"type": "card_json", "data": card_data}
 
-        return self._handle_card_operation_common(
+        return self.handle_card_operation_common(
             card_content=card_content,
             card_operation_type=CardOperationTypes.SEND,
             update_toast_type="success",
@@ -224,37 +213,37 @@ class RoutineCardManager(BaseCardManager):
             card_config_key=CardConfigKeys.ROUTINE_RECORD,
         )
 
-    # ----- 配套的card子方法，会被update方式调用 -----
-    def _build_quick_select_record_card(
+    # ----- 配套的card子方法，会被card_action里包含的的container_build_method方式调用 -----
+    def update_quick_select_record_card(
         self, business_data: Dict[str, Any]
     ) -> Dict[str, Any]:
         """构建快速选择记录卡片 - 代理到子模块"""
-        return self.quick_select_card._build_quick_select_record_card(business_data)
+        return self.quick_select_card.build_quick_select_record_card(business_data)
 
-    def _build_query_results_card(
+    def update_query_results_card(
         self, business_data: Dict[str, Any]
     ) -> Dict[str, Any]:
         """构建查询结果卡片 - 代理到子模块"""
-        return self.query_results_card._build_query_results_card(business_data)
+        return self.query_results_card.build_query_results_card(business_data)
 
-    def _build_quick_record_confirm_card(
+    def update_record_confirm_card(
         self, business_data: Dict[str, Any]
     ) -> Dict[str, Any]:
         """构建快速记录确认卡片 - 代理到子模块"""
-        return self.record_card._build_quick_record_confirm_card(business_data)
+        return self.record_card.build_quick_record_confirm_card(business_data)
 
     # ----- 配套的element子方法，会在build_card被sub_business_build_method方式调用 -----
-    def _build_quick_record_elements(
+    def build_quick_record_elements(
         self, business_data: Dict[str, Any]
     ) -> List[Dict[str, Any]]:
         """构建快速记录元素 - 代理到子模块"""
-        return self.record_card._build_quick_record_elements(business_data)
+        return self.record_card.build_quick_record_elements(business_data)
 
-    def _build_query_elements(
+    def build_query_elements(
         self, business_data: Dict[str, Any]
     ) -> List[Dict[str, Any]]:
         """构建查询元素 - 代理到子模块"""
-        return self.query_results_card._build_query_elements(business_data)
+        return self.query_results_card.build_query_elements(business_data)
 
     # endregion
 
@@ -305,7 +294,7 @@ class RoutineCardManager(BaseCardManager):
         card_content = {"type": "card_json", "data": card_data}
         # 注意：新事件定义功能的具体实现在业务层
         # 这里只是保持接口兼容性的转发方法
-        return self._handle_card_operation_common(
+        return self.handle_card_operation_common(
             card_content=card_content,
             card_operation_type=CardOperationTypes.SEND,
             update_toast_type="success",
@@ -335,7 +324,7 @@ class RoutineCardManager(BaseCardManager):
                 self.message_router.routine_record.get_related_start_events(user_id)
             )
 
-        header = self._build_card_header(
+        header = self.build_card_header(
             "📝 新建日常事项", "请填写事项信息", "blue", "add-bold_outlined"
         )
         elements = self._build_new_event_form_elements(
@@ -346,7 +335,7 @@ class RoutineCardManager(BaseCardManager):
             related_start_items,
         )
 
-        return self._build_base_card_structure(elements, header, "16px")
+        return self.build_base_card_structure(elements, header, "16px")
 
     def _build_new_event_form_elements(
         self,
@@ -374,9 +363,9 @@ class RoutineCardManager(BaseCardManager):
 
         # 1. 事项名称
         elements.append(
-            self._build_form_row(
+            self.build_form_row(
                 "🏷️ 事项名称",
-                self._build_input_element(
+                self.build_input_element(
                     placeholder="输入事项名称",
                     initial_value=form_data.get("event_name", ""),
                     disabled=is_confirmed,
@@ -390,9 +379,9 @@ class RoutineCardManager(BaseCardManager):
 
         # 2. 事项类型
         elements.append(
-            self._build_form_row(
+            self.build_form_row(
                 "⚡ 事项类型",
-                self._build_select_element(
+                self.build_select_element(
                     placeholder="选择事项类型",
                     options=self._get_event_type_options(),
                     initial_value=selected_type,
@@ -407,9 +396,9 @@ class RoutineCardManager(BaseCardManager):
 
         # 3. 所属分类
         elements.append(
-            self._build_form_row(
+            self.build_form_row(
                 "📂 所属分类",
-                self._build_select_element(
+                self.build_select_element(
                     placeholder="选择分类",
                     options=[],
                     initial_value=form_data.get("category", ""),
@@ -425,9 +414,9 @@ class RoutineCardManager(BaseCardManager):
         # 4. 关联事项（仅结束事项显示）
         if selected_type == RoutineTypes.END:
             elements.append(
-                self._build_form_row(
+                self.build_form_row(
                     "🔗 关联开始事项",
-                    self._build_select_element(
+                    self.build_select_element(
                         placeholder="选择关联的开始事项",
                         options=related_start_items or [],
                         initial_value=form_data.get("related_start_event", ""),
@@ -442,7 +431,7 @@ class RoutineCardManager(BaseCardManager):
 
         # # 5. 日常检查设置（瞬间完成和长期持续显示）
         # if selected_type in [RoutineTypes.INSTANT, RoutineTypes.ONGOING]:
-        #     elements.append(self._build_form_row(
+        #     elements.append(self.build_form_row(
         #         "📋 日常检查",
         #         self._build_checkbox_element(
         #             text="加入日常检查清单",
@@ -455,7 +444,7 @@ class RoutineCardManager(BaseCardManager):
         # 6. 未来时间设置（仅未来事项显示）
         if selected_type == RoutineTypes.FUTURE:
             elements.append(
-                self._build_form_row(
+                self.build_form_row(
                     "⏰ 计划时间",
                     self._build_date_picker_element(
                         placeholder="选择计划执行日期",
@@ -471,9 +460,9 @@ class RoutineCardManager(BaseCardManager):
         # 7. 程度选项（除未来事项外都显示）
         if selected_type != RoutineTypes.FUTURE:
             elements.append(
-                self._build_form_row(
+                self.build_form_row(
                     "📊 事项程度",
-                    self._build_input_element(
+                    self.build_input_element(
                         placeholder="输入程度选项，用逗号分隔（如：简单,中等,复杂）",
                         initial_value=form_data.get("degree_options", ""),
                         disabled=is_confirmed,
@@ -487,9 +476,9 @@ class RoutineCardManager(BaseCardManager):
 
         # 8. 备注信息
         elements.append(
-            self._build_form_row(
+            self.build_form_row(
                 "📝 备注信息",
-                self._build_input_element(
+                self.build_input_element(
                     placeholder="添加备注信息（可选）",
                     initial_value=form_data.get("notes", ""),
                     disabled=is_confirmed,
