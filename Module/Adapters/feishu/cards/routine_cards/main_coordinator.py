@@ -338,9 +338,9 @@ class RoutineCardManager(BaseCardManager):
         """更新提醒模式"""
         return self.direct_record_card.update_reminder_mode(context)
 
-    def update_interval_type(self, context: MessageContext_Refactor):
-        """更新间隔类型"""
-        return self.direct_record_card.update_interval_type(context)
+    def update_check_cycle(self, context: MessageContext_Refactor):
+        """更新检查周期"""
+        return self.direct_record_card.update_check_cycle(context)
 
     def update_target_type(self, context: MessageContext_Refactor):
         """更新目标类型"""

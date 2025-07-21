@@ -377,7 +377,7 @@ class DirectRecordCard:
             progress_value = form_data.get("progress_value", "")
             elements.append(
                 self.parent.build_form_row(
-                    "🎯 指标值",
+                    "📈 指标值",
                     self.parent.build_input_element(
                         placeholder=placeholder_text,
                         initial_value=str(progress_value) if progress_value else "",
@@ -422,18 +422,18 @@ class DirectRecordCard:
         """
         elements = []
 
-        # 1. 间隔类型选择器
-        interval_type = form_data.get("interval_type", "")
+        # 1. 检查周期选择器
+        check_cycle = form_data.get("check_cycle", "")
         elements.append(
             self.parent.build_form_row(
-                "检查间隔",
+                "循环周期",
                 self.parent.build_select_element(
-                    placeholder="选择间隔类型",
-                    options=self._get_interval_type_options(),
-                    initial_value=interval_type,
+                    placeholder="设置检查周期",
+                    options=self._get_check_cycle_options(),
+                    initial_value=check_cycle,
                     disabled=is_confirmed,
                     action_data={},
-                    name="interval_type"
+                    name="check_cycle"
                 ),
                 width_list=["80px", "180px"],
             )
@@ -452,7 +452,7 @@ class DirectRecordCard:
             progress_value = form_data.get("progress_value", "")
             elements.append(
                 self.parent.build_form_row(
-                    "🎯 指标值",
+                    "📈 指标值",
                     self.parent.build_input_element(
                         placeholder=placeholder_text,
                         initial_value=str(progress_value) if progress_value else "",
@@ -471,7 +471,7 @@ class DirectRecordCard:
             target_value = form_data.get("target_value", "")
             elements.append(
                 self.parent.build_form_row(
-                    "📈 目标值",
+                    "🎯 目标值",
                     self.parent.build_input_element(
                         placeholder=placeholder_text,
                         initial_value=str(target_value) if target_value else "",
@@ -501,12 +501,15 @@ class DirectRecordCard:
 
         return elements
 
-    def _get_interval_type_options(self) -> List[Dict]:
-        """获取间隔类型选项"""
+    def _get_check_cycle_options(self) -> List[Dict]:
+        """获取检查周期选项"""
+        from Module.Services.constants import RoutineCheckCycle
         return [
-            {"text": {"tag": "plain_text", "content": "每日"}, "value": "daily"},
-            {"text": {"tag": "plain_text", "content": "每周"}, "value": "weekly"},
-            {"text": {"tag": "plain_text", "content": "每月"}, "value": "monthly"},
+            {"text": {"tag": "plain_text", "content": "每日"}, "value": RoutineCheckCycle.DAILY},
+            {"text": {"tag": "plain_text", "content": "每周"}, "value": RoutineCheckCycle.WEEKLY},
+            {"text": {"tag": "plain_text", "content": "每月"}, "value": RoutineCheckCycle.MONTHLY},
+            {"text": {"tag": "plain_text", "content": "每季"}, "value": RoutineCheckCycle.SEASONALLY},
+            {"text": {"tag": "plain_text", "content": "每年"}, "value": RoutineCheckCycle.YEARLY},
         ]
 
     def _build_future_form_fields(
@@ -573,38 +576,38 @@ class DirectRecordCard:
             )
         )
 
-        # 4. 提醒时间字段（根据提醒模式显示）
+        # 4. 提醒设置字段（根据提醒模式显示）
         reminder_mode = form_data.get("reminder_mode", RoutineReminderModes.OFF)
-        if reminder_mode != RoutineReminderModes.OFF:
-            reminder_time = form_data.get("reminder_time", "before_15min")
-            elements.append(
-                self.parent.build_form_row(
-                    "提醒时间",
-                    self.parent.build_select_element(
-                        placeholder="选择提醒时间",
-                        options=self._get_reminder_time_options(),
-                        initial_value=reminder_time,
-                        disabled=is_confirmed,
-                        action_data={},
-                        name="reminder_time"
-                    ),
-                    width_list=["80px", "180px"],
-                )
-            )
-
-            # 5. 提醒周期字段（周期模式下显示）
-            if reminder_mode == RoutineReminderModes.CYCLE:
-                reminder_cycle = form_data.get("reminder_cycle", [])
+        match reminder_mode:
+            case RoutineReminderModes.TIME:
+            # TIME模式：具体时间提醒，使用日期时间选择器
+                reminder_datetime = form_data.get("reminder_datetime", "")
                 elements.append(
                     self.parent.build_form_row(
-                        "提醒周期",
+                        "提醒时间",
+                        self.parent._build_date_picker_element(
+                            placeholder="选择具体提醒时间",
+                            initial_date=reminder_datetime,
+                            disabled=is_confirmed,
+                            action_data={}
+                        ),
+                        width_list=["80px", "180px"],
+                    )
+                )
+
+            case RoutineReminderModes.CYCLE:
+            # CYCLE模式：相对时间提醒，使用多选框选择相对时间
+                reminder_intervals = form_data.get("reminder_intervals", [])
+                elements.append(
+                    self.parent.build_form_row(
+                        "提醒间隔",
                         self.parent.build_multi_select_element(
-                            placeholder="选择提醒周期",
-                            options=self._get_reminder_cycle_options(),
-                            initial_values=reminder_cycle,
+                            placeholder="选择提醒间隔",
+                            options=self._get_reminder_time_options(),
+                            initial_values=reminder_intervals,
                             disabled=is_confirmed,
                             action_data={},
-                            name="reminder_cycle"
+                            name="reminder_intervals"
                         ),
                         width_list=["80px", "180px"],
                     )
@@ -647,15 +650,7 @@ class DirectRecordCard:
             {"text": {"tag": "plain_text", "content": "提前1天"}, "value": "before_1day"},
         ]
 
-    def _get_reminder_cycle_options(self) -> List[Dict]:
-        """获取提醒周期选项"""
-        return [
-            {"text": {"tag": "plain_text", "content": "每天"}, "value": "daily"},
-            {"text": {"tag": "plain_text", "content": "每周"}, "value": "weekly"},
-            {"text": {"tag": "plain_text", "content": "每月"}, "value": "monthly"},
-            {"text": {"tag": "plain_text", "content": "工作日"}, "value": "weekdays"},
-            {"text": {"tag": "plain_text", "content": "周末"}, "value": "weekends"},
-        ]
+
 
     def _build_submit_button(self, is_confirmed: bool, build_method_name: str = None) -> Dict[str, Any]:
         """
@@ -786,12 +781,12 @@ class DirectRecordCard:
             "提醒模式已更新"
         )
 
-    def update_interval_type(self, context: MessageContext_Refactor) -> ProcessResult:
-        """处理间隔类型变更回调"""
+    def update_check_cycle(self, context: MessageContext_Refactor) -> ProcessResult:
+        """处理检查周期变更回调"""
         return self._handle_direct_record_field_update(
             context,
-            "interval_type",
-            "间隔类型已更新"
+            "check_cycle",
+            "检查周期已更新"
         )
 
     def update_target_type(self, context: MessageContext_Refactor) -> ProcessResult:
