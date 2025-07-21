@@ -266,6 +266,7 @@ class CardActions:
 
     # 直接记录动作
     CONFIRM_DIRECT_RECORD = "confirm_direct_record"
+    CANCEL_DIRECT_RECORD = "cancel_direct_record"
     UPDATE_DIRECT_RECORD_TYPE = "update_direct_record_type"
     UPDATE_PROGRESS_TYPE = "update_progress_type"
     UPDATE_REMINDER_MODE = "update_reminder_mode"
@@ -348,3 +349,9 @@ class DirectRecordFields:
     CHECK_CYCLE = "check_cycle"
     HAS_DEFINITION = "has_definition"
     CREATED_FROM = "created_from"
+
+class RoutineReminderModes:
+    """直接记录提醒模式"""
+    OFF = "none"
+    TIME = "time"
+    CYCLE = "cycle"

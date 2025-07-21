@@ -422,7 +422,7 @@ class BaseCardManager(ABC):
     ) -> Dict[str, Any]:
         """构建日期选择器元素"""
         element = {
-            "tag": "date_picker",
+            "tag": "picker_datetime",
             "placeholder": {"tag": "plain_text", "content": placeholder},
             "disabled": disabled,
             "behaviors": [{"type": "callback", "value": action_data}],
@@ -442,6 +442,29 @@ class BaseCardManager(ABC):
             "text": {"tag": "plain_text", "content": text},
             "checked": checked,
             "disabled": disabled,
+            "behaviors": [{"type": "callback", "value": action_data}],
+        }
+
+    def build_multi_select_element(
+        self,
+        placeholder: str,
+        options: List[Dict[str, Any]],
+        initial_values: List[str],
+        disabled: bool,
+        action_data: Dict[str, Any],
+        element_id: str = "",
+        name: str = "",
+    ) -> Dict[str, Any]:
+        """构建多选选择器元素"""
+        return {
+            "tag": "select_multi",
+            "element_id": element_id,
+            "placeholder": {"tag": "plain_text", "content": placeholder},
+            "options": options,
+            "initial_options": initial_values,
+            "width": "fill",
+            "disabled": disabled,
+            "name": name or element_id,
             "behaviors": [{"type": "callback", "value": action_data}],
         }
 

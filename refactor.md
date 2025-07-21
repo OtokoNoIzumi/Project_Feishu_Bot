@@ -745,6 +745,156 @@ def _get_reminder_cycle_options(self) -> List[Dict]:
     ]
 ```
 
+## 🚀 未来整合规划
+
+### 核心整合目标
+
+基于项目发展需求，direct_record_card 需要与现有系统进行深度整合：
+
+#### 1. event_definition 子业务整合
+
+**目标**：实现从直接记录到完整事件定义的渐进式创建
+
+- **独立 event_definition 卡片**：创建专门的事件定义配置界面
+- **数据传递机制**：支持从 direct_record_card 输入的信息自动填入 event_definition
+- **详细设置功能**：提供比直接记录更丰富的配置选项
+- **智能推荐**：基于历史记录推荐最佳配置
+
+#### 2. 自动事件定义生成
+
+**目标**：智能化事件定义管理
+
+- **类型识别**：自动识别瞬间完成、开始、长期类型的记录模式
+- **参数提取**：从 record 参数生成基础但可用的 event_definition
+- **渐进完善**：支持定义的逐步完善和优化
+- **模式调用**：生成的定义可供 record_card 模式直接使用
+
+#### 3. 统一卡片架构
+
+**目标**：整合 record_card 和 direct_record_card
+
+**核心差异分析**：
+- **事件统计**：是否有 event 的 stats 和默认值
+- **类型切换**：是否允许用户再次切换类型
+
+**统一策略**：
+- 基于事件定义状态动态切换模式
+- 保持向后兼容性
+- 提供统一的用户体验
+
+### 技术实现路径
+
+#### 阶段1：子业务整合（任务17）
+```python
+class EventDefinitionCard:
+    """独立的事件定义卡片"""
+    
+    def build_from_direct_record(self, direct_record_data: Dict) -> Dict:
+        """从直接记录数据构建事件定义界面"""
+        # 提取直接记录的配置
+        # 生成事件定义表单
+        # 设置智能默认值
+        pass
+```
+
+#### 阶段2：自动定义生成（任务18）
+```python
+class AutoDefinitionGenerator:
+    """自动事件定义生成器"""
+    
+    def analyze_record_pattern(self, user_id: str, event_name: str) -> Dict:
+        """分析记录模式"""
+        # 统计同名事件记录
+        # 分析类型和参数模式
+        # 计算置信度
+        pass
+    
+    def generate_definition(self, pattern_data: Dict) -> Dict:
+        """生成事件定义"""
+        # 基于模式生成配置
+        # 设置推荐参数
+        # 标记生成来源
+        pass
+```
+
+#### 阶段3：统一架构（任务19）
+```python
+class UnifiedRecordCard:
+    """统一记录卡片"""
+    
+    def build_record_interface(self, business_data: Dict) -> Dict:
+        """构建统一记录界面"""
+        event_name = business_data.get("event_name")
+        has_definition = self._check_definition_exists(event_name)
+        
+        if has_definition:
+            return self._build_defined_mode(business_data)
+        else:
+            return self._build_direct_mode(business_data)
+    
+    def _build_defined_mode(self, data: Dict) -> Dict:
+        """构建有定义的记录模式"""
+        # 加载事件定义和统计
+        # 限制类型切换
+        # 显示历史数据
+        pass
+    
+    def _build_direct_mode(self, data: Dict) -> Dict:
+        """构建直接记录模式"""
+        # 允许完全类型切换
+        # 提供创建定义选项
+        # 支持临时配置
+        pass
+```
+
+### 数据模型演进
+
+#### 增强记录数据结构
+```json
+{
+  "record_id": "事件名_001",
+  "event_name": "喝水",
+  "event_type": "instant",
+  
+  // 现有字段保持不变
+  "timestamp": "2024-01-01 12:00:00",
+  "note": "备注内容",
+  
+  // 新增整合字段
+  "definition_status": "none|partial|complete",
+  "auto_definition_eligible": true,
+  "suggested_defaults": {
+    "typical_duration": 5.0,
+    "common_degree": "完成"
+  }
+}
+```
+
+#### 渐进式事件定义
+```json
+{
+  "event_name": "喝水",
+  "definition_status": "partial",
+  "created_from": "auto_generation",
+  "confidence_score": 0.75,
+  
+  "basic_config": {
+    "event_type": "instant",
+    "progress_type": "value"
+  },
+  
+  "pending_config": {
+    "categories": [],
+    "advanced_options": {}
+  },
+  
+  "stats": {
+    "total_records": 15,
+    "avg_duration": 2.3
+  }
+}
+```
+
 ## 🔧 技术实现细节
 
 ### 嵌套数据处理逻辑说明

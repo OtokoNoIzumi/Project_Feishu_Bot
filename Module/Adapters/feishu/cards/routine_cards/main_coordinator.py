@@ -321,6 +321,31 @@ class RoutineCardManager(BaseCardManager):
         """取消记录"""
         return self.record_card.cancel_record(context)
 
+    # ----- direct_record_card 的回调事件代理 -----
+    def update_direct_record_type(self, context: MessageContext_Refactor):
+        """更新直接记录事项类型"""
+        return self.direct_record_card.update_direct_record_type(context)
+
+    def update_progress_type(self, context: MessageContext_Refactor):
+        """更新指标类型"""
+        return self.direct_record_card.update_progress_type(context)
+
+    def update_reminder_mode(self, context: MessageContext_Refactor):
+        """更新提醒模式"""
+        return self.direct_record_card.update_reminder_mode(context)
+
+    def update_interval_type(self, context: MessageContext_Refactor):
+        """更新间隔类型"""
+        return self.direct_record_card.update_interval_type(context)
+
+    def update_target_type(self, context: MessageContext_Refactor):
+        """更新目标类型"""
+        return self.direct_record_card.update_target_type(context)
+
+    def cancel_direct_record(self, context: MessageContext_Refactor):
+        """取消直接记录"""
+        return self.direct_record_card.cancel_direct_record(context)
+
     # endregion
 
     # region 废弃的事件卡片

@@ -293,7 +293,7 @@ class QuickSelectCard:
         new_card_dsl = self.parent.build_update_card_data(
             business_data, container_build_method
         )
-        # print("test-new_card_dsl", json.dumps(json.dumps(new_card_dsl, ensure_ascii=False), ensure_ascii=False))
+        print("test-new_card_dsl", json.dumps(json.dumps(new_card_dsl, ensure_ascii=False), ensure_ascii=False))
         return self.parent.save_and_respond_with_update(
             context.user_id,
             card_id,
