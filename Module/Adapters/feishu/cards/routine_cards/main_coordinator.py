@@ -342,13 +342,13 @@ class RoutineCardManager(BaseCardManager):
         """更新检查周期"""
         return self.direct_record_card.update_check_cycle(context)
 
-    def update_target_type(self, context: MessageContext_Refactor):
-        """更新目标类型"""
-        return self.direct_record_card.update_target_type(context)
-
     def cancel_direct_record(self, context: MessageContext_Refactor):
         """取消直接记录"""
         return self.direct_record_card.cancel_direct_record(context)
+
+    def confirm_direct_record(self, context: MessageContext_Refactor):
+        """确认直接记录"""
+        return self.direct_record_card.confirm_direct_record(context)
 
     # endregion
 

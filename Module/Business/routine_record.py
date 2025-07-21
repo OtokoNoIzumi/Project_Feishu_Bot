@@ -1042,12 +1042,11 @@ class RoutineRecord(BaseProcessor):
             "note": "",
             "degree": "",
             "progress_value": "",
-            "planned_date": "",
-            "planned_time": "",
+            "scheduled_time": "",
             "priority": "medium",
             "estimated_duration": "",
-            "reminder_time": "start",
-            "reminder_cycle": [],
+            "reminder_datetime": "",
+            "reminder_intervals": [],
             "check_cycle": "",
             "target_type": RoutineTargetTypes.NONE,
             "target_value": ""
@@ -1125,12 +1124,11 @@ class RoutineRecord(BaseProcessor):
             elif event_type == RoutineTypes.FUTURE:
                 new_record.update({
                     "priority": form_data.get("priority", "medium"),
-                    "planned_date": form_data.get("planned_date", ""),
-                    "planned_time": form_data.get("planned_time", ""),
+                    "scheduled_time": form_data.get("scheduled_time", ""),
                     "estimated_duration": self._safe_parse_number(form_data.get("estimated_duration", "")),
                     "reminder_mode": form_data.get("reminder_mode", "off"),
-                    "reminder_time": form_data.get("reminder_time", "start"),
-                    "reminder_cycle": form_data.get("reminder_cycle", [])
+                    "reminder_datetime": form_data.get("reminder_datetime", ""),
+                    "reminder_intervals": form_data.get("reminder_intervals", [])
                 })
 
             # 根据事件类型决定存储位置
@@ -1190,17 +1188,17 @@ class RoutineRecord(BaseProcessor):
 
         # 未来事项必填验证
         if event_type == RoutineTypes.FUTURE:
-            planned_date = form_data.get("planned_date", "")
-            if not planned_date:
-                return False, "未来事项必须设置计划日期"
-            # 简单日期格式验证
+            scheduled_time = form_data.get("scheduled_time", "")
+            if not scheduled_time:
+                return False, "未来事项必须设置计划时间"
+            # 简单日期时间格式验证
             try:
-                datetime.strptime(planned_date, "%Y-%m-%d")
+                datetime.strptime(scheduled_time, "%Y-%m-%d %H:%M")
             except ValueError:
                 try:
-                    datetime.strptime(planned_date, "%Y/%m/%d")
+                    datetime.strptime(scheduled_time, "%Y/%m/%d %H:%M")
                 except ValueError:
-                    return False, "计划日期格式无效"
+                    return False, "计划时间格式无效"
 
         return True, ""
 

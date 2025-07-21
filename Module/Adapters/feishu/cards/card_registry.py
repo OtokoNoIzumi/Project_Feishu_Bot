@@ -419,6 +419,7 @@ class BaseCardManager(ABC):
         initial_date: str,
         disabled: bool,
         action_data: Dict[str, Any],
+        name: str = "",
     ) -> Dict[str, Any]:
         """构建日期选择器元素"""
         element = {
@@ -426,6 +427,7 @@ class BaseCardManager(ABC):
             "placeholder": {"tag": "plain_text", "content": placeholder},
             "disabled": disabled,
             "behaviors": [{"type": "callback", "value": action_data}],
+            "name": name,
         }
 
         if initial_date:

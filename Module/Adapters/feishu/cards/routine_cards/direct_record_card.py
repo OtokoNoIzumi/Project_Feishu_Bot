@@ -11,6 +11,7 @@ from Module.Services.constants import (
     RoutineProgressTypes,
     RoutineReminderModes,
     ToastTypes,
+    CardConfigKeys,
 )
 from Module.Business.processors.base_processor import (
     MessageContext_Refactor,
@@ -537,7 +538,8 @@ class DirectRecordCard:
                     placeholder="选择计划执行时间",
                     initial_date=scheduled_time,
                     disabled=is_confirmed,
-                    action_data={}
+                    action_data={},
+                    name="scheduled_time"
                 ),
                 width_list=["80px", "180px"],
             )
@@ -767,11 +769,11 @@ class DirectRecordCard:
         )
 
     def update_target_type(self, context: MessageContext_Refactor) -> ProcessResult:
-        """处理指标类型变更回调"""
+        """处理目标类型变更回调"""
         return self._handle_direct_record_field_update(
             context,
             "target_type",
-            "指标类型已更新"
+            "目标类型已更新"
         )
 
     def update_reminder_mode(self, context: MessageContext_Refactor) -> ProcessResult:
@@ -788,14 +790,6 @@ class DirectRecordCard:
             context,
             "check_cycle",
             "检查周期已更新"
-        )
-
-    def update_target_type(self, context: MessageContext_Refactor) -> ProcessResult:
-        """处理目标类型变更回调"""
-        return self._handle_direct_record_field_update(
-            context,
-            "target_type",
-            "目标类型已更新"
         )
 
     def cancel_direct_record(self, context: MessageContext_Refactor) -> ProcessResult:
@@ -815,6 +809,70 @@ class DirectRecordCard:
 
         return self.parent.delete_and_respond_with_update(
             context.user_id, card_id, new_card_dsl, "操作已取消", ToastTypes.INFO
+        )
+
+    def confirm_direct_record(self, context: MessageContext_Refactor) -> ProcessResult:
+        """确认直接记录"""
+        build_method_name = context.content.value.get(
+            "container_build_method", self.default_update_build_method
+        )
+        business_data, card_id, error_response = self.parent.ensure_valid_context(
+            context, "confirm_direct_record", build_method_name
+        )
+        if error_response:
+            return error_response
+
+        # 获取direct_record的数据源
+        data_source, _ = self.parent.safe_get_business_data(
+            business_data, CardConfigKeys.ROUTINE_DIRECT_RECORD
+        )
+        
+        # 标记为已确认
+        business_data["is_confirmed"] = True
+        
+        # 获取表单数据
+        form_data = context.content.form_data
+        
+        # 合并数据源中的form_data和表单提交的数据
+        merged_form_data = data_source.get("form_data", {}).copy()
+        merged_form_data.update(form_data)
+        
+        # 添加事项名称和事项类型
+        merged_form_data["event_name"] = data_source.get("event_name", "")
+        merged_form_data["event_type"] = data_source.get("event_type", "")
+        
+        # 调用业务层创建直接记录
+        routine_business = self.parent.message_router.routine_record
+        success, message = routine_business.create_direct_record(
+            context.user_id, merged_form_data
+        )
+        
+        if not success:
+            # 创建失败，返回错误
+            new_card_dsl = self.parent.build_cancel_update_card_data(
+                business_data, "confirm_direct_record", build_method_name
+            )
+            return self.parent.handle_card_operation_common(
+                card_content=new_card_dsl,
+                card_operation_type=CardOperationTypes.UPDATE_RESPONSE,
+                update_toast_type=ToastTypes.ERROR,
+                toast_message=message,
+            )
+        
+        # 创建成功，构建确认后的卡片
+        business_data["result"] = "确认"
+        new_card_dsl = self.parent.build_update_card_data(
+            business_data, build_method_name
+        )
+        
+        event_name = data_source.get("event_name", "直接记录")
+        
+        return self.parent.delete_and_respond_with_update(
+            context.user_id,
+            card_id,
+            new_card_dsl,
+            f"【{event_name}】 {message}",
+            ToastTypes.SUCCESS,
         )
 
     def _handle_direct_record_field_update(

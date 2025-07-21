@@ -264,13 +264,6 @@ class CardActions:
     CONFIRM_DESIGN_PLAN = "confirm_design_plan"
     CANCEL_DESIGN_PLAN = "cancel_design_plan"
 
-    # 直接记录动作
-    CONFIRM_DIRECT_RECORD = "confirm_direct_record"
-    CANCEL_DIRECT_RECORD = "cancel_direct_record"
-    UPDATE_DIRECT_RECORD_TYPE = "update_direct_record_type"
-    UPDATE_PROGRESS_TYPE = "update_progress_type"
-    UPDATE_REMINDER_MODE = "update_reminder_mode"
-
 # ========== 设计方案相关常量 ==========
 class DesignPlanConstants:
     """设计方案业务常量"""
@@ -335,4 +328,4 @@ class RoutineReminderModes:
     """直接记录提醒模式"""
     OFF = "none"
     TIME = "time"
-    CYCLE = "cycle"
+    RELATIVE = "relative"
