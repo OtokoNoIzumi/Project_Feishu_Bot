@@ -99,7 +99,7 @@ class DirectRecordCard:
         elements.extend(self._build_non_form_fields(form_data, event_name, event_type, is_confirmed, build_method_name))
 
         # 2. 表单分隔线
-        elements.append({"tag": "hr", "margin": "12px 0px"})
+        elements.append({"tag": "markdown", "content": "**💡 重要提示** 请先完成上面的设定，这会清除下面的所有值！"})
 
         # 3. 创建表单容器
         form_container = {"tag": "form", "elements": [], "name": "direct_record_form"}
@@ -273,9 +273,9 @@ class DirectRecordCard:
         构建提醒模式选择器（仅未来事项）
         """
         options = [
-            {"text": {"tag": "plain_text", "content": "关闭提醒"}, "value": "none"},
-            {"text": {"tag": "plain_text", "content": "时间提醒"}, "value": "time"},
-            {"text": {"tag": "plain_text", "content": "周期提醒"}, "value": "cycle"},
+            {"text": {"tag": "plain_text", "content": "关闭提醒"}, "value": RoutineReminderModes.OFF},
+            {"text": {"tag": "plain_text", "content": "具体时间"}, "value": RoutineReminderModes.TIME},
+            {"text": {"tag": "plain_text", "content": "相对时间"}, "value": RoutineReminderModes.RELATIVE},
         ]
 
         action_data = {
@@ -589,25 +589,26 @@ class DirectRecordCard:
                             placeholder="选择具体提醒时间",
                             initial_date=reminder_datetime,
                             disabled=is_confirmed,
-                            action_data={}
+                            action_data={},
+                            name="reminder_datetime"
                         ),
                         width_list=["80px", "180px"],
                     )
                 )
 
-            case RoutineReminderModes.CYCLE:
-            # CYCLE模式：相对时间提醒，使用多选框选择相对时间
-                reminder_intervals = form_data.get("reminder_intervals", [])
+            case RoutineReminderModes.RELATIVE:
+            # RELATIVE模式：相对时间提醒，使用多选框选择相对时间
+                reminder_relative = form_data.get("reminder_relative", [])
                 elements.append(
                     self.parent.build_form_row(
-                        "提醒间隔",
+                        "提醒时间",
                         self.parent.build_multi_select_element(
                             placeholder="选择提醒间隔",
                             options=self._get_reminder_time_options(),
-                            initial_values=reminder_intervals,
+                            initial_values=reminder_relative,
                             disabled=is_confirmed,
                             action_data={},
-                            name="reminder_intervals"
+                            name="reminder_relative"
                         ),
                         width_list=["80px", "180px"],
                     )
