@@ -330,6 +330,10 @@ class RoutineCardManager(BaseCardManager):
         """更新指标类型"""
         return self.direct_record_card.update_progress_type(context)
 
+    def update_target_type(self, context: MessageContext_Refactor):
+        """更新目标类型"""
+        return self.direct_record_card.update_target_type(context)
+
     def update_reminder_mode(self, context: MessageContext_Refactor):
         """更新提醒模式"""
         return self.direct_record_card.update_reminder_mode(context)

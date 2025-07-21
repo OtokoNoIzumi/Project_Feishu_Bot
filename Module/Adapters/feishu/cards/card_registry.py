@@ -457,11 +457,11 @@ class BaseCardManager(ABC):
     ) -> Dict[str, Any]:
         """构建多选选择器元素"""
         return {
-            "tag": "select_multi",
+            "tag": "multi_select_static",
             "element_id": element_id,
             "placeholder": {"tag": "plain_text", "content": placeholder},
             "options": options,
-            "initial_options": initial_values,
+            "selected_values": initial_values,
             "width": "fill",
             "disabled": disabled,
             "name": name or element_id,

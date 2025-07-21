@@ -4,6 +4,7 @@ Direct Record Card
 直接记录卡片
 """
 
+import json
 from typing import Dict, Any, List
 from Module.Services.constants import (
     RoutineTypes,
@@ -57,14 +58,14 @@ class DirectRecordCard:
 
         if event_name:
             return self.parent.build_card_header(
-                f"📝 直接记录：{event_name}",
+                f"直接记录：{event_name}",
                 "填写记录信息",
                 "blue",
                 "edit_outlined"
             )
         else:
             return self.parent.build_card_header(
-                "📝 直接记录",
+                "直接记录",
                 "创建新的记录",
                 "blue",
                 "add_outlined"
@@ -140,7 +141,7 @@ class DirectRecordCard:
         # 事件名称（只读显示，不在表单）
         elements.append(
             self.parent.build_form_row(
-                "📝 事件名称",
+                "事件名称",
                 {
                     "tag": "markdown",
                     "content": f"**{event_name}**" if event_name else "*未设置*",
@@ -152,28 +153,38 @@ class DirectRecordCard:
         # 事件类型选择器（不在表单，有回调事件）
         elements.append(
             self.parent.build_form_row(
-                "🏷️ 事件类型",
+                "事件类型",
                 self._build_event_type_selector(event_type, is_confirmed, build_method_name),
                 width_list=["80px", "180px"],
             )
         )
-
         # 指标类型选择器（不在表单，有回调事件）
-        progress_type = form_data.get("progress_type", RoutineProgressTypes.NONE)
-        elements.append(
-            self.parent.build_form_row(
-                "📊 指标类型",
-                self._build_progress_type_selector(progress_type, is_confirmed, build_method_name),
-                width_list=["80px", "180px"],
+        if event_type != RoutineTypes.FUTURE:
+            progress_type = form_data.get("progress_type", RoutineProgressTypes.NONE)
+            elements.append(
+                self.parent.build_form_row(
+                    "指标类型",
+                    self._build_progress_type_selector(progress_type, is_confirmed, build_method_name),
+                    width_list=["80px", "180px"],
+                )
             )
-        )
 
+        # 2. 目标类型选择器
+        if event_type == RoutineTypes.ONGOING:
+            target_type = form_data.get("target_type", "none")
+            elements.append(
+                self.parent.build_form_row(
+                    "目标类型",
+                    self._build_target_type_selector(target_type, is_confirmed, build_method_name),
+                    width_list=["80px", "180px"],
+                )
+            )
         # 提醒模式选择器（仅未来事项，不在表单，有回调事件）
         if event_type == RoutineTypes.FUTURE:
             reminder_mode = form_data.get("reminder_mode", "off")
             elements.append(
                 self.parent.build_form_row(
-                    "🔔 提醒模式",
+                    "提醒模式",
                     self._build_reminder_mode_selector(reminder_mode, is_confirmed, build_method_name),
                     width_list=["80px", "180px"],
                 )
@@ -230,6 +241,31 @@ class DirectRecordCard:
             disabled=is_confirmed,
             action_data=action_data,
             element_id="progress_type",
+        )
+
+    def _build_target_type_selector(self, target_type: str, is_confirmed: bool, build_method_name: str) -> Dict[str, Any]:
+        """
+        构建指标类型选择器
+        """
+        options = [
+            {"text": {"tag": "plain_text", "content": "无目标"}, "value": "none"},
+            {"text": {"tag": "plain_text", "content": "时间目标"}, "value": "time"},
+            {"text": {"tag": "plain_text", "content": "次数目标"}, "value": "count"},
+        ]
+
+        action_data = {
+            "card_action": "update_target_type",
+            "card_config_key": "routine_direct_record",
+            "container_build_method": build_method_name,
+        }
+
+        return self.parent.build_select_element(
+            placeholder="选择指标类型",
+            options=options,
+            initial_value=target_type,
+            disabled=is_confirmed,
+            action_data=action_data,
+            element_id="target_type",
         )
 
     def _build_reminder_mode_selector(self, reminder_mode: str, is_confirmed: bool, build_method_name: str) -> Dict[str, Any]:
@@ -315,7 +351,7 @@ class DirectRecordCard:
         degree_value = form_data.get("degree", "")
         elements.append(
             self.parent.build_form_row(
-                "✅ 完成方式",
+                "完成方式",
                 self.parent.build_input_element(
                     placeholder="请输入完成方式",
                     initial_value=str(degree_value) if degree_value else "",
@@ -341,7 +377,7 @@ class DirectRecordCard:
             progress_value = form_data.get("progress_value", "")
             elements.append(
                 self.parent.build_form_row(
-                    "📊 指标值",
+                    "🎯 指标值",
                     self.parent.build_input_element(
                         placeholder=placeholder_text,
                         initial_value=str(progress_value) if progress_value else "",
@@ -387,10 +423,10 @@ class DirectRecordCard:
         elements = []
 
         # 1. 间隔类型选择器
-        interval_type = form_data.get("interval_type", "daily")
+        interval_type = form_data.get("interval_type", "")
         elements.append(
             self.parent.build_form_row(
-                "🔄 间隔类型",
+                "检查间隔",
                 self.parent.build_select_element(
                     placeholder="选择间隔类型",
                     options=self._get_interval_type_options(),
@@ -403,24 +439,33 @@ class DirectRecordCard:
             )
         )
 
-        # 2. 目标类型选择器
-        target_type = form_data.get("target_type", "none")
-        elements.append(
-            self.parent.build_form_row(
-                "🎯 目标类型",
-                self.parent.build_select_element(
-                    placeholder="选择目标类型",
-                    options=self._get_target_type_options(),
-                    initial_value=target_type,
-                    disabled=is_confirmed,
-                    action_data={},
-                    name="target_type"
-                ),
-                width_list=["80px", "180px"],
+        # 2. 指标值字段（根据指标类型动态显示）
+        progress_type = form_data.get("progress_type", RoutineProgressTypes.NONE)
+        if progress_type != RoutineProgressTypes.NONE:
+            if progress_type == RoutineProgressTypes.VALUE:
+                placeholder_text = "最新数值"
+            elif progress_type == RoutineProgressTypes.MODIFY:
+                placeholder_text = "变化量（+/-）"
+            else:
+                placeholder_text = "指标值"
+
+            progress_value = form_data.get("progress_value", "")
+            elements.append(
+                self.parent.build_form_row(
+                    "🎯 指标值",
+                    self.parent.build_input_element(
+                        placeholder=placeholder_text,
+                        initial_value=str(progress_value) if progress_value else "",
+                        disabled=is_confirmed,
+                        action_data={},
+                        name="progress_value"
+                    ),
+                    width_list=["80px", "180px"],
+                )
             )
-        )
 
         # 3. 目标值字段（根据目标类型动态显示）
+        target_type = form_data.get("target_type", "")
         if target_type != "none":
             placeholder_text = "目标时间（分钟）" if target_type == "time" else "目标次数"
             target_value = form_data.get("target_value", "")
@@ -438,32 +483,7 @@ class DirectRecordCard:
                 )
             )
 
-        # 4. 指标值字段（根据指标类型动态显示）
-        progress_type = form_data.get("progress_type", RoutineProgressTypes.NONE)
-        if progress_type != RoutineProgressTypes.NONE:
-            if progress_type == RoutineProgressTypes.VALUE:
-                placeholder_text = "最新数值"
-            elif progress_type == RoutineProgressTypes.MODIFY:
-                placeholder_text = "变化量（+/-）"
-            else:
-                placeholder_text = "指标值"
-
-            progress_value = form_data.get("progress_value", "")
-            elements.append(
-                self.parent.build_form_row(
-                    "📊 指标值",
-                    self.parent.build_input_element(
-                        placeholder=placeholder_text,
-                        initial_value=str(progress_value) if progress_value else "",
-                        disabled=is_confirmed,
-                        action_data={},
-                        name="progress_value"
-                    ),
-                    width_list=["80px", "180px"],
-                )
-            )
-
-        # 5. 备注字段
+        # 4. 备注字段
         note_value = form_data.get("note", "")
         elements.append(
             self.parent.build_form_row(
@@ -487,15 +507,6 @@ class DirectRecordCard:
             {"text": {"tag": "plain_text", "content": "每日"}, "value": "daily"},
             {"text": {"tag": "plain_text", "content": "每周"}, "value": "weekly"},
             {"text": {"tag": "plain_text", "content": "每月"}, "value": "monthly"},
-            {"text": {"tag": "plain_text", "content": "自定义"}, "value": "custom"},
-        ]
-
-    def _get_target_type_options(self) -> List[Dict]:
-        """获取目标类型选项"""
-        return [
-            {"text": {"tag": "plain_text", "content": "无目标"}, "value": "none"},
-            {"text": {"tag": "plain_text", "content": "时间目标"}, "value": "time"},
-            {"text": {"tag": "plain_text", "content": "次数目标"}, "value": "count"},
         ]
 
     def _build_future_form_fields(
@@ -518,7 +529,7 @@ class DirectRecordCard:
         scheduled_time = form_data.get("scheduled_time", "")
         elements.append(
             self.parent.build_form_row(
-                "📅 计划时间",
+                "计划时间",
                 self.parent._build_date_picker_element(
                     placeholder="选择计划执行时间",
                     initial_date=scheduled_time,
@@ -550,7 +561,7 @@ class DirectRecordCard:
         duration_value = form_data.get("duration", "")
         elements.append(
             self.parent.build_form_row(
-                "⏱️ 预估耗时",
+                "预估耗时",
                 self.parent.build_input_element(
                     placeholder="预估耗时（分钟）",
                     initial_value=str(duration_value) if duration_value else "",
@@ -568,7 +579,7 @@ class DirectRecordCard:
             reminder_time = form_data.get("reminder_time", "before_15min")
             elements.append(
                 self.parent.build_form_row(
-                    "⏰ 提醒时间",
+                    "提醒时间",
                     self.parent.build_select_element(
                         placeholder="选择提醒时间",
                         options=self._get_reminder_time_options(),
@@ -586,7 +597,7 @@ class DirectRecordCard:
                 reminder_cycle = form_data.get("reminder_cycle", [])
                 elements.append(
                     self.parent.build_form_row(
-                        "🔔 提醒周期",
+                        "提醒周期",
                         self.parent.build_multi_select_element(
                             placeholder="选择提醒周期",
                             options=self._get_reminder_cycle_options(),
@@ -759,6 +770,14 @@ class DirectRecordCard:
             "指标类型已更新"
         )
 
+    def update_target_type(self, context: MessageContext_Refactor) -> ProcessResult:
+        """处理指标类型变更回调"""
+        return self._handle_direct_record_field_update(
+            context,
+            "target_type",
+            "指标类型已更新"
+        )
+
     def update_reminder_mode(self, context: MessageContext_Refactor) -> ProcessResult:
         """处理提醒模式变更回调"""
         return self._handle_direct_record_field_update(
@@ -848,6 +867,10 @@ class DirectRecordCard:
         new_card_dsl = self.parent.build_update_card_data(
             business_data, build_method_name
         )
+        
+        # if field_key == 'reminder_mode':
+        #     print("test-cycle", json.dumps(json.dumps(new_card_dsl, ensure_ascii=False), ensure_ascii=False))
+            
 
         return self.parent.save_and_respond_with_update(
             context.user_id,
