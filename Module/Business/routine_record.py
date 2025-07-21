@@ -22,7 +22,6 @@ from Module.Services.constants import (
     RoutineCheckCycle,
     RoutineProgressTypes,
     RoutineTargetTypes,
-    DirectRecordFields,
 )
 from Module.Business.processors.base_processor import (
     BaseProcessor,

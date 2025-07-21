@@ -331,25 +331,6 @@ class RoutineTargetTypes:
     TIME = "time"
     COUNT = "count"
 
-class DirectRecordFields:
-    """直接记录相关字段名称"""
-    EVENT_NAME = "event_name"
-    EVENT_TYPE = "event_type"
-    PROGRESS_TYPE = "progress_type"
-    PROGRESS_VALUE = "progress_value"
-    REMINDER_MODE = "reminder_mode"
-    REMINDER_TIME = "reminder_time"
-    REMINDER_CYCLE = "reminder_cycle"
-    PLANNED_DATE = "planned_date"
-    PLANNED_TIME = "planned_time"
-    PRIORITY = "priority"
-    ESTIMATED_DURATION = "estimated_duration"
-    TARGET_TYPE = "target_type"
-    TARGET_VALUE = "target_value"
-    CHECK_CYCLE = "check_cycle"
-    HAS_DEFINITION = "has_definition"
-    CREATED_FROM = "created_from"
-
 class RoutineReminderModes:
     """直接记录提醒模式"""
     OFF = "none"

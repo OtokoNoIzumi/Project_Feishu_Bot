@@ -61,11 +61,6 @@ class SharedUtils:
         )
         data_source[field_key] = extracted_value
 
-        # 获取构建方法
-        build_method_name = business_data.get(
-            "container_build_method", self.default_update_build_method
-        )
-
         new_card_dsl = self.parent.build_update_card_data(
             business_data, build_method_name
         )

@@ -6,11 +6,8 @@ Direct Record Card
 
 from typing import Dict, Any, List
 from Module.Services.constants import (
-    CardConfigKeys,
     RoutineTypes,
     RoutineProgressTypes,
-    DirectRecordFields,
-    CardActions,
     RoutineReminderModes,
     ToastTypes,
 )
@@ -35,50 +32,26 @@ class DirectRecordCard:
     ) -> Dict[str, Any]:
         """
         直接记录卡片核心构建逻辑
+        只负责构建 header 和卡片结构，其他逻辑移到 elements 中
         """
-        # 使用 safe_get_business_data 处理递归嵌套的业务数据结构
-        data_source, is_container_mode = self.parent.safe_get_business_data(
-            business_data, CardConfigKeys.ROUTINE_DIRECT_RECORD
-        )
-
-        # 获取构建方法名称
-        build_method_name = data_source.get(
-            "container_build_method", self.default_update_build_method
-        )
-
-        # 获取基础数据
-        event_name = data_source.get(DirectRecordFields.EVENT_NAME, "")
-        event_type = data_source.get(DirectRecordFields.EVENT_TYPE, RoutineTypes.INSTANT)
-        is_confirmed = data_source.get("is_confirmed", False)
-        result = data_source.get("result", "取消")
-
-        # 获取表单数据
-        form_data = data_source.get("form_data", {})
-
         # 构建卡片头部
-        header = self._build_direct_record_header(event_name, is_confirmed, result)
+        header = self._build_direct_record_header(business_data)
 
         # 构建卡片元素
-        elements = self._build_direct_record_form_elements(
-            form_data, event_name, event_type, is_confirmed
-        )
-
-        # 处理集成模式：检查是否有子业务数据
-        sub_business_build_method = data_source.get("sub_business_build_method", "")
-        if sub_business_build_method and hasattr(self.parent, sub_business_build_method):
-            # 这里必须要用business_data，有很多最外层的通用方法在这里，不要偷懒。
-            sub_elements = getattr(self.parent, sub_business_build_method)(business_data)
-            elements.append({"tag": "hr", "margin": "6px 0px"})
-            elements.extend(sub_elements)
+        elements = self.build_direct_record_elements(business_data)
 
         return self.parent.build_base_card_structure(elements, header, "12px")
 
     def _build_direct_record_header(
-        self, event_name: str, is_confirmed: bool = False, result: str = "取消"
+        self, business_data: Dict[str, Any]
     ) -> Dict[str, Any]:
         """
         构建直接记录卡片头部
         """
+        is_confirmed = business_data.get("is_confirmed", False)
+        event_name = business_data.get("event_name", "")
+        result = business_data.get("result", "取消")
+        
         if is_confirmed:
             return self.parent.build_status_based_header("", is_confirmed, result)
 
@@ -99,38 +72,30 @@ class DirectRecordCard:
 
     def build_direct_record_elements(self, business_data: Dict[str, Any]) -> List[Dict]:
         """
-        构建直接记录元素（别名方法，兼容现有调用）
+        构建直接记录元素
         符合 sub_business_build_method 调用规范
+        直接处理所有业务逻辑和数据传递
         """
+        # 获取基础数据（从根级business_data获取，与record_card保持一致）
+        build_method_name = business_data.get(
+            "container_build_method", self.default_update_build_method
+        )
+        is_confirmed = business_data.get("is_confirmed", False)
+        
         # 使用 safe_get_business_data 处理递归嵌套的业务数据结构
         data_source, is_container_mode = self.parent.safe_get_business_data(
-            business_data, CardConfigKeys.ROUTINE_DIRECT_RECORD
+            business_data, "routine_direct_record"
         )
 
         # 从处理后的数据源中提取所需参数
         form_data = data_source.get("form_data", {})
-        event_name = data_source.get(DirectRecordFields.EVENT_NAME, "")
-        event_type = data_source.get(DirectRecordFields.EVENT_TYPE, RoutineTypes.INSTANT)
-        is_confirmed = data_source.get("is_confirmed", False)
+        event_name = data_source.get("event_name", "")
+        event_type = data_source.get("event_type", RoutineTypes.INSTANT)
 
-        elements = self._build_direct_record_form_elements(form_data, event_name, event_type, is_confirmed)
-        return elements
-
-    def _build_direct_record_form_elements(
-        self, form_data: Dict, event_name: str, event_type: str, is_confirmed: bool
-    ) -> List[Dict]:
-        """
-        构建直接记录表单元素（内部实现）
-        实现表单内外字段分离机制
-
-        架构说明：
-        - 表单外字段：非表单数据，有回调事件，状态保存在配置中
-        - 表单内字段：表单数据，通过提交按钮回调一次性处理
-        """
         elements = []
 
         # 1. 表单外字段区域（非表单数据，有回调事件，状态保存在配置中）
-        elements.extend(self._build_non_form_fields(form_data, event_name, event_type, is_confirmed))
+        elements.extend(self._build_non_form_fields(form_data, event_name, event_type, is_confirmed, build_method_name))
 
         # 2. 表单分隔线
         elements.append({"tag": "hr", "margin": "12px 0px"})
@@ -143,15 +108,23 @@ class DirectRecordCard:
         form_container["elements"].extend(form_fields)
 
         # 5. 提交按钮
-        form_container["elements"].append(self._build_submit_button(is_confirmed))
+        form_container["elements"].append(self._build_submit_button(is_confirmed, build_method_name))
 
         # 6. 添加表单容器到元素列表
         elements.append(form_container)
 
+        # 7. 处理集成模式：检查是否有子业务数据
+        sub_business_build_method = data_source.get("sub_business_build_method", "")
+        if sub_business_build_method and hasattr(self.parent, sub_business_build_method):
+            # 这里必须要用business_data，有很多最外层的通用方法在这里，不要偷懒。
+            sub_elements = getattr(self.parent, sub_business_build_method)(business_data)
+            elements.append({"tag": "hr", "margin": "6px 0px"})
+            elements.extend(sub_elements)
+
         return elements
 
     def _build_non_form_fields(
-        self, form_data: Dict, event_name: str, event_type: str, is_confirmed: bool
+        self, form_data: Dict, event_name: str, event_type: str, is_confirmed: bool, build_method_name: str
     ) -> List[Dict]:
         """
         构建表单外字段（非表单数据，有回调事件，状态保存在配置中）
@@ -180,35 +153,35 @@ class DirectRecordCard:
         elements.append(
             self.parent.build_form_row(
                 "🏷️ 事件类型",
-                self._build_event_type_selector(event_type, is_confirmed),
+                self._build_event_type_selector(event_type, is_confirmed, build_method_name),
                 width_list=["80px", "180px"],
             )
         )
 
         # 指标类型选择器（不在表单，有回调事件）
-        progress_type = form_data.get(DirectRecordFields.PROGRESS_TYPE, RoutineProgressTypes.NONE)
+        progress_type = form_data.get("progress_type", RoutineProgressTypes.NONE)
         elements.append(
             self.parent.build_form_row(
                 "📊 指标类型",
-                self._build_progress_type_selector(progress_type, is_confirmed),
+                self._build_progress_type_selector(progress_type, is_confirmed, build_method_name),
                 width_list=["80px", "180px"],
             )
         )
 
         # 提醒模式选择器（仅未来事项，不在表单，有回调事件）
         if event_type == RoutineTypes.FUTURE:
-            reminder_mode = form_data.get(DirectRecordFields.REMINDER_MODE, "off")
+            reminder_mode = form_data.get("reminder_mode", "off")
             elements.append(
                 self.parent.build_form_row(
                     "🔔 提醒模式",
-                    self._build_reminder_mode_selector(reminder_mode, is_confirmed),
+                    self._build_reminder_mode_selector(reminder_mode, is_confirmed, build_method_name),
                     width_list=["80px", "180px"],
                 )
             )
 
         return elements
 
-    def _build_event_type_selector(self, event_type: str, is_confirmed: bool) -> Dict[str, Any]:
+    def _build_event_type_selector(self, event_type: str, is_confirmed: bool, build_method_name: str) -> Dict[str, Any]:
         """
         构建事件类型选择器
         """
@@ -220,9 +193,9 @@ class DirectRecordCard:
         ]
 
         action_data = {
-            "card_action": CardActions.UPDATE_DIRECT_RECORD_TYPE,
-            "card_config_key": CardConfigKeys.ROUTINE_DIRECT_RECORD,
-            "container_build_method": self.default_update_build_method,
+            "card_action": "update_direct_record_type",
+            "card_config_key": "routine_direct_record",
+            "container_build_method": build_method_name,
         }
 
         return self.parent.build_select_element(
@@ -234,7 +207,7 @@ class DirectRecordCard:
             element_id="event_type_selector",
         )
 
-    def _build_progress_type_selector(self, progress_type: str, is_confirmed: bool) -> Dict[str, Any]:
+    def _build_progress_type_selector(self, progress_type: str, is_confirmed: bool, build_method_name: str) -> Dict[str, Any]:
         """
         构建指标类型选择器
         """
@@ -245,9 +218,9 @@ class DirectRecordCard:
         ]
 
         action_data = {
-            "card_action": CardActions.UPDATE_PROGRESS_TYPE,
-            "card_config_key": CardConfigKeys.ROUTINE_DIRECT_RECORD,
-            "container_build_method": self.default_update_build_method,
+            "card_action": "update_progress_type",
+            "card_config_key": "routine_direct_record",
+            "container_build_method": build_method_name,
         }
 
         return self.parent.build_select_element(
@@ -259,20 +232,20 @@ class DirectRecordCard:
             element_id="progress_type",
         )
 
-    def _build_reminder_mode_selector(self, reminder_mode: str, is_confirmed: bool) -> Dict[str, Any]:
+    def _build_reminder_mode_selector(self, reminder_mode: str, is_confirmed: bool, build_method_name: str) -> Dict[str, Any]:
         """
         构建提醒模式选择器（仅未来事项）
         """
         options = [
-            {"text": {"tag": "plain_text", "content": "关闭提醒"}, "value": RoutineReminderModes.OFF},
-            {"text": {"tag": "plain_text", "content": "时间提醒"}, "value": RoutineReminderModes.TIME},
-            {"text": {"tag": "plain_text", "content": "周期提醒"}, "value": RoutineReminderModes.CYCLE},
+            {"text": {"tag": "plain_text", "content": "关闭提醒"}, "value": "none"},
+            {"text": {"tag": "plain_text", "content": "时间提醒"}, "value": "time"},
+            {"text": {"tag": "plain_text", "content": "周期提醒"}, "value": "cycle"},
         ]
 
         action_data = {
-            "card_action": CardActions.UPDATE_REMINDER_MODE,
-            "card_config_key": CardConfigKeys.ROUTINE_DIRECT_RECORD,
-            "container_build_method": self.default_update_build_method,
+            "card_action": "update_reminder_mode",
+            "card_config_key": "routine_direct_record",
+            "container_build_method": build_method_name,
         }
 
         return self.parent.build_select_element(
@@ -355,7 +328,7 @@ class DirectRecordCard:
         )
 
         # 3. 指标值字段（根据指标类型动态显示）
-        progress_type = form_data.get(DirectRecordFields.PROGRESS_TYPE, RoutineProgressTypes.NONE)
+        progress_type = form_data.get("progress_type", RoutineProgressTypes.NONE)
         if progress_type != RoutineProgressTypes.NONE:
             # 根据指标类型设置不同的占位符
             if progress_type == RoutineProgressTypes.VALUE:
@@ -365,7 +338,7 @@ class DirectRecordCard:
             else:
                 placeholder_text = "指标值"
 
-            progress_value = form_data.get(DirectRecordFields.PROGRESS_VALUE, "")
+            progress_value = form_data.get("progress_value", "")
             elements.append(
                 self.parent.build_form_row(
                     "📊 指标值",
@@ -374,7 +347,7 @@ class DirectRecordCard:
                         initial_value=str(progress_value) if progress_value else "",
                         disabled=is_confirmed,
                         action_data={},
-                        name=DirectRecordFields.PROGRESS_VALUE
+                        name="progress_value"
                     ),
                     width_list=["80px", "180px"],
                 )
@@ -418,14 +391,14 @@ class DirectRecordCard:
         elements.append(
             self.parent.build_form_row(
                 "🔄 间隔类型",
-                {
-                    "tag": "select_static",
-                    "name": "interval_type",
-                    "placeholder": {"tag": "plain_text", "content": "选择间隔类型"},
-                    "initial_option": interval_type,
-                    "options": self._get_interval_type_options(),
-                    "disabled": is_confirmed,
-                },
+                self.parent.build_select_element(
+                    placeholder="选择间隔类型",
+                    options=self._get_interval_type_options(),
+                    initial_value=interval_type,
+                    disabled=is_confirmed,
+                    action_data={},
+                    name="interval_type"
+                ),
                 width_list=["80px", "180px"],
             )
         )
@@ -435,14 +408,14 @@ class DirectRecordCard:
         elements.append(
             self.parent.build_form_row(
                 "🎯 目标类型",
-                {
-                    "tag": "select_static",
-                    "name": "target_type",
-                    "placeholder": {"tag": "plain_text", "content": "选择目标类型"},
-                    "initial_option": target_type,
-                    "options": self._get_target_type_options(),
-                    "disabled": is_confirmed,
-                },
+                self.parent.build_select_element(
+                    placeholder="选择目标类型",
+                    options=self._get_target_type_options(),
+                    initial_value=target_type,
+                    disabled=is_confirmed,
+                    action_data={},
+                    name="target_type"
+                ),
                 width_list=["80px", "180px"],
             )
         )
@@ -466,7 +439,7 @@ class DirectRecordCard:
             )
 
         # 4. 指标值字段（根据指标类型动态显示）
-        progress_type = form_data.get(DirectRecordFields.PROGRESS_TYPE, RoutineProgressTypes.NONE)
+        progress_type = form_data.get("progress_type", RoutineProgressTypes.NONE)
         if progress_type != RoutineProgressTypes.NONE:
             if progress_type == RoutineProgressTypes.VALUE:
                 placeholder_text = "最新数值"
@@ -475,7 +448,7 @@ class DirectRecordCard:
             else:
                 placeholder_text = "指标值"
 
-            progress_value = form_data.get(DirectRecordFields.PROGRESS_VALUE, "")
+            progress_value = form_data.get("progress_value", "")
             elements.append(
                 self.parent.build_form_row(
                     "📊 指标值",
@@ -484,7 +457,7 @@ class DirectRecordCard:
                         initial_value=str(progress_value) if progress_value else "",
                         disabled=is_confirmed,
                         action_data={},
-                        name=DirectRecordFields.PROGRESS_VALUE
+                        name="progress_value"
                     ),
                     width_list=["80px", "180px"],
                 )
@@ -590,7 +563,7 @@ class DirectRecordCard:
         )
 
         # 4. 提醒时间字段（根据提醒模式显示）
-        reminder_mode = form_data.get(DirectRecordFields.REMINDER_MODE, RoutineReminderModes.OFF)
+        reminder_mode = form_data.get("reminder_mode", RoutineReminderModes.OFF)
         if reminder_mode != RoutineReminderModes.OFF:
             reminder_time = form_data.get("reminder_time", "before_15min")
             elements.append(
@@ -673,7 +646,7 @@ class DirectRecordCard:
             {"text": {"tag": "plain_text", "content": "周末"}, "value": "weekends"},
         ]
 
-    def _build_submit_button(self, is_confirmed: bool) -> Dict[str, Any]:
+    def _build_submit_button(self, is_confirmed: bool, build_method_name: str = None) -> Dict[str, Any]:
         """
         构建提交按钮组（参考 record_card 的3个按钮布局）
 
@@ -682,6 +655,8 @@ class DirectRecordCard:
         2. 重置按钮：使用 form_action_type="reset"
         3. 确认按钮：使用 callback 行为，触发表单提交处理
         """
+        if build_method_name is None:
+            build_method_name = self.default_update_build_method
         return {
             "tag": "column_set",
             "horizontal_align": "left",
@@ -704,9 +679,9 @@ class DirectRecordCard:
                                 {
                                     "type": "callback",
                                     "value": {
-                                        "card_action": CardActions.CANCEL_DIRECT_RECORD,
-                                        "card_config_key": CardConfigKeys.ROUTINE_DIRECT_RECORD,
-                                        "container_build_method": self.default_update_build_method,
+                                        "card_action": "cancel_direct_record",
+                                        "card_config_key": "routine_direct_record",
+                                        "container_build_method": build_method_name,
                                     },
                                 }
                             ],
@@ -750,9 +725,9 @@ class DirectRecordCard:
                                 {
                                     "type": "callback",
                                     "value": {
-                                        "card_action": CardActions.CONFIRM_DIRECT_RECORD,
-                                        "card_config_key": CardConfigKeys.ROUTINE_DIRECT_RECORD,
-                                        "container_build_method": self.default_update_build_method,
+                                        "card_action": "confirm_direct_record",
+                                        "card_config_key": "routine_direct_record",
+                                        "container_build_method": build_method_name,
                                     },
                                 }
                             ],
@@ -772,7 +747,7 @@ class DirectRecordCard:
         """处理事项类型变更回调"""
         return self._handle_direct_record_field_update(
             context,
-            DirectRecordFields.EVENT_TYPE,
+            "event_type",
             "事项类型已更新"
         )
 
@@ -780,7 +755,7 @@ class DirectRecordCard:
         """处理指标类型变更回调"""
         return self._handle_direct_record_field_update(
             context,
-            DirectRecordFields.PROGRESS_TYPE,
+            "progress_type",
             "指标类型已更新"
         )
 
@@ -788,7 +763,7 @@ class DirectRecordCard:
         """处理提醒模式变更回调"""
         return self._handle_direct_record_field_update(
             context,
-            DirectRecordFields.REMINDER_MODE,
+            "reminder_mode",
             "提醒模式已更新"
         )
 
@@ -842,12 +817,44 @@ class DirectRecordCard:
         if not extracted_value:
             return self.parent.create_error_result("未能获取选择的值")
 
-        # 调用共享工具的字段更新方法
-        return self.parent.update_card_field(
-            context=context,
-            field_key=field_key,
-            extracted_value=extracted_value,
-            sub_business_name=CardConfigKeys.ROUTINE_DIRECT_RECORD,
-            toast_message=toast_message
+        # 获取构建方法名称
+        build_method_name = context.content.value.get(
+            "container_build_method", self.default_update_build_method
+        )
+        
+        # 获取业务数据
+        business_data, card_id, error_response = self.parent.ensure_valid_context(
+            context, "_handle_direct_record_field_update", build_method_name
+        )
+        if error_response:
+            return error_response
+
+        # 获取direct_record的数据源
+        data_source, _ = self.parent.safe_get_business_data(
+            business_data, "routine_direct_record"
+        )
+        
+        # 根据字段类型决定更新位置
+        if field_key == "event_type":
+            # event_type存储在根级别
+            data_source[field_key] = extracted_value
+        else:
+            # 其他字段存储在form_data中
+            if "form_data" not in data_source:
+                data_source["form_data"] = {}
+            data_source["form_data"][field_key] = extracted_value
+
+        # 构建新卡片
+        new_card_dsl = self.parent.build_update_card_data(
+            business_data, build_method_name
+        )
+
+        return self.parent.save_and_respond_with_update(
+            context.user_id,
+            card_id,
+            business_data,
+            new_card_dsl,
+            toast_message,
+            ToastTypes.INFO,
         )
     # endregion
