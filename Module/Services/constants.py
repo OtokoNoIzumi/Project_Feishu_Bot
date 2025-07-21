@@ -62,6 +62,7 @@ class ResponseTypes:
     DESIGN_PLAN_CANCEL = "design_plan_cancel"
     DESIGN_PLAN_CARD = "design_plan_card"
     DESIGN_PLAN_ACTION = "design_plan_action"
+    ROUTINE_DIRECT_RECORD_CARD = "routine_direct_record_card"
 
     RICH_TEXT = "rich_text"
     IMAGE_LIST = "image_list"
@@ -229,6 +230,7 @@ class CardConfigKeys:
     ROUTINE_RECORD = "routine_record"
     ROUTINE_QUICK_SELECT = "routine_quick_select"
     ROUTINE_QUERY = "routine_query"
+    ROUTINE_DIRECT_RECORD = "routine_direct_record"
 
 # ========== 卡片操作类型常量 ==========
 class CardOperationTypes:
@@ -261,6 +263,12 @@ class CardActions:
     # 设计方案动作
     CONFIRM_DESIGN_PLAN = "confirm_design_plan"
     CANCEL_DESIGN_PLAN = "cancel_design_plan"
+
+    # 直接记录动作
+    CONFIRM_DIRECT_RECORD = "confirm_direct_record"
+    UPDATE_DIRECT_RECORD_TYPE = "update_direct_record_type"
+    UPDATE_PROGRESS_TYPE = "update_progress_type"
+    UPDATE_REMINDER_MODE = "update_reminder_mode"
 
 # ========== 设计方案相关常量 ==========
 class DesignPlanConstants:
@@ -295,6 +303,7 @@ class RouteTypes:
     ROUTINE_QUICK_RECORD_CARD = "routine_quick_record_card"
     ROUTINE_QUICK_SELECT_CARD = "routine_quick_select_card"
     ROUTINE_QUERY_RESULTS_CARD = "routine_query_results_card"
+    ROUTINE_DIRECT_RECORD_CARD = "routine_direct_record_card"
 
 # ========== 日常事项类型常量 ==========
 class RoutineTypes:
@@ -312,5 +321,30 @@ class RoutineCheckCycle:
     YEARLY = "年"
 
 class RoutineProgressTypes:
+    NONE = "none"
     VALUE = "value"
     MODIFY = "modify"
+
+class RoutineTargetTypes:
+    NONE = "none"
+    TIME = "time"
+    COUNT = "count"
+
+class DirectRecordFields:
+    """直接记录相关字段名称"""
+    EVENT_NAME = "event_name"
+    EVENT_TYPE = "event_type"
+    PROGRESS_TYPE = "progress_type"
+    PROGRESS_VALUE = "progress_value"
+    REMINDER_MODE = "reminder_mode"
+    REMINDER_TIME = "reminder_time"
+    REMINDER_CYCLE = "reminder_cycle"
+    PLANNED_DATE = "planned_date"
+    PLANNED_TIME = "planned_time"
+    PRIORITY = "priority"
+    ESTIMATED_DURATION = "estimated_duration"
+    TARGET_TYPE = "target_type"
+    TARGET_VALUE = "target_value"
+    CHECK_CYCLE = "check_cycle"
+    HAS_DEFINITION = "has_definition"
+    CREATED_FROM = "created_from"

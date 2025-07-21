@@ -101,6 +101,15 @@ CARD_CLASS_MAPPING = {
             "sub_business_build_method": "build_query_elements",
         },
     },
+    CardConfigKeys.ROUTINE_DIRECT_RECORD: {
+        "class": RoutineCardManager,
+        "single_instance": True,
+        "config": {
+            "reply_mode": "reply",
+            "card_name": "直接记录",
+            "sub_business_build_method": "build_direct_record_elements",
+        },
+    },
 }
 
 # ✅ 操作类型到卡片配置键的映射 - 替代后端服务调用

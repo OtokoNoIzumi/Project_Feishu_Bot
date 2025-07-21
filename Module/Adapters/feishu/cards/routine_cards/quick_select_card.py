@@ -4,6 +4,7 @@ Quick Select Card
 快速选择卡片
 """
 
+import json
 from typing import Dict, Any
 from Module.Business.processors.base_processor import (
     MessageContext_Refactor,
@@ -242,6 +243,14 @@ class QuickSelectCard:
         routine_business = self.parent.message_router.routine_record
         definitions_data = routine_business.load_event_definitions(user_id)
 
+        business_data["workflow_state"] = (
+            "quick_record"  # 集成模式状态，这个姑且先保留吧，稍微冗余一点点
+        )
+        business_data["container_build_method"] = container_build_method
+
+        parent_data, _ = self.parent.safe_get_business_data(
+            business_data, parent_business_name
+        )
         if definitions_data and event_name in definitions_data["definitions"]:
             # 事件存在，进入快速记录模式
             event_def = definitions_data["definitions"][event_name]
@@ -250,14 +259,6 @@ class QuickSelectCard:
                 user_id, event_name, event_def, last_record_time
             )
 
-            business_data["workflow_state"] = (
-                "quick_record"  # 集成模式状态，这个姑且先保留吧，稍微冗余一点点
-            )
-            business_data["container_build_method"] = container_build_method
-
-            parent_data, _ = self.parent.safe_get_business_data(
-                business_data, parent_business_name
-            )
             parent_data["sub_business_data"] = quick_record_data
             parent_data["sub_business_name"] = CardConfigKeys.ROUTINE_RECORD
             sub_business_build_method = self.parent.get_sub_business_build_method(
@@ -278,14 +279,37 @@ class QuickSelectCard:
                 ToastTypes.SUCCESS,
             )
 
+        new_record_data = routine_business.build_direct_record_data(
+            user_id, event_name, RoutineTypes.INSTANT
+        )
+        parent_data["sub_business_data"] = new_record_data
+        parent_data["sub_business_name"] = CardConfigKeys.ROUTINE_DIRECT_RECORD
+        sub_business_build_method = self.parent.get_sub_business_build_method(
+            CardConfigKeys.ROUTINE_DIRECT_RECORD
+        )
+        parent_data["sub_business_build_method"] = sub_business_build_method
+
+        # 更新卡片显示
+        new_card_dsl = self.parent.build_update_card_data(
+            business_data, container_build_method
+        )
+        # print("test-new_card_dsl", json.dumps(json.dumps(new_card_dsl, ensure_ascii=False), ensure_ascii=False))
+        return self.parent.save_and_respond_with_update(
+            context.user_id,
+            card_id,
+            business_data,
+            new_card_dsl,
+            f"正在记录 【{event_name}】",
+            ToastTypes.SUCCESS,
+        )
         # 事件不存在，显示新建提示但保持在选择模式
         # 这里是下一个迭代的优化重点。
-        return self.parent.handle_card_operation_common(
-            card_content={"message": "请输入事项名称"},
-            card_operation_type=CardOperationTypes.UPDATE_RESPONSE,
-            update_toast_type=ToastTypes.INFO,
-            toast_message=f"'{event_name}' 是新事项，可以创建新定义",
-        )
+        # return self.parent.handle_card_operation_common(
+        #     card_content={"message": "请输入事项名称"},
+        #     card_operation_type=CardOperationTypes.UPDATE_RESPONSE,
+        #     update_toast_type=ToastTypes.INFO,
+        #     toast_message=f"'{event_name}' 是新事项，可以创建新定义",
+        # )
 
     def show_query_info(self, context: MessageContext_Refactor):
         """

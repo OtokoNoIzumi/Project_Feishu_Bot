@@ -20,6 +20,9 @@ from Module.Services.constants import (
     RoutineTypes,
     RouteTypes,
     RoutineCheckCycle,
+    RoutineProgressTypes,
+    RoutineTargetTypes,
+    DirectRecordFields,
 )
 from Module.Business.processors.base_processor import (
     BaseProcessor,
@@ -319,7 +322,6 @@ class RoutineRecord(BaseProcessor):
             self.save_event_records(user_id, default_data)
             return default_data
 
-
         try:
             with open(file_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
@@ -555,13 +557,20 @@ class RoutineRecord(BaseProcessor):
             return route_result
 
         # 新事项，展示事件定义卡片
-        card_data = self.build_new_event_card_data(user_id, item_name)
+        card_data = self.build_direct_record_data(user_id, item_name)
         route_result = RouteResult.create_route_result(
-            route_type=RouteTypes.ROUTINE_NEW_EVENT_CARD,
+            route_type=RouteTypes.ROUTINE_DIRECT_RECORD_CARD,
             route_params={
                 "business_data": card_data,
             },
         )
+        # card_data = self.build_new_event_card_data(user_id, item_name)
+        # route_result = RouteResult.create_route_result(
+        #     route_type=RouteTypes.ROUTINE_NEW_EVENT_CARD,
+        #     route_params={
+        #         "business_data": card_data,
+        #     },
+        # )
         return route_result
 
     @safe_execute("构建新事件定义卡片数据失败")
@@ -1010,3 +1019,249 @@ class RoutineRecord(BaseProcessor):
         except Exception as e:
             debug_utils.log_and_print(f"创建记录失败: {e}", log_level="ERROR")
             return False, f"创建记录失败: {str(e)}"
+
+    @safe_execute("构建直接记录卡片数据失败")
+    def build_direct_record_data(self, user_id: str, event_name: str, event_type: str = RoutineTypes.INSTANT) -> Dict[str, Any]:
+        """
+        构建直接记录卡片数据
+
+        Args:
+            user_id: 用户ID
+            event_name: 事件名称
+            event_type: 事件类型，默认为瞬间完成
+
+        Returns:
+            Dict[str, Any]: 直接记录卡片数据
+        """
+        current_time = self._get_formatted_time()
+
+        # 构建初始表单数据
+        form_data = {
+            "progress_type": RoutineProgressTypes.NONE,
+            "reminder_mode": "off",
+            "duration": "",
+            "note": "",
+            "degree": "",
+            "progress_value": "",
+            "planned_date": "",
+            "planned_time": "",
+            "priority": "medium",
+            "estimated_duration": "",
+            "reminder_time": "start",
+            "reminder_cycle": [],
+            "check_cycle": "",
+            "target_type": RoutineTargetTypes.NONE,
+            "target_value": ""
+        }
+
+        return {
+            "user_id": user_id,
+            "event_name": event_name,
+            "event_type": event_type,
+            "form_data": form_data,
+            "is_confirmed": False,
+            "created_time": current_time
+        }
+
+    @safe_execute("创建直接记录失败")
+    def create_direct_record(self, user_id: str, form_data: Dict[str, Any]) -> Tuple[bool, str]:
+        """
+        创建并保存直接记录到 event_records.json
+
+        Args:
+            user_id: 用户ID
+            form_data: 表单数据
+
+        Returns:
+            Tuple[bool, str]: (是否成功, 消息)
+        """
+        try:
+            # 验证数据
+            is_valid, error_msg = self._validate_direct_record_data(form_data)
+            if not is_valid:
+                return False, error_msg
+
+            # 加载记录数据
+            records_data = self.load_event_records(user_id)
+            if not records_data:
+                return False, "加载记录数据失败"
+
+            # 生成记录ID
+            event_name = form_data.get("event_name", "").strip()
+            record_id = self._generate_direct_record_id(user_id, event_name)
+
+            # 构建记录数据
+            current_time = self._get_formatted_time()
+            event_type = form_data.get("event_type", RoutineTypes.INSTANT)
+
+            # 基础记录结构
+            new_record = {
+                "record_id": record_id,
+                "event_name": event_name,
+                "event_type": event_type,
+                "timestamp": current_time,
+                "completion_time": current_time,
+
+                # 公共字段
+                "note": form_data.get("note", ""),
+                "degree": form_data.get("degree", ""),
+                "duration": self._safe_parse_number(form_data.get("duration", "")),
+
+                # 指标相关
+                "progress_type": form_data.get("progress_type", RoutineProgressTypes.NONE),
+                "progress_value": self._safe_parse_number(form_data.get("progress_value", "")),
+
+                # 元数据字段
+                "has_definition": False,
+                "created_from": "direct_input"
+            }
+
+            # 根据事件类型添加特定字段
+            if event_type == RoutineTypes.ONGOING:
+                new_record.update({
+                    "check_cycle": form_data.get("check_cycle", ""),
+                    "target_type": form_data.get("target_type", RoutineTargetTypes.NONE),
+                    "target_value": self._safe_parse_number(form_data.get("target_value", ""), as_int=True)
+                })
+            elif event_type == RoutineTypes.FUTURE:
+                new_record.update({
+                    "priority": form_data.get("priority", "medium"),
+                    "planned_date": form_data.get("planned_date", ""),
+                    "planned_time": form_data.get("planned_time", ""),
+                    "estimated_duration": self._safe_parse_number(form_data.get("estimated_duration", "")),
+                    "reminder_mode": form_data.get("reminder_mode", "off"),
+                    "reminder_time": form_data.get("reminder_time", "start"),
+                    "reminder_cycle": form_data.get("reminder_cycle", [])
+                })
+
+            # 根据事件类型决定存储位置
+            if event_type in [RoutineTypes.START, RoutineTypes.ONGOING, RoutineTypes.FUTURE]:
+                # 开始、持续、未来事项存储到 active_records
+                records_data["active_records"].append(new_record)
+            else:
+                # 瞬间完成事项存储到 records
+                records_data["records"].append(new_record)
+
+            records_data["last_updated"] = current_time
+
+            # 保存数据
+            if self.save_event_records(user_id, records_data):
+                return True, f"成功创建直接记录 '{event_name}' - {current_time[11:16]}"
+
+            return False, "保存记录失败"
+
+        except Exception as e:
+            debug_utils.log_and_print(f"创建直接记录失败: {e}", log_level="ERROR")
+            return False, f"创建直接记录失败: {str(e)}"
+
+    def _validate_direct_record_data(self, form_data: Dict[str, Any]) -> Tuple[bool, str]:
+        """
+        验证直接记录数据
+
+        Args:
+            form_data: 表单数据
+
+        Returns:
+            Tuple[bool, str]: (是否有效, 错误消息)
+        """
+        # 基础字段验证
+        event_name = form_data.get("event_name", "").strip()
+        if not event_name:
+            return False, "事件名称不能为空"
+        if len(event_name) > 50:
+            return False, "事件名称不能超过50个字符"
+
+        event_type = form_data.get("event_type", "")
+        valid_types = [RoutineTypes.INSTANT, RoutineTypes.START, RoutineTypes.ONGOING, RoutineTypes.FUTURE]
+        if event_type not in valid_types:
+            return False, "无效的事件类型"
+
+        # 数值字段统一验证
+        numeric_fields = {
+            "duration": "耗时",
+            "progress_value": "指标值",
+            "estimated_duration": "预估耗时",
+            "target_value": "目标值"
+        }
+
+        for field, field_name in numeric_fields.items():
+            value = form_data.get(field, "")
+            if value and not self._is_valid_number(value):
+                return False, f"{field_name}必须是有效数字"
+
+        # 未来事项必填验证
+        if event_type == RoutineTypes.FUTURE:
+            planned_date = form_data.get("planned_date", "")
+            if not planned_date:
+                return False, "未来事项必须设置计划日期"
+            # 简单日期格式验证
+            try:
+                datetime.strptime(planned_date, "%Y-%m-%d")
+            except ValueError:
+                try:
+                    datetime.strptime(planned_date, "%Y/%m/%d")
+                except ValueError:
+                    return False, "计划日期格式无效"
+
+        return True, ""
+
+    def _generate_direct_record_id(self, user_id: str, event_name: str) -> str:
+        """
+        生成直接记录ID，使用"事件名_001"格式
+
+        Args:
+            user_id: 用户ID
+            event_name: 事件名称
+
+        Returns:
+            str: 记录ID
+        """
+        # 加载现有记录以计算序号
+        records_data = self.load_event_records(user_id)
+
+        # 统计所有位置的同名记录数量
+        all_records = records_data.get("records", []) + records_data.get("active_records", [])
+        count = sum(1 for record in all_records if record.get("event_name") == event_name)
+
+        # 生成新的序号（从001开始）
+        next_num = count + 1
+        return f"{event_name}_{next_num:03d}"
+
+    def _safe_parse_number(self, value_str: str, as_int: bool = False) -> float:
+        """
+        安全解析数值字符串
+
+        Args:
+            value_str: 数值字符串
+            as_int: 是否返回整数
+
+        Returns:
+            float/int: 解析后的数值，失败返回0
+        """
+        if not value_str:
+            return 0
+
+        try:
+            result = float(value_str)
+            return int(result) if as_int else result
+        except (ValueError, TypeError):
+            return 0
+
+    def _is_valid_number(self, value_str: str) -> bool:
+        """
+        检查字符串是否为有效数字
+
+        Args:
+            value_str: 待检查的字符串
+
+        Returns:
+            bool: 是否为有效数字
+        """
+        if not value_str:
+            return True  # 空字符串视为有效（可选字段）
+
+        try:
+            float(value_str)
+            return True
+        except (ValueError, TypeError):
+            return False

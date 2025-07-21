@@ -18,6 +18,7 @@ from .shared_utils import SharedUtils
 from .query_results_card import QueryResultsCard
 from .quick_select_card import QuickSelectCard
 from .record_card import RecordCard
+from .direct_record_card import DirectRecordCard
 
 
 class RoutineCardManager(BaseCardManager):
@@ -67,6 +68,7 @@ class RoutineCardManager(BaseCardManager):
         self.query_results_card = QueryResultsCard(self)
         self.quick_select_card = QuickSelectCard(self)
         self.record_card = RecordCard(self)
+        self.direct_record_card = DirectRecordCard(self)
 
     def build_card(
         self, route_result: RouteResult, context: MessageContext_Refactor, **kwargs
@@ -217,6 +219,23 @@ class RoutineCardManager(BaseCardManager):
             card_config_key=CardConfigKeys.ROUTINE_RECORD,
         )
 
+    def build_direct_record_card(
+        self, result, context: MessageContext_Refactor, business_data: Dict[str, Any]
+    ):
+        """构建直接记录卡片 - 代理到子模块"""
+        card_data = self.direct_record_card.build_direct_record_card(business_data)
+        card_content = {"type": "card_json", "data": card_data}
+
+        return self.handle_card_operation_common(
+            card_content=card_content,
+            card_operation_type=CardOperationTypes.SEND,
+            update_toast_type="success",
+            user_id=context.user_id,
+            message_id=context.message_id,
+            business_data=business_data,
+            card_config_key=CardConfigKeys.ROUTINE_DIRECT_RECORD,
+        )
+
     # 嵌套的两个关键方法段落，容器的card和嵌套的element
     # ----- 配套的card子方法，会被card_action里包含的的container_build_method方式调用 -----
     def update_quick_select_record_card(
@@ -237,7 +256,19 @@ class RoutineCardManager(BaseCardManager):
         """构建快速记录确认卡片 - 代理到子模块"""
         return self.record_card.build_quick_record_confirm_card(business_data)
 
+    def update_direct_record_card(
+        self, business_data: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """构建直接记录确认卡片 - 代理到子模块"""
+        return self.direct_record_card.build_direct_record_card(business_data)
+
     # ----- 配套的element子方法，会在build_card被sub_business_build_method方式调用 -----
+    def build_direct_record_elements(
+        self, business_data: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
+        """构建直接记录元素（别名方法，兼容现有调用） - 代理到子模块"""
+        return self.direct_record_card.build_direct_record_elements(business_data)
+
     def build_quick_record_elements(
         self, business_data: Dict[str, Any]
     ) -> List[Dict[str, Any]]:
