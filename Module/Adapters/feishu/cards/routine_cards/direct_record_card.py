@@ -643,22 +643,6 @@ class DirectRecordCard:
             )
         )
 
-        # 3. 预估耗时字段
-        duration_value = form_data.get("duration", "")
-        elements.append(
-            self.parent.build_form_row(
-                "预估耗时",
-                self.parent.build_input_element(
-                    placeholder="预估耗时（分钟）",
-                    initial_value=str(duration_value) if duration_value else "",
-                    disabled=is_confirmed,
-                    action_data={},
-                    name="duration",
-                ),
-                width_list=["80px", "180px"],
-            )
-        )
-
         # 4. 提醒设置字段（根据提醒模式显示）
         reminder_mode = form_data.get("reminder_mode", RoutineReminderModes.OFF)
         match reminder_mode:
@@ -697,9 +681,28 @@ class DirectRecordCard:
                     )
                 )
 
-        # 6. 备注字段
+        # 3. 预估耗时和备注字段 - 放在折叠面板中
+        additional_fields = []
+        
+        # 预估耗时字段
+        duration_value = form_data.get("duration", "")
+        additional_fields.append(
+            self.parent.build_form_row(
+                "预估耗时",
+                self.parent.build_input_element(
+                    placeholder="预估耗时（分钟）",
+                    initial_value=str(duration_value) if duration_value else "",
+                    disabled=is_confirmed,
+                    action_data={},
+                    name="duration",
+                ),
+                width_list=["80px", "180px"],
+            )
+        )
+
+        # 备注字段
         note_value = form_data.get("note", "")
-        elements.append(
+        additional_fields.append(
             self.parent.build_form_row(
                 "📝 备注",
                 self.parent.build_input_element(
@@ -711,6 +714,26 @@ class DirectRecordCard:
                 ),
                 width_list=["80px", "180px"],
             )
+        )
+        
+        # 将附加字段放入折叠面板
+        elements.append(
+            {
+                "tag": "collapsible_panel",
+                "expanded": False,
+                "header": {
+                    "title": {"tag": "markdown", "content": "📋 附加信息"},
+                    "icon": {
+                        "tag": "standard_icon",
+                        "token": "down-small-ccm_outlined",
+                        "color": "",
+                        "size": "16px 16px",
+                    },
+                    "icon_position": "right",
+                    "icon_expanded_angle": -180,
+                },
+                "elements": additional_fields,
+            }
         )
 
         return elements
