@@ -84,17 +84,19 @@ class DirectRecordCard:
             business_data, "routine_direct_record"
         )
 
-        # 从处理后的数据源中提取所需参数
-        form_data = data_source.get("form_data", {})
+        # 从统一数据结构中提取所需参数
+        record_data = data_source.get("record_data", {})
+        
+        # 从统一结构中提取数据
         event_name = data_source.get("event_name", "")
-        event_type = data_source.get("event_type", RoutineTypes.INSTANT)
+        event_type = record_data.get("event_type", "")
 
         elements = []
 
         # 1. 表单外字段区域（非表单数据，有回调事件，状态保存在配置中）
         elements.extend(
             self._build_non_form_fields(
-                form_data, event_name, event_type, is_confirmed, build_method_name
+                record_data, event_name, event_type, is_confirmed, build_method_name
             )
         )
 
@@ -111,7 +113,7 @@ class DirectRecordCard:
 
         # 4. 表单内字段区域（表单数据，通过提交按钮回调一次性处理）
         form_fields = self._build_form_fields_by_type(
-            event_type, form_data, is_confirmed
+            event_type, record_data, is_confirmed
         )
         form_container["elements"].extend(form_fields)
 
@@ -139,7 +141,7 @@ class DirectRecordCard:
 
     def _build_non_form_fields(
         self,
-        form_data: Dict,
+        record_data: Dict,
         event_name: str,
         event_type: str,
         is_confirmed: bool,
@@ -180,7 +182,7 @@ class DirectRecordCard:
         )
         # 指标类型选择器（不在表单，有回调事件）
         if event_type != RoutineTypes.FUTURE:
-            progress_type = form_data.get("progress_type", RoutineProgressTypes.NONE)
+            progress_type = record_data.get("progress_type", RoutineProgressTypes.NONE)
             elements.append(
                 self.parent.build_form_row(
                     "指标类型",
@@ -193,7 +195,7 @@ class DirectRecordCard:
 
         # 2. 目标类型选择器
         if event_type == RoutineTypes.ONGOING:
-            target_type = form_data.get("target_type", "none")
+            target_type = record_data.get("target_type", "none")
             elements.append(
                 self.parent.build_form_row(
                     "目标类型",
@@ -205,7 +207,7 @@ class DirectRecordCard:
             )
         # 提醒模式选择器（仅未来事项，不在表单，有回调事件）
         if event_type == RoutineTypes.FUTURE:
-            reminder_mode = form_data.get("reminder_mode", "off")
+            reminder_mode = record_data.get("reminder_mode", "off")
             elements.append(
                 self.parent.build_form_row(
                     "提醒模式",
@@ -358,7 +360,7 @@ class DirectRecordCard:
         )
 
     def _build_form_fields_by_type(
-        self, event_type: str, form_data: Dict, is_confirmed: bool
+        self, event_type: str, record_data: Dict, is_confirmed: bool
     ) -> List[Dict]:
         """
         根据事件类型构建表单字段
@@ -366,23 +368,23 @@ class DirectRecordCard:
 
         表单内字段特点：
         1. 在表单内，通过提交按钮回调一次性处理
-        2. 数据保存在 form_data 中
+        2. 数据保存在 record_data 中
         3. 根据事件类型动态显示不同字段
         4. 受表单外字段状态影响（如指标类型影响指标值字段）
         """
         match event_type:
             case RoutineTypes.INSTANT | RoutineTypes.START:
-                return self._build_instant_start_form_fields(form_data, is_confirmed)
+                return self._build_instant_start_form_fields(record_data, is_confirmed)
             case RoutineTypes.ONGOING:
-                return self._build_ongoing_form_fields(form_data, is_confirmed)
+                return self._build_ongoing_form_fields(record_data, is_confirmed)
             case RoutineTypes.FUTURE:
-                return self._build_future_form_fields(form_data, is_confirmed)
+                return self._build_future_form_fields(record_data, is_confirmed)
             case _:
                 # 未知类型，返回空字段列表
                 return []
 
     def _build_instant_start_form_fields(
-        self, form_data: Dict, is_confirmed: bool
+        self, record_data: Dict, is_confirmed: bool
     ) -> List[Dict]:
         """
         构建瞬间完成和开始事项类型的表单字段
@@ -396,7 +398,7 @@ class DirectRecordCard:
         elements = []
 
         # 1. 耗时字段
-        duration_value = form_data.get("duration", "")
+        duration_value = record_data.get("duration", "")
         elements.append(
             self.parent.build_form_row(
                 "⏱️ 耗时",
@@ -412,7 +414,7 @@ class DirectRecordCard:
         )
 
         # 2. 完成方式字段
-        degree_value = form_data.get("degree", "")
+        degree_value = record_data.get("degree", "")
         elements.append(
             self.parent.build_form_row(
                 "完成方式",
@@ -428,7 +430,7 @@ class DirectRecordCard:
         )
 
         # 3. 指标值字段（根据指标类型动态显示）
-        progress_type = form_data.get("progress_type", RoutineProgressTypes.NONE)
+        progress_type = record_data.get("progress_type", RoutineProgressTypes.NONE)
         if progress_type != RoutineProgressTypes.NONE:
             # 根据指标类型设置不同的占位符
             if progress_type == RoutineProgressTypes.VALUE:
@@ -438,7 +440,7 @@ class DirectRecordCard:
             else:
                 placeholder_text = "指标值"
 
-            progress_value = form_data.get("progress_value", "")
+            progress_value = record_data.get("progress_value", "")
             elements.append(
                 self.parent.build_form_row(
                     "📈 指标值",
@@ -454,7 +456,7 @@ class DirectRecordCard:
             )
 
         # 4. 备注字段
-        note_value = form_data.get("note", "")
+        note_value = record_data.get("note", "")
         elements.append(
             self.parent.build_form_row(
                 "📝 备注",
@@ -472,7 +474,7 @@ class DirectRecordCard:
         return elements
 
     def _build_ongoing_form_fields(
-        self, form_data: Dict, is_confirmed: bool
+        self, record_data: Dict, is_confirmed: bool
     ) -> List[Dict]:
         """
         构建长期持续类型的表单字段
@@ -487,7 +489,7 @@ class DirectRecordCard:
         elements = []
 
         # 1. 检查周期选择器
-        check_cycle = form_data.get("check_cycle", "")
+        check_cycle = record_data.get("check_cycle", "")
         elements.append(
             self.parent.build_form_row(
                 "循环周期",
@@ -504,7 +506,7 @@ class DirectRecordCard:
         )
 
         # 2. 指标值字段（根据指标类型动态显示）
-        progress_type = form_data.get("progress_type", RoutineProgressTypes.NONE)
+        progress_type = record_data.get("progress_type", RoutineProgressTypes.NONE)
         if progress_type != RoutineProgressTypes.NONE:
             if progress_type == RoutineProgressTypes.VALUE:
                 placeholder_text = "最新数值"
@@ -513,7 +515,7 @@ class DirectRecordCard:
             else:
                 placeholder_text = "指标值"
 
-            progress_value = form_data.get("progress_value", "")
+            progress_value = record_data.get("progress_value", "")
             elements.append(
                 self.parent.build_form_row(
                     "📈 指标值",
@@ -529,12 +531,12 @@ class DirectRecordCard:
             )
 
         # 3. 目标值字段（根据目标类型动态显示）
-        target_type = form_data.get("target_type", "")
+        target_type = record_data.get("target_type", "")
         if target_type != "none":
             placeholder_text = (
                 "目标时间（分钟）" if target_type == "time" else "目标次数"
             )
-            target_value = form_data.get("target_value", "")
+            target_value = record_data.get("target_value", "")
             elements.append(
                 self.parent.build_form_row(
                     "🎯 目标值",
@@ -550,7 +552,7 @@ class DirectRecordCard:
             )
 
         # 4. 备注字段
-        note_value = form_data.get("note", "")
+        note_value = record_data.get("note", "")
         elements.append(
             self.parent.build_form_row(
                 "📝 备注",
@@ -595,7 +597,7 @@ class DirectRecordCard:
         ]
 
     def _build_future_form_fields(
-        self, form_data: Dict, is_confirmed: bool
+        self, record_data: Dict, is_confirmed: bool
     ) -> List[Dict]:
         """
         构建未来事项类型的表单字段
@@ -611,7 +613,7 @@ class DirectRecordCard:
         elements = []
 
         # 1. 日期时间选择器
-        scheduled_time = form_data.get("scheduled_time", "")
+        scheduled_time = record_data.get("scheduled_time", "")
         elements.append(
             self.parent.build_form_row(
                 "计划时间",
@@ -627,7 +629,7 @@ class DirectRecordCard:
         )
 
         # 2. 重要性选择器
-        priority = form_data.get("priority", "medium")
+        priority = record_data.get("priority", "medium")
         elements.append(
             self.parent.build_form_row(
                 "⭐ 重要性",
@@ -644,11 +646,11 @@ class DirectRecordCard:
         )
 
         # 4. 提醒设置字段（根据提醒模式显示）
-        reminder_mode = form_data.get("reminder_mode", RoutineReminderModes.OFF)
+        reminder_mode = record_data.get("reminder_mode", RoutineReminderModes.OFF)
         match reminder_mode:
             case RoutineReminderModes.TIME:
                 # TIME模式：具体时间提醒，使用日期时间选择器
-                reminder_datetime = form_data.get("reminder_datetime", "")
+                reminder_datetime = record_data.get("reminder_datetime", "")
                 elements.append(
                     self.parent.build_form_row(
                         "提醒时间",
@@ -665,7 +667,7 @@ class DirectRecordCard:
 
             case RoutineReminderModes.RELATIVE:
                 # RELATIVE模式：相对时间提醒，使用多选框选择相对时间
-                reminder_relative = form_data.get("reminder_relative", [])
+                reminder_relative = record_data.get("reminder_relative", [])
                 elements.append(
                     self.parent.build_form_row(
                         "提醒时间",
@@ -685,7 +687,7 @@ class DirectRecordCard:
         additional_fields = []
         
         # 预估耗时字段
-        duration_value = form_data.get("duration", "")
+        duration_value = record_data.get("duration", "")
         additional_fields.append(
             self.parent.build_form_row(
                 "预估耗时",
@@ -701,7 +703,7 @@ class DirectRecordCard:
         )
 
         # 备注字段
-        note_value = form_data.get("note", "")
+        note_value = record_data.get("note", "")
         additional_fields.append(
             self.parent.build_form_row(
                 "📝 备注",
@@ -941,21 +943,15 @@ class DirectRecordCard:
         # 标记为已确认
         business_data["is_confirmed"] = True
 
-        # 获取表单数据
+        # 获取表单数据并合并到record_data中
         form_data = context.content.form_data
-
-        # 合并数据源中的form_data和表单提交的数据
-        merged_form_data = data_source.get("form_data", {}).copy()
-        merged_form_data.update(form_data)
-
-        # 添加事项名称和事项类型
-        merged_form_data["event_name"] = data_source.get("event_name", "")
-        merged_form_data["event_type"] = data_source.get("event_type", "")
+        record_data = data_source.get("record_data", {}).copy()
+        record_data.update(form_data)
 
         # 调用业务层创建直接记录
         routine_business = self.parent.message_router.routine_record
         success, message = routine_business.create_direct_record(
-            context.user_id, merged_form_data
+            context.user_id, record_data
         )
 
         if not success:
@@ -1015,15 +1011,9 @@ class DirectRecordCard:
             business_data, "routine_direct_record"
         )
 
-        # 根据字段类型决定更新位置
-        if field_key == "event_type":
-            # event_type存储在根级别
-            data_source[field_key] = extracted_value
-        else:
-            # 其他字段存储在form_data中
-            if "form_data" not in data_source:
-                data_source["form_data"] = {}
-            data_source["form_data"][field_key] = extracted_value
+        if "record_data" not in data_source:
+            data_source["record_data"] = {}
+        data_source["record_data"][field_key] = extracted_value
 
         # 构建新卡片
         new_card_dsl = self.parent.build_update_card_data(

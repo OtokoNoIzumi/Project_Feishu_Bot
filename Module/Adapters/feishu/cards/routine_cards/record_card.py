@@ -63,24 +63,33 @@ class RecordCard:
             business_data, CardConfigKeys.ROUTINE_RECORD
         )
 
-        # 从对应数据源获取业务数据
+        # 从统一数据结构获取业务数据
+        record_mode = data_source.get("record_mode", "quick")
+        event_definition = data_source.get("event_definition", {})
+        record_data = data_source.get("record_data", {})
+        computed_data = data_source.get("computed_data", {})
+        
+        # 兼容性处理：支持旧数据结构
         event_name = data_source.get("event_name", "")
-        event_def = data_source.get("event_definition", {})
-        avg_duration = data_source.get("avg_duration", 0.0)
-        degree_info = data_source.get("degree_info", {})
-        cycle_info = data_source.get("cycle_info", {})
-        new_record = data_source.get("new_record", {})
-        diff_minutes = data_source.get("diff_minutes", 0)
-        event_type = event_def.get("type", RoutineTypes.INSTANT)
-        progress_type = event_def.get("properties", {}).get("progress_type", "")
-        last_progress_value = event_def.get("stats", {}).get("last_progress_value", 0)
-        total_progress_value = event_def.get("stats", {}).get("total_progress_value", 0)
+        if not event_name and event_definition:
+            event_name = event_definition.get("name", "")
+        
+        # 从统一结构中提取数据
+        avg_duration = computed_data.get("avg_duration", 0.0)
+        degree_info = computed_data.get("degree_info", {})
+        cycle_info = computed_data.get("cycle_info", {})
+        diff_minutes = computed_data.get("diff_minutes", 0)
+            
+        event_type = event_definition.get("type", RoutineTypes.INSTANT)
+        progress_type = event_definition.get("properties", {}).get("progress_type", "")
+        last_progress_value = event_definition.get("stats", {}).get("last_progress_value", 0)
+        total_progress_value = event_definition.get("stats", {}).get("total_progress_value", 0)
 
         elements = []
 
         # 1. 基础信息卡片
         elements.extend(
-            self._build_basic_info_section(event_def, new_record, diff_minutes)
+            self._build_basic_info_section(event_definition, record_data, diff_minutes)
         )
 
         # 2. 条件化展示：时间预估和进度信息（合并到一个组件中）
@@ -114,11 +123,11 @@ class RecordCard:
 
         # 5. 条件化展示：程度输入区域（如果有程度选项且选择了"其他"）
         if degree_info:
-            selected_degree = new_record.get("degree", "")
+            selected_degree = record_data.get("degree", "")
             if selected_degree == "其他":
                 form_elements["elements"].extend(
                     self._build_degree_input_section(
-                        new_record.get("custom_degree", ""), is_confirmed
+                        record_data.get("custom_degree", ""), is_confirmed
                     )
                 )
 
@@ -126,7 +135,7 @@ class RecordCard:
         if event_type in [RoutineTypes.INSTANT, RoutineTypes.END, RoutineTypes.START]:
             form_elements["elements"].extend(
                 self._build_duration_input_section(
-                    new_record.get("duration", ""), is_confirmed
+                    record_data.get("duration", ""), is_confirmed
                 )
             )
 
@@ -134,13 +143,13 @@ class RecordCard:
         if progress_type:
             form_elements["elements"].extend(
                 self._build_progress_value_input_section(
-                    new_record.get("progress_value", ""), is_confirmed
+                    record_data.get("progress_value", ""), is_confirmed
                 )
             )
 
         # 8. 条件化展示：备注输入区域
         form_elements["elements"].extend(
-            self._build_note_input_section(new_record.get("note", ""), is_confirmed)
+            self._build_note_input_section(record_data.get("note", ""), is_confirmed)
         )
 
         # 9. 操作按钮或确认提示
@@ -165,13 +174,13 @@ class RecordCard:
         return elements
 
     def _build_basic_info_section(
-        self, event_def: Dict[str, Any], new_record: Dict[str, Any], diff_minutes: int
+        self, event_definition: Dict[str, Any], record_data: Dict[str, Any], diff_minutes: int
     ) -> List[Dict[str, Any]]:
         """构建基础信息区域"""
         elements = []
 
         # 事项类型显示
-        event_type = event_def.get("type", RoutineTypes.INSTANT)
+        event_type = event_definition.get("type", RoutineTypes.INSTANT)
 
         # 基础信息卡片
         info_content = (
@@ -179,8 +188,8 @@ class RecordCard:
         )
 
         # 显示记录时间
-        if new_record.get("timestamp"):
-            timestamp = new_record["timestamp"]
+        if record_data.get("timestamp"):
+            timestamp = record_data["timestamp"]
             split_timestamp = timestamp.split(" ")
             date_str = split_timestamp[0][5:10]
             time_str = split_timestamp[1][0:5]
@@ -189,7 +198,7 @@ class RecordCard:
                 info_content += f"**上次记录距今：** {diff_minutes}分钟\n"
 
         # 显示分类（如果有）
-        category = event_def.get("category", "")
+        category = event_definition.get("category", "")
         if category:
             info_content += f"**分类：** <text_tag color='blue'>{category}</text_tag>\n"
 
@@ -361,7 +370,7 @@ class RecordCard:
             )
 
         # 智能默认值：用户上次选择 > 系统默认 > 第一个选项
-        initial_degree = data_source["new_record"].get("degree", "") or default_degree
+        initial_degree = data_source["record_data"].get("degree", "") or default_degree
 
         elements.append(
             self.parent.build_form_row(
@@ -586,7 +595,7 @@ class RecordCard:
 
         business_data["is_confirmed"] = True
 
-        core_data = data_source.get("new_record", {})
+        core_data = data_source.get("record_data", {})
         if not core_data:
             new_card_dsl = self.parent.build_cancel_update_card_data(
                 business_data, "confirm_record", build_method_name
@@ -620,7 +629,7 @@ class RecordCard:
 
         # 并不需要格式化最新的结果，但输入值需要保留，也就是定义的部分要复制
         # 创建深拷贝以避免修改原始数据
-        event_def = copy.deepcopy(data_source.get("event_definition", {}))
+        event_definition = copy.deepcopy(data_source.get("event_definition", {}))
 
         duration_str = form_data.get("duration", "")
         new_duration = safe_float(duration_str)
@@ -632,21 +641,21 @@ class RecordCard:
                 log_level="WARNING",
             )
 
-        progress_type = event_def.get("properties", {}).get("progress_type", "")
+        progress_type = event_definition.get("properties", {}).get("progress_type", "")
         if progress_type:
             progress_value_str = str(form_data.get("progress_value", "")).strip()
             progress_value = safe_float(progress_value_str)
             if progress_value is not None:
                 core_data["progress_value"] = progress_value
                 if progress_type == RoutineProgressTypes.VALUE:
-                    event_def["stats"]["last_progress_value"] = progress_value
+                    event_definition["stats"]["last_progress_value"] = progress_value
                 elif (progress_type == RoutineProgressTypes.MODIFY) and (
                     progress_value != 0
                 ):
-                    event_def["stats"]["total_progress_value"] = round(
-                        event_def["stats"]["total_progress_value"] + progress_value, 3
+                    event_definition["stats"]["total_progress_value"] = round(
+                        event_definition["stats"]["total_progress_value"] + progress_value, 3
                     )
-                    event_def["stats"]["last_progress_value"] = progress_value
+                    event_definition["stats"]["last_progress_value"] = progress_value
             else:
                 debug_utils.log_and_print(
                     f"🔍 confirm_record - 进度值转换失败: [{progress_value_str}]",
@@ -677,24 +686,24 @@ class RecordCard:
         
         records_data["last_updated"] = core_data.get("timestamp")
         # 再写入事件定义，做聚合类计算
-        event_def["stats"]["record_count"] = (
-            event_def.get("stats", {}).get("record_count", 0) + 1
+        event_definition["stats"]["record_count"] = (
+            event_definition.get("stats", {}).get("record_count", 0) + 1
         )
         cycle_info = data_source.get("cycle_info", {})
         if cycle_info:
-            event_def["stats"]["cycle_count"] = cycle_info.get("cycle_count", 0) + 1
-            event_def["stats"]["last_cycle_count"] = cycle_info.get(
+            event_definition["stats"]["cycle_count"] = cycle_info.get("cycle_count", 0) + 1
+            event_definition["stats"]["last_cycle_count"] = cycle_info.get(
                 "last_cycle_count", 0
             )
-            event_def["stats"]["last_refresh_date"] = cycle_info.get(
+            event_definition["stats"]["last_refresh_date"] = cycle_info.get(
                 "last_refresh_date", ""
             )
 
-        event_def["stats"]["last_note"] = core_data.get("note", "")
+        event_definition["stats"]["last_note"] = core_data.get("note", "")
 
         new_duration = core_data.get("duration", 0)
         if new_duration > 0:
-            event_duration_info = event_def.get("stats", {}).get("duration", {})
+            event_duration_info = event_definition.get("stats", {}).get("duration", {})
             recent_durations = event_duration_info.get("recent_values", [])
             recent_durations.append(new_duration)
             if len(recent_durations) > event_duration_info.get("window_size", 10):
@@ -716,9 +725,9 @@ class RecordCard:
             )
 
         routine_business.save_event_records(user_id, records_data)
-        event_def["last_updated"] = core_data.get("timestamp")
+        event_definition["last_updated"] = core_data.get("timestamp")
         full_event_def = routine_business.load_event_definitions(user_id)
-        full_event_def["definitions"][event_def["name"]] = event_def
+        full_event_def["definitions"][event_definition["name"]] = event_definition
         full_event_def["last_updated"] = core_data.get("timestamp")
         full_event_def["last_record_time"] = core_data.get("timestamp")
         routine_business.save_event_definitions(user_id, full_event_def)
@@ -767,7 +776,7 @@ class RecordCard:
             business_data, CardConfigKeys.ROUTINE_RECORD
         )
         new_option = context.content.value.get("option")
-        data_source["new_record"]["degree"] = new_option
+        data_source["record_data"]["degree"] = new_option
 
         new_card_dsl = self.parent.build_update_card_data(
             business_data, self.default_update_build_method

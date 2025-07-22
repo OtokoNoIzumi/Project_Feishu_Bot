@@ -175,7 +175,7 @@ class QuickSelectCard:
         ):  # 虽然是冗余但先保留吧
             event_def = definitions_data["definitions"][event_name]
             last_record_time = definitions_data.get("last_record_time", None)
-            quick_record_data = routine_business.build_quick_record_data(
+            quick_record_data = routine_business.build_record_card_data(
                 user_id, event_name, event_def, last_record_time
             )
 
@@ -255,7 +255,7 @@ class QuickSelectCard:
             # 事件存在，进入快速记录模式
             event_def = definitions_data["definitions"][event_name]
             last_record_time = definitions_data.get("last_record_time", None)
-            quick_record_data = routine_business.build_quick_record_data(
+            quick_record_data = routine_business.build_record_card_data(
                 user_id, event_name, event_def, last_record_time
             )
 
@@ -279,10 +279,10 @@ class QuickSelectCard:
                 ToastTypes.SUCCESS,
             )
 
-        new_record_data = routine_business.build_direct_record_data(
-            user_id, event_name, RoutineTypes.INSTANT
+        new_record_card_data = routine_business.build_record_card_data(
+            user_id, event_name, None, None
         )
-        parent_data["sub_business_data"] = new_record_data
+        parent_data["sub_business_data"] = new_record_card_data
         parent_data["sub_business_name"] = CardConfigKeys.ROUTINE_DIRECT_RECORD
         sub_business_build_method = self.parent.get_sub_business_build_method(
             CardConfigKeys.ROUTINE_DIRECT_RECORD

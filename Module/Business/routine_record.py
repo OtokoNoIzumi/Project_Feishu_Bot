@@ -658,7 +658,7 @@ class RoutineRecord(BaseProcessor):
             event_def = definitions_data["definitions"][item_name]
             last_record_time = definitions_data.get("last_record_time", None)
             # 并且这里要能够直接绕过前端直接对接业务——本来前端就是多一层中转和丰富信息，也就是如果这个不routeresult，而是直接到业务也应该OK。
-            routine_record_data = self.build_quick_record_data(
+            routine_record_data = self.build_record_card_data(
                 user_id, item_name, event_def, last_record_time
             )
             route_result = RouteResult.create_route_result(
@@ -668,7 +668,7 @@ class RoutineRecord(BaseProcessor):
             return route_result
 
         # 新事项，展示事件定义卡片
-        card_data = self.build_direct_record_data(user_id, item_name)
+        card_data = self.build_record_card_data(user_id, item_name, None, None)
         route_result = RouteResult.create_route_result(
             route_type=RouteTypes.ROUTINE_DIRECT_RECORD_CARD,
             route_params={
@@ -710,102 +710,6 @@ class RoutineRecord(BaseProcessor):
                 "degree_options": "",
                 "notes": "",
             },
-        }
-
-    @safe_execute("构建快速记录确认卡片数据失败")
-    def build_quick_record_data(
-        self,
-        user_id: str,
-        event_name: str,
-        event_def: Dict[str, Any],
-        last_record_time: str = None,
-    ) -> Dict[str, Any]:
-        """
-        构建快速记录确认卡片数据
-
-        Args:
-            user_id: 用户ID
-            event_name: 事项名称
-
-        Returns:
-            Dict[str, Any]: 卡片数据
-        """
-        # 获取事件定义
-        # 这里的核心目的是提供必要的原始信息，解析和结构要给到前端，前端只是一个额外确认和补充，这里就是要准备好完备数据了。
-        new_record = self._create_event_record(event_name, user_id)
-
-        avg_duration = self._calculate_average_duration(user_id, event_name)
-        has_degrees = event_def.get("properties", {}).get("has_degrees", False)
-        if has_degrees:
-            degree_info = {
-                "degree_options": event_def.get("properties", {}).get(
-                    "degree_options", []
-                ),
-                "default_degree": event_def.get("properties", {}).get(
-                    "default_degree", ""
-                ),
-            }
-        else:
-            degree_info = {}
-
-        # 这里的顺序要改一下，首先是累计值和重置，然后是有没有目标。
-        check_cycle = event_def.get("properties", {}).get("check_cycle", None)
-        if check_cycle:
-            cycle_count = event_def.get("stats", {}).get("cycle_count", 0)
-            last_refresh_date = event_def.get("stats", {}).get(
-                "last_refresh_date", None
-            )
-
-            # 统一分析周期状态
-            cycle_status = self._analyze_cycle_status(last_refresh_date, check_cycle)
-
-            if cycle_status["need_refresh"]:
-                last_cycle_count = cycle_count
-                last_refresh_date = self._get_formatted_time()
-                cycle_count = 0
-            else:
-                last_cycle_count = event_def.get("stats", {}).get("last_cycle_count", 0)
-
-            target_type = event_def.get("properties", {}).get(
-                "target_type", None
-            )  # 决定了是不是要输入值，所以要保留的。
-            target_value = event_def.get("properties", {}).get("target_value", 0)
-
-            if target_type:
-                last_cycle_info = f'{cycle_status["description"]}的情况：{last_cycle_count}/{target_value}'
-            else:
-                last_cycle_info = (
-                    f'{cycle_status["description"]}的情况：{last_cycle_count}'
-                )
-
-            cycle_info = {
-                "cycle_count": cycle_count,
-                "last_cycle_count": last_cycle_count,
-                "target_type": target_type,
-                "target_value": target_value,
-                "last_cycle_info": last_cycle_info,
-                "last_refresh_date": last_refresh_date,
-            }
-        else:
-            cycle_info = {}
-
-        if last_record_time:
-            last_record_time = datetime.strptime(last_record_time, "%Y-%m-%d %H:%M:%S")
-            diff_minutes = round(
-                (datetime.now() - last_record_time).total_seconds() / 60, 1
-            )
-        else:
-            diff_minutes = 0
-
-        return {
-            "user_id": user_id,
-            "event_name": event_name,
-            "event_definition": event_def,  # 这里有一个问题是 definition里已经包含了上面处理的信息，只是没计算。所以最好这里传出去的都是处理好的原始信息？ 留给AI判断
-            "new_record": new_record,
-            "avg_duration": avg_duration,
-            "degree_info": degree_info,
-            "cycle_info": cycle_info,
-            "diff_minutes": diff_minutes,
         }
 
     def _calculate_average_duration(self, user_id: str, event_name: str) -> float:
@@ -1132,63 +1036,136 @@ class RoutineRecord(BaseProcessor):
             return False, f"创建记录失败: {str(e)}"
 
     @safe_execute("构建直接记录卡片数据失败")
-    def build_direct_record_data(self, user_id: str, event_name: str, event_type: str = RoutineTypes.INSTANT) -> Dict[str, Any]:
+    def build_record_card_data(self, user_id: str, event_name: str, event_definition: Dict[str, Any] = None, last_record_time: str = None) -> Dict[str, Any]:
         """
-        构建直接记录卡片数据
+        构建统一的记录数据结构
 
         Args:
             user_id: 用户ID
             event_name: 事件名称
-            event_type: 事件类型，默认为瞬间完成
+            event_definition: 事件定义（quick模式提供，direct模式为None）
+            last_record_time: 上次记录时间（quick模式提供，direct模式为None）
 
         Returns:
-            Dict[str, Any]: 直接记录卡片数据
+            Dict[str, Any]: 统一的记录数据结构
         """
         current_time = self._get_formatted_time()
-
-        # 构建初始表单数据
-        form_data = {
-            "progress_type": RoutineProgressTypes.NONE,
-            "reminder_mode": "off",
-            "duration": "",
-            "note": "",
-            "degree": "",
-            "progress_value": "",
-            "scheduled_time": "",
-            "priority": "medium",
-            "estimated_duration": "",
-            "reminder_datetime": "",
-            "reminder_intervals": [],
-            "check_cycle": "",
-            "target_type": RoutineTargetTypes.NONE,
-            "target_value": ""
-        }
-
-        return {
+        
+        # 确定记录模式
+        record_mode = "quick" if event_definition else "direct"
+        
+        # 基础数据
+        unified_data = {
+            "record_mode": record_mode,
             "user_id": user_id,
             "event_name": event_name,
-            "event_type": event_type,
-            "form_data": form_data,
-            "is_confirmed": False,
             "created_time": current_time
         }
+        
+        match record_mode:
+            case "direct":
+                # Direct模式：构建空的初始数据
+                unified_data["event_definition"] = None
+                
+                # 创建空的初始记录
+                record_data = {
+                    "event_name": event_name,
+                    "event_type": RoutineTypes.INSTANT,
+                }
+                unified_data["record_data"] = record_data
+                
+                # Direct模式不需要计算数据
+                unified_data["computed_data"] = {}
+            case "quick":
+                # Quick模式：基于事件定义构建数据
+                unified_data["event_definition"] = event_definition
+                
+                # 创建初始记录（用于表单预填充）
+                record_data = self._create_event_record(event_name, user_id)
+                            
+                unified_data["record_data"] = record_data
+                
+                # 计算业务数据
+                computed_data = {}
+                
+                # 计算平均耗时
+                avg_duration = self._calculate_average_duration(user_id, event_name)
+                if avg_duration > 0:
+                    computed_data["avg_duration"] = avg_duration
+                
+                # 计算程度信息
+                has_degrees = event_definition.get("properties", {}).get("has_degrees", False)
+                if has_degrees:
+                    degree_info = {
+                        "degree_options": event_definition.get("properties", {}).get("degree_options", []),
+                        "default_degree": event_definition.get("properties", {}).get("default_degree", ""),
+                    }
+                    computed_data["degree_info"] = degree_info
+                
+                # 计算周期信息
+                check_cycle = event_definition.get("properties", {}).get("check_cycle", None)
+                if check_cycle:
+                    cycle_count = event_definition.get("stats", {}).get("cycle_count", 0)
+                    last_refresh_date = event_definition.get("stats", {}).get("last_refresh_date", None)
+                    
+                    # 统一分析周期状态
+                    cycle_status = self._analyze_cycle_status(last_refresh_date, check_cycle)
+                    
+                    if cycle_status["need_refresh"]:
+                        last_cycle_count = cycle_count
+                        last_refresh_date = self._get_formatted_time()
+                        cycle_count = 0
+                    else:
+                        last_cycle_count = event_definition.get("stats", {}).get("last_cycle_count", 0)
+                    
+                    target_type = event_definition.get("properties", {}).get("target_type", None)
+                    target_value = event_definition.get("properties", {}).get("target_value", 0)
+                    
+                    if target_type:
+                        last_cycle_info = f'{cycle_status["description"]}的情况：{last_cycle_count}/{target_value}'
+                    else:
+                        last_cycle_info = f'{cycle_status["description"]}的情况：{last_cycle_count}'
+                    
+                    cycle_info = {
+                        "cycle_count": cycle_count,
+                        "last_cycle_count": last_cycle_count,
+                        "target_type": target_type,
+                        "target_value": target_value,
+                        "last_cycle_info": last_cycle_info,
+                        "last_refresh_date": last_refresh_date,
+                    }
+                    computed_data["cycle_info"] = cycle_info
+            
+                # 计算时间差
+                if last_record_time:
+                    try:
+                        last_time = datetime.strptime(last_record_time, "%Y-%m-%d %H:%M:%S")
+                        diff_minutes = round((datetime.now() - last_time).total_seconds() / 60, 1)
+                        computed_data["diff_minutes"] = diff_minutes
+                    except ValueError:
+                        pass  # 时间格式错误时忽略
+                
+                unified_data["computed_data"] = computed_data
+            
+        
+        return unified_data
 
     @safe_execute("创建直接记录失败")
-    def create_direct_record(self, user_id: str, form_data: Dict[str, Any]) -> Tuple[bool, str]:
+    def create_direct_record(self, user_id: str, record_data: Dict[str, Any]) -> Tuple[bool, str]:
         """
         创建并保存直接记录到 event_records.json
         对于非 future 类型的事项，同时创建事件定义
 
         Args:
             user_id: 用户ID
-            form_data: 表单数据
+            record_data: 表单数据
 
         Returns:
             Tuple[bool, str]: (是否成功, 消息)
         """
         try:
             # 验证数据
-            is_valid, error_msg = self._validate_direct_record_data(form_data)
+            is_valid, error_msg = self._validate_direct_record_data(record_data)
             if not is_valid:
                 return False, error_msg
 
@@ -1198,12 +1175,12 @@ class RoutineRecord(BaseProcessor):
                 return False, "加载记录数据失败"
 
             # 生成记录ID
-            event_name = form_data.get("event_name", "").strip()
+            event_name = record_data.get("event_name", "").strip()
             record_id = self._get_next_record_id(user_id, event_name)
 
             # 构建记录数据
             current_time = self._get_formatted_time()
-            event_type = form_data.get("event_type", RoutineTypes.INSTANT)
+            event_type = record_data.get("event_type", RoutineTypes.INSTANT)
 
             # 基础记录结构
             new_record = {
@@ -1214,13 +1191,13 @@ class RoutineRecord(BaseProcessor):
                 "completion_time": current_time,
 
                 # 公共字段
-                "note": form_data.get("note", ""),
-                "degree": form_data.get("degree", ""),
-                "duration": self._safe_parse_number(form_data.get("duration", "")),
+                "note": record_data.get("note", ""),
+                "degree": record_data.get("degree", ""),
+                "duration": self._safe_parse_number(record_data.get("duration", "")),
 
                 # 指标相关
-                "progress_type": form_data.get("progress_type", RoutineProgressTypes.NONE),
-                "progress_value": self._safe_parse_number(form_data.get("progress_value", "")),
+                "progress_type": record_data.get("progress_type", RoutineProgressTypes.NONE),
+                "progress_value": self._safe_parse_number(record_data.get("progress_value", "")),
 
                 # 元数据字段
                 "has_definition": False,
@@ -1230,24 +1207,24 @@ class RoutineRecord(BaseProcessor):
             # 根据事件类型添加特定字段
             if event_type == RoutineTypes.ONGOING:
                 new_record.update({
-                    "check_cycle": form_data.get("check_cycle", ""),
-                    "target_type": form_data.get("target_type", RoutineTargetTypes.NONE),
-                    "target_value": self._safe_parse_number(form_data.get("target_value", ""), as_int=True)
+                    "check_cycle": record_data.get("check_cycle", ""),
+                    "target_type": record_data.get("target_type", RoutineTargetTypes.NONE),
+                    "target_value": self._safe_parse_number(record_data.get("target_value", ""), as_int=True)
                 })
             elif event_type == RoutineTypes.FUTURE:
                 new_record.update({
-                    "priority": form_data.get("priority", "medium"),
-                    "scheduled_time": form_data.get("scheduled_time", ""),
-                    "estimated_duration": self._safe_parse_number(form_data.get("estimated_duration", "")),
-                    "reminder_mode": form_data.get("reminder_mode", "off"),
-                    "reminder_datetime": form_data.get("reminder_datetime", ""),
-                    "reminder_intervals": form_data.get("reminder_intervals", [])
+                    "priority": record_data.get("priority", "medium"),
+                    "scheduled_time": record_data.get("scheduled_time", ""),
+                    "estimated_duration": self._safe_parse_number(record_data.get("estimated_duration", "")),
+                    "reminder_mode": record_data.get("reminder_mode", "off"),
+                    "reminder_datetime": record_data.get("reminder_datetime", ""),
+                    "reminder_intervals": record_data.get("reminder_intervals", [])
                 })
 
             # 对于非 future 类型的事项，创建事件定义
             if event_type != RoutineTypes.FUTURE:
                 definition_created = self._create_event_definition_from_direct_record(
-                    user_id, event_name, event_type, form_data, current_time
+                    user_id, event_name, event_type, record_data, current_time
                 )
                 if definition_created:
                     new_record["has_definition"] = True
@@ -1281,24 +1258,24 @@ class RoutineRecord(BaseProcessor):
             debug_utils.log_and_print(f"创建直接记录失败: {e}", log_level="ERROR")
             return False, f"创建直接记录失败: {str(e)}"
 
-    def _validate_direct_record_data(self, form_data: Dict[str, Any]) -> Tuple[bool, str]:
+    def _validate_direct_record_data(self, record_data: Dict[str, Any]) -> Tuple[bool, str]:
         """
         验证直接记录数据
 
         Args:
-            form_data: 表单数据
+            record_data: 表单数据
 
         Returns:
             Tuple[bool, str]: (是否有效, 错误消息)
         """
         # 基础字段验证
-        event_name = form_data.get("event_name", "").strip()
+        event_name = record_data.get("event_name", "").strip()
         if not event_name:
             return False, "事件名称不能为空"
         if len(event_name) > 50:
             return False, "事件名称不能超过50个字符"
 
-        event_type = form_data.get("event_type", "")
+        event_type = record_data.get("event_type", "")
         valid_types = [RoutineTypes.INSTANT, RoutineTypes.START, RoutineTypes.ONGOING, RoutineTypes.FUTURE]
         if event_type not in valid_types:
             return False, "无效的事件类型"
@@ -1312,13 +1289,13 @@ class RoutineRecord(BaseProcessor):
         }
 
         for field, field_name in numeric_fields.items():
-            value = form_data.get(field, "")
+            value = record_data.get(field, "")
             if value and not self._is_valid_number(value):
                 return False, f"{field_name}必须是有效数字"
 
         # 未来事项必填验证
         if event_type == RoutineTypes.FUTURE:
-            scheduled_time = form_data.get("scheduled_time", "")
+            scheduled_time = record_data.get("scheduled_time", "")
             if not scheduled_time:
                 return False, "未来事项必须设置计划时间"
             # 支持多种日期时间格式验证
@@ -1344,7 +1321,7 @@ class RoutineRecord(BaseProcessor):
         return True, ""
 
     def _create_event_definition_from_direct_record(
-        self, user_id: str, event_name: str, event_type: str, form_data: Dict[str, Any], current_time: str
+        self, user_id: str, event_name: str, event_type: str, record_data: Dict[str, Any], current_time: str
     ) -> bool:
         """
         从直接记录的表单数据创建事件定义
@@ -1353,7 +1330,7 @@ class RoutineRecord(BaseProcessor):
             user_id: 用户ID
             event_name: 事件名称
             event_type: 事件类型
-            form_data: 表单数据
+            record_data: 表单数据
             current_time: 当前时间
             
         Returns:
@@ -1374,26 +1351,26 @@ class RoutineRecord(BaseProcessor):
                 existing_def["last_updated"] = current_time
                 
                 # 更新最近备注
-                note = form_data.get("note", "")
+                note = record_data.get("note", "")
                 if note:
                     existing_def["stats"]["last_note"] = note
                     
                 # 更新耗时统计
-                duration = self._safe_parse_number(form_data.get("duration", ""))
+                duration = self._safe_parse_number(record_data.get("duration", ""))
                 if duration > 0:
                     self._update_duration_stats(existing_def, duration)
                     
                 # 更新指标统计
-                progress_type = form_data.get("progress_type", RoutineProgressTypes.NONE)
+                progress_type = record_data.get("progress_type", RoutineProgressTypes.NONE)
                 if progress_type != RoutineProgressTypes.NONE:
-                    progress_value = self._safe_parse_number(form_data.get("progress_value", ""))
+                    progress_value = self._safe_parse_number(record_data.get("progress_value", ""))
                     self._update_progress_stats(existing_def, progress_type, progress_value)
             else:
                 # 创建新的事件定义
                 new_definition = self._create_event_definition(event_name, event_type)
                 
                 # 从表单数据中提取并设置属性
-                self._populate_definition_from_form_data(new_definition, form_data, current_time)
+                self._populate_definition_from_record_data(new_definition, record_data, current_time)
                 
                 # 添加到定义集合中
                 event_definitions["definitions"][event_name] = new_definition
@@ -1409,27 +1386,27 @@ class RoutineRecord(BaseProcessor):
             debug_utils.log_and_print(f"创建事件定义失败: {e}", log_level="ERROR")
             return False
             
-    def _populate_definition_from_form_data(
-        self, definition: Dict[str, Any], form_data: Dict[str, Any], current_time: str
+    def _populate_definition_from_record_data(
+        self, definition: Dict[str, Any], record_data: Dict[str, Any], current_time: str
     ) -> None:
         """
         从表单数据填充事件定义的属性
         
         Args:
             definition: 事件定义字典
-            form_data: 表单数据
+            record_data: 表单数据
             current_time: 当前时间
         """
         properties = definition["properties"]
         stats = definition["stats"]
         
         # 设置指标类型
-        progress_type = form_data.get("progress_type", RoutineProgressTypes.NONE)
+        progress_type = record_data.get("progress_type", RoutineProgressTypes.NONE)
         if progress_type != RoutineProgressTypes.NONE:
             properties["progress_type"] = progress_type
             
         # 设置程度选项
-        degree = form_data.get("degree", "")
+        degree = record_data.get("degree", "")
         if degree:
             properties["has_degrees"] = True
             if degree not in properties["degree_options"]:
@@ -1437,19 +1414,19 @@ class RoutineRecord(BaseProcessor):
                 
         # 设置目标相关属性（针对持续事项）
         if definition["type"] == RoutineTypes.ONGOING:
-            check_cycle = form_data.get("check_cycle", "")
+            check_cycle = record_data.get("check_cycle", "")
             if check_cycle:
                 properties["check_cycle"] = check_cycle
                 
-            target_type = form_data.get("target_type", RoutineTargetTypes.NONE)
+            target_type = record_data.get("target_type", RoutineTargetTypes.NONE)
             if target_type != RoutineTargetTypes.NONE:
                 properties["target_type"] = target_type
-                target_value = self._safe_parse_number(form_data.get("target_value", ""), as_int=True)
+                target_value = self._safe_parse_number(record_data.get("target_value", ""), as_int=True)
                 if target_value > 0:
                     properties["target_value"] = target_value
                     
         # 设置预估耗时
-        estimated_duration = self._safe_parse_number(form_data.get("estimated_duration", ""))
+        estimated_duration = self._safe_parse_number(record_data.get("estimated_duration", ""))
         if estimated_duration > 0:
             properties["estimated_duration"] = estimated_duration
             
@@ -1458,18 +1435,18 @@ class RoutineRecord(BaseProcessor):
         stats["last_record_time"] = current_time
         
         # 设置备注
-        note = form_data.get("note", "")
+        note = record_data.get("note", "")
         if note:
             stats["last_note"] = note
             
         # 设置耗时统计
-        duration = self._safe_parse_number(form_data.get("duration", ""))
+        duration = self._safe_parse_number(record_data.get("duration", ""))
         if duration > 0:
             self._update_duration_stats(definition, duration)
             
         # 设置指标统计
         if progress_type != RoutineProgressTypes.NONE:
-            progress_value = self._safe_parse_number(form_data.get("progress_value", ""))
+            progress_value = self._safe_parse_number(record_data.get("progress_value", ""))
             self._update_progress_stats(definition, progress_type, progress_value)
             
     def _update_duration_stats(self, definition: Dict[str, Any], duration: float) -> None:
