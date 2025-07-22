@@ -13,6 +13,7 @@ import os
 import json
 from typing import Dict, Any, List, Optional, Tuple
 from datetime import datetime
+from collections import OrderedDict
 
 from Module.Common.scripts.common import debug_utils
 from Module.Services.constants import (
@@ -202,28 +203,139 @@ class RoutineRecord(BaseProcessor):
 
     def _get_next_record_id(self, user_id: str, event_name: str) -> str:
         """
-        生成下一个记录ID
+        生成下一个记录ID，基于事件定义中的record_count统计
+        高效且可靠的ID生成方法
 
         Args:
             user_id: 用户ID
             event_name: 事件名称
 
         Returns:
-            str: 记录ID，格式为 event_name_序号
+            str: 记录ID，格式为 event_name_00001
         """
+        # 优先使用事件定义中的统计信息
         definitions_data = self.load_event_definitions(user_id)
-
-        # 计算该事件的现有记录数量
-        count = (
-            definitions_data.get("definitions", {})
-            .get(event_name, {})
-            .get("stats", {})
-            .get("record_count", 0)
-        )
-
-        # 生成新的序号（从00001开始）
-        next_num = count + 1
-        return f"{event_name}_{next_num:05d}"
+        definitions = definitions_data.get("definitions", {})
+        
+        if event_name in definitions:
+            # 事件定义存在，使用record_count生成ID
+            current_count = definitions[event_name].get("stats", {}).get("record_count", 0)
+            next_num = current_count + 1
+            candidate_id = f"{event_name}_{next_num:05d}"
+            
+            # 验证ID唯一性（防御性编程）
+            if self._verify_id_uniqueness(user_id, candidate_id):
+                return candidate_id
+            else:
+                # 如果统计不准确，回退到扫描方式并修复统计
+                return self._generate_id_with_scan_and_fix(user_id, event_name)
+        else:
+            # 事件定义不存在，扫描现有记录生成ID
+            return self._generate_id_with_scan(user_id, event_name)
+    
+    def _verify_id_uniqueness(self, user_id: str, candidate_id: str) -> bool:
+        """
+        验证ID在所有记录中的唯一性
+        
+        Args:
+            user_id: 用户ID
+            candidate_id: 候选ID
+            
+        Returns:
+            bool: ID是否唯一
+        """
+        records_data = self.load_event_records(user_id)
+        
+        # 检查records中是否存在
+        if candidate_id in records_data.get("records", {}):
+            return False
+            
+        # 检查active_records中是否存在
+        if candidate_id in records_data.get("active_records", {}):
+            return False
+            
+        return True
+    
+    def _generate_id_with_scan(self, user_id: str, event_name: str) -> str:
+        """
+        通过扫描现有记录生成ID（用于事件定义不存在的情况）
+        
+        Args:
+            user_id: 用户ID
+            event_name: 事件名称
+            
+        Returns:
+            str: 记录ID
+        """
+        records_data = self.load_event_records(user_id)
+        existing_ids = set()
+        
+        # 收集同名事件的所有ID
+        for record_dict in [records_data.get("records", {}), records_data.get("active_records", {})]:
+            for record_id, record in record_dict.items():
+                if record.get("event_name") == event_name:
+                    existing_ids.add(record_id)
+        
+        # 找到下一个可用序号
+        next_num = 1
+        while True:
+            candidate_id = f"{event_name}_{next_num:05d}"
+            if candidate_id not in existing_ids:
+                return candidate_id
+            next_num += 1
+            
+            if next_num > 99999:
+                raise ValueError(f"无法为事件 '{event_name}' 生成唯一ID")
+    
+    def _generate_id_with_scan_and_fix(self, user_id: str, event_name: str) -> str:
+        """
+        扫描生成ID并修复事件定义中的统计信息
+        
+        Args:
+            user_id: 用户ID
+            event_name: 事件名称
+            
+        Returns:
+            str: 记录ID
+        """
+        # 先用扫描方式生成ID
+        new_id = self._generate_id_with_scan(user_id, event_name)
+        
+        # 修复事件定义中的record_count
+        definitions_data = self.load_event_definitions(user_id)
+        if event_name in definitions_data.get("definitions", {}):
+            # 计算实际记录数量
+            actual_count = self._count_records_for_event(user_id, event_name)
+            definitions_data["definitions"][event_name]["stats"]["record_count"] = actual_count
+            self.save_event_definitions(user_id, definitions_data)
+        
+        return new_id
+    
+    def _count_records_for_event(self, user_id: str, event_name: str) -> int:
+        """
+        统计指定事件的实际记录数量
+        
+        Args:
+            user_id: 用户ID
+            event_name: 事件名称
+            
+        Returns:
+            int: 记录数量
+        """
+        records_data = self.load_event_records(user_id)
+        count = 0
+        
+        # 统计records中的记录
+        for record in records_data.get("records", {}).values():
+            if record.get("event_name") == event_name:
+                count += 1
+                
+        # 统计active_records中的记录
+        for record in records_data.get("active_records", {}).values():
+            if record.get("event_name") == event_name:
+                count += 1
+                
+        return count
 
     def _create_event_record(
         self,
@@ -313,8 +425,8 @@ class RoutineRecord(BaseProcessor):
             current_time = self._get_formatted_time()
             default_data = {
                 "user_id": user_id,
-                "active_records": [],
-                "records": [],
+                "active_records": OrderedDict(),
+                "records": OrderedDict(),
                 "created_time": current_time,
                 "last_updated": current_time,
             }
@@ -1087,7 +1199,7 @@ class RoutineRecord(BaseProcessor):
 
             # 生成记录ID
             event_name = form_data.get("event_name", "").strip()
-            record_id = self._generate_direct_record_id(user_id, event_name)
+            record_id = self._get_next_record_id(user_id, event_name)
 
             # 构建记录数据
             current_time = self._get_formatted_time()
@@ -1143,10 +1255,19 @@ class RoutineRecord(BaseProcessor):
             # 根据事件类型决定存储位置
             if event_type in [RoutineTypes.START, RoutineTypes.ONGOING, RoutineTypes.FUTURE]:
                 # 开始、持续、未来事项存储到 active_records
-                records_data["active_records"].append(new_record)
+                # 添加新记录到OrderedDict的开头（最新记录在前）
+                new_active_records = OrderedDict()
+                new_active_records[record_id] = new_record
+                new_active_records.update(records_data["active_records"])
+                records_data["active_records"] = new_active_records
             else:
-                # 瞬间完成事项存储到 records
-                records_data["records"].append(new_record)
+                # 其他类型记录添加到records
+                
+                # 添加新记录到OrderedDict的开头（最新记录在前）
+                new_records = OrderedDict()
+                new_records[record_id] = new_record
+                new_records.update(records_data["records"])
+                records_data["records"] = new_records
 
             records_data["last_updated"] = current_time
 
@@ -1401,27 +1522,6 @@ class RoutineRecord(BaseProcessor):
             stats["total_progress_value"] = round(current_total + progress_value, 3)
             stats["last_progress_value"] = progress_value
 
-    def _generate_direct_record_id(self, user_id: str, event_name: str) -> str:
-        """
-        生成直接记录ID，使用"事件名_001"格式
-
-        Args:
-            user_id: 用户ID
-            event_name: 事件名称
-
-        Returns:
-            str: 记录ID
-        """
-        # 加载现有记录以计算序号
-        records_data = self.load_event_records(user_id)
-
-        # 统计所有位置的同名记录数量
-        all_records = records_data.get("records", []) + records_data.get("active_records", [])
-        count = sum(1 for record in all_records if record.get("event_name") == event_name)
-
-        # 生成新的序号（从001开始）
-        next_num = count + 1
-        return f"{event_name}_{next_num:03d}"
 
     def _safe_parse_number(self, value_str: str, as_int: bool = False) -> float:
         """

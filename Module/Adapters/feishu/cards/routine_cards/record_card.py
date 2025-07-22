@@ -6,6 +6,8 @@ Record Card
 
 from typing import Dict, Any, List
 import copy
+from collections import OrderedDict
+
 from Module.Business.processors.base_processor import (
     MessageContext_Refactor,
     ProcessResult,
@@ -661,7 +663,18 @@ class RecordCard:
         # 先写入记录
         routine_business = self.parent.message_router.routine_record
         records_data = routine_business.load_event_records(user_id)
-        records_data["records"].append(core_data)
+        
+        # 添加新记录到OrderedDict的开头（最新记录在前）
+        record_id = core_data.get("record_id")
+        new_records = OrderedDict()
+        new_records[record_id] = core_data
+        new_records.update(records_data["records"])
+        records_data["records"] = new_records
+        
+        # 从active_records中移除已确认的记录（如果存在）
+        if record_id in records_data["active_records"]:
+            del records_data["active_records"][record_id]
+        
         records_data["last_updated"] = core_data.get("timestamp")
         # 再写入事件定义，做聚合类计算
         event_def["stats"]["record_count"] = (
