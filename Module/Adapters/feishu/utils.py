@@ -223,12 +223,12 @@ ROUTE_KNOWLEDGE_MAPPING = {
             "card_action": "build_query_results_card",
         },
     },
-    RouteTypes.ROUTINE_DIRECT_RECORD_CARD: {
+    RouteTypes.ROUTINE_RECORD_CARD: {
         "handler": "card_handler",
         "method": "dispatch_card_response",
         "call_params": {
-            "card_config_key": CardConfigKeys.ROUTINE_DIRECT_RECORD,
-            "card_action": "build_direct_record_card",
+            "card_config_key": CardConfigKeys.ROUTINE_RECORD,
+            "card_action": "build_record_card",
         },
     },
 }

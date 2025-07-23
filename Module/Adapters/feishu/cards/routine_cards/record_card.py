@@ -1,10 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-Direct Record Card
-直接记录卡片
+Record Card
+记录卡片
 """
 
-import pprint
 import copy
 from typing import Dict, Any, List
 from Module.Adapters.feishu.utils import safe_float
@@ -25,34 +24,34 @@ from Module.Business.processors.base_processor import (
 
 class RecordCard:
     """
-    直接记录卡片管理器
+    记录卡片管理器
     支持在没有事件定义的情况下直接创建记录
     """
 
     def __init__(self, parent_manager):
         self.parent = parent_manager  # 访问主管理器的共享方法和属性
         self.default_update_build_method = (
-            "update_direct_record_card"  # 默认更新构建方法
+            "update_record_card"  # 默认更新构建方法
         )
 
-    def build_direct_record_card(self, business_data: Dict[str, Any]) -> Dict[str, Any]:
+    def build_record_card(self, business_data: Dict[str, Any]) -> Dict[str, Any]:
         """
-        直接记录卡片核心构建逻辑
+        记录卡片核心构建逻辑
         只负责构建 header 和卡片结构，其他逻辑移到 elements 中
         """
         # 构建卡片头部
-        header = self._build_direct_record_header(business_data)
+        header = self._build_record_header(business_data)
 
         # 构建卡片元素
-        elements = self.build_direct_record_elements(business_data)
+        elements = self.build_record_elements(business_data)
 
         return self.parent.build_base_card_structure(elements, header, "12px")
 
-    def _build_direct_record_header(
+    def _build_record_header(
         self, business_data: Dict[str, Any]
     ) -> Dict[str, Any]:
         """
-        构建直接记录卡片头部
+        构建记录卡片头部
         """
         is_confirmed = business_data.get("is_confirmed", False)
         result = business_data.get("result", "取消")
@@ -75,9 +74,9 @@ class RecordCard:
 
         return self.parent.build_card_header(title, subtitle, "blue", icon)
 
-    def build_direct_record_elements(self, business_data: Dict[str, Any]) -> List[Dict]:
+    def build_record_elements(self, business_data: Dict[str, Any]) -> List[Dict]:
         """
-        构建直接记录元素
+        构建记录元素
         符合 sub_business_build_method 调用规范
         直接处理所有业务逻辑和数据传递
         """
@@ -89,7 +88,7 @@ class RecordCard:
 
         # 使用 safe_get_business_data 处理递归嵌套的业务数据结构
         data_source, _ = self.parent.safe_get_business_data(
-            business_data, "routine_direct_record"
+            business_data, CardConfigKeys.ROUTINE_RECORD
         )
 
         # 从统一数据结构中提取所需参数
@@ -109,6 +108,7 @@ class RecordCard:
                 data_source, event_type, is_confirmed, build_method_name
             )
         )
+
         # 3. 表单分隔线
         elements.append(
             {
@@ -116,10 +116,12 @@ class RecordCard:
                 "content": "**💡 重要提示** 请先完成上面的设定，这会清除下面的所有值！",
             }
         )
+
         # 4. 表单内字段区域（表单数据，通过提交按钮回调一次性处理）
         form_container = self._build_form_fields_by_type(
             event_type, data_source, is_confirmed
         )
+
         # 5. 提交按钮
         form_container["elements"].append(
             self._build_submit_button(is_confirmed, build_method_name)
@@ -497,7 +499,7 @@ class RecordCard:
 
         action_data = {
             "card_action": "update_direct_record_type",
-            "card_config_key": CardConfigKeys.ROUTINE_DIRECT_RECORD,
+            "card_config_key": CardConfigKeys.ROUTINE_RECORD,
             "container_build_method": build_method_name,
         }
 
@@ -554,7 +556,7 @@ class RecordCard:
             disabled=is_confirmed,
             action_data={
                 "card_action": "update_record_degree",
-                "card_config_key": CardConfigKeys.ROUTINE_DIRECT_RECORD,
+                "card_config_key": CardConfigKeys.ROUTINE_RECORD,
                 "container_build_method": build_method_name,
             },
             element_id="degree_selector",
@@ -593,7 +595,7 @@ class RecordCard:
 
         action_data = {
             "card_action": "update_progress_type",
-            "card_config_key": CardConfigKeys.ROUTINE_DIRECT_RECORD,
+            "card_config_key": CardConfigKeys.ROUTINE_RECORD,
             "container_build_method": build_method_name,
         }
 
@@ -620,7 +622,7 @@ class RecordCard:
 
         action_data = {
             "card_action": "update_target_type",
-            "card_config_key": CardConfigKeys.ROUTINE_DIRECT_RECORD,
+            "card_config_key": CardConfigKeys.ROUTINE_RECORD,
             "container_build_method": build_method_name,
         }
 
@@ -656,7 +658,7 @@ class RecordCard:
 
         action_data = {
             "card_action": "update_reminder_mode",
-            "card_config_key": CardConfigKeys.ROUTINE_DIRECT_RECORD,
+            "card_config_key": CardConfigKeys.ROUTINE_RECORD,
             "container_build_method": build_method_name,
         }
 
@@ -1140,7 +1142,7 @@ class RecordCard:
                                     "type": "callback",
                                     "value": {
                                         "card_action": "cancel_direct_record",
-                                        "card_config_key": CardConfigKeys.ROUTINE_DIRECT_RECORD,
+                                        "card_config_key": CardConfigKeys.ROUTINE_RECORD,
                                         "container_build_method": build_method_name,
                                     },
                                 }
@@ -1186,7 +1188,7 @@ class RecordCard:
                                     "type": "callback",
                                     "value": {
                                         "card_action": "confirm_direct_record",
-                                        "card_config_key": CardConfigKeys.ROUTINE_DIRECT_RECORD,
+                                        "card_config_key": CardConfigKeys.ROUTINE_RECORD,
                                         "container_build_method": build_method_name,
                                     },
                                 }
@@ -1275,7 +1277,7 @@ class RecordCard:
             return error_response
 
         data_source, _ = self.parent.safe_get_business_data(
-            business_data, CardConfigKeys.ROUTINE_DIRECT_RECORD
+            business_data, CardConfigKeys.ROUTINE_RECORD
         )
 
         # 1. 合并表单数据到record_data
@@ -1342,9 +1344,9 @@ class RecordCard:
         if error_response:
             return error_response
 
-        # 获取direct_record的数据源
+        # 获取record的数据源
         data_source, _ = self.parent.safe_get_business_data(
-            business_data, "routine_direct_record"
+            business_data, CardConfigKeys.ROUTINE_RECORD
         )
 
         if "record_data" not in data_source:

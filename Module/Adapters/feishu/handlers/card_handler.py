@@ -87,8 +87,8 @@ class CardHandler:
 
         if context_refactor.content.card_config_key in [
             CardConfigKeys.DESIGN_PLAN, CardConfigKeys.BILIBILI_VIDEO_INFO,
-            CardConfigKeys.ROUTINE_RECORD, CardConfigKeys.ROUTINE_QUICK_SELECT, CardConfigKeys.ROUTINE_QUERY,
-            CardConfigKeys.ROUTINE_DIRECT_RECORD
+            CardConfigKeys.ROUTINE_RECORD_OLD, CardConfigKeys.ROUTINE_QUICK_SELECT, CardConfigKeys.ROUTINE_QUERY,
+            CardConfigKeys.ROUTINE_RECORD
         ]:
             message_before_action = context_refactor.content.value.get('message_before_action', '')
             if message_before_action:

@@ -216,14 +216,14 @@ class RoutineCardManager(BaseCardManager):
     #         user_id=context.user_id,
     #         message_id=context.message_id,
     #         business_data=business_data,
-    #         card_config_key=CardConfigKeys.ROUTINE_RECORD,
+    #         card_config_key=CardConfigKeys.ROUTINE_RECORD_OLD,
     #     )
 
-    def build_direct_record_card(
+    def build_record_card(
         self, result, context: MessageContext_Refactor, business_data: Dict[str, Any]
     ):
         """构建直接记录卡片 - 代理到子模块"""
-        card_data = self.record_card.build_direct_record_card(business_data)
+        card_data = self.record_card.build_record_card(business_data)
         card_content = {"type": "card_json", "data": card_data}
 
         return self.handle_card_operation_common(
@@ -233,7 +233,7 @@ class RoutineCardManager(BaseCardManager):
             user_id=context.user_id,
             message_id=context.message_id,
             business_data=business_data,
-            card_config_key=CardConfigKeys.ROUTINE_DIRECT_RECORD,
+            card_config_key=CardConfigKeys.ROUTINE_RECORD,
         )
 
     # 嵌套的两个关键方法段落，容器的card和嵌套的element
@@ -256,18 +256,18 @@ class RoutineCardManager(BaseCardManager):
         """构建快速记录确认卡片 - 代理到子模块"""
         return self.record_card_old.build_quick_record_confirm_card(business_data)
 
-    def update_direct_record_card(
+    def update_record_card(
         self, business_data: Dict[str, Any]
     ) -> Dict[str, Any]:
         """构建直接记录确认卡片 - 代理到子模块"""
-        return self.record_card.build_direct_record_card(business_data)
+        return self.record_card.build_record_card(business_data)
 
     # ----- 配套的element子方法，会在build_card被sub_business_build_method方式调用 -----
-    def build_direct_record_elements(
+    def build_record_elements(
         self, business_data: Dict[str, Any]
     ) -> List[Dict[str, Any]]:
         """构建直接记录元素（别名方法，兼容现有调用） - 代理到子模块"""
-        return self.record_card.build_direct_record_elements(business_data)
+        return self.record_card.build_record_elements(business_data)
 
     def build_quick_record_elements(
         self, business_data: Dict[str, Any]

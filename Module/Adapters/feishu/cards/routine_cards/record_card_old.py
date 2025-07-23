@@ -60,7 +60,7 @@ class RecordCard_Old:
             "container_build_method", self.default_update_build_method
         )
         data_source, _ = self.parent.safe_get_business_data(
-            business_data, CardConfigKeys.ROUTINE_RECORD
+            business_data, CardConfigKeys.ROUTINE_RECORD_OLD
         )
 
         # 从统一数据结构获取业务数据
@@ -382,7 +382,7 @@ class RecordCard_Old:
                     disabled=is_confirmed,
                     action_data={
                         "card_action": "update_record_degree",
-                        "card_config_key": CardConfigKeys.ROUTINE_RECORD,
+                        "card_config_key": CardConfigKeys.ROUTINE_RECORD_OLD,
                         "container_build_method": build_method_name,
                     },
                     element_id="degree_select",
@@ -515,7 +515,7 @@ class RecordCard_Old:
                                     "type": "callback",
                                     "value": {
                                         "card_action": "cancel_record",
-                                        "card_config_key": CardConfigKeys.ROUTINE_RECORD,
+                                        "card_config_key": CardConfigKeys.ROUTINE_RECORD_OLD,
                                         "container_build_method": build_method_name,
                                     },
                                 }
@@ -561,7 +561,7 @@ class RecordCard_Old:
                                     "type": "callback",
                                     "value": {
                                         "card_action": "confirm_record",
-                                        "card_config_key": CardConfigKeys.ROUTINE_RECORD,
+                                        "card_config_key": CardConfigKeys.ROUTINE_RECORD_OLD,
                                         "event_name": event_name,
                                         "container_build_method": build_method_name,
                                     },
@@ -590,7 +590,7 @@ class RecordCard_Old:
             return error_response
 
         data_source, _ = self.parent.safe_get_business_data(
-            business_data, CardConfigKeys.ROUTINE_RECORD
+            business_data, CardConfigKeys.ROUTINE_RECORD_OLD
         )
 
         business_data["is_confirmed"] = True
@@ -780,7 +780,7 @@ class RecordCard_Old:
             return error_response
 
         data_source, _ = self.parent.safe_get_business_data(
-            business_data, CardConfigKeys.ROUTINE_RECORD
+            business_data, CardConfigKeys.ROUTINE_RECORD_OLD
         )
         new_option = context.content.value.get("option")
         data_source["record_data"]["degree"] = new_option

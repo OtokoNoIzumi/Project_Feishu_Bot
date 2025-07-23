@@ -62,7 +62,6 @@ class ResponseTypes:
     DESIGN_PLAN_CANCEL = "design_plan_cancel"
     DESIGN_PLAN_CARD = "design_plan_card"
     DESIGN_PLAN_ACTION = "design_plan_action"
-    ROUTINE_DIRECT_RECORD_CARD = "routine_direct_record_card"
 
     RICH_TEXT = "rich_text"
     IMAGE_LIST = "image_list"
@@ -229,9 +228,9 @@ class CardConfigKeys:
     DESIGN_PLAN = "design_plan"
     ROUTINE_QUICK_SELECT = "routine_quick_select"
     ROUTINE_QUERY = "routine_query"
-    ROUTINE_DIRECT_RECORD = "routine_direct_record"
-    
     ROUTINE_RECORD = "routine_record"
+
+    ROUTINE_RECORD_OLD = "routine_record_old"
 
 # ========== 卡片操作类型常量 ==========
 class CardOperationTypes:
@@ -297,7 +296,7 @@ class RouteTypes:
     ROUTINE_NEW_EVENT_CARD = "routine_new_event_card"
     ROUTINE_QUICK_SELECT_CARD = "routine_quick_select_card"
     ROUTINE_QUERY_RESULTS_CARD = "routine_query_results_card"
-    ROUTINE_DIRECT_RECORD_CARD = "routine_direct_record_card"
+    ROUTINE_RECORD_CARD = "routine_record_card"
 
 # ========== 日常事项类型常量 ==========
 class RoutineTypes:

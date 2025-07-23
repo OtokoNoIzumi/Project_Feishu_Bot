@@ -132,9 +132,12 @@ class QueryResultsCard:
             if "last_refresh_date" in stats and stats.get("last_refresh_date"):
                 stat_lines.append(f"上次重置时间: {stats.get('last_refresh_date')}")
             if "avg_all_time" in stats.get("duration", {}):
-                stat_lines.append(
-                    f"平均耗时: {round(stats['duration'].get('avg_all_time', 0), 1)}"
-                )
+                avg_all_time = stats['duration'].get('avg_all_time', 0)
+                if avg_all_time:
+                    stat_lines.append(
+                        f"平均耗时: {round(avg_all_time, 1)}"
+                    )
+
             progress_type = d.get("properties", {}).get("progress_type", "")
             if progress_type:
                 if "last_progress_value" in stats:

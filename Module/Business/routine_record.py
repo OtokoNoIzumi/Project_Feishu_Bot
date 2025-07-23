@@ -672,7 +672,7 @@ class RoutineRecord(BaseProcessor):
                 record_mode="quick",
             )
             route_result = RouteResult.create_route_result(
-                route_type=RouteTypes.ROUTINE_DIRECT_RECORD_CARD,
+                route_type=RouteTypes.ROUTINE_RECORD_CARD,
                 route_params={"business_data": routine_record_data},
             )
             return route_result
@@ -685,7 +685,7 @@ class RoutineRecord(BaseProcessor):
             record_mode="direct",
         )
         route_result = RouteResult.create_route_result(
-            route_type=RouteTypes.ROUTINE_DIRECT_RECORD_CARD,
+            route_type=RouteTypes.ROUTINE_RECORD_CARD,
             route_params={
                 "business_data": card_data,
             },
@@ -1300,7 +1300,7 @@ class RoutineRecord(BaseProcessor):
 
         # 保存数据
         if self.save_event_records(user_id, records_data):
-            return True, f"成功创建记录【{event_name}】"
+            return True, "成功创建记录"
 
         return False, "保存记录失败"
 

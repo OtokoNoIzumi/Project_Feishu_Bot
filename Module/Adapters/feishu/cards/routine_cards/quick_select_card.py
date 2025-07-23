@@ -193,9 +193,9 @@ class QuickSelectCard:
             )
 
             parent_data["sub_business_data"] = quick_record_data
-            parent_data["sub_business_name"] = CardConfigKeys.ROUTINE_DIRECT_RECORD
+            parent_data["sub_business_name"] = CardConfigKeys.ROUTINE_RECORD
             sub_business_build_method = self.parent.get_sub_business_build_method(
-                CardConfigKeys.ROUTINE_DIRECT_RECORD
+                CardConfigKeys.ROUTINE_RECORD
             )
             parent_data["sub_business_build_method"] = sub_business_build_method
 
@@ -268,9 +268,9 @@ class QuickSelectCard:
             )
 
             parent_data["sub_business_data"] = quick_record_data
-            parent_data["sub_business_name"] = CardConfigKeys.ROUTINE_DIRECT_RECORD
+            parent_data["sub_business_name"] = CardConfigKeys.ROUTINE_RECORD
             sub_business_build_method = self.parent.get_sub_business_build_method(
-                CardConfigKeys.ROUTINE_DIRECT_RECORD
+                CardConfigKeys.ROUTINE_RECORD
             )
             parent_data["sub_business_build_method"] = sub_business_build_method
 
@@ -291,9 +291,9 @@ class QuickSelectCard:
             user_id=user_id, event_name=event_name,last_record_time=last_record_time, record_mode="direct"
         )
         parent_data["sub_business_data"] = new_record_card_data
-        parent_data["sub_business_name"] = CardConfigKeys.ROUTINE_DIRECT_RECORD
+        parent_data["sub_business_name"] = CardConfigKeys.ROUTINE_RECORD
         sub_business_build_method = self.parent.get_sub_business_build_method(
-            CardConfigKeys.ROUTINE_DIRECT_RECORD
+            CardConfigKeys.ROUTINE_RECORD
         )
         parent_data["sub_business_build_method"] = sub_business_build_method
 

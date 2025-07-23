@@ -92,13 +92,13 @@ CARD_CLASS_MAPPING = {
             "sub_business_build_method": "build_query_elements",
         },
     },
-    CardConfigKeys.ROUTINE_DIRECT_RECORD: {
+    CardConfigKeys.ROUTINE_RECORD: {
         "class": RoutineCardManager,
         "single_instance": True,
         "config": {
             "reply_mode": "reply",
             "card_name": "添加日常记录",
-            "sub_business_build_method": "build_direct_record_elements",
+            "sub_business_build_method": "build_record_elements",
         },
     },
 }
