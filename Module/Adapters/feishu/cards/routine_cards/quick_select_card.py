@@ -173,12 +173,12 @@ class QuickSelectCard:
         if (
             definitions_data and event_name in definitions_data["definitions"]
         ):  # 虽然是冗余但先保留吧
-            event_def = definitions_data["definitions"][event_name]
+            event_definition = definitions_data["definitions"][event_name]
             last_record_time = definitions_data.get("last_record_time", None)
             quick_record_data = routine_business.build_record_card_data(
                 user_id=user_id,
-                item_name=event_name,
-                event_def=event_def,
+                event_name=event_name,
+                event_definition=event_definition,
                 last_record_time=last_record_time,
                 record_mode="quick",
             )
@@ -255,14 +255,14 @@ class QuickSelectCard:
         parent_data, _ = self.parent.safe_get_business_data(
             business_data, parent_business_name
         )
+        last_record_time = definitions_data.get("last_record_time", None)
         if definitions_data and event_name in definitions_data["definitions"]:
             # 事件存在，进入快速记录模式
-            event_def = definitions_data["definitions"][event_name]
-            last_record_time = definitions_data.get("last_record_time", None)
+            event_definition = definitions_data["definitions"][event_name]
             quick_record_data = routine_business.build_record_card_data(
                 user_id=user_id,
-                item_name=event_name,
-                event_def=event_def,
+                event_name=event_name,
+                event_definition=event_definition,
                 last_record_time=last_record_time,
                 record_mode="quick",
             )
@@ -288,7 +288,7 @@ class QuickSelectCard:
             )
 
         new_record_card_data = routine_business.build_record_card_data(
-            user_id=user_id, item_name=event_name, record_mode="direct"
+            user_id=user_id, event_name=event_name,last_record_time=last_record_time, record_mode="direct"
         )
         parent_data["sub_business_data"] = new_record_card_data
         parent_data["sub_business_name"] = CardConfigKeys.ROUTINE_DIRECT_RECORD

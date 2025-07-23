@@ -655,6 +655,7 @@ class RoutineRecord(BaseProcessor):
 
         # 直接使用新架构加载数据
         definitions_data = self.load_event_definitions(user_id)
+        last_record_time = definitions_data.get("last_record_time", None)
 
         if not definitions_data:
             return ProcessResult.error_result("加载事件定义失败")
@@ -662,13 +663,12 @@ class RoutineRecord(BaseProcessor):
         # 检查事项是否已存在
         if item_name in definitions_data.get("definitions", {}):
             # 事项已存在，直接记录，这里要封装原始数据
-            event_def = definitions_data["definitions"][item_name]
-            last_record_time = definitions_data.get("last_record_time", None)
+            event_definition = definitions_data["definitions"][item_name]
             # 并且这里要能够直接绕过前端直接对接业务——本来前端就是多一层中转和丰富信息，也就是如果这个不routeresult，而是直接到业务也应该OK。
             routine_record_data = self.build_record_card_data(
                 user_id=user_id,
-                item_name=item_name,
-                event_def=event_def,
+                event_name=item_name,
+                event_definition=event_definition,
                 last_record_time=last_record_time,
                 record_mode="quick",
             )
@@ -680,7 +680,7 @@ class RoutineRecord(BaseProcessor):
 
         # 新事项，展示事件定义卡片
         card_data = self.build_record_card_data(
-            user_id=user_id, item_name=item_name, record_mode="direct"
+            user_id=user_id, event_name=item_name,last_record_time=last_record_time, record_mode="direct"
         )
         route_result = RouteResult.create_route_result(
             route_type=RouteTypes.ROUTINE_DIRECT_RECORD_CARD,
@@ -1085,17 +1085,30 @@ class RoutineRecord(BaseProcessor):
         match record_mode:
             case "direct":
                 # Direct模式：构建空的初始数据
-                unified_data["event_definition"] = None
-
                 # 创建空的初始记录
                 record_data = {
                     "event_name": event_name,
                     "event_type": RoutineTypes.INSTANT,
+                    "timestamp": current_time,
                 }
                 unified_data["record_data"] = record_data
 
+                computed_data = {}
+
+                # 计算时间差
+                if last_record_time:
+                    try:
+                        last_time = datetime.strptime(
+                            last_record_time, "%Y-%m-%d %H:%M:%S"
+                        )
+                        diff_minutes = round(
+                            (datetime.now() - last_time).total_seconds() / 60, 1
+                        )
+                        computed_data["diff_minutes"] = diff_minutes
+                    except ValueError:
+                        pass  # 时间格式错误时忽略        
                 # Direct模式不需要计算数据
-                unified_data["computed_data"] = {}
+                unified_data["computed_data"] = computed_data        
             case "quick":
                 # Quick模式：基于事件定义构建数据
                 unified_data["event_definition"] = event_definition
@@ -1238,7 +1251,7 @@ class RoutineRecord(BaseProcessor):
                 "completion_time": current_time,
                 # 公共字段
                 "note": record_data.get("note", ""),
-                "degree": record_data.get("degree", ""),
+                "degree": record_data.get("degree", "") or record_data.get("custom_degree", ""),
                 "duration": self._safe_parse_number(record_data.get("duration", "")),
                 # 指标相关
                 "progress_type": record_data.get(

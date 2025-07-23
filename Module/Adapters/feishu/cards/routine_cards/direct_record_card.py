@@ -6,6 +6,8 @@ Direct Record Card
 
 import json
 from typing import Dict, Any, List
+from Module.Adapters.feishu.utils import safe_float
+from Module.Common.scripts.common import debug_utils
 from Module.Services.constants import (
     RoutineTypes,
     RoutineProgressTypes,
@@ -88,44 +90,39 @@ class DirectRecordCard:
         record_data = data_source.get("record_data", {})
 
         # 从统一结构中提取数据
-        event_name = data_source.get("event_name", "")
         event_type = record_data.get("event_type", "")
 
         elements = []
 
-        # 1. 表单外字段区域（非表单数据，有回调事件，状态保存在配置中）
+        # 1. 计算信息区域（包含基础信息、时间预估、循环进度等）
+        elements.extend(self._build_computed_info_by_type(data_source))
+
+        # 2. 表单外字段区域（非表单数据，有回调事件，状态保存在配置中）
         elements.extend(
             self._build_non_form_fields(
-                record_data, event_name, event_type, is_confirmed, build_method_name
+                data_source, event_type, is_confirmed, build_method_name
             )
         )
-
-        # 2. 表单分隔线
+        # 3. 表单分隔线
         elements.append(
             {
                 "tag": "markdown",
                 "content": "**💡 重要提示** 请先完成上面的设定，这会清除下面的所有值！",
             }
         )
-
-        # 3. 创建表单容器
-        form_container = {"tag": "form", "elements": [], "name": "direct_record_form"}
-
         # 4. 表单内字段区域（表单数据，通过提交按钮回调一次性处理）
-        form_fields = self._build_form_fields_by_type(
-            event_type, record_data, is_confirmed
+        form_container = self._build_form_fields_by_type(
+            event_type, data_source, is_confirmed
         )
-        form_container["elements"].extend(form_fields)
-
         # 5. 提交按钮
         form_container["elements"].append(
             self._build_submit_button(is_confirmed, build_method_name)
         )
-
-        # 6. 添加表单容器到元素列表
         elements.append(form_container)
 
-        # 7. 处理集成模式：检查是否有子业务数据
+
+
+        # 6. 子业务元素（处理集成模式）
         sub_business_build_method = data_source.get("sub_business_build_method", "")
         if sub_business_build_method and hasattr(
             self.parent, sub_business_build_method
@@ -139,10 +136,239 @@ class DirectRecordCard:
 
         return elements
 
+    # region 辅助信息区域
+    def _build_computed_info_by_type(
+        self, data_source: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
+        """
+        构建计算信息区域（包含基础信息、时间预估、循环进度等）
+        """
+        elements = []
+
+        # 基础信息显示区域
+        record_data = data_source.get("record_data", {})
+        computed_data = data_source.get("computed_data", {})
+
+        event_name = record_data.get("event_name", "")
+        if event_name or record_data.get("timestamp"):
+            diff_minutes = computed_data.get("diff_minutes", 0)
+            elements.extend(
+                self._build_basic_info_section(data_source, event_name, diff_minutes)
+            )
+
+        # 时间预估和进度信息（参考 record_card 的实现）
+        avg_duration = computed_data.get("avg_duration", 0)
+        progress_type = record_data.get("progress_type", "")
+        last_progress_value = computed_data.get("last_progress_value", 0)
+        total_progress_value = computed_data.get("total_progress_value", 0)
+
+        if avg_duration > 0 or (
+            progress_type and (last_progress_value or total_progress_value)
+        ):
+            elements.extend(
+                self._build_duration_and_progress_section(
+                    avg_duration,
+                    progress_type,
+                    last_progress_value,
+                    total_progress_value,
+                )
+            )
+
+        # 循环进度信息（如果有目标设置）
+        cycle_info = computed_data.get("cycle_info", {})
+        if cycle_info:
+            elements.extend(self._build_cycle_progress_section(cycle_info))
+
+        return elements
+
+    def _build_basic_info_section(
+        self, data_source: Dict[str, Any], event_name: Dict[str, Any], diff_minutes: int
+    ) -> List[Dict[str, Any]]:
+        """
+        构建基础信息区域（与 record_card 完全等价实现）
+        """
+        elements = []
+        record_mode = data_source.get("record_mode", "")
+        record_data = data_source.get("record_data", {})
+        event_definition = data_source.get("event_definition", {})
+
+        # 基础信息卡片
+        if record_mode == "direct":
+            info_content = f"**事件名称： {event_name}**\n"
+
+        else:
+            event_type = event_definition.get("type", RoutineTypes.INSTANT)
+            info_content = (
+                f"**事项类型：** {self.parent.get_type_display_name(event_type)}\n"
+            )
+
+        # 显示记录时间
+        if record_data.get("timestamp"):
+            timestamp = record_data["timestamp"]
+            split_timestamp = timestamp.split(" ")
+            date_str = split_timestamp[0][5:10]
+            time_str = split_timestamp[1][0:5]
+            info_content += f"**记录时间：** {date_str} {time_str}\n"
+            if diff_minutes > 0:
+                info_content += f"**上次记录距今：** {diff_minutes}分钟\n"
+
+        # 显示分类（如果有）
+        category = event_definition.get("category", "")
+        if category:
+            info_content += f"**分类：** <text_tag color='blue'>{category}</text_tag>\n"
+
+        if info_content:
+            elements.append(
+                {
+                    "tag": "div",
+                    "text": {"tag": "lark_md", "content": info_content.rstrip("\n")},
+                }
+            )
+
+        return elements
+
+    def _build_duration_and_progress_section(
+        self,
+        avg_duration: float,
+        progress_type: str,
+        last_progress_value: float,
+        total_progress_value: float,
+    ) -> List[Dict[str, Any]]:
+        """构建时间预估和进度信息区域（合并到一个组件中）"""
+        elements = []
+        content_parts = []
+
+        # 格式化时长显示，更加用户友好
+        if avg_duration > 0:
+            if avg_duration >= 1440:  # 超过24小时
+                duration_str = f"{avg_duration/1440:.1f}天"
+            elif avg_duration >= 60:  # 超过1小时
+                hours = int(avg_duration // 60)
+                minutes = int(avg_duration % 60)
+                if minutes > 0:
+                    duration_str = f"{hours}小时{minutes}分钟"
+                else:
+                    duration_str = f"{hours}小时"
+            elif avg_duration >= 1:  # 1分钟以上
+                duration_str = f"{avg_duration:.0f}分钟"
+            else:  # 小于1分钟
+                duration_str = f"{avg_duration*60:.0f}秒"
+
+            content_parts.append(f"⏱️ **预估用时：** {duration_str}")
+
+        # 格式化进度信息
+        if progress_type and last_progress_value:
+            match progress_type:
+                case RoutineProgressTypes.VALUE:
+                    progress_str = f"{round(last_progress_value, 1)}"
+                case RoutineProgressTypes.MODIFY:
+                    if last_progress_value > 0:
+                        progress_str = f"增加 {round(last_progress_value, 1)}，累计 {round(total_progress_value, 1)}"
+                    elif last_progress_value < 0:
+                        progress_str = f"减少 {round(last_progress_value, 1)}，累计 {round(total_progress_value, 1)}"
+                    else:
+                        progress_str = f"累计 {round(total_progress_value, 1)}"
+                case _:
+                    progress_str = f"{round(last_progress_value, 1)}"
+
+            content_parts.append(f"🎯 **上次指标情况：** {progress_str}")
+
+        # 合并内容，用换行符分隔
+        if content_parts:
+            combined_content = "\n".join(content_parts)
+            elements.append(
+                {
+                    "tag": "div",
+                    "text": {"tag": "lark_md", "content": combined_content},
+                    "element_id": "extra_info",
+                }
+            )
+
+        return elements
+
+    def _build_cycle_progress_section(
+        self, cycle_info: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
+        """构建循环进度信息区域"""
+        elements = []
+
+        # 基础数据提取
+        cycle_count = max(0, int(cycle_info.get("cycle_count", 0)))
+        target_type = cycle_info.get("target_type", "")
+        target_value = cycle_info.get("target_value")
+        last_cycle_info = cycle_info.get("last_cycle_info", "")
+
+        # 判断是否有目标
+        has_target = target_value and int(target_value) > 0
+
+        # 构建主要进度内容
+        progress_content_parts = []
+
+        if has_target:
+            # 有目标：显示目标进度
+            target_val = max(1, int(target_value))
+            progress_percent = min(100, (cycle_count / target_val * 100))
+            target_type_display = {
+                "count": "次数",
+                "duration": "时长",
+                "other": "其他",
+            }.get(target_type, target_type)
+
+            # 选择颜色和emoji
+            if progress_percent >= 100:
+                status_emoji = "🎉"
+                color = "green"
+            elif progress_percent >= 80:
+                status_emoji = "🔥"
+                color = "green"
+            elif progress_percent >= 50:
+                status_emoji = "💪"
+                color = "orange"
+            else:
+                status_emoji = "📈"
+                color = "red"
+
+            progress_content_parts.append(
+                f"🎯 **{target_type_display}目标：** {cycle_count}/{target_val}"
+            )
+
+            # 进度条
+            filled_blocks = int(progress_percent // 10)
+            progress_bar = "●" * filled_blocks + "○" * (10 - filled_blocks)
+            real_progress_percent = round(cycle_count / target_val * 100, 1)
+            progress_content_parts.append(
+                f"📊 <font color={color}>{progress_bar}</font> {real_progress_percent}% {status_emoji}"
+            )
+        else:
+            # 无目标：显示累计进度
+            unit_display = {"count": "次", "duration": "分钟", "other": ""}.get(
+                target_type, ""
+            )
+            progress_content_parts.append(
+                f"📊 **累计进度：** {cycle_count}{unit_display}"
+            )
+
+        # 组装最终内容
+        progress_content = "\n".join(progress_content_parts)
+        if last_cycle_info and last_cycle_info.strip():
+            progress_content += f"\n📈 {last_cycle_info}"
+
+        elements.append(
+            {
+                "tag": "div",
+                "text": {"tag": "lark_md", "content": progress_content},
+            }
+        )
+
+        return elements
+
+    # endregion
+
+    # region 表单外字段区域
+
     def _build_non_form_fields(
         self,
-        record_data: Dict,
-        event_name: str,
+        data_source: Dict,
         event_type: str,
         is_confirmed: bool,
         build_method_name: str,
@@ -158,28 +384,29 @@ class DirectRecordCard:
         """
         elements = []
 
-        # 事件名称（只读显示，不在表单）
-        elements.append(
-            self.parent.build_form_row(
-                "事件名称",
-                {
-                    "tag": "markdown",
-                    "content": f"**{event_name}**" if event_name else "*未设置*",
-                },
-                width_list=["80px", "180px"],
+        computed_data = data_source.get("computed_data", {})
+        record_mode = data_source.get("record_mode", "")
+        record_data = data_source.get("record_data", {})
+        if record_mode == "direct":
+            # 事件类型选择器（不在表单，有回调事件）
+            elements.append(
+                self.parent.build_form_row(
+                    "事件类型",
+                    self._build_event_type_selector(
+                        event_type, is_confirmed, build_method_name
+                    ),
+                    width_list=["80px", "180px"],
+                )
             )
-        )
+        # 程度选择器（如果有程度选项）
+        degree_info = computed_data.get("degree_info", {})
+        if degree_info:
+            elements.extend(
+                self._build_degree_selection_section(
+                    degree_info, record_data, is_confirmed, build_method_name
+                )
+            )
 
-        # 事件类型选择器（不在表单，有回调事件）
-        elements.append(
-            self.parent.build_form_row(
-                "事件类型",
-                self._build_event_type_selector(
-                    event_type, is_confirmed, build_method_name
-                ),
-                width_list=["80px", "180px"],
-            )
-        )
         # 指标类型选择器（不在表单，有回调事件）
         if event_type != RoutineTypes.FUTURE:
             progress_type = record_data.get("progress_type", RoutineProgressTypes.NONE)
@@ -247,7 +474,7 @@ class DirectRecordCard:
 
         action_data = {
             "card_action": "update_direct_record_type",
-            "card_config_key": "routine_direct_record",
+            "card_config_key": CardConfigKeys.ROUTINE_DIRECT_RECORD,
             "container_build_method": build_method_name,
         }
 
@@ -259,6 +486,65 @@ class DirectRecordCard:
             action_data=action_data,
             element_id="event_type_selector",
         )
+
+    def _build_degree_selection_section(
+        self,
+        degree_info: Dict[str, Any],
+        record_data: Dict[str, Any],
+        is_confirmed: bool,
+        build_method_name: str,
+    ) -> List[Dict[str, Any]]:
+        """
+        构建程度选择区域（参考 record_card 的实现）
+        """
+        elements = []
+
+        # 获取程度选项和当前值
+        degree_options = degree_info.get("degree_options", [])
+        current_degree = record_data.get("degree", "")
+
+        if not degree_options:
+            return elements
+
+        # 构建程度选择器选项
+        options = []
+        for option in degree_options:
+            options.append(
+                {"text": {"tag": "plain_text", "content": option}, "value": option}
+            )
+
+        # 添加"其他"选项
+        options.append(
+            {"text": {"tag": "plain_text", "content": "其他"}, "value": "其他"}
+        )
+
+        # 程度选择器
+        degree_selector = self.parent.build_select_element(
+            placeholder="选择完成方式",
+            options=options,
+            initial_value=(
+                current_degree
+                if current_degree in [opt["value"] for opt in options]
+                else ""
+            ),
+            disabled=is_confirmed,
+            action_data={
+                "card_action": "update_record_degree",
+                "card_config_key": CardConfigKeys.ROUTINE_DIRECT_RECORD,
+                "container_build_method": build_method_name,
+            },
+            element_id="degree_selector",
+        )
+
+        elements.append(
+            self.parent.build_form_row(
+                "完成方式",
+                degree_selector,
+                width_list=["80px", "180px"],
+            )
+        )
+
+        return elements
 
     def _build_progress_type_selector(
         self, progress_type: str, is_confirmed: bool, build_method_name: str
@@ -283,7 +569,7 @@ class DirectRecordCard:
 
         action_data = {
             "card_action": "update_progress_type",
-            "card_config_key": "routine_direct_record",
+            "card_config_key": CardConfigKeys.ROUTINE_DIRECT_RECORD,
             "container_build_method": build_method_name,
         }
 
@@ -310,7 +596,7 @@ class DirectRecordCard:
 
         action_data = {
             "card_action": "update_target_type",
-            "card_config_key": "routine_direct_record",
+            "card_config_key": CardConfigKeys.ROUTINE_DIRECT_RECORD,
             "container_build_method": build_method_name,
         }
 
@@ -346,7 +632,7 @@ class DirectRecordCard:
 
         action_data = {
             "card_action": "update_reminder_mode",
-            "card_config_key": "routine_direct_record",
+            "card_config_key": CardConfigKeys.ROUTINE_DIRECT_RECORD,
             "container_build_method": build_method_name,
         }
 
@@ -359,12 +645,15 @@ class DirectRecordCard:
             element_id="reminder_mode_selector",
         )
 
+    # endregion
+
+    # region 表单内字段区域
     def _build_form_fields_by_type(
-        self, event_type: str, record_data: Dict, is_confirmed: bool
-    ) -> List[Dict]:
+        self, event_type: str, data_source: Dict, is_confirmed: bool
+    ) -> Dict:
         """
-        根据事件类型构建表单字段
-        使用 match 语句进行类型分发
+        根据事件类型构建表单容器
+        返回完整的表单容器，包含程度输入区域和其他表单字段
 
         表单内字段特点：
         1. 在表单内，通过提交按钮回调一次性处理
@@ -372,19 +661,30 @@ class DirectRecordCard:
         3. 根据事件类型动态显示不同字段
         4. 受表单外字段状态影响（如指标类型影响指标值字段）
         """
+        # 获取基础表单字段
+        form_fields = []
+        record_data = data_source.get("record_data", "")
         match event_type:
             case RoutineTypes.INSTANT | RoutineTypes.START:
-                return self._build_instant_start_form_fields(record_data, is_confirmed)
+                form_fields = self._build_instant_start_form_fields(
+                    data_source, is_confirmed
+                )
             case RoutineTypes.ONGOING:
-                return self._build_ongoing_form_fields(record_data, is_confirmed)
+                form_fields = self._build_ongoing_form_fields(record_data, is_confirmed)
             case RoutineTypes.FUTURE:
-                return self._build_future_form_fields(record_data, is_confirmed)
+                form_fields = self._build_future_form_fields(record_data, is_confirmed)
             case _:
                 # 未知类型，返回空字段列表
-                return []
+                form_fields = []
+        # 返回完整的表单容器
+        return {
+            "tag": "form",
+            "name": "direct_record_form",
+            "elements": form_fields,
+        }
 
     def _build_instant_start_form_fields(
-        self, record_data: Dict, is_confirmed: bool
+        self, data_source: Dict, is_confirmed: bool
     ) -> List[Dict]:
         """
         构建瞬间完成和开始事项类型的表单字段
@@ -398,6 +698,7 @@ class DirectRecordCard:
         elements = []
 
         # 1. 耗时字段
+        record_data = data_source.get("record_data", "")
         duration_value = record_data.get("duration", "")
         elements.append(
             self.parent.build_form_row(
@@ -413,21 +714,28 @@ class DirectRecordCard:
             )
         )
 
-        # 2. 完成方式字段
-        degree_value = record_data.get("degree", "")
-        elements.append(
-            self.parent.build_form_row(
-                "完成方式",
-                self.parent.build_input_element(
-                    placeholder="请输入完成方式",
-                    initial_value=str(degree_value) if degree_value else "",
-                    disabled=is_confirmed,
-                    action_data={},
-                    name="degree",
-                ),
-                width_list=["80px", "180px"],
-            )
+        record_mode = data_source.get("record_mode", "")
+        selected_degree = record_data.get("degree", "")
+        need_degree_input = (record_mode == "direct") or (
+            selected_degree == "其他" and record_mode == "quick"
         )
+
+        if need_degree_input:
+            # 2. 完成方式字段
+            degree_value = record_data.get("custom_degree", "")
+            elements.append(
+                self.parent.build_form_row(
+                    "完成方式",
+                    self.parent.build_input_element(
+                        placeholder="请输入完成方式",
+                        initial_value=str(degree_value) if degree_value else "",
+                        disabled=is_confirmed,
+                        action_data={},
+                        name="custom_degree",
+                    ),
+                    width_list=["80px", "180px"],
+                )
+            )
 
         # 3. 指标值字段（根据指标类型动态显示）
         progress_type = record_data.get("progress_type", RoutineProgressTypes.NONE)
@@ -810,7 +1118,7 @@ class DirectRecordCard:
                                     "type": "callback",
                                     "value": {
                                         "card_action": "cancel_direct_record",
-                                        "card_config_key": "routine_direct_record",
+                                        "card_config_key": CardConfigKeys.ROUTINE_DIRECT_RECORD,
                                         "container_build_method": build_method_name,
                                     },
                                 }
@@ -856,7 +1164,7 @@ class DirectRecordCard:
                                     "type": "callback",
                                     "value": {
                                         "card_action": "confirm_direct_record",
-                                        "card_config_key": "routine_direct_record",
+                                        "card_config_key": CardConfigKeys.ROUTINE_DIRECT_RECORD,
                                         "container_build_method": build_method_name,
                                     },
                                 }
@@ -871,6 +1179,8 @@ class DirectRecordCard:
                 },
             ],
         }
+
+    # endregion
 
     # region 回调处理方法
     def update_direct_record_type(
@@ -903,6 +1213,12 @@ class DirectRecordCard:
         """处理检查周期变更回调"""
         return self._handle_direct_record_field_update(
             context, "check_cycle", "检查周期已更新"
+        )
+
+    def update_record_degree(self, context: MessageContext_Refactor) -> ProcessResult:
+        """处理完成方式变更回调（兼容 record_card 的程度选择功能）"""
+        return self._handle_direct_record_field_update(
+            context, "degree", "完成方式已更新"
         )
 
     def cancel_direct_record(self, context: MessageContext_Refactor) -> ProcessResult:
@@ -943,10 +1259,15 @@ class DirectRecordCard:
         # 标记为已确认
         business_data["is_confirmed"] = True
 
+        # 这里要做这么几件事
+
         # 获取表单数据并合并到record_data中
         form_data = context.content.form_data
         record_data = data_source.get("record_data", {}).copy()
         record_data.update(form_data)
+
+        # 处理表单数据，特别是程度字段（参考 record_card 的处理逻辑）
+        self._process_form_data(record_data, form_data, data_source)
 
         # 调用业务层创建直接记录
         routine_business = self.parent.message_router.routine_record
@@ -1031,5 +1352,77 @@ class DirectRecordCard:
             toast_message,
             ToastTypes.INFO,
         )
+
+    def _process_form_data(
+        self, record_data: Dict, form_data: Dict, data_source: Dict
+    ) -> None:
+        """
+        处理表单数据，参考 record_card 的处理逻辑
+        """
+
+        # 处理程度字段（与 record_card 保持一致的逻辑）
+        new_degree = record_data.get("degree", "")
+        if new_degree:
+            if new_degree == "其他":
+                # 处理自定义程度
+                new_custom_degree = form_data.get("custom_degree", "其他")
+                if new_custom_degree not in ["其他", ""]:
+                    record_data["degree"] = new_custom_degree
+                    # 如果有事件定义，更新程度选项
+                    event_definition = data_source.get("event_definition", {})
+                    if event_definition and "properties" in event_definition:
+                        degree_options = event_definition["properties"].get(
+                            "degree_options", []
+                        )
+                        if new_custom_degree not in degree_options:
+                            degree_options.append(new_custom_degree)
+                else:
+                    # 如果自定义程度为空或"其他"，保持原值
+                    record_data["degree"] = "其他"
+            else:
+                record_data["degree"] = new_degree
+
+        # 处理表单中直接提交的程度字段（兼容性处理）
+        form_degree = form_data.get("degree", "")
+        if form_degree and not new_degree:
+            record_data["degree"] = form_degree
+
+        # 处理持续时间
+        duration_str = form_data.get("duration", "")
+        new_duration = safe_float(duration_str)
+        if new_duration is not None:
+            record_data["duration"] = new_duration
+        else:
+            if duration_str:  # 只有在有输入时才记录警告
+                debug_utils.log_and_print(
+                    f"🔍 confirm_direct_record - 耗时转换失败: [{duration_str}]",
+                    log_level="WARNING",
+                )
+
+        # 处理进度值
+        progress_value_str = str(form_data.get("progress_value", "")).strip()
+        if progress_value_str:
+            progress_value = safe_float(progress_value_str)
+            if progress_value is not None:
+                record_data["progress_value"] = progress_value
+            else:
+                debug_utils.log_and_print(
+                    f"🔍 confirm_direct_record - 进度值转换失败: [{progress_value_str}]",
+                    log_level="WARNING",
+                )
+
+        # 处理备注
+        note = form_data.get("note", "")
+        if note:
+            record_data["note"] = note
+
+        # 处理其他表单字段
+        for key, value in form_data.items():
+            if (
+                key
+                not in ["degree", "custom_degree", "duration", "progress_value", "note"]
+                and value
+            ):
+                record_data[key] = value
 
     # endregion

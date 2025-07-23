@@ -310,8 +310,17 @@ class RoutineCardManager(BaseCardManager):
 
     # ----- record_card 的回调事件代理 -----
     def update_record_degree(self, context: MessageContext_Refactor):
-        """更新记录方式"""
-        return self.record_card.update_record_degree(context)
+        """更新记录方式 - 根据上下文判断代理到哪个卡片"""
+        # 检查上下文中的业务数据，判断是快速记录还是直接记录
+        build_method_name = context.content.value.get(
+            "container_build_method", "update_record_confirm_card"
+        )
+        
+        # 根据构建方法名称判断应该代理到哪个卡片
+        if "direct_record" in build_method_name:
+            return self.direct_record_card.update_record_degree(context)
+        else:
+            return self.record_card.update_record_degree(context)
 
     def confirm_record(self, context: MessageContext_Refactor):
         """确认记录"""
