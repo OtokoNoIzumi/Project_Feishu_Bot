@@ -23,7 +23,7 @@ from Module.Common.scripts.common import debug_utils
 from Module.Adapters.feishu.utils import safe_float
 
 
-class RecordCard:
+class RecordCard_Old:
     """
     快速记录卡片管理器
     """

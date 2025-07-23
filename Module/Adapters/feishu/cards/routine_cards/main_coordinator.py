@@ -17,7 +17,7 @@ from Module.Common.scripts.common import debug_utils
 from .shared_utils import SharedUtils
 from .query_results_card import QueryResultsCard
 from .quick_select_card import QuickSelectCard
-from .record_card import RecordCard
+from .record_card_old import RecordCard_Old
 from .direct_record_card import DirectRecordCard
 
 
@@ -67,7 +67,7 @@ class RoutineCardManager(BaseCardManager):
         self.shared_utils = SharedUtils(self)
         self.query_results_card = QueryResultsCard(self)
         self.quick_select_card = QuickSelectCard(self)
-        self.record_card = RecordCard(self)
+        self.record_card_old = RecordCard_Old(self)
         self.direct_record_card = DirectRecordCard(self)
 
     def build_card(
@@ -206,7 +206,7 @@ class RoutineCardManager(BaseCardManager):
         self, result, context: MessageContext_Refactor, business_data: Dict[str, Any]
     ):
         """构建快速记录确认卡片 - 代理到子模块"""
-        card_data = self.record_card.build_quick_record_confirm_card(business_data)
+        card_data = self.record_card_old.build_quick_record_confirm_card(business_data)
         card_content = {"type": "card_json", "data": card_data}
 
         return self.handle_card_operation_common(
@@ -254,7 +254,7 @@ class RoutineCardManager(BaseCardManager):
         self, business_data: Dict[str, Any]
     ) -> Dict[str, Any]:
         """构建快速记录确认卡片 - 代理到子模块"""
-        return self.record_card.build_quick_record_confirm_card(business_data)
+        return self.record_card_old.build_quick_record_confirm_card(business_data)
 
     def update_direct_record_card(
         self, business_data: Dict[str, Any]
@@ -273,7 +273,7 @@ class RoutineCardManager(BaseCardManager):
         self, business_data: Dict[str, Any]
     ) -> List[Dict[str, Any]]:
         """构建快速记录元素 - 代理到子模块"""
-        return self.record_card.build_quick_record_elements(business_data)
+        return self.record_card_old.build_quick_record_elements(business_data)
 
     def build_query_elements(
         self, business_data: Dict[str, Any]
@@ -308,7 +308,7 @@ class RoutineCardManager(BaseCardManager):
         """更新类型名称过滤器"""
         return self.query_results_card.update_type_name_filter(context)
 
-    # ----- record_card 的回调事件代理 -----
+    # ----- record_card_old 的回调事件代理 -----
     def update_record_degree(self, context: MessageContext_Refactor):
         """更新记录方式 - 根据上下文判断代理到哪个卡片"""
         # 检查上下文中的业务数据，判断是快速记录还是直接记录
@@ -320,15 +320,15 @@ class RoutineCardManager(BaseCardManager):
         if "direct_record" in build_method_name:
             return self.direct_record_card.update_record_degree(context)
         else:
-            return self.record_card.update_record_degree(context)
+            return self.record_card_old.update_record_degree(context)
 
     def confirm_record(self, context: MessageContext_Refactor):
         """确认记录"""
-        return self.record_card.confirm_record(context)
+        return self.record_card_old.confirm_record(context)
 
     def cancel_record(self, context: MessageContext_Refactor):
         """取消记录"""
-        return self.record_card.cancel_record(context)
+        return self.record_card_old.cancel_record(context)
 
     # ----- direct_record_card 的回调事件代理 -----
     def update_direct_record_type(self, context: MessageContext_Refactor):

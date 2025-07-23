@@ -155,7 +155,7 @@ class DirectRecordCard:
                 self._build_basic_info_section(data_source, event_name, diff_minutes)
             )
 
-        # 时间预估和进度信息（参考 record_card 的实现）
+        # 时间预估和进度信息
         avg_duration = computed_data.get("avg_duration", 0)
         progress_type = record_data.get("progress_type", "")
         last_progress_value = computed_data.get("last_progress_value", 0)
@@ -184,7 +184,7 @@ class DirectRecordCard:
         self, data_source: Dict[str, Any], event_name: Dict[str, Any], diff_minutes: int
     ) -> List[Dict[str, Any]]:
         """
-        构建基础信息区域（与 record_card 完全等价实现）
+        构建基础信息区域
         """
         elements = []
         record_mode = data_source.get("record_mode", "")
@@ -508,7 +508,7 @@ class DirectRecordCard:
         build_method_name: str,
     ) -> List[Dict[str, Any]]:
         """
-        构建程度选择区域（参考 record_card 的实现）
+        构建程度选择区域
         """
         elements = []
 
@@ -1097,7 +1097,7 @@ class DirectRecordCard:
         self, is_confirmed: bool, build_method_name: str = None
     ) -> Dict[str, Any]:
         """
-        构建提交按钮组（参考 record_card 的3个按钮布局）
+        构建提交按钮组
 
         按钮特点：
         1. 取消按钮：使用 callback 行为，触发取消处理
@@ -1227,7 +1227,7 @@ class DirectRecordCard:
         )
 
     def update_record_degree(self, context: MessageContext_Refactor) -> ProcessResult:
-        """处理完成方式变更回调（兼容 record_card 的程度选择功能）"""
+        """处理完成方式变更回调"""
         return self._handle_direct_record_field_update(
             context, "degree", "完成方式已更新"
         )
