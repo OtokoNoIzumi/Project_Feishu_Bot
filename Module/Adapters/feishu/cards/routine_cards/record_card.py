@@ -494,24 +494,20 @@ class RecordCard:
         elements = []
 
         # 获取程度选项和当前值
-        degree_options = degree_info.get("degree_options", [])
+        degree_options = degree_info.get("degree_options", []).copy()
         current_degree = record_data.get("degree", "")
         event_name = record_data.get("event_name", "")
 
         if not degree_options:
             return elements
 
-        # 构建程度选择器选项
-        options = []
-        for option in degree_options:
-            options.append(
-                {"text": {"tag": "plain_text", "content": option}, "value": option}
-            )
+        # 使用build_options方法构建程度选择器选项
+        # build_options方法需要一个字典，key为选项值，value为显示内容
+        if "其他" not in degree_options:
+            degree_options.append("其他")
 
-        # 添加"其他"选项
-        options.append(
-            {"text": {"tag": "plain_text", "content": "其他"}, "value": "其他"}
-        )
+        options_dict = {option: option for option in degree_options}
+        options = self.parent.build_options(options_dict)
 
         # 程度选择器
         degree_selector = self.parent.build_select_element(
@@ -535,7 +531,6 @@ class RecordCard:
             self.parent.build_form_row(
                 "选择方式",
                 degree_selector,
-                width_list=["80px", "180px"],
             )
         )
 
