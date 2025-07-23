@@ -111,10 +111,9 @@ class RecordCard:
 
         # 3. 表单分隔线
         elements.append(
-            {
-                "tag": "markdown",
-                "content": "**💡 重要提示** 请先完成上面的设定，这会清除下面的所有值！",
-            }
+            self.parent.build_markdown_element(
+                "**💡 重要提示** 请先完成上面的设定，这会清除下面的所有值！"
+            )
         )
 
         # 4. 表单内字段区域（表单数据，通过提交按钮回调一次性处理）
@@ -137,7 +136,7 @@ class RecordCard:
             sub_elements = getattr(self.parent, sub_business_build_method)(
                 business_data
             )
-            elements.append({"tag": "hr", "margin": "6px 0px"})
+            elements.append(self.parent.build_line_element())
             elements.extend(sub_elements)
 
         return elements
@@ -239,10 +238,9 @@ class RecordCard:
 
         if info_content:
             elements.append(
-                {
-                    "tag": "div",
-                    "text": {"tag": "lark_md", "content": info_content.rstrip("\n")},
-                }
+                self.parent.build_markdown_element(
+                    info_content.rstrip("\n")
+                )
             )
 
         return elements
@@ -297,11 +295,7 @@ class RecordCard:
         if content_parts:
             combined_content = "\n".join(content_parts)
             elements.append(
-                {
-                    "tag": "div",
-                    "text": {"tag": "lark_md", "content": combined_content},
-                    "element_id": "extra_info",
-                }
+                self.parent.build_markdown_element(combined_content)
             )
 
         return elements
@@ -374,10 +368,7 @@ class RecordCard:
             progress_content += f"\n📈 {last_cycle_info}"
 
         elements.append(
-            {
-                "tag": "div",
-                "text": {"tag": "lark_md", "content": progress_content},
-            }
+            self.parent.build_markdown_element(progress_content)
         )
 
         return elements
@@ -415,7 +406,6 @@ class RecordCard:
                     self._build_event_type_selector(
                         event_type, is_confirmed, build_method_name
                     ),
-                    width_list=["80px", "180px"],
                 )
             )
         # 程度选择器（如果有程度选项）
@@ -441,7 +431,6 @@ class RecordCard:
                         self._build_progress_type_selector(
                             progress_type, is_confirmed, build_method_name
                         ),
-                        width_list=["80px", "180px"],
                     )
                 )
 
@@ -454,7 +443,6 @@ class RecordCard:
                     self._build_target_type_selector(
                         target_type, is_confirmed, build_method_name
                     ),
-                    width_list=["80px", "180px"],
                 )
             )
         # 提醒模式选择器（仅未来事项，不在表单，有回调事件）
@@ -466,7 +454,6 @@ class RecordCard:
                     self._build_reminder_mode_selector(
                         reminder_mode, is_confirmed, build_method_name
                     ),
-                    width_list=["80px", "180px"],
                 )
             )
 
@@ -498,7 +485,7 @@ class RecordCard:
         ]
 
         action_data = {
-            "card_action": "update_direct_record_type",
+            "card_action": "update_record_type",
             "card_config_key": CardConfigKeys.ROUTINE_RECORD,
             "container_build_method": build_method_name,
         }
@@ -1207,7 +1194,7 @@ class RecordCard:
     # endregion
 
     # region 回调处理方法
-    def update_direct_record_type(
+    def update_record_type(
         self, context: MessageContext_Refactor
     ) -> ProcessResult:
         """处理事项类型变更回调"""

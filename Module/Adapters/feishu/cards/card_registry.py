@@ -358,7 +358,7 @@ class BaseCardManager(ABC):
         """构建表单行"""
 
         if width_list is None:
-            width_list = ["80px", "auto"]
+            width_list = ["80px", "180px"]
 
         return {
             "tag": "column_set",
@@ -374,7 +374,6 @@ class BaseCardManager(ABC):
                             "tag": "markdown",
                             "content": f"**{label}**",
                             "text_align": "left",
-                            "text_size": "normal_v2",
                         }
                     ],
                     "vertical_align": "center",
@@ -469,6 +468,39 @@ class BaseCardManager(ABC):
             "name": name or element_id,
             "behaviors": [{"type": "callback", "value": action_data}],
         }
+
+    def build_markdown_element(
+        self,
+        content: str,
+    ) -> Dict[str, Any]:
+        """构建markdown元素"""
+        return {
+            "tag": "markdown",
+            "content": content,
+        }
+
+    def build_line_element(
+        self,
+        margin: str = "6px 0px",
+    ) -> Dict[str, Any]:
+        """构建分割线元素"""
+        return {
+            "tag": "hr",
+            "margin": margin,
+        }
+
+    def build_options(
+        self,
+        options_dict: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """构建选项元素 - 用于构建选择器元素的选项"""
+        options = []
+        for key, content in options_dict.items():
+            options.append({
+                "text": {"tag": "plain_text", "content": content},
+                "value": key,
+            })
+        return options
 
     # endregion
 

@@ -45,7 +45,7 @@
         "name": "bili_updates_afternoon",
         "type": "bili_updates",
         "time": "15:30:00",
-        "enabled": true,
+        "enabled": false,
         "debug": {
           "force_latest_time": false,
           "force_offset_seconds": 5
@@ -56,7 +56,7 @@
         "name": "bili_updates_night",
         "type": "bili_updates",
         "time": "23:55:00",
-        "enabled": true,
+        "enabled": false,
         "debug": {
           "force_latest_time": false,
           "force_offset_seconds": 5

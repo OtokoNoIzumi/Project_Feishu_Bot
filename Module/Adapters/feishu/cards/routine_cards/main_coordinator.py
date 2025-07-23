@@ -318,9 +318,9 @@ class RoutineCardManager(BaseCardManager):
         return self.record_card_old.cancel_record(context)
 
     # ----- record_card 的回调事件代理 -----
-    def update_direct_record_type(self, context: MessageContext_Refactor):
+    def update_record_type(self, context: MessageContext_Refactor):
         """更新直接记录事项类型"""
-        return self.record_card.update_direct_record_type(context)
+        return self.record_card.update_record_type(context)
 
     def update_progress_type(self, context: MessageContext_Refactor):
         """更新指标类型"""
