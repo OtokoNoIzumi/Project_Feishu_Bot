@@ -315,7 +315,7 @@ class RoutineCardManager(BaseCardManager):
         build_method_name = context.content.value.get(
             "container_build_method", "update_record_confirm_card"
         )
-        
+
         # 根据构建方法名称判断应该代理到哪个卡片
         if "direct_record" in build_method_name:
             return self.direct_record_card.update_record_degree(context)
@@ -520,7 +520,7 @@ class RoutineCardManager(BaseCardManager):
             elements.append(
                 self.build_form_row(
                     "⏰ 计划时间",
-                    self._build_date_picker_element(
+                    self.build_date_picker_element(
                         placeholder="选择计划执行日期",
                         initial_date=form_data.get("future_date", ""),
                         disabled=is_confirmed,

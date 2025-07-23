@@ -1211,7 +1211,7 @@ class RoutineRecord(BaseProcessor):
 
     @safe_execute("创建直接记录失败")
     def create_direct_record(
-        self, user_id: str, record_data: Dict[str, Any]
+        self, user_id: str, dup_business_data: Dict[str, Any]
     ) -> Tuple[bool, str]:
         """
         创建并保存直接记录到 event_records.json
@@ -1225,6 +1225,7 @@ class RoutineRecord(BaseProcessor):
             Tuple[bool, str]: (是否成功, 消息)
         """
         # 验证数据
+        record_data = dup_business_data.get("record_data", {})
         is_valid, error_msg = self._validate_direct_record_data(record_data)
         if not is_valid:
             return False, error_msg
@@ -1255,13 +1256,6 @@ class RoutineRecord(BaseProcessor):
         # 添加系统字段
         new_record["record_id"] = record_id
 
-        # 时间字段标准化处理
-        for field_name, field_value in list(new_record.items()):
-            if field_name.endswith("_time"):
-                if field_value and isinstance(field_value, str):
-                    normalized_value = self._normalize_time_format(field_value)
-                    new_record[field_name] = normalized_value
-
         if event_type == RoutineTypes.INSTANT:
             new_record["end_time"] = current_time
 
@@ -1277,7 +1271,7 @@ class RoutineRecord(BaseProcessor):
         # 对于非 future 类型的事项，创建事件定义
         if event_type != RoutineTypes.FUTURE:
             self._create_event_definition_from_direct_record(
-                user_id, event_name, event_type, record_data, current_time
+                user_id, event_name, event_type, dup_business_data, current_time
             )
 
         # 根据事件类型决定存储位置
@@ -1305,7 +1299,7 @@ class RoutineRecord(BaseProcessor):
 
         # 保存数据
         if self.save_event_records(user_id, records_data):
-            return True, f"成功创建直接记录 '{event_name}' - {current_time[11:16]}"
+            return True, f"成功创建记录【{event_name}】"
 
         return False, "保存记录失败"
 
@@ -1338,33 +1332,6 @@ class RoutineRecord(BaseProcessor):
         if event_type not in valid_types:
             return False, "无效的事件类型"
 
-        # 未来事项校验（计划时间改为可选）
-        if event_type == RoutineTypes.FUTURE:
-            scheduled_start_time = record_data.get("scheduled_start_time", "")
-            if scheduled_start_time:  # 只有填写了计划时间才进行格式验证
-                # 支持多种日期时间格式验证
-                valid_formats = [
-                    "%Y-%m-%d %H:%M",
-                    "%Y/%m/%d %H:%M",
-                    "%Y-%m-%d %H:%M %z",  # 支持时区格式
-                    "%Y/%m/%d %H:%M %z",
-                ]
-
-                is_valid_time = False
-                for fmt in valid_formats:
-                    try:
-                        datetime.strptime(scheduled_start_time, fmt)
-                        is_valid_time = True
-                        break
-                    except ValueError:
-                        continue
-
-                if not is_valid_time:
-                    return (
-                        False,
-                        "计划时间格式无效，支持格式：YYYY-MM-DD HH:MM 或 YYYY/MM/DD HH:MM（可选时区）",
-                    )
-
         return True, ""
 
     def _create_event_definition_from_direct_record(
@@ -1372,17 +1339,17 @@ class RoutineRecord(BaseProcessor):
         user_id: str,
         event_name: str,
         event_type: str,
-        record_data: Dict[str, Any],
+        dup_business_data: Dict[str, Any],
         current_time: str,
     ) -> bool:
         """
-        从直接记录的表单数据创建事件定义
+        从直接记录的business_data创建事件定义
 
         Args:
             user_id: 用户ID
             event_name: 事件名称
             event_type: 事件类型
-            record_data: 表单数据
+            dup_business_data: 完整business_data数据
             current_time: 当前时间
 
         Returns:
@@ -1393,6 +1360,7 @@ class RoutineRecord(BaseProcessor):
         if not event_definitions:
             return False
 
+        record_data = dup_business_data.get("record_data", {})
         # 检查事件定义是否已存在
         if event_name in event_definitions.get("definitions", {}):
             # 事件定义已存在，更新统计信息
@@ -1405,6 +1373,16 @@ class RoutineRecord(BaseProcessor):
 
             # 更新最近备注
             existing_def["stats"]["last_note"] = record_data.get("note", "")
+
+            cycle_info = dup_business_data.get("cycle_info", {})
+            if cycle_info:
+                existing_def["stats"]["cycle_count"] = cycle_info.get("cycle_count", 0) + 1
+                existing_def["stats"]["last_cycle_count"] = cycle_info.get(
+                    "last_cycle_count", 0
+                )
+                existing_def["stats"]["last_refresh_date"] = cycle_info.get(
+                    "last_refresh_date", ""
+                )
 
             # 更新耗时统计
             duration = self._safe_parse_number(record_data.get("duration"))
@@ -1597,43 +1575,3 @@ class RoutineRecord(BaseProcessor):
             return False
 
     # region 辅助方法
-    def _normalize_time_format(self, time_str: str) -> str:
-        """
-        标准化时间格式，将各种时间格式转换为 "YYYY-MM-DD HH:MM"
-
-        Args:
-            time_str: 输入的时间字符串
-
-        Returns:
-            str: 标准化后的时间字符串
-        """
-        if not time_str or not isinstance(time_str, str):
-            return time_str
-
-        time_str = time_str.strip()
-        if not time_str:
-            return time_str
-
-        # 支持的输入格式
-        input_formats = [
-            "%Y-%m-%d %H:%M:%S",  # 2025-07-23 15:02:00
-            "%Y-%m-%d %H:%M",  # 2025-07-23 15:02
-            "%Y/%m/%d %H:%M:%S",  # 2025/07/23 15:02:00
-            "%Y/%m/%d %H:%M",  # 2025/07/23 15:02
-        ]
-
-        # 先尝试处理带时区的格式（需要特殊处理）
-        if " +" in time_str or " -" in time_str:
-            # 移除时区信息，只保留日期时间部分
-            time_part = time_str.split(" +")[0].split(" -")[0]
-            return self._normalize_time_format(time_part)  # 递归处理去掉时区后的时间
-
-        for fmt in input_formats:
-            try:
-                dt = datetime.strptime(time_str, fmt)
-                return dt.strftime("%Y-%m-%d %H:%M")
-            except ValueError:
-                continue
-
-        # 如果无法解析，返回原字符串
-        return time_str

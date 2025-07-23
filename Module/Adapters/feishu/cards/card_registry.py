@@ -413,7 +413,7 @@ class BaseCardManager(ABC):
             "behaviors": [{"type": "callback", "value": action_data}],
         }
 
-    def _build_date_picker_element(
+    def build_date_picker_element(
         self,
         placeholder: str,
         initial_date: str,
@@ -431,7 +431,7 @@ class BaseCardManager(ABC):
         }
 
         if initial_date:
-            element["initial_date"] = initial_date
+            element["initial_datetime"] = initial_date
 
         return element
 

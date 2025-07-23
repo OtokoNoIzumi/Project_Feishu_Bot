@@ -8,7 +8,6 @@ import json
 import copy
 from typing import Dict, Any, List
 from Module.Adapters.feishu.utils import safe_float
-from Module.Common.scripts.common import debug_utils
 from Module.Services.constants import (
     RoutineTypes,
     RoutineProgressTypes,
@@ -16,6 +15,7 @@ from Module.Services.constants import (
     ToastTypes,
     CardConfigKeys,
     CardOperationTypes,
+    RoutineCheckCycle,
 )
 from Module.Business.processors.base_processor import (
     MessageContext_Refactor,
@@ -65,10 +65,10 @@ class DirectRecordCard:
             return self.parent.build_card_header(
                 f"直接记录：{event_name}", "填写记录信息", "blue", "edit_outlined"
             )
-        else:
-            return self.parent.build_card_header(
-                "直接记录", "创建新的记录", "blue", "add_outlined"
-            )
+
+        return self.parent.build_card_header(
+            "直接记录", "创建新的记录", "blue", "add_outlined"
+        )
 
     def build_direct_record_elements(self, business_data: Dict[str, Any]) -> List[Dict]:
         """
@@ -83,7 +83,7 @@ class DirectRecordCard:
         is_confirmed = business_data.get("is_confirmed", False)
 
         # 使用 safe_get_business_data 处理递归嵌套的业务数据结构
-        data_source, is_container_mode = self.parent.safe_get_business_data(
+        data_source, _ = self.parent.safe_get_business_data(
             business_data, "routine_direct_record"
         )
 
@@ -892,8 +892,6 @@ class DirectRecordCard:
 
     def _get_check_cycle_options(self) -> List[Dict]:
         """获取检查周期选项"""
-        from Module.Services.constants import RoutineCheckCycle
-
         return [
             {
                 "text": {"tag": "plain_text", "content": "每日"},
@@ -938,7 +936,7 @@ class DirectRecordCard:
         elements.append(
             self.parent.build_form_row(
                 "计划时间",
-                self.parent._build_date_picker_element(
+                self.parent.build_date_picker_element(
                     placeholder="选择计划时间",
                     initial_date=scheduled_start_time,
                     disabled=is_confirmed,
@@ -975,7 +973,7 @@ class DirectRecordCard:
                 elements.append(
                     self.parent.build_form_row(
                         "提醒时间",
-                        self.parent._build_date_picker_element(
+                        self.parent.build_date_picker_element(
                             placeholder="选择具体提醒时间",
                             initial_date=reminder_time,
                             disabled=is_confirmed,
@@ -1273,18 +1271,15 @@ class DirectRecordCard:
         form_data = context.content.form_data
         record_data = data_source.get("record_data", {})
 
-        print('test-record_data-1',record_data,'\n')
         record_data.update(form_data)
-        print('test-record_data-2',record_data,'\n')
-        record_data = copy.deepcopy(record_data)
-        print('test-record_data-3',record_data,'\n')
         # 2. 处理特殊字段格式化
         self._format_record_data(record_data, data_source)
-        print('test-record_data-4',record_data,'\n')
+        dup_business_data = copy.deepcopy(data_source)
+
         # 3. 调用业务层创建记录
         routine_business = self.parent.message_router.routine_record
         success, message = routine_business.create_direct_record(
-            context.user_id, record_data
+            context.user_id, dup_business_data
         )
 
         if not success:
@@ -1392,5 +1387,12 @@ class DirectRecordCard:
                 numeric_value = safe_float(value_str)
                 final_value = numeric_value if numeric_value is not None else 0
                 record_data[field] = final_value
+
+        datetime_fields = ["create_time", "reminder_time", "end_time", "scheduled_start_time"]
+        for field in datetime_fields:
+            original_value = record_data.get(field)
+            if original_value:
+                time_part = original_value.split(" +")[0].split(" -")[0]
+                record_data[field] = time_part
 
     # endregion
