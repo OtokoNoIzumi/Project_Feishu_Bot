@@ -679,7 +679,9 @@ class RoutineRecord(BaseProcessor):
             return route_result
 
         # 新事项，展示事件定义卡片
-        card_data = self.build_record_card_data(user_id=user_id, item_name=item_name)
+        card_data = self.build_record_card_data(
+            user_id=user_id, item_name=item_name, record_mode="direct"
+        )
         route_result = RouteResult.create_route_result(
             route_type=RouteTypes.ROUTINE_DIRECT_RECORD_CARD,
             route_params={

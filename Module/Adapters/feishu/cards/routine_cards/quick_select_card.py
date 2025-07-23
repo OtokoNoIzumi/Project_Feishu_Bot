@@ -177,7 +177,7 @@ class QuickSelectCard:
             last_record_time = definitions_data.get("last_record_time", None)
             quick_record_data = routine_business.build_record_card_data(
                 user_id=user_id,
-                item_name=item_name,
+                item_name=event_name,
                 event_def=event_def,
                 last_record_time=last_record_time,
                 record_mode="quick",
@@ -261,7 +261,7 @@ class QuickSelectCard:
             last_record_time = definitions_data.get("last_record_time", None)
             quick_record_data = routine_business.build_record_card_data(
                 user_id=user_id,
-                item_name=item_name,
+                item_name=event_name,
                 event_def=event_def,
                 last_record_time=last_record_time,
                 record_mode="quick",
@@ -288,7 +288,7 @@ class QuickSelectCard:
             )
 
         new_record_card_data = routine_business.build_record_card_data(
-            user_id=user_id, item_name=item_name
+            user_id=user_id, item_name=event_name, record_mode="direct"
         )
         parent_data["sub_business_data"] = new_record_card_data
         parent_data["sub_business_name"] = CardConfigKeys.ROUTINE_DIRECT_RECORD

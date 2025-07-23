@@ -86,7 +86,7 @@ class DirectRecordCard:
 
         # 从统一数据结构中提取所需参数
         record_data = data_source.get("record_data", {})
-        
+
         # 从统一结构中提取数据
         event_name = data_source.get("event_name", "")
         event_type = record_data.get("event_type", "")
@@ -685,7 +685,7 @@ class DirectRecordCard:
 
         # 3. 预估耗时和备注字段 - 放在折叠面板中
         additional_fields = []
-        
+
         # 预估耗时字段
         duration_value = record_data.get("duration", "")
         additional_fields.append(
@@ -717,7 +717,7 @@ class DirectRecordCard:
                 width_list=["80px", "180px"],
             )
         )
-        
+
         # 将附加字段放入折叠面板
         elements.append(
             {
