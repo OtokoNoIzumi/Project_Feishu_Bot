@@ -18,7 +18,7 @@ from .shared_utils import SharedUtils
 from .query_results_card import QueryResultsCard
 from .quick_select_card import QuickSelectCard
 from .record_card_old import RecordCard_Old
-from .direct_record_card import DirectRecordCard
+from .record_card import RecordCard
 
 
 class RoutineCardManager(BaseCardManager):
@@ -68,7 +68,7 @@ class RoutineCardManager(BaseCardManager):
         self.query_results_card = QueryResultsCard(self)
         self.quick_select_card = QuickSelectCard(self)
         self.record_card_old = RecordCard_Old(self)
-        self.direct_record_card = DirectRecordCard(self)
+        self.record_card = RecordCard(self)
 
     def build_card(
         self, route_result: RouteResult, context: MessageContext_Refactor, **kwargs
@@ -223,7 +223,7 @@ class RoutineCardManager(BaseCardManager):
         self, result, context: MessageContext_Refactor, business_data: Dict[str, Any]
     ):
         """构建直接记录卡片 - 代理到子模块"""
-        card_data = self.direct_record_card.build_direct_record_card(business_data)
+        card_data = self.record_card.build_direct_record_card(business_data)
         card_content = {"type": "card_json", "data": card_data}
 
         return self.handle_card_operation_common(
@@ -260,14 +260,14 @@ class RoutineCardManager(BaseCardManager):
         self, business_data: Dict[str, Any]
     ) -> Dict[str, Any]:
         """构建直接记录确认卡片 - 代理到子模块"""
-        return self.direct_record_card.build_direct_record_card(business_data)
+        return self.record_card.build_direct_record_card(business_data)
 
     # ----- 配套的element子方法，会在build_card被sub_business_build_method方式调用 -----
     def build_direct_record_elements(
         self, business_data: Dict[str, Any]
     ) -> List[Dict[str, Any]]:
         """构建直接记录元素（别名方法，兼容现有调用） - 代理到子模块"""
-        return self.direct_record_card.build_direct_record_elements(business_data)
+        return self.record_card.build_direct_record_elements(business_data)
 
     def build_quick_record_elements(
         self, business_data: Dict[str, Any]
@@ -318,7 +318,7 @@ class RoutineCardManager(BaseCardManager):
 
         # 根据构建方法名称判断应该代理到哪个卡片
         if "direct_record" in build_method_name:
-            return self.direct_record_card.update_record_degree(context)
+            return self.record_card.update_record_degree(context)
         else:
             return self.record_card_old.update_record_degree(context)
 
@@ -330,34 +330,34 @@ class RoutineCardManager(BaseCardManager):
         """取消记录"""
         return self.record_card_old.cancel_record(context)
 
-    # ----- direct_record_card 的回调事件代理 -----
+    # ----- record_card 的回调事件代理 -----
     def update_direct_record_type(self, context: MessageContext_Refactor):
         """更新直接记录事项类型"""
-        return self.direct_record_card.update_direct_record_type(context)
+        return self.record_card.update_direct_record_type(context)
 
     def update_progress_type(self, context: MessageContext_Refactor):
         """更新指标类型"""
-        return self.direct_record_card.update_progress_type(context)
+        return self.record_card.update_progress_type(context)
 
     def update_target_type(self, context: MessageContext_Refactor):
         """更新目标类型"""
-        return self.direct_record_card.update_target_type(context)
+        return self.record_card.update_target_type(context)
 
     def update_reminder_mode(self, context: MessageContext_Refactor):
         """更新提醒模式"""
-        return self.direct_record_card.update_reminder_mode(context)
+        return self.record_card.update_reminder_mode(context)
 
     def update_check_cycle(self, context: MessageContext_Refactor):
         """更新检查周期"""
-        return self.direct_record_card.update_check_cycle(context)
+        return self.record_card.update_check_cycle(context)
 
     def cancel_direct_record(self, context: MessageContext_Refactor):
         """取消直接记录"""
-        return self.direct_record_card.cancel_direct_record(context)
+        return self.record_card.cancel_direct_record(context)
 
     def confirm_direct_record(self, context: MessageContext_Refactor):
         """确认直接记录"""
-        return self.direct_record_card.confirm_direct_record(context)
+        return self.record_card.confirm_direct_record(context)
 
     # endregion
 

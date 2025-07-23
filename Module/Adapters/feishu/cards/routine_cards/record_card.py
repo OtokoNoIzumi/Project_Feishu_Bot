@@ -23,7 +23,7 @@ from Module.Business.processors.base_processor import (
 )
 
 
-class DirectRecordCard:
+class RecordCard:
     """
     直接记录卡片管理器
     支持在没有事件定义的情况下直接创建记录
