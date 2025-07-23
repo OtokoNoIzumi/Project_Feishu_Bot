@@ -94,14 +94,3 @@ class SharedUtils:
             return self.parent.build_status_based_header("", is_confirmed, result)
 
         return self.parent.build_card_header("🚀 快速记录", "输入或选择事项", "purple")
-
-    def get_type_display_name(self, event_type: str) -> str:
-        """获取事件类型显示名称"""
-        type_names = {
-            RoutineTypes.INSTANT: "⚡ 瞬间完成",
-            RoutineTypes.START: "▶️ 开始事项",
-            RoutineTypes.END: "⏹️ 结束事项",
-            RoutineTypes.ONGOING: "🔄 长期持续",
-            RoutineTypes.FUTURE: "📅 未来事项",
-        }
-        return type_names.get(event_type, "📝 未知类型")

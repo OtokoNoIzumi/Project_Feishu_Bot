@@ -126,10 +126,6 @@ class RoutineCardManager(BaseCardManager):
             context, field_key, extracted_value, sub_business_name, toast_message
         )
 
-    def get_type_display_name(self, event_type: str) -> str:
-        """获取事件类型显示名称"""
-        return self.shared_utils.get_type_display_name(event_type)
-
     def ensure_valid_context(self, context, method_name, default_method):
         """确保上下文有效，失效时自动处理"""
         return self.shared_utils.ensure_valid_context(
@@ -427,7 +423,7 @@ class RoutineCardManager(BaseCardManager):
         )
 
         # 4. 关联事项（仅结束事项显示）
-        if selected_type == RoutineTypes.END:
+        if selected_type == RoutineTypes.END.value:
             elements.append(
                 self.build_form_row(
                     "🔗 关联开始事项",
@@ -445,7 +441,7 @@ class RoutineCardManager(BaseCardManager):
             )
 
         # # 5. 日常检查设置（瞬间完成和长期持续显示）
-        # if selected_type in [RoutineTypes.INSTANT, RoutineTypes.ONGOING]:
+        # if selected_type in [RoutineTypes.INSTANT.value, RoutineTypes.ONGOING.value]:
         #     elements.append(self.build_form_row(
         #         "📋 日常检查",
         #         self._build_checkbox_element(
@@ -457,7 +453,7 @@ class RoutineCardManager(BaseCardManager):
         #     ))
 
         # 6. 未来时间设置（仅未来事项显示）
-        if selected_type == RoutineTypes.FUTURE:
+        if selected_type == RoutineTypes.FUTURE.value:
             elements.append(
                 self.build_form_row(
                     "⏰ 计划时间",
@@ -473,7 +469,7 @@ class RoutineCardManager(BaseCardManager):
             )
 
         # 7. 程度选项（除未来事项外都显示）
-        if selected_type != RoutineTypes.FUTURE:
+        if selected_type != RoutineTypes.FUTURE.value:
             elements.append(
                 self.build_form_row(
                     "📊 事项程度",
@@ -516,32 +512,10 @@ class RoutineCardManager(BaseCardManager):
 
     def _get_event_type_options(self) -> List[Dict[str, Any]]:
         """获取事件类型选项"""
-        return [
-            {
-                "text": {"tag": "plain_text", "content": "⚡ 瞬间完成"},
-                "value": RoutineTypes.INSTANT,
-                "icon": {"tag": "standard_icon", "token": "lightning_outlined"},
-            },
-            {
-                "text": {"tag": "plain_text", "content": "▶️ 开始事项"},
-                "value": RoutineTypes.START,
-                "icon": {"tag": "standard_icon", "token": "play_outlined"},
-            },
-            # {
-            #     "text": {"tag": "plain_text", "content": "⏹️ 结束事项"},
-            #     "value": RoutineTypes.END,
-            #     "icon": {"tag": "standard_icon", "token": "stop_outlined"},
-            # },
-            {
-                "text": {"tag": "plain_text", "content": "🔄 长期持续"},
-                "value": RoutineTypes.ONGOING,
-                "icon": {"tag": "standard_icon", "token": "refresh_outlined"},
-            },
-            {
-                "text": {"tag": "plain_text", "content": "📅 未来事项"},
-                "value": RoutineTypes.FUTURE,
-                "icon": {"tag": "standard_icon", "token": "calendar_outlined"},
-            },
-        ]
+
+        options = RoutineTypes.build_options()
+        
+            
+        return options
 
     # endregion

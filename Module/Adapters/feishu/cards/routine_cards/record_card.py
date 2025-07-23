@@ -198,27 +198,27 @@ class RecordCard:
         event_definition = data_source.get("event_definition", {})
 
         # 基础信息卡片
-        event_type = event_definition.get("type", RoutineTypes.INSTANT)
+        event_type = event_definition.get("type", RoutineTypes.INSTANT.value)
         if record_mode == "direct":
             info_content = f"**事件名称： {event_name}**\n"
 
         else:
             info_content = (
-                f"**事项类型：** {self.parent.get_type_display_name(event_type)}\n"
+                f"**事项类型：** {RoutineTypes.get_type_display_name(event_type)}\n"
             )
 
         # 显示时间信息（严格四字段模式）
         time_field = None
         time_label = ""
 
-        if event_type == RoutineTypes.FUTURE:
+        if event_type == RoutineTypes.FUTURE.value:
             # 未来事项显示预计开始时间
             time_field = record_data.get("scheduled_start_time")
             time_label = "预计开始时间"
         else:
             # 其他事项显示开始时间
             time_field = record_data.get("create_time")
-            if event_type == RoutineTypes.INSTANT:
+            if event_type == RoutineTypes.INSTANT.value:
                 time_label = "记录时间"
             else:
                 time_label = "开始时间"
@@ -228,7 +228,7 @@ class RecordCard:
             date_str = split_timestamp[0][5:10]
             time_str = split_timestamp[1][0:5]
             info_content += f"**{time_label}：** {date_str} {time_str}\n"
-            if diff_minutes > 0 and event_type != RoutineTypes.FUTURE:
+            if diff_minutes > 0 and event_type != RoutineTypes.FUTURE.value:
                 info_content += f"**上次记录距今：** {diff_minutes}分钟\n"
 
         # 显示分类（如果有）
@@ -418,7 +418,7 @@ class RecordCard:
             )
 
         # 指标类型选择器（不在表单，有回调事件）
-        if event_type != RoutineTypes.FUTURE:
+        if event_type != RoutineTypes.FUTURE.value:
             progress_type = record_data.get("progress_type", RoutineProgressTypes.NONE)
             need_progress_selector = (
                 record_mode == "direct"
@@ -435,7 +435,7 @@ class RecordCard:
                 )
 
         # 2. 目标类型选择器
-        if event_type == RoutineTypes.ONGOING:
+        if event_type == RoutineTypes.ONGOING.value:
             target_type = record_data.get("target_type", "none")
             elements.append(
                 self.parent.build_form_row(
@@ -446,7 +446,7 @@ class RecordCard:
                 )
             )
         # 提醒模式选择器（仅未来事项，不在表单，有回调事件）
-        if event_type == RoutineTypes.FUTURE:
+        if event_type == RoutineTypes.FUTURE.value:
             reminder_mode = record_data.get("reminder_mode", "off")
             elements.append(
                 self.parent.build_form_row(
@@ -465,24 +465,6 @@ class RecordCard:
         """
         构建事件类型选择器
         """
-        options = [
-            {
-                "text": {"tag": "plain_text", "content": "⚡ 瞬间完成"},
-                "value": RoutineTypes.INSTANT,
-            },
-            {
-                "text": {"tag": "plain_text", "content": "▶️ 开始事项"},
-                "value": RoutineTypes.START,
-            },
-            {
-                "text": {"tag": "plain_text", "content": "🔄 长期持续"},
-                "value": RoutineTypes.ONGOING,
-            },
-            {
-                "text": {"tag": "plain_text", "content": "📅 未来事项"},
-                "value": RoutineTypes.FUTURE,
-            },
-        ]
 
         action_data = {
             "card_action": "update_record_type",
@@ -492,7 +474,7 @@ class RecordCard:
 
         return self.parent.build_select_element(
             placeholder="选择事件类型",
-            options=options,
+            options=RoutineTypes.build_options(),
             initial_value=event_type,
             disabled=is_confirmed,
             action_data=action_data,
@@ -678,13 +660,13 @@ class RecordCard:
         form_fields = []
         record_data = data_source.get("record_data", "")
         match event_type:
-            case RoutineTypes.INSTANT | RoutineTypes.START:
+            case RoutineTypes.INSTANT.value | RoutineTypes.START.value:
                 form_fields = self._build_instant_start_form_fields(
                     data_source, is_confirmed
                 )
-            case RoutineTypes.ONGOING:
+            case RoutineTypes.ONGOING.value:
                 form_fields = self._build_ongoing_form_fields(record_data, is_confirmed)
-            case RoutineTypes.FUTURE:
+            case RoutineTypes.FUTURE.value:
                 form_fields = self._build_future_form_fields(record_data, is_confirmed)
             case _:
                 # 未知类型，返回空字段列表

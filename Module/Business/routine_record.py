@@ -139,7 +139,7 @@ class RoutineRecord(BaseProcessor):
         return os.path.join(user_folder, "event_records.json")
 
     def _create_event_definition(
-        self, event_name: str, event_type: str = RoutineTypes.INSTANT
+        self, event_name: str, event_type: str = RoutineTypes.INSTANT.value
     ) -> Dict[str, Any]:
         """
         创建事件定义
@@ -518,7 +518,7 @@ class RoutineRecord(BaseProcessor):
         start_events = []
 
         for event_name, event_def in definitions.items():
-            if event_def.get("type") == RoutineTypes.START:
+            if event_def.get("type") == RoutineTypes.START.value:
                 start_events.append(
                     {
                         "text": {"tag": "plain_text", "content": event_name},
@@ -719,7 +719,7 @@ class RoutineRecord(BaseProcessor):
             "initial_event_name": initial_event_name,
             "form_data": {
                 "event_name": initial_event_name,
-                "event_type": RoutineTypes.INSTANT,
+                "event_type": RoutineTypes.INSTANT.value,
                 "category": "",
                 "include_in_daily_check": False,
                 "degree_options": "",
@@ -896,7 +896,7 @@ class RoutineRecord(BaseProcessor):
             for event_name, event_def in definitions.items():
                 event_info = {
                     "name": event_name,
-                    "type": event_def.get("type", RoutineTypes.INSTANT),
+                    "type": event_def.get("type", RoutineTypes.INSTANT.value),
                     "properties": event_def.get("properties", {}),
                     "last_updated": event_def.get("last_updated", ""),
                     "definition": event_def,  # 保留完整定义，用于快速记录
@@ -943,7 +943,7 @@ class RoutineRecord(BaseProcessor):
             if not event_name:
                 return False, "事项名称不能为空"
 
-            event_type = form_data.get("event_type", RoutineTypes.INSTANT)
+            event_type = form_data.get("event_type", RoutineTypes.INSTANT.value)
             if not isinstance(event_type, RoutineTypes):
                 return False, "无效的事项类型"
 
@@ -962,18 +962,18 @@ class RoutineRecord(BaseProcessor):
             # 根据事项类型设置特定属性
             properties = new_event_def["properties"]
 
-            if event_type == RoutineTypes.END:
+            if event_type == RoutineTypes.END.value:
                 properties["related_start_event"] = form_data.get("related_start_event")
 
-            if event_type in [RoutineTypes.INSTANT, RoutineTypes.ONGOING]:
+            if event_type in [RoutineTypes.INSTANT.value, RoutineTypes.ONGOING.value]:
                 properties["include_in_daily_check"] = form_data.get(
                     "include_in_daily_check", False
                 )
 
-            if event_type == RoutineTypes.FUTURE:
+            if event_type == RoutineTypes.FUTURE.value:
                 properties["future_date"] = form_data.get("future_date")
 
-            if event_type != RoutineTypes.FUTURE:
+            if event_type != RoutineTypes.FUTURE.value:
                 # 处理程度选项
                 degree_options_str = form_data.get("degree_options", "").strip()
                 if degree_options_str:
@@ -1089,7 +1089,7 @@ class RoutineRecord(BaseProcessor):
                 # 创建空的初始记录
                 record_data = {
                     "event_name": event_name,
-                    "event_type": RoutineTypes.INSTANT,
+                    "event_type": RoutineTypes.INSTANT.value,
                     "create_time": current_time,
                 }
                 unified_data["record_data"] = record_data
@@ -1244,7 +1244,7 @@ class RoutineRecord(BaseProcessor):
 
         # 构建记录数据
         current_time = self._get_formatted_time()
-        event_type = record_data.get("event_type", RoutineTypes.INSTANT)
+        event_type = record_data.get("event_type", RoutineTypes.INSTANT.value)
 
         # 构建记录数据，过滤空值和冗余字段
         new_record = {}
@@ -1257,11 +1257,11 @@ class RoutineRecord(BaseProcessor):
         # 添加系统字段
         new_record["record_id"] = record_id
 
-        if event_type == RoutineTypes.INSTANT:
+        if event_type == RoutineTypes.INSTANT.value:
             new_record["end_time"] = current_time
 
         # 针对不同事件类型的特殊处理
-        if event_type == RoutineTypes.FUTURE:
+        if event_type == RoutineTypes.FUTURE.value:
             # 未来事项：移除duration，使用estimated_duration
             if "duration" in new_record:
                 duration_value = new_record.pop("duration")  # 移除duration
@@ -1270,16 +1270,16 @@ class RoutineRecord(BaseProcessor):
             # 未来事项不需要has_definition字段
 
         # 对于非 future 类型的事项，创建事件定义
-        if event_type != RoutineTypes.FUTURE:
+        if event_type != RoutineTypes.FUTURE.value:
             self._create_event_definition_from_direct_record(
                 user_id, event_name, event_type, dup_business_data, current_time
             )
 
         # 根据事件类型决定存储位置
         if event_type in [
-            RoutineTypes.START,
-            RoutineTypes.ONGOING,
-            RoutineTypes.FUTURE,
+            RoutineTypes.START.value,
+            RoutineTypes.ONGOING.value,
+            RoutineTypes.FUTURE.value,
         ]:
             # 开始、持续、未来事项存储到 active_records
             # 添加新记录到OrderedDict的开头（最新记录在前）
@@ -1325,10 +1325,10 @@ class RoutineRecord(BaseProcessor):
 
         event_type = record_data.get("event_type", "")
         valid_types = [
-            RoutineTypes.INSTANT,
-            RoutineTypes.START,
-            RoutineTypes.ONGOING,
-            RoutineTypes.FUTURE,
+            RoutineTypes.INSTANT.value,
+            RoutineTypes.START.value,
+            RoutineTypes.ONGOING.value,
+            RoutineTypes.FUTURE.value,
         ]
         if event_type not in valid_types:
             return False, "无效的事件类型"
@@ -1443,7 +1443,7 @@ class RoutineRecord(BaseProcessor):
                 properties["degree_options"].append(degree)
 
         # 设置目标相关属性（针对持续事项）
-        if definition["type"] == RoutineTypes.ONGOING:
+        if definition["type"] == RoutineTypes.ONGOING.value:
             check_cycle = record_data.get("check_cycle")
             if check_cycle:
                 properties["check_cycle"] = check_cycle

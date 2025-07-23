@@ -80,7 +80,7 @@ class RecordCard_Old:
         cycle_info = computed_data.get("cycle_info", {})
         diff_minutes = computed_data.get("diff_minutes", 0)
 
-        event_type = event_definition.get("type", RoutineTypes.INSTANT)
+        event_type = event_definition.get("type", RoutineTypes.INSTANT.value)
         progress_type = event_definition.get("properties", {}).get("progress_type", "")
         last_progress_value = event_definition.get("stats", {}).get("last_progress_value", 0)
         total_progress_value = event_definition.get("stats", {}).get("total_progress_value", 0)
@@ -132,7 +132,7 @@ class RecordCard_Old:
                 )
 
         # 6. 条件化展示：持续时间输入区域
-        if event_type in [RoutineTypes.INSTANT, RoutineTypes.END, RoutineTypes.START]:
+        if event_type in [RoutineTypes.INSTANT.value, RoutineTypes.END.value, RoutineTypes.START.value]:
             form_elements["elements"].extend(
                 self._build_duration_input_section(
                     record_data.get("duration", ""), is_confirmed
@@ -180,11 +180,11 @@ class RecordCard_Old:
         elements = []
 
         # 事项类型显示
-        event_type = event_definition.get("type", RoutineTypes.INSTANT)
+        event_type = event_definition.get("type", RoutineTypes.INSTANT.value)
 
         # 基础信息卡片
         info_content = (
-            f"**事项类型：** {self.parent.get_type_display_name(event_type)}\n"
+            f"**事项类型：** {RoutineTypes.get_type_display_name(event_type)}\n"
         )
 
         # 显示时间信息（严格四字段模式）

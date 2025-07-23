@@ -97,14 +97,8 @@ class QuickSelectCard:
 
         for event in quick_events:
             event_name_btn = event.get("name", "")
-            event_type = event.get("type", RoutineTypes.INSTANT)
-            type_emoji = {
-                "instant": "⚡",
-                "start": "▶️",
-                "end": "⏹️",
-                "ongoing": "🔄",
-                "future": "📅",
-            }.get(event_type, "📝")
+            event_type = event.get("type", RoutineTypes.INSTANT.value)
+            type_emoji = RoutineTypes.get_type_emoji(event_type)
             is_quick_access = event.get("properties", {}).get("quick_access", False)
 
             elements.append(
