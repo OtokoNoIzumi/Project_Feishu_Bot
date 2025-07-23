@@ -5,6 +5,7 @@ Direct Record Card
 """
 
 import json
+import copy
 from typing import Dict, Any, List
 from Module.Adapters.feishu.utils import safe_float
 from Module.Common.scripts.common import debug_utils
@@ -120,8 +121,6 @@ class DirectRecordCard:
         )
         elements.append(form_container)
 
-
-
         # 6. 子业务元素（处理集成模式）
         sub_business_build_method = data_source.get("sub_business_build_method", "")
         if sub_business_build_method and hasattr(
@@ -150,7 +149,7 @@ class DirectRecordCard:
         computed_data = data_source.get("computed_data", {})
 
         event_name = record_data.get("event_name", "")
-        if event_name or record_data.get("timestamp"):
+        if event_name or record_data.get("create_time"):
             diff_minutes = computed_data.get("diff_minutes", 0)
             elements.extend(
                 self._build_basic_info_section(data_source, event_name, diff_minutes)
@@ -193,23 +192,37 @@ class DirectRecordCard:
         event_definition = data_source.get("event_definition", {})
 
         # 基础信息卡片
+        event_type = event_definition.get("type", RoutineTypes.INSTANT)
         if record_mode == "direct":
             info_content = f"**事件名称： {event_name}**\n"
 
         else:
-            event_type = event_definition.get("type", RoutineTypes.INSTANT)
             info_content = (
                 f"**事项类型：** {self.parent.get_type_display_name(event_type)}\n"
             )
 
-        # 显示记录时间
-        if record_data.get("timestamp"):
-            timestamp = record_data["timestamp"]
-            split_timestamp = timestamp.split(" ")
+        # 显示时间信息（严格四字段模式）
+        time_field = None
+        time_label = ""
+
+        if event_type == RoutineTypes.FUTURE:
+            # 未来事项显示预计开始时间
+            time_field = record_data.get("scheduled_start_time")
+            time_label = "预计开始时间"
+        else:
+            # 其他事项显示开始时间
+            time_field = record_data.get("create_time")
+            if event_type == RoutineTypes.INSTANT:
+                time_label = "记录时间"
+            else:
+                time_label = "开始时间"
+
+        if time_field:
+            split_timestamp = time_field.split(" ")
             date_str = split_timestamp[0][5:10]
             time_str = split_timestamp[1][0:5]
-            info_content += f"**记录时间：** {date_str} {time_str}\n"
-            if diff_minutes > 0:
+            info_content += f"**{time_label}：** {date_str} {time_str}\n"
+            if diff_minutes > 0 and event_type != RoutineTypes.FUTURE:
                 info_content += f"**上次记录距今：** {diff_minutes}分钟\n"
 
         # 显示分类（如果有）
@@ -840,7 +853,7 @@ class DirectRecordCard:
 
         # 3. 目标值字段（根据目标类型动态显示）
         target_type = record_data.get("target_type", "")
-        if target_type != "none":
+        if target_type != "":
             placeholder_text = (
                 "目标时间（分钟）" if target_type == "time" else "目标次数"
             )
@@ -921,16 +934,16 @@ class DirectRecordCard:
         elements = []
 
         # 1. 日期时间选择器
-        scheduled_time = record_data.get("scheduled_time", "")
+        scheduled_start_time = record_data.get("scheduled_start_time", "")
         elements.append(
             self.parent.build_form_row(
                 "计划时间",
                 self.parent._build_date_picker_element(
-                    placeholder="选择计划执行时间",
-                    initial_date=scheduled_time,
+                    placeholder="选择计划时间",
+                    initial_date=scheduled_start_time,
                     disabled=is_confirmed,
                     action_data={},
-                    name="scheduled_time",
+                    name="scheduled_start_time",
                 ),
                 width_list=["80px", "180px"],
             )
@@ -958,16 +971,16 @@ class DirectRecordCard:
         match reminder_mode:
             case RoutineReminderModes.TIME:
                 # TIME模式：具体时间提醒，使用日期时间选择器
-                reminder_datetime = record_data.get("reminder_datetime", "")
+                reminder_time = record_data.get("reminder_time", "")
                 elements.append(
                     self.parent.build_form_row(
                         "提醒时间",
                         self.parent._build_date_picker_element(
                             placeholder="选择具体提醒时间",
-                            initial_date=reminder_datetime,
+                            initial_date=reminder_time,
                             disabled=is_confirmed,
                             action_data={},
-                            name="reminder_datetime",
+                            name="reminder_time",
                         ),
                         width_list=["80px", "180px"],
                     )
@@ -1242,6 +1255,7 @@ class DirectRecordCard:
 
     def confirm_direct_record(self, context: MessageContext_Refactor) -> ProcessResult:
         """确认直接记录"""
+        # 通用的数据嵌套解析与错误处理
         build_method_name = context.content.value.get(
             "container_build_method", self.default_update_build_method
         )
@@ -1251,50 +1265,45 @@ class DirectRecordCard:
         if error_response:
             return error_response
 
-        # 获取direct_record的数据源
         data_source, _ = self.parent.safe_get_business_data(
             business_data, CardConfigKeys.ROUTINE_DIRECT_RECORD
         )
 
-        # 标记为已确认
-        business_data["is_confirmed"] = True
-
-        # 这里要做这么几件事
-
-        # 获取表单数据并合并到record_data中
+        # 1. 合并表单数据到record_data
         form_data = context.content.form_data
-        record_data = data_source.get("record_data", {}).copy()
+        record_data = data_source.get("record_data", {})
+
+        print('test-record_data-1',record_data,'\n')
         record_data.update(form_data)
-
-        # 处理表单数据，特别是程度字段（参考 record_card 的处理逻辑）
-        self._process_form_data(record_data, form_data, data_source)
-
-        # 调用业务层创建直接记录
+        print('test-record_data-2',record_data,'\n')
+        record_data = copy.deepcopy(record_data)
+        print('test-record_data-3',record_data,'\n')
+        # 2. 处理特殊字段格式化
+        self._format_record_data(record_data, data_source)
+        print('test-record_data-4',record_data,'\n')
+        # 3. 调用业务层创建记录
         routine_business = self.parent.message_router.routine_record
         success, message = routine_business.create_direct_record(
             context.user_id, record_data
         )
 
         if not success:
-            # 创建失败，返回错误
-            new_card_dsl = self.parent.build_cancel_update_card_data(
-                business_data, "confirm_direct_record", build_method_name
-            )
+            # 创建失败，仅显示错误提示，保持卡片状态
             return self.parent.handle_card_operation_common(
-                card_content=new_card_dsl,
+                card_content={},
                 card_operation_type=CardOperationTypes.UPDATE_RESPONSE,
                 update_toast_type=ToastTypes.ERROR,
                 toast_message=message,
             )
 
-        # 创建成功，构建确认后的卡片
+        # 4. 创建成功，构建确认后的卡片
+        business_data["is_confirmed"] = True
         business_data["result"] = "确认"
         new_card_dsl = self.parent.build_update_card_data(
             business_data, build_method_name
         )
 
         event_name = data_source.get("event_name", "直接记录")
-
         return self.parent.delete_and_respond_with_update(
             context.user_id,
             card_id,
@@ -1353,76 +1362,35 @@ class DirectRecordCard:
             ToastTypes.INFO,
         )
 
-    def _process_form_data(
-        self, record_data: Dict, form_data: Dict, data_source: Dict
-    ) -> None:
+    def _format_record_data(self, record_data: Dict, data_source: Dict) -> None:
         """
-        处理表单数据，参考 record_card 的处理逻辑
+        格式化记录数据，处理特殊字段
         """
 
-        # 处理程度字段（与 record_card 保持一致的逻辑）
-        new_degree = record_data.get("degree", "")
-        if new_degree:
-            if new_degree == "其他":
-                # 处理自定义程度
-                new_custom_degree = form_data.get("custom_degree", "其他")
-                if new_custom_degree not in ["其他", ""]:
-                    record_data["degree"] = new_custom_degree
-                    # 如果有事件定义，更新程度选项
-                    event_definition = data_source.get("event_definition", {})
-                    if event_definition and "properties" in event_definition:
-                        degree_options = event_definition["properties"].get(
-                            "degree_options", []
-                        )
-                        if new_custom_degree not in degree_options:
-                            degree_options.append(new_custom_degree)
-                else:
-                    # 如果自定义程度为空或"其他"，保持原值
-                    record_data["degree"] = "其他"
-            else:
-                record_data["degree"] = new_degree
+        # 处理自定义程度
+        if record_data.get("degree") == "其他":
+            custom_degree = record_data.get("custom_degree", "").strip()
+            if custom_degree and custom_degree != "其他":
+                record_data["degree"] = custom_degree
+                # 更新事件定义的程度选项
+                event_definition = data_source.get("event_definition", {})
+                if "properties" in event_definition:
+                    degree_options = event_definition["properties"].setdefault(
+                        "degree_options", []
+                    )
+                    if custom_degree not in degree_options:
+                        degree_options.append(custom_degree)
 
-        # 处理表单中直接提交的程度字段（兼容性处理）
-        form_degree = form_data.get("degree", "")
-        if form_degree and not new_degree:
-            record_data["degree"] = form_degree
-
-        # 处理持续时间
-        duration_str = form_data.get("duration", "")
-        new_duration = safe_float(duration_str)
-        if new_duration is not None:
-            record_data["duration"] = new_duration
-        else:
-            if duration_str:  # 只有在有输入时才记录警告
-                debug_utils.log_and_print(
-                    f"🔍 confirm_direct_record - 耗时转换失败: [{duration_str}]",
-                    log_level="WARNING",
-                )
-
-        # 处理进度值
-        progress_value_str = str(form_data.get("progress_value", "")).strip()
-        if progress_value_str:
-            progress_value = safe_float(progress_value_str)
-            if progress_value is not None:
-                record_data["progress_value"] = progress_value
-            else:
-                debug_utils.log_and_print(
-                    f"🔍 confirm_direct_record - 进度值转换失败: [{progress_value_str}]",
-                    log_level="WARNING",
-                )
-
-        # 处理备注
-        note = form_data.get("note", "")
-        if note:
-            record_data["note"] = note
-
-        # 处理其他表单字段
-        for key, value in form_data.items():
-            if (
-                key
-                not in ["degree", "custom_degree", "duration", "progress_value", "note"]
-                and value
-            ):
-                record_data[key] = value
+        # 处理数值字段
+        numeric_fields = ["duration", "progress_value", "target_value"]
+        for field in numeric_fields:
+            original_value = record_data.get(field)
+            value_str = str(
+                original_value if original_value is not None else ""
+            ).strip()
+            if value_str:
+                numeric_value = safe_float(value_str)
+                final_value = numeric_value if numeric_value is not None else 0
+                record_data[field] = final_value
 
     # endregion

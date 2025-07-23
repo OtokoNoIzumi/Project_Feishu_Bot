@@ -68,18 +68,18 @@ class RecordCard:
         event_definition = data_source.get("event_definition", {})
         record_data = data_source.get("record_data", {})
         computed_data = data_source.get("computed_data", {})
-        
+
         # 兼容性处理：支持旧数据结构
         event_name = data_source.get("event_name", "")
         if not event_name and event_definition:
             event_name = event_definition.get("name", "")
-        
+
         # 从统一结构中提取数据
         avg_duration = computed_data.get("avg_duration", 0.0)
         degree_info = computed_data.get("degree_info", {})
         cycle_info = computed_data.get("cycle_info", {})
         diff_minutes = computed_data.get("diff_minutes", 0)
-            
+
         event_type = event_definition.get("type", RoutineTypes.INSTANT)
         progress_type = event_definition.get("properties", {}).get("progress_type", "")
         last_progress_value = event_definition.get("stats", {}).get("last_progress_value", 0)
@@ -187,10 +187,10 @@ class RecordCard:
             f"**事项类型：** {self.parent.get_type_display_name(event_type)}\n"
         )
 
-        # 显示记录时间
-        if record_data.get("timestamp"):
-            timestamp = record_data["timestamp"]
-            split_timestamp = timestamp.split(" ")
+        # 显示时间信息（严格四字段模式）
+        time_field = record_data.get("create_time")
+        if time_field:
+            split_timestamp = time_field.split(" ")
             date_str = split_timestamp[0][5:10]
             time_str = split_timestamp[1][0:5]
             info_content += f"**记录时间：** {date_str} {time_str}\n"
@@ -672,19 +672,22 @@ class RecordCard:
         # 先写入记录
         routine_business = self.parent.message_router.routine_record
         records_data = routine_business.load_event_records(user_id)
-        
+
         # 添加新记录到OrderedDict的开头（最新记录在前）
         record_id = core_data.get("record_id")
         new_records = OrderedDict()
         new_records[record_id] = core_data
         new_records.update(records_data["records"])
         records_data["records"] = new_records
-        
+
         # 从active_records中移除已确认的记录（如果存在）
         if record_id in records_data["active_records"]:
             del records_data["active_records"][record_id]
-        
-        records_data["last_updated"] = core_data.get("timestamp")
+
+        # 使用标准时间字段
+        record_time = core_data.get("create_time")
+        if record_time:
+            records_data["last_updated"] = record_time
         # 再写入事件定义，做聚合类计算
         event_definition["stats"]["record_count"] = (
             event_definition.get("stats", {}).get("record_count", 0) + 1
@@ -725,11 +728,15 @@ class RecordCard:
             )
 
         routine_business.save_event_records(user_id, records_data)
-        event_definition["last_updated"] = core_data.get("timestamp")
+        # 使用标准时间字段
+        record_time = core_data.get("create_time")
+        if record_time:
+            event_definition["last_updated"] = record_time
         full_event_def = routine_business.load_event_definitions(user_id)
         full_event_def["definitions"][event_definition["name"]] = event_definition
-        full_event_def["last_updated"] = core_data.get("timestamp")
-        full_event_def["last_record_time"] = core_data.get("timestamp")
+        if record_time:
+            full_event_def["last_updated"] = record_time
+            full_event_def["last_record_time"] = record_time
         routine_business.save_event_definitions(user_id, full_event_def)
 
         event_name = context.content.value.get("event_name", "")

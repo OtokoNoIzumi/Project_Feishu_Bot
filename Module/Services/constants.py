@@ -320,7 +320,6 @@ class RoutineProgressTypes:
     MODIFY = "modify"
 
 class RoutineTargetTypes:
-    NONE = "none"
     TIME = "time"
     COUNT = "count"
 
