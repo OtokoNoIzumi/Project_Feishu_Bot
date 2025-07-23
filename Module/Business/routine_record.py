@@ -1392,7 +1392,7 @@ class RoutineRecord(BaseProcessor):
 
             # 更新指标统计
             progress_type = record_data.get("progress_type")
-            if progress_type and progress_type != RoutineProgressTypes.NONE:
+            if progress_type and progress_type != RoutineProgressTypes.NONE.value:
                 progress_value = self._safe_parse_number(
                     record_data.get("progress_value")
                 )
@@ -1432,7 +1432,7 @@ class RoutineRecord(BaseProcessor):
 
         # 设置指标类型
         progress_type = record_data.get("progress_type")
-        if progress_type and progress_type != RoutineProgressTypes.NONE:
+        if progress_type and progress_type != RoutineProgressTypes.NONE.value:
             properties["progress_type"] = progress_type
 
         # 设置程度选项
@@ -1477,7 +1477,7 @@ class RoutineRecord(BaseProcessor):
             self._update_duration_stats(definition, duration)
 
         # 设置指标统计（数据已在卡片层格式化）
-        if progress_type and progress_type != RoutineProgressTypes.NONE:
+        if progress_type and progress_type != RoutineProgressTypes.NONE.value:
             progress_value = record_data.get("progress_value")
             if progress_value is not None:
                 self._update_progress_stats(definition, progress_type, progress_value)
@@ -1529,9 +1529,9 @@ class RoutineRecord(BaseProcessor):
         """
         stats = definition["stats"]
 
-        if progress_type == RoutineProgressTypes.VALUE:
+        if progress_type == RoutineProgressTypes.VALUE.value:
             stats["last_progress_value"] = progress_value
-        elif progress_type == RoutineProgressTypes.MODIFY and progress_value != 0:
+        elif progress_type == RoutineProgressTypes.MODIFY.value and progress_value != 0:
             current_total = stats.get("total_progress_value", 0) or 0
             stats["total_progress_value"] = round(current_total + progress_value, 3)
             stats["last_progress_value"] = progress_value

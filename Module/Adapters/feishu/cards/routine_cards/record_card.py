@@ -277,9 +277,9 @@ class RecordCard:
         # 格式化进度信息
         if progress_type and last_progress_value:
             match progress_type:
-                case RoutineProgressTypes.VALUE:
+                case RoutineProgressTypes.VALUE.value:
                     progress_str = f"{round(last_progress_value, 1)}"
-                case RoutineProgressTypes.MODIFY:
+                case RoutineProgressTypes.MODIFY.value:
                     if last_progress_value > 0:
                         progress_str = f"增加 {round(last_progress_value, 1)}，累计 {round(total_progress_value, 1)}"
                     elif last_progress_value < 0:
@@ -419,7 +419,7 @@ class RecordCard:
 
         # 指标类型选择器（不在表单，有回调事件）
         if event_type != RoutineTypes.FUTURE.value:
-            progress_type = record_data.get("progress_type", RoutineProgressTypes.NONE)
+            progress_type = record_data.get("progress_type", RoutineProgressTypes.NONE.value)
             need_progress_selector = (
                 record_mode == "direct"
                 or (record_mode == "quick" and record_data.get("progress_type", ""))
@@ -542,20 +542,7 @@ class RecordCard:
         """
         构建指标类型选择器
         """
-        options = [
-            {
-                "text": {"tag": "plain_text", "content": "无指标"},
-                "value": RoutineProgressTypes.NONE,
-            },
-            {
-                "text": {"tag": "plain_text", "content": "数值记录"},
-                "value": RoutineProgressTypes.VALUE,
-            },
-            {
-                "text": {"tag": "plain_text", "content": "变化量"},
-                "value": RoutineProgressTypes.MODIFY,
-            },
-        ]
+        options = RoutineProgressTypes.build_options()
 
         action_data = {
             "card_action": "update_progress_type",
@@ -728,15 +715,9 @@ class RecordCard:
             )
         )
         # 3. 指标值字段（根据指标类型动态显示）
-        progress_type = record_data.get("progress_type", RoutineProgressTypes.NONE)
-        if progress_type != RoutineProgressTypes.NONE:
-            # 根据指标类型设置不同的占位符
-            if progress_type == RoutineProgressTypes.VALUE:
-                placeholder_text = "最新数值"
-            elif progress_type == RoutineProgressTypes.MODIFY:
-                placeholder_text = "变化量（+/-）"
-            else:
-                placeholder_text = "指标值"
+        progress_type = record_data.get("progress_type", RoutineProgressTypes.NONE.value)
+        if progress_type != RoutineProgressTypes.NONE.value:
+            placeholder_text = RoutineProgressTypes.get_by_value(progress_type).placeholder
 
             progress_value = record_data.get("progress_value", "")
             elements.append(
@@ -804,14 +785,9 @@ class RecordCard:
         )
 
         # 2. 指标值字段（根据指标类型动态显示）
-        progress_type = record_data.get("progress_type", RoutineProgressTypes.NONE)
-        if progress_type != RoutineProgressTypes.NONE:
-            if progress_type == RoutineProgressTypes.VALUE:
-                placeholder_text = "最新数值"
-            elif progress_type == RoutineProgressTypes.MODIFY:
-                placeholder_text = "变化量（+/-）"
-            else:
-                placeholder_text = "指标值"
+        progress_type = record_data.get("progress_type", RoutineProgressTypes.NONE.value)
+        if progress_type != RoutineProgressTypes.NONE.value:
+            placeholder_text = RoutineProgressTypes.get_by_value(progress_type).placeholder
 
             progress_value = record_data.get("progress_value", "")
             elements.append(

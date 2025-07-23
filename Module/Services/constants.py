@@ -417,10 +417,42 @@ class RoutineCheckCycle:
     YEARLY = "年"
 
 
-class RoutineProgressTypes:
-    NONE = "none"
-    VALUE = "value"
-    MODIFY = "modify"
+class RoutineProgressTypes(Enum):
+    NONE = {"value": "none", "display_name": "无指标", "placeholder": "指标值"}
+    VALUE = {"value": "value", "display_name": "数值记录", "placeholder": "最新数值"}
+    MODIFY = {
+        "value": "modify",
+        "display_name": "变化量",
+        "placeholder": "变化量（+/-）",
+    }
+
+    @property
+    def value(self) -> str:
+        return self._value_["value"]
+
+    @property
+    def display_name(self) -> str:
+        return self._value_["display_name"]
+
+    @property
+    def placeholder(self) -> str:
+        return self._value_["placeholder"]
+
+    @classmethod
+    def build_options(cls) -> List[Dict[str, Any]]:
+        """构建选项元素 - 用于构建选择器元素的选项"""
+        return [
+            {
+                "text": {"tag": "plain_text", "content": member.display_name},
+                "value": member.value,
+            }
+            for member in cls
+        ]
+
+    @classmethod
+    def get_by_value(cls, value: str):
+        """根据value获取对应的枚举成员"""
+        return next((member for member in cls if member.value == value), cls.NONE)
 
 
 class RoutineTargetTypes:

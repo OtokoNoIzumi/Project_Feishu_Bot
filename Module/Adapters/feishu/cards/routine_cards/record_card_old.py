@@ -243,9 +243,9 @@ class RecordCard_Old:
         # 格式化进度信息
         if progress_type and last_progress_value:
             match progress_type:
-                case RoutineProgressTypes.VALUE:
+                case RoutineProgressTypes.VALUE.value:
                     progress_str = f"{round(last_progress_value, 1)}"
-                case RoutineProgressTypes.MODIFY:
+                case RoutineProgressTypes.MODIFY.value:
                     if last_progress_value > 0:
                         progress_str = f"增加 {round(last_progress_value, 1)}，累计 {round(total_progress_value, 1)}"
                     elif last_progress_value < 0:
@@ -647,9 +647,9 @@ class RecordCard_Old:
             progress_value = safe_float(progress_value_str)
             if progress_value is not None:
                 core_data["progress_value"] = progress_value
-                if progress_type == RoutineProgressTypes.VALUE:
+                if progress_type == RoutineProgressTypes.VALUE.value:
                     event_definition["stats"]["last_progress_value"] = progress_value
-                elif (progress_type == RoutineProgressTypes.MODIFY) and (
+                elif (progress_type == RoutineProgressTypes.MODIFY.value) and (
                     progress_value != 0
                 ):
                     event_definition["stats"]["total_progress_value"] = round(
