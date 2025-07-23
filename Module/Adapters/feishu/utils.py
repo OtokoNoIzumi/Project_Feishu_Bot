@@ -207,14 +207,6 @@ ROUTE_KNOWLEDGE_MAPPING = {
             "card_action": "build_new_event_definition_card",
         },
     },
-    RouteTypes.ROUTINE_QUICK_RECORD_CARD: {
-        "handler": "card_handler",
-        "method": "dispatch_card_response",
-        "call_params": {
-            "card_config_key": CardConfigKeys.ROUTINE_RECORD,
-            "card_action": "build_quick_record_confirm_card",
-        },
-    },
     RouteTypes.ROUTINE_QUICK_SELECT_CARD: {
         "handler": "card_handler",
         "method": "dispatch_card_response",

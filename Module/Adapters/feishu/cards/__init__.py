@@ -74,15 +74,6 @@ CARD_CLASS_MAPPING = {
         "single_instance": True,
         "config": {"reply_mode": "reply", "card_name": "新建日常事项"},
     },
-    CardConfigKeys.ROUTINE_RECORD: {
-        "class": RoutineCardManager,
-        "single_instance": True,
-        "config": {
-            "reply_mode": "reply",
-            "card_name": "快速记录确认",
-            "sub_business_build_method": "build_quick_record_elements",
-        },
-    },
     CardConfigKeys.ROUTINE_QUICK_SELECT: {
         "class": RoutineCardManager,
         "single_instance": True,
@@ -106,7 +97,7 @@ CARD_CLASS_MAPPING = {
         "single_instance": True,
         "config": {
             "reply_mode": "reply",
-            "card_name": "直接记录",
+            "card_name": "添加日常记录",
             "sub_business_build_method": "build_direct_record_elements",
         },
     },

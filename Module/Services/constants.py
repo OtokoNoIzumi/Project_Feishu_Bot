@@ -227,10 +227,11 @@ class CardConfigKeys:
     ADS_UPDATE = "ads_update"
     BILIBILI_VIDEO_INFO = "bilibili_video_info"
     DESIGN_PLAN = "design_plan"
-    ROUTINE_RECORD = "routine_record"
     ROUTINE_QUICK_SELECT = "routine_quick_select"
     ROUTINE_QUERY = "routine_query"
     ROUTINE_DIRECT_RECORD = "routine_direct_record"
+    
+    ROUTINE_RECORD = "routine_record"
 
 # ========== 卡片操作类型常量 ==========
 class CardOperationTypes:
@@ -294,7 +295,6 @@ class RouteTypes:
 
     # Routine相关路由类型
     ROUTINE_NEW_EVENT_CARD = "routine_new_event_card"
-    ROUTINE_QUICK_RECORD_CARD = "routine_quick_record_card"
     ROUTINE_QUICK_SELECT_CARD = "routine_quick_select_card"
     ROUTINE_QUERY_RESULTS_CARD = "routine_query_results_card"
     ROUTINE_DIRECT_RECORD_CARD = "routine_direct_record_card"

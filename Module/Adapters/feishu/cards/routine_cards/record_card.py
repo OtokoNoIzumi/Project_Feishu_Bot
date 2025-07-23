@@ -4,7 +4,7 @@ Direct Record Card
 直接记录卡片
 """
 
-import json
+import pprint
 import copy
 from typing import Dict, Any, List
 from Module.Adapters.feishu.utils import safe_float
@@ -55,20 +55,25 @@ class RecordCard:
         构建直接记录卡片头部
         """
         is_confirmed = business_data.get("is_confirmed", False)
-        event_name = business_data.get("event_name", "")
         result = business_data.get("result", "取消")
 
         if is_confirmed:
             return self.parent.build_status_based_header("", is_confirmed, result)
 
-        if event_name:
-            return self.parent.build_card_header(
-                f"直接记录：{event_name}", "填写记录信息", "blue", "edit_outlined"
-            )
+        event_name = business_data.get("event_name", "")
+        record_mode = business_data.get("record_mode", "")
 
-        return self.parent.build_card_header(
-            "直接记录", "创建新的记录", "blue", "add_outlined"
-        )
+        match record_mode:
+            case "direct":
+                title = "新建记录" + (f"：{event_name}" if event_name else "")
+                subtitle = "填写相关信息"
+                icon = "add_outlined"
+            case "quick":
+                title = "添加记录" + (f"：{event_name}" if event_name else "")
+                subtitle = "请确认记录信息"
+                icon = "edit_outlined"
+
+        return self.parent.build_card_header(title, subtitle, "blue", icon)
 
     def build_direct_record_elements(self, business_data: Dict[str, Any]) -> List[Dict]:
         """
@@ -423,15 +428,20 @@ class RecordCard:
         # 指标类型选择器（不在表单，有回调事件）
         if event_type != RoutineTypes.FUTURE:
             progress_type = record_data.get("progress_type", RoutineProgressTypes.NONE)
-            elements.append(
-                self.parent.build_form_row(
-                    "指标类型",
-                    self._build_progress_type_selector(
-                        progress_type, is_confirmed, build_method_name
-                    ),
-                    width_list=["80px", "180px"],
-                )
+            need_progress_selector = (
+                record_mode == "direct"
+                or (record_mode == "quick" and record_data.get("progress_type", ""))
             )
+            if need_progress_selector:
+                elements.append(
+                    self.parent.build_form_row(
+                        "指标类型",
+                        self._build_progress_type_selector(
+                            progress_type, is_confirmed, build_method_name
+                        ),
+                        width_list=["80px", "180px"],
+                    )
+                )
 
         # 2. 目标类型选择器
         if event_type == RoutineTypes.ONGOING:
@@ -515,6 +525,7 @@ class RecordCard:
         # 获取程度选项和当前值
         degree_options = degree_info.get("degree_options", [])
         current_degree = record_data.get("degree", "")
+        event_name = record_data.get("event_name", "")
 
         if not degree_options:
             return elements
@@ -533,7 +544,7 @@ class RecordCard:
 
         # 程度选择器
         degree_selector = self.parent.build_select_element(
-            placeholder="选择完成方式",
+            placeholder=f"如何{event_name}？",
             options=options,
             initial_value=(
                 current_degree
@@ -551,7 +562,7 @@ class RecordCard:
 
         elements.append(
             self.parent.build_form_row(
-                "完成方式",
+                "选择方式",
                 degree_selector,
                 width_list=["80px", "180px"],
             )
@@ -712,20 +723,6 @@ class RecordCard:
 
         # 1. 耗时字段
         record_data = data_source.get("record_data", "")
-        duration_value = record_data.get("duration", "")
-        elements.append(
-            self.parent.build_form_row(
-                "⏱️ 耗时",
-                self.parent.build_input_element(
-                    placeholder="请输入耗时（分钟）",
-                    initial_value=str(duration_value) if duration_value else "",
-                    disabled=is_confirmed,
-                    action_data={},
-                    name="duration",
-                ),
-                width_list=["80px", "180px"],
-            )
-        )
 
         record_mode = data_source.get("record_mode", "")
         selected_degree = record_data.get("degree", "")
@@ -740,7 +737,7 @@ class RecordCard:
                 self.parent.build_form_row(
                     "完成方式",
                     self.parent.build_input_element(
-                        placeholder="请输入完成方式",
+                        placeholder="增加新方式（可选）",
                         initial_value=str(degree_value) if degree_value else "",
                         disabled=is_confirmed,
                         action_data={},
@@ -750,6 +747,20 @@ class RecordCard:
                 )
             )
 
+        duration_value = record_data.get("duration", "")
+        elements.append(
+            self.parent.build_form_row(
+                "⏱️ 耗时",
+                self.parent.build_input_element(
+                    placeholder="请输入耗时（分钟）",
+                    initial_value=str(duration_value) if duration_value else "",
+                    disabled=is_confirmed,
+                    action_data={},
+                    name="duration",
+                ),
+                width_list=["80px", "180px"],
+            )
+        )
         # 3. 指标值字段（根据指标类型动态显示）
         progress_type = record_data.get("progress_type", RoutineProgressTypes.NONE)
         if progress_type != RoutineProgressTypes.NONE:

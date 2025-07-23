@@ -202,22 +202,22 @@ class RoutineCardManager(BaseCardManager):
             card_config_key=CardConfigKeys.ROUTINE_QUERY,
         )
 
-    def build_quick_record_confirm_card(
-        self, result, context: MessageContext_Refactor, business_data: Dict[str, Any]
-    ):
-        """构建快速记录确认卡片 - 代理到子模块"""
-        card_data = self.record_card_old.build_quick_record_confirm_card(business_data)
-        card_content = {"type": "card_json", "data": card_data}
+    # def build_quick_record_confirm_card(
+    #     self, result, context: MessageContext_Refactor, business_data: Dict[str, Any]
+    # ):
+    #     """构建快速记录确认卡片 - 代理到子模块"""
+    #     card_data = self.record_card_old.build_quick_record_confirm_card(business_data)
+    #     card_content = {"type": "card_json", "data": card_data}
 
-        return self.handle_card_operation_common(
-            card_content=card_content,
-            card_operation_type=CardOperationTypes.SEND,
-            update_toast_type="success",
-            user_id=context.user_id,
-            message_id=context.message_id,
-            business_data=business_data,
-            card_config_key=CardConfigKeys.ROUTINE_RECORD,
-        )
+    #     return self.handle_card_operation_common(
+    #         card_content=card_content,
+    #         card_operation_type=CardOperationTypes.SEND,
+    #         update_toast_type="success",
+    #         user_id=context.user_id,
+    #         message_id=context.message_id,
+    #         business_data=business_data,
+    #         card_config_key=CardConfigKeys.ROUTINE_RECORD,
+    #     )
 
     def build_direct_record_card(
         self, result, context: MessageContext_Refactor, business_data: Dict[str, Any]
@@ -309,19 +309,6 @@ class RoutineCardManager(BaseCardManager):
         return self.query_results_card.update_type_name_filter(context)
 
     # ----- record_card_old 的回调事件代理 -----
-    def update_record_degree(self, context: MessageContext_Refactor):
-        """更新记录方式 - 根据上下文判断代理到哪个卡片"""
-        # 检查上下文中的业务数据，判断是快速记录还是直接记录
-        build_method_name = context.content.value.get(
-            "container_build_method", "update_record_confirm_card"
-        )
-
-        # 根据构建方法名称判断应该代理到哪个卡片
-        if "direct_record" in build_method_name:
-            return self.record_card.update_record_degree(context)
-        else:
-            return self.record_card_old.update_record_degree(context)
-
     def confirm_record(self, context: MessageContext_Refactor):
         """确认记录"""
         return self.record_card_old.confirm_record(context)
@@ -359,58 +346,12 @@ class RoutineCardManager(BaseCardManager):
         """确认直接记录"""
         return self.record_card.confirm_direct_record(context)
 
+    def update_record_degree(self, context: MessageContext_Refactor):
+        """更新记录方式 - 根据上下文判断代理到哪个卡片"""
+        return self.record_card.update_record_degree(context)
     # endregion
 
     # region 废弃的事件卡片
-    def build_new_event_definition_card(self, route_result, context, business_data):
-        """构建新事件定义卡片 - 转发到业务层处理"""
-        card_data = self._build_new_event_definition_card(business_data)
-        card_content = {"type": "card_json", "data": card_data}
-        # 注意：新事件定义功能的具体实现在业务层
-        # 这里只是保持接口兼容性的转发方法
-        return self.handle_card_operation_common(
-            card_content=card_content,
-            card_operation_type=CardOperationTypes.SEND,
-            update_toast_type="success",
-            user_id=context.user_id,
-            message_id=context.message_id,
-            business_data=business_data,
-        )
-
-    def _build_new_event_definition_card(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """构建新事件定义卡片"""
-        form_data = data.get("form_data", {})
-        user_id = data.get("user_id", "")
-        is_confirmed = data.get("is_confirmed", False)
-
-        # 如果有初始事项名称，设置到form_data中
-        initial_event_name = data.get("initial_event_name", "")
-        if initial_event_name and not form_data.get("event_name"):
-            form_data["event_name"] = initial_event_name
-
-        # 获取当前选择的事件类型以控制字段显示
-        selected_type = form_data.get("event_type", RoutineTypes.INSTANT)
-
-        # 获取关联开始事项列表（如果当前类型是结束事项）
-        related_start_items = []
-        if selected_type == RoutineTypes.END and self.message_router:
-            related_start_items = (
-                self.message_router.routine_record.get_related_start_events(user_id)
-            )
-
-        header = self.build_card_header(
-            "📝 新建日常事项", "请填写事项信息", "blue", "add-bold_outlined"
-        )
-        elements = self._build_new_event_form_elements(
-            form_data,
-            user_id,
-            selected_type,
-            is_confirmed,
-            related_start_items,
-        )
-
-        return self.build_base_card_structure(elements, header, "16px")
-
     def _build_new_event_form_elements(
         self,
         form_data: Dict[str, Any],

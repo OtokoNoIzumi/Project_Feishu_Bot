@@ -672,7 +672,7 @@ class RoutineRecord(BaseProcessor):
                 record_mode="quick",
             )
             route_result = RouteResult.create_route_result(
-                route_type=RouteTypes.ROUTINE_QUICK_RECORD_CARD,
+                route_type=RouteTypes.ROUTINE_DIRECT_RECORD_CARD,
                 route_params={"business_data": routine_record_data},
             )
             return route_result
@@ -1116,6 +1116,7 @@ class RoutineRecord(BaseProcessor):
 
                 # 创建初始记录（用于表单预填充）
                 record_data = self._create_event_record(event_name, user_id)
+                record_data["event_type"] = event_definition["type"]
 
                 unified_data["record_data"] = record_data
 
