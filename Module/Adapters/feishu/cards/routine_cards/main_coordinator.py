@@ -252,9 +252,7 @@ class RoutineCardManager(BaseCardManager):
         """构建快速记录确认卡片 - 代理到子模块"""
         return self.record_card_old.build_quick_record_confirm_card(business_data)
 
-    def update_record_card(
-        self, business_data: Dict[str, Any]
-    ) -> Dict[str, Any]:
+    def update_record_card(self, business_data: Dict[str, Any]) -> Dict[str, Any]:
         """构建直接记录确认卡片 - 代理到子模块"""
         return self.record_card.build_record_card(business_data)
 
@@ -305,46 +303,27 @@ class RoutineCardManager(BaseCardManager):
         return self.query_results_card.update_type_name_filter(context)
 
     # ----- record_card_old 的回调事件代理 -----
-    def confirm_record(self, context: MessageContext_Refactor):
-        """确认记录"""
-        return self.record_card_old.confirm_record(context)
+    def confirm_record_old(self, context: MessageContext_Refactor):
+        """确认记录-旧"""
+        return self.record_card_old.confirm_record_old(context)
+
+    def cancel_record_old(self, context: MessageContext_Refactor):
+        """取消记录-旧"""
+        return self.record_card_old.cancel_record_old(context)
+
+    # ----- record_card 的回调事件代理 -----
+    def handle_record_field_update(self, context: MessageContext_Refactor):
+        """更新直接记录事项类型"""
+        return self.record_card.handle_record_field_update(context)
 
     def cancel_record(self, context: MessageContext_Refactor):
         """取消记录"""
-        return self.record_card_old.cancel_record(context)
+        return self.record_card.cancel_record(context)
 
-    # ----- record_card 的回调事件代理 -----
-    def update_record_type(self, context: MessageContext_Refactor):
-        """更新直接记录事项类型"""
-        return self.record_card.update_record_type(context)
+    def confirm_record(self, context: MessageContext_Refactor):
+        """确认记录"""
+        return self.record_card.confirm_record(context)
 
-    def update_progress_type(self, context: MessageContext_Refactor):
-        """更新指标类型"""
-        return self.record_card.update_progress_type(context)
-
-    def update_target_type(self, context: MessageContext_Refactor):
-        """更新目标类型"""
-        return self.record_card.update_target_type(context)
-
-    def update_reminder_mode(self, context: MessageContext_Refactor):
-        """更新提醒模式"""
-        return self.record_card.update_reminder_mode(context)
-
-    def update_check_cycle(self, context: MessageContext_Refactor):
-        """更新检查周期"""
-        return self.record_card.update_check_cycle(context)
-
-    def cancel_direct_record(self, context: MessageContext_Refactor):
-        """取消直接记录"""
-        return self.record_card.cancel_direct_record(context)
-
-    def confirm_direct_record(self, context: MessageContext_Refactor):
-        """确认直接记录"""
-        return self.record_card.confirm_direct_record(context)
-
-    def update_record_degree(self, context: MessageContext_Refactor):
-        """更新记录方式 - 根据上下文判断代理到哪个卡片"""
-        return self.record_card.update_record_degree(context)
     # endregion
 
     # region 废弃的事件卡片
@@ -514,8 +493,7 @@ class RoutineCardManager(BaseCardManager):
         """获取事件类型选项"""
 
         options = RoutineTypes.build_options()
-        
-            
+
         return options
 
     # endregion

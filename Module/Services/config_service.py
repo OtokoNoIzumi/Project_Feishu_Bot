@@ -167,35 +167,7 @@ class ConfigService:
             return self.env_config[key]
 
         # 静态配置：支持点号分隔的嵌套访问
-        return self._get_nested_value(self.static_config, key, default)
-
-    def _get_nested_value(self, data: Dict[str, Any], key: str, default: Any = None) -> Any:
-        """
-        从嵌套字典中获取值，支持点号分隔的路径
-
-        Args:
-            data: 数据字典
-            key: 键路径，支持点号分隔（如："routine_record.storage_path"）
-            default: 默认值
-
-        Returns:
-            Any: 配置值或默认值
-        """
-        if '.' not in key:
-            # 简单键，直接返回
-            return data.get(key, default)
-
-        # 嵌套键，按点号分割并逐层访问
-        keys = key.split('.')
-        current = data
-
-        for k in keys:
-            if isinstance(current, dict) and k in current:
-                current = current[k]
-            else:
-                return default
-
-        return current
+        return get_nested_value(self.static_config, key, default)
 
     def get_env(self, key: str, default: Any = None) -> Any:
         """
@@ -288,3 +260,47 @@ class ConfigService:
             "total_config_keys": len(self.config),
             "config_priority": "env_vars > static_config"
         }
+
+
+def get_nested_value(data: Dict[str, Any], key: str, default: Any = None) -> Any:
+    """
+    从嵌套字典中获取值，支持点号分隔的路径
+
+    Args:
+        data: 数据字典
+        key: 键路径，支持点号分隔（如："routine_record.storage_path"）
+        default: 默认值
+
+    Returns:
+        Any: 配置值或默认值
+    """
+    if '.' not in key:
+        return data.get(key, default)
+
+    keys = key.split('.')
+    current = data
+    for k in keys:
+        if isinstance(current, dict) and k in current:
+            current = current[k]
+        else:
+            return default
+    return current
+
+def set_nested_value(data: Dict, path: str, value: Any) -> None:
+    """
+    更新嵌套字典中的值，支持任意深度的路径。
+    自动初始化缺失的中间字典。
+
+    Args:
+        data: 要更新的字典
+        path: 字段路径，字符串（如 "a.b.c"）
+        value: 要设置的值
+    """
+    keys = path.split(".")
+    current = data
+    for key in keys[:-1]:
+        if key not in current:
+            current[key] = {}
+        current = current[key]
+
+    current[keys[-1]] = value

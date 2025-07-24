@@ -140,6 +140,7 @@ class QueryResultsCard:
 
             progress_type = d.get("properties", {}).get("progress_type", "")
             if progress_type:
+                # 这里要修改，已经改成last_record_id取到的last_record_data了
                 if "last_progress_value" in stats:
                     stat_lines.append(
                         f"最近进度: {stats.get('last_progress_value', '-')}"

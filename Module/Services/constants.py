@@ -455,9 +455,62 @@ class RoutineProgressTypes(Enum):
         return next((member for member in cls if member.value == value), cls.NONE)
 
 
-class RoutineTargetTypes:
-    TIME = "time"
-    COUNT = "count"
+class RoutineTargetTypes(Enum):
+    NONE = {"value": "none", "display_name": "无目标", "chinese_name": "其他", "unit": ""}
+    TIME = {"value": "time", "display_name": "时间目标", "chinese_name": "时长", "unit": "分钟"}
+    COUNT = {"value": "count", "display_name": "次数目标", "chinese_name": "次数", "unit": "次"}
+
+    @property
+    def value(self) -> str:
+        return self._value_["value"]
+
+    @property
+    def display_name(self) -> str:
+        return self._value_["display_name"]
+
+    @property
+    def chinese_name(self) -> str:
+        return self._value_["chinese_name"]
+
+    @property
+    def unit(self) -> str:
+        return self._value_["unit"]
+
+    @classmethod
+    def build_options(cls) -> List[Dict[str, Any]]:
+        """构建选项元素 - 用于构建选择器元素的选项"""
+        return [
+            {
+                "text": {"tag": "plain_text", "content": member.display_name},
+                "value": member.value,
+            }
+            for member in cls
+        ]
+
+    @classmethod
+    def get_by_value(cls, value: str):
+        """根据value获取对应的枚举成员"""
+        return next((member for member in cls if member.value == value), cls.NONE)
+
+    @classmethod
+    def get_display_name(cls, value: str) -> str:
+        """根据value获取显示名称"""
+        return cls.get_by_value(value).display_name
+
+    @classmethod
+    def get_chinese_name(cls, value: str) -> str:
+        """根据value获取中文名称"""
+        # 处理历史兼容：duration -> time
+        if value == "duration":
+            value = "time"
+        return cls.get_by_value(value).chinese_name
+
+    @classmethod
+    def get_unit(cls, value: str) -> str:
+        """根据value获取单位"""
+        if value != "time":
+            value = "count"
+        return cls.get_by_value(value).unit
 
 
 class RoutineReminderModes:
@@ -466,3 +519,11 @@ class RoutineReminderModes:
     OFF = "none"
     TIME = "time"
     RELATIVE = "relative"
+
+
+class RoutineRecordModes:
+    """记录模式"""
+
+    RECORD = "record"
+    QUERY = "query" # 查询模式
+    ADD = "add" # 添加模式

@@ -16,6 +16,7 @@ from Module.Services.constants import (
     CardConfigKeys,
     RoutineTypes,
     RoutineProgressTypes,
+    RoutineTargetTypes,
     ToastTypes,
     CardOperationTypes,
 )
@@ -78,6 +79,7 @@ class RecordCard_Old:
         avg_duration = computed_data.get("avg_duration", 0.0)
         degree_info = computed_data.get("degree_info", {})
         cycle_info = computed_data.get("cycle_info", {})
+        target_info = computed_data.get("target_info", {})
         diff_minutes = computed_data.get("diff_minutes", 0)
 
         event_type = event_definition.get("type", RoutineTypes.INSTANT.value)
@@ -107,7 +109,7 @@ class RecordCard_Old:
 
         # 3. 条件化展示：目标进度信息（如果有目标设置）
         if cycle_info:
-            elements.extend(self._build_cycle_progress_section(cycle_info))
+            elements.extend(self._build_cycle_progress_section(cycle_info, target_info))
 
         # === 确认输入部分 ===
         # 4. 条件化展示：程度选择器（如果有程度选项）
@@ -271,16 +273,18 @@ class RecordCard_Old:
         return elements
 
     def _build_cycle_progress_section(
-        self, cycle_info: Dict[str, Any]
+        self, cycle_info: Dict[str, Any], target_info: Dict[str, Any] = None
     ) -> List[Dict[str, Any]]:
         """构建循环进度信息区域"""
         elements = []
 
         # 基础数据提取
         cycle_count = max(0, int(cycle_info.get("cycle_count", 0)))
-        target_type = cycle_info.get("target_type", "")
-        target_value = cycle_info.get("target_value")
         last_cycle_info = cycle_info.get("last_cycle_info", "")
+
+        # 从独立的 target_info 获取目标相关信息
+        target_type = target_info.get("target_type", "") if target_info else ""
+        target_value = target_info.get("target_value") if target_info else None
 
         # 判断是否有目标
         has_target = target_value and int(target_value) > 0
@@ -292,11 +296,7 @@ class RecordCard_Old:
             # 有目标：显示目标进度
             target_val = max(1, int(target_value))
             progress_percent = min(100, (cycle_count / target_val * 100))
-            target_type_display = {
-                "count": "次数",
-                "duration": "时长",
-                "other": "其他",
-            }.get(target_type, target_type)
+            target_type_display = RoutineTargetTypes.get_chinese_name(target_type)
 
             # 选择颜色和emoji
             if progress_percent >= 100:
@@ -325,11 +325,9 @@ class RecordCard_Old:
             )
         else:
             # 无目标：显示累计进度
-            unit_display = {"count": "次", "duration": "分钟", "other": ""}.get(
-                target_type, ""
-            )
+            unit = RoutineTargetTypes.get_unit(target_type)
             progress_content_parts.append(
-                f"📊 **累计进度：** {cycle_count}{unit_display}"
+                f"📊 **累计进度：** {cycle_count}{unit}"
             )
 
         # 组装最终内容
@@ -514,13 +512,13 @@ class RecordCard_Old:
                                 {
                                     "type": "callback",
                                     "value": {
-                                        "card_action": "cancel_record",
+                                        "card_action": "cancel_record_old",
                                         "card_config_key": CardConfigKeys.ROUTINE_RECORD_OLD,
                                         "container_build_method": build_method_name,
                                     },
                                 }
                             ],
-                            "name": "cancel_record",
+                            "name": "cancel_record_old",
                         }
                     ],
                     "vertical_spacing": "8px",
@@ -560,7 +558,7 @@ class RecordCard_Old:
                                 {
                                     "type": "callback",
                                     "value": {
-                                        "card_action": "confirm_record",
+                                        "card_action": "confirm_record_old",
                                         "card_config_key": CardConfigKeys.ROUTINE_RECORD_OLD,
                                         "event_name": event_name,
                                         "container_build_method": build_method_name,
@@ -568,7 +566,7 @@ class RecordCard_Old:
                                 }
                             ],
                             "form_action_type": "submit",
-                            "name": "confirm_record",
+                            "name": "confirm_record_old",
                         }
                     ],
                     "vertical_spacing": "8px",
@@ -578,13 +576,13 @@ class RecordCard_Old:
             ],
         }
 
-    def confirm_record(self, context: MessageContext_Refactor) -> ProcessResult:
+    def confirm_record_old(self, context: MessageContext_Refactor) -> ProcessResult:
         """处理记录确认"""
         build_method_name = context.content.value.get(
             "container_build_method", self.default_update_build_method
         )
         business_data, card_id, error_response = self.parent.ensure_valid_context(
-            context, "confirm_record", build_method_name
+            context, "confirm_record_old", build_method_name
         )
         if error_response:
             return error_response
@@ -598,7 +596,7 @@ class RecordCard_Old:
         core_data = data_source.get("record_data", {})
         if not core_data:
             new_card_dsl = self.parent.build_cancel_update_card_data(
-                business_data, "confirm_record", build_method_name
+                business_data, "confirm_record_old", build_method_name
             )
             return self.parent.handle_card_operation_common(
                 card_content=new_card_dsl,
@@ -637,7 +635,7 @@ class RecordCard_Old:
             core_data["duration"] = new_duration
         else:
             debug_utils.log_and_print(
-                f"🔍 confirm_record - 耗时转换失败: [{duration_str}]",
+                f"🔍 confirm_record_old - 耗时转换失败: [{duration_str}]",
                 log_level="WARNING",
             )
 
@@ -658,7 +656,7 @@ class RecordCard_Old:
                     event_definition["stats"]["last_progress_value"] = progress_value
             else:
                 debug_utils.log_and_print(
-                    f"🔍 confirm_record - 进度值转换失败: [{progress_value_str}]",
+                    f"🔍 confirm_record_old - 进度值转换失败: [{progress_value_str}]",
                     log_level="WARNING",
                 )
 
@@ -749,19 +747,19 @@ class RecordCard_Old:
             ToastTypes.SUCCESS,
         )
 
-    def cancel_record(self, context: MessageContext_Refactor) -> ProcessResult:
+    def cancel_record_old(self, context: MessageContext_Refactor) -> ProcessResult:
         """处理取消操作"""
         build_method_name = context.content.value.get(
             "container_build_method", self.default_update_build_method
         )
         business_data, card_id, error_response = self.parent.ensure_valid_context(
-            context, "cancel_record", build_method_name
+            context, "cancel_record_old", build_method_name
         )
         if error_response:
             return error_response
 
         new_card_dsl = self.parent.build_cancel_update_card_data(
-            business_data, "cancel_record", build_method_name, verbose=False
+            business_data, "cancel_record_old", build_method_name, verbose=False
         )
 
         return self.parent.delete_and_respond_with_update(
