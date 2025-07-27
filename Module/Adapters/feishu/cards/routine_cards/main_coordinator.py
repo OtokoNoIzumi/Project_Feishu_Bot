@@ -305,14 +305,9 @@ class RoutineCardManager(BaseCardManager):
         """更新类型名称过滤器"""
         return self.query_results_card.update_type_name_filter(context)
 
-    # ----- record_card_old 的回调事件代理 -----
-    def confirm_record_old(self, context: MessageContext_Refactor):
-        """确认记录-旧"""
-        return self.record_card_old.confirm_record_old(context)
-
-    def cancel_record_old(self, context: MessageContext_Refactor):
-        """取消记录-旧"""
-        return self.record_card_old.cancel_record_old(context)
+    def query_record(self, context: MessageContext_Refactor):
+        """统一的记录操作入口 - 代理到query_results_card"""
+        return self.query_results_card.query_record(context)
 
     # ----- record_card 的回调事件代理 -----
     def handle_record_field_update(self, context: MessageContext_Refactor):
@@ -327,22 +322,14 @@ class RoutineCardManager(BaseCardManager):
         """确认记录"""
         return self.record_card.confirm_record(context)
 
-    # ----- active_record 操作的回调事件代理 -----
-    def complete_active_record(self, context: MessageContext_Refactor):
-        """完成active_record - 代理到query_results_card"""
-        return self.query_results_card.complete_active_record(context)
+    # ----- record_card_old 的回调事件代理 -----
+    def confirm_record_old(self, context: MessageContext_Refactor):
+        """确认记录-旧"""
+        return self.record_card_old.confirm_record_old(context)
 
-    def create_related_event(self, context: MessageContext_Refactor):
-        """创建关联事件 - 代理到query_results_card"""
-        return self.query_results_card.create_related_event(context)
-
-    def quick_create_value(self, context: MessageContext_Refactor):
-        """快速新建值 - 代理到query_results_card"""
-        return self.query_results_card.quick_create_value(context)
-
-    def related_event_action(self, context: MessageContext_Refactor):
-        """关联事件操作 - 代理到query_results_card"""
-        return self.query_results_card.related_event_action(context)
+    def cancel_record_old(self, context: MessageContext_Refactor):
+        """取消记录-旧"""
+        return self.record_card_old.cancel_record_old(context)
 
     # endregion
 

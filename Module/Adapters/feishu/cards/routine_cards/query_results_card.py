@@ -240,9 +240,13 @@ class QueryResultsCard:
         buttons = []
         # 完成按钮
         complete_action_data = {
-            "card_action": "complete_active_record",
+            "card_action": "query_record",
+            "operation_type": "complete_active_record",
             "record_id": record_id,
             "event_name": event_name,
+            "record_mode": RoutineRecordModes.QUERY,
+            "needs_active_record": True,
+            "message": f"正在完成 [{event_name}]",
             **default_action_data,
         }
         buttons.append(
@@ -257,9 +261,11 @@ class QueryResultsCard:
 
         # 新关联事件按钮
         new_related_action_data = {
-            "card_action": "create_related_event",
+            "card_action": "query_record",
+            "operation_type": "create_related_event",
             "record_id": record_id,
             "expand_position": expand_position,
+            "message": "正在创建关联事件",
             **default_action_data,
         }
         buttons.append(
@@ -293,10 +299,12 @@ class QueryResultsCard:
                 button_text_length = 0
 
             new_action_data = {
-                "card_action": "related_event_action",
+                "card_action": "query_record",
+                "operation_type": "related_event_action",
                 "record_id": record_id,
                 "event_name": rel,
                 "expand_position": expand_position,
+                "message": f"正在记录关联事件：{rel}",
                 **default_action_data,
             }
             new_buttons.append(
@@ -352,8 +360,10 @@ class QueryResultsCard:
         definition = record.get("data", {})
         # 按钮区
         record_action_data = {
-            "card_action": "quick_record_select",
+            "card_action": "query_record",
+            "operation_type": "quick_record_select",
             "event_name": event_name,
+            "message": f"正在记录 [{event_name}]",
             **default_action_data,
         }
         buttons = []
@@ -496,20 +506,26 @@ class QueryResultsCard:
             "已完成筛选",
         )
 
-    def complete_active_record(self, context: MessageContext_Refactor):
-        """完成活动记录 - 打开记录填写界面"""
-        # 主体业务都一样，可能用参数控制区别就可以兼容所有回调了
+    def query_record(self, context: MessageContext_Refactor):
+        """统一的记录操作回调方法 - 所有动态参数通过action_data传递"""
         action_value = context.content.value
         user_id = context.user_id
+
+        # 从action_data中获取所有动态参数
+        operation_type = action_value.get("operation_type", "")
         record_id = action_value.get("record_id", "")
         event_name = action_value.get("event_name", "")
+        record_mode = action_value.get("record_mode", RoutineRecordModes.RECORD)
+        needs_active_record = action_value.get("needs_active_record", False)
+        expand_position = action_value.get("expand_position", -1)
+        message = action_value.get("message", "正在处理记录操作")
         container_build_method = action_value.get(
             "container_build_method", self.default_update_build_method
         )
 
         # 获取当前卡片的业务数据
         business_data, card_id, error_response = self.parent.ensure_valid_context(
-            context, "complete_active_record", container_build_method
+            context, operation_type, container_build_method
         )
         if error_response:
             return error_response
@@ -518,36 +534,50 @@ class QueryResultsCard:
             business_data, CardConfigKeys.ROUTINE_QUERY
         )
 
-        query_data = parent_data.get("query_data", [])
-        active_record = None
-        for record in query_data:
-            if record.get("record_id") == record_id:
-                active_record = record
-                break
+        # 处理expand_position
+        if expand_position > -1:
+            parent_data["expand_position"] = expand_position
+        else:
+            parent_data.pop("expand_position", None)
 
         # 构建记录填写界面数据
         routine_business = self.parent.message_router.routine_record
-        # 如果这里需要另一个record计算的话，最好是传回去？
-        new_record_data = routine_business.build_record_business_data(
-            user_id,
-            event_name,
-            record_mode=RoutineRecordModes.QUERY,
-            current_record_data=active_record.get("data", {}),
-        )
 
-        # 在记录数据中标记这是完成active_record的操作
-        new_record_data["operation_type"] = "complete_active_record"
+        if needs_active_record:
+            # 查找active_record
+            query_data = parent_data.get("query_data", [])
+            active_record = next(
+                (
+                    record
+                    for record in query_data
+                    if record.get("record_id") == record_id
+                ),
+                None,
+            )
+            new_record_data = routine_business.build_record_business_data(
+                user_id,
+                event_name,
+                record_mode=record_mode,
+                current_record_data=(
+                    active_record.get("data", {}) if active_record else {}
+                ),
+            )
+        else:
+            new_record_data = routine_business.build_record_business_data(
+                user_id, event_name
+            )
+
+        # 设置操作标记
+        new_record_data["operation_type"] = operation_type
         new_record_data["source_record_id"] = record_id
 
-        business_data["workflow_state"] = "complete_active_record"
+        # 更新业务数据
         business_data["container_build_method"] = container_build_method
-
         parent_data["sub_business_data"] = new_record_data
         parent_data["sub_business_name"] = CardConfigKeys.ROUTINE_RECORD
-        sub_business_build_method = self.parent.get_sub_business_build_method(
-            CardConfigKeys.ROUTINE_RECORD
+        parent_data["sub_business_build_method"] = (
+            self.parent.get_sub_business_build_method(CardConfigKeys.ROUTINE_RECORD)
         )
-        parent_data["sub_business_build_method"] = sub_business_build_method
 
         # 更新卡片显示
         new_card_dsl = self.parent.build_update_card_data(
@@ -558,174 +588,7 @@ class QueryResultsCard:
             card_id,
             business_data,
             new_card_dsl,
-            f"正在完成 [{event_name}]",
-            ToastTypes.SUCCESS,
-        )
-
-    def create_related_event(self, context: MessageContext_Refactor):
-        """创建关联事件 - 打开记录填写界面"""
-        action_value = context.content.value
-        user_id = context.user_id
-        record_id = action_value.get("record_id", "")
-        expand_position = action_value.get("expand_position", -1)
-        container_build_method = action_value.get(
-            "container_build_method", self.default_update_build_method
-        )
-
-        # 获取当前卡片的业务数据
-        business_data, card_id, error_response = self.parent.ensure_valid_context(
-            context, "create_related_event", container_build_method
-        )
-        if error_response:
-            return error_response
-
-        parent_data, _ = self.parent.safe_get_business_data(
-            business_data, CardConfigKeys.ROUTINE_QUERY
-        )
-
-        if expand_position > -1:
-            parent_data["expand_position"] = expand_position
-        # 构建关联事件的记录填写界面数据
-        routine_business = self.parent.message_router.routine_record
-        new_record_data = routine_business.build_record_business_data(user_id, "")
-
-        # 在记录数据中标记这是创建关联事件的操作
-        new_record_data["operation_type"] = "create_related_event"
-        new_record_data["source_record_id"] = record_id
-
-        business_data["workflow_state"] = "create_related_event"
-        business_data["container_build_method"] = container_build_method
-
-        parent_data["sub_business_data"] = new_record_data
-        parent_data["sub_business_name"] = CardConfigKeys.ROUTINE_RECORD
-        sub_business_build_method = self.parent.get_sub_business_build_method(
-            CardConfigKeys.ROUTINE_RECORD
-        )
-        parent_data["sub_business_build_method"] = sub_business_build_method
-
-        # 更新卡片显示
-        new_card_dsl = self.parent.build_update_card_data(
-            business_data, container_build_method
-        )
-        return self.parent.save_and_respond_with_update(
-            context.user_id,
-            card_id,
-            business_data,
-            new_card_dsl,
-            "正在创建关联事件",
-            ToastTypes.SUCCESS,
-        )
-
-    def related_event_action(self, context: MessageContext_Refactor):
-        """处理关联事件操作 - 打开记录填写界面"""
-        action_value = context.content.value
-        user_id = context.user_id
-        record_id = action_value.get("record_id", "")
-        event_name = action_value.get("event_name", "")
-        expand_position = action_value.get("expand_position", -1)
-        container_build_method = action_value.get(
-            "container_build_method", self.default_update_build_method
-        )
-
-        # 获取当前卡片的业务数据
-        business_data, card_id, error_response = self.parent.ensure_valid_context(
-            context, "related_event_action", container_build_method
-        )
-        if error_response:
-            return error_response
-
-        parent_data, _ = self.parent.safe_get_business_data(
-            business_data, CardConfigKeys.ROUTINE_QUERY
-        )
-
-        if expand_position > -1:
-            parent_data["expand_position"] = expand_position
-        # 构建关联事件的记录填写界面数据
-        routine_business = self.parent.message_router.routine_record
-        # 对于这个新增事件，有一个额外的信息就是关联的active_record（至少是query的id）
-        # 除了新增一个事件外，其实核心目的也就是创建一个关联。
-        new_record_data = routine_business.build_record_business_data(
-            user_id, event_name
-        )
-
-        # 在记录数据中标记这是关联事件的操作
-        new_record_data["operation_type"] = "related_event_action"
-        new_record_data["source_record_id"] = record_id
-
-        business_data["workflow_state"] = "related_event_action"
-        business_data["container_build_method"] = container_build_method
-
-        parent_data["sub_business_data"] = new_record_data
-        parent_data["sub_business_name"] = CardConfigKeys.ROUTINE_RECORD
-        sub_business_build_method = self.parent.get_sub_business_build_method(
-            CardConfigKeys.ROUTINE_RECORD
-        )
-        parent_data["sub_business_build_method"] = sub_business_build_method
-
-        # 更新卡片显示
-        new_card_dsl = self.parent.build_update_card_data(
-            business_data, container_build_method
-        )
-        return self.parent.save_and_respond_with_update(
-            context.user_id,
-            card_id,
-            business_data,
-            new_card_dsl,
-            f"正在记录关联事件：{event_name}",
-            ToastTypes.SUCCESS,
-        )
-
-    def quick_create_value(self, context: MessageContext_Refactor):
-        """快速新建值 - 打开记录填写界面"""
-        action_value = context.content.value
-        user_id = context.user_id
-        record_id = action_value.get("record_id", "")
-        event_name = action_value.get("event_name", "")
-        container_build_method = action_value.get(
-            "container_build_method", self.default_update_build_method
-        )
-
-        # 获取当前卡片的业务数据
-        business_data, card_id, error_response = self.parent.ensure_valid_context(
-            context, "quick_create_value", container_build_method
-        )
-        if error_response:
-            return error_response
-
-        # 构建快速新建值的记录填写界面数据
-        routine_business = self.parent.message_router.routine_record
-        new_record_data = routine_business.build_record_business_data(
-            user_id, event_name
-        )
-
-        # 在记录数据中标记这是快速新建值的操作
-        new_record_data["operation_type"] = "quick_create_value"
-        new_record_data["source_record_id"] = record_id
-
-        business_data["workflow_state"] = "quick_create_value"
-        business_data["container_build_method"] = container_build_method
-
-        parent_data, _ = self.parent.safe_get_business_data(
-            business_data, CardConfigKeys.ROUTINE_QUERY
-        )
-
-        parent_data["sub_business_data"] = new_record_data
-        parent_data["sub_business_name"] = CardConfigKeys.ROUTINE_RECORD
-        sub_business_build_method = self.parent.get_sub_business_build_method(
-            CardConfigKeys.ROUTINE_RECORD
-        )
-        parent_data["sub_business_build_method"] = sub_business_build_method
-
-        # 更新卡片显示
-        new_card_dsl = self.parent.build_update_card_data(
-            business_data, container_build_method
-        )
-        return self.parent.save_and_respond_with_update(
-            context.user_id,
-            card_id,
-            business_data,
-            new_card_dsl,
-            f"正在为 [{event_name}] 快速新建值",
+            message,
             ToastTypes.SUCCESS,
         )
 

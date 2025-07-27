@@ -56,60 +56,72 @@ class QuickSelectCard:
         # 查询日程行 - 左边查询日程按钮，右边连续记录checkbox
         continuous_record = business_data.get("continuous_record", False)
         # 统一的disabled变量
-        components_disabled = not cancel_confirmed and is_confirmed and not continuous_record
-        
-        elements.append({
-            "tag": "column_set",
-            "horizontal_align": "left",
-            "vertical_align": "center",
-            "columns": [
-                {
-                    "tag": "column",
-                    "width": "90px",
-                    "elements": [{
-                        "tag": "button",
-                        "text": {"tag": "plain_text", "content": "查询日程"},
-                        "type": "primary",
-                        "width": "default",
-                        "size": "small",
-                        "disabled": components_disabled,
-                        "behaviors": [{
-                            "type": "callback",
-                            "value": {
-                                "card_action": "show_query_info",
-                                "card_config_key": CardConfigKeys.ROUTINE_QUICK_SELECT,
-                                "container_build_method": build_method_name,
-                            },
-                        }]
-                    }]
-                },
-                {
-                    "tag": "column",
-                    "width": "170px",
-                    "weight": 1,
-                    "vertical_align": "center",
-                    "horizontal_align": "right",
-                    "elements": [{
-                        "tag": "checker",
-                        "text": {
-                            "tag": "plain_text", 
-                            "content": "连续记录",
-                            "text_size": "normal"
-                        },
-                        "checked": continuous_record,
-                        "disabled": components_disabled,
-                        "behaviors": [{
-                            "type": "callback",
-                            "value": {
-                                "card_action": "toggle_continuous_record",
-                                "card_config_key": CardConfigKeys.ROUTINE_QUICK_SELECT,
-                                "container_build_method": build_method_name,
-                            },
-                        }]
-                    }]
-                }
-            ]
-        })
+        components_disabled = (
+            not cancel_confirmed and is_confirmed and not continuous_record
+        )
+
+        elements.append(
+            {
+                "tag": "column_set",
+                "horizontal_align": "left",
+                "vertical_align": "center",
+                "columns": [
+                    {
+                        "tag": "column",
+                        "width": "90px",
+                        "elements": [
+                            {
+                                "tag": "button",
+                                "text": {"tag": "plain_text", "content": "查询日程"},
+                                "type": "primary",
+                                "width": "default",
+                                "size": "small",
+                                "disabled": components_disabled,
+                                "behaviors": [
+                                    {
+                                        "type": "callback",
+                                        "value": {
+                                            "card_action": "show_query_info",
+                                            "card_config_key": CardConfigKeys.ROUTINE_QUICK_SELECT,
+                                            "container_build_method": build_method_name,
+                                        },
+                                    }
+                                ],
+                            }
+                        ],
+                    },
+                    {
+                        "tag": "column",
+                        "width": "170px",
+                        "weight": 1,
+                        "vertical_align": "center",
+                        "horizontal_align": "right",
+                        "elements": [
+                            {
+                                "tag": "checker",
+                                "text": {
+                                    "tag": "plain_text",
+                                    "content": "连续记录",
+                                    "text_size": "normal",
+                                },
+                                "checked": continuous_record,
+                                "disabled": components_disabled,
+                                "behaviors": [
+                                    {
+                                        "type": "callback",
+                                        "value": {
+                                            "card_action": "toggle_continuous_record",
+                                            "card_config_key": CardConfigKeys.ROUTINE_QUICK_SELECT,
+                                            "container_build_method": build_method_name,
+                                        },
+                                    }
+                                ],
+                            }
+                        ],
+                    },
+                ],
+            }
+        )
 
         elements.append(
             self.parent.build_form_row(
@@ -133,16 +145,18 @@ class QuickSelectCard:
         # 快捷添加按钮组 - 使用压缩布局
         if quick_events:
             # 添加快捷添加标题
-            elements.append({
-                "tag": "markdown",
-                "content": "**快捷添加**",
-                "text_align": "left",
-                "margin": "8px 0px 4px 0px"
-            })
-            
+            elements.append(
+                {
+                    "tag": "markdown",
+                    "content": "**快捷添加**",
+                    "text_align": "left",
+                    "margin": "8px 0px 4px 0px",
+                }
+            )
+
             button_text_length = 0
             new_buttons = []
-            
+
             for event in quick_events:
                 event_name_btn = event.get("name", "")
                 event_type = event.get("type", RoutineTypes.INSTANT.value)
@@ -151,52 +165,65 @@ class QuickSelectCard:
 
                 # 预检测长度，如果添加当前按钮会超出限制，先输出当前行
                 current_button_length = len(event_name_btn) + 2  # 加上emoji和空格的长度
-                if (button_text_length + current_button_length > 12 or len(new_buttons) >= 3) and new_buttons:
+                if (
+                    button_text_length + current_button_length > 12
+                    or len(new_buttons) >= 3
+                ) and new_buttons:
                     button_columns = [
-                        {"tag": "column", "width": "auto", "elements": [btn]} for btn in new_buttons
+                        {"tag": "column", "width": "auto", "elements": [btn]}
+                        for btn in new_buttons
                     ]
-                    elements.append({
-                        "tag": "column_set", 
-                        "horizontal_align": "left", 
-                        "columns": button_columns, 
-                        "margin": "0px 0px 4px 0px"
-                    })
+                    elements.append(
+                        {
+                            "tag": "column_set",
+                            "horizontal_align": "left",
+                            "columns": button_columns,
+                            "margin": "0px 0px 4px 0px",
+                        }
+                    )
                     new_buttons = []
                     button_text_length = 0
 
-                new_buttons.append({
-                    "tag": "button",
-                    "text": {
-                        "tag": "plain_text",
-                        "content": f"{type_emoji} {event_name_btn}",
-                    },
-                    "type": "primary" if is_quick_access else "default",
-                    "size": "small",
-                    "disabled": components_disabled,
-                    "behaviors": [{
-                        "type": "callback",
-                        "value": {
-                            "card_action": "quick_record_select",
-                            "card_config_key": CardConfigKeys.ROUTINE_QUICK_SELECT,
-                            "event_name": event_name_btn,
-                            "container_build_method": build_method_name,
+                new_buttons.append(
+                    {
+                        "tag": "button",
+                        "text": {
+                            "tag": "plain_text",
+                            "content": f"{type_emoji} {event_name_btn}",
                         },
-                    }]
-                })
-                
+                        "type": "primary" if is_quick_access else "default",
+                        "size": "small",
+                        "disabled": components_disabled,
+                        "behaviors": [
+                            {
+                                "type": "callback",
+                                "value": {
+                                    "card_action": "quick_record_select",
+                                    "card_config_key": CardConfigKeys.ROUTINE_QUICK_SELECT,
+                                    "event_name": event_name_btn,
+                                    "container_build_method": build_method_name,
+                                },
+                            }
+                        ],
+                    }
+                )
+
                 button_text_length += current_button_length
-            
+
             # 添加剩余的按钮
             if new_buttons:
                 button_columns = [
-                    {"tag": "column", "width": "auto", "elements": [btn]} for btn in new_buttons
+                    {"tag": "column", "width": "auto", "elements": [btn]}
+                    for btn in new_buttons
                 ]
-                elements.append({
-                    "tag": "column_set", 
-                    "horizontal_align": "left", 
-                    "columns": button_columns, 
-                    "margin": "0px 0px 4px 0px"
-                })
+                elements.append(
+                    {
+                        "tag": "column_set",
+                        "horizontal_align": "left",
+                        "columns": button_columns,
+                        "margin": "0px 0px 4px 0px",
+                    }
+                )
 
         # 集成模式：根据工作流程状态显示不同内容
         sub_business_build_method = business_data.get("sub_business_build_method", "")
@@ -212,7 +239,9 @@ class QuickSelectCard:
 
         return self.parent.build_base_card_structure(elements, header, "12px")
 
-    def toggle_continuous_record(self, context: MessageContext_Refactor) -> ProcessResult:
+    def toggle_continuous_record(
+        self, context: MessageContext_Refactor
+    ) -> ProcessResult:
         """
         切换连续记录状态
         """
@@ -239,8 +268,10 @@ class QuickSelectCard:
         new_card_dsl = self.parent.build_update_card_data(
             business_data, container_build_method
         )
-        
-        toast_message = "已开启连续记录模式" if not current_state else "已关闭连续记录模式"
+
+        toast_message = (
+            "已开启连续记录模式" if not current_state else "已关闭连续记录模式"
+        )
         return self.parent.save_and_respond_with_update(
             context.user_id,
             card_id,
@@ -271,7 +302,7 @@ class QuickSelectCard:
         if error_response:
             return error_response
 
-        business_data['is_confirmed'] = False
+        business_data["is_confirmed"] = False
         business_data["cancel_confirmed"] = False
         # 加载事件定义
         routine_business = self.parent.message_router.routine_record
@@ -281,7 +312,9 @@ class QuickSelectCard:
             definitions_data and event_name in definitions_data["definitions"]
         ):  # 虽然是冗余但先保留吧
 
-            new_record_data = routine_business.build_record_business_data(user_id, event_name)
+            new_record_data = routine_business.build_record_business_data(
+                user_id, event_name
+            )
 
             business_data["workflow_state"] = (
                 "quick_record"  # 集成模式状态，这个姑且先保留吧，稍微冗余一点点
@@ -345,7 +378,9 @@ class QuickSelectCard:
             return error_response
 
         routine_business = self.parent.message_router.routine_record
-        new_record_data = routine_business.build_record_business_data(user_id, event_name)
+        new_record_data = routine_business.build_record_business_data(
+            user_id, event_name
+        )
 
         business_data["workflow_state"] = (
             "quick_record"  # 集成模式状态，这个姑且先保留吧，稍微冗余一点点
@@ -367,7 +402,6 @@ class QuickSelectCard:
         new_card_dsl = self.parent.build_update_card_data(
             business_data, container_build_method
         )
-        # print("test-new_card_dsl", json.dumps(json.dumps(new_card_dsl, ensure_ascii=False), ensure_ascii=False))
         return self.parent.save_and_respond_with_update(
             context.user_id,
             card_id,
