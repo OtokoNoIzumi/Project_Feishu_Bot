@@ -41,10 +41,14 @@ class QueryResultsCard:
         """
 
         is_confirmed = business_data.get("is_confirmed", False)
+        cancel_confirmed = business_data.get("cancel_confirmed", False)
+        continuous_record = business_data.get("continuous_record", False)
+        # 统一的disabled变量 - 连续记录模式下，查询元素不被disabled
+        components_disabled = not cancel_confirmed and is_confirmed and not continuous_record
         build_method_name = business_data.get(
             "container_build_method", self.default_update_build_method
         )
-        data_source, _ = self.parent.safe_get_business_data(
+        data_source, is_container_mode = self.parent.safe_get_business_data(
             business_data, CardConfigKeys.ROUTINE_QUERY
         )
         default_action_data = {
@@ -94,7 +98,7 @@ class QueryResultsCard:
                     placeholder="选择类型",
                     options=category_options,
                     initial_value=selected_category,
-                    disabled=is_confirmed,
+                    disabled=components_disabled,
                     action_data={
                         "card_action": "update_category_filter",
                         **default_action_data,
@@ -110,7 +114,7 @@ class QueryResultsCard:
                 self.parent.build_input_element(
                     placeholder="输入空格取消筛选",
                     initial_value=type_name_filter,
-                    disabled=is_confirmed,
+                    disabled=components_disabled,
                     action_data={
                         "card_action": "update_type_name_filter",
                         **default_action_data,
@@ -120,7 +124,10 @@ class QueryResultsCard:
                 width_list=["80px", "180px"],
             )
         )
-        # 待增加一个筛选结果和一件清楚筛选。
+        if is_container_mode:
+            query_length = len(query_data)
+            if query_length > filter_limit:
+                elements.append(self.parent.build_markdown_element(content=f"共有 {query_length} 个已知日程，当前显示上限 {filter_limit}"))
         elements.append(self.parent.build_line_element())
 
 
@@ -132,7 +139,7 @@ class QueryResultsCard:
         if has_query_business_data:
             default_expanded = False
 
-        new_elements = self._build_record_elements(filtered_records, is_confirmed, build_method_name, default_expanded, expand_position)
+        new_elements = self._build_record_elements(filtered_records, components_disabled, build_method_name, default_expanded, expand_position)
         elements.extend(new_elements)
 
         # 集成模式：根据工作流程状态显示不同内容
@@ -250,6 +257,17 @@ class QueryResultsCard:
         new_buttons = []
         # related_events 按钮
         for rel in related_events:
+            current_button_length = min(4, len(rel))
+            # 预检测：如果添加当前按钮会超出限制，先输出已有按钮
+            if button_text_length + current_button_length > 10 and new_buttons:
+                button_columns = [
+                    {"tag": "column", "width": "auto", "elements": [btn]} for btn in new_buttons
+                ]
+                content.append({"tag": "column_set", "horizontal_align": "left", "columns": button_columns, "margin": "0px 0px 0px 0px"})
+                new_buttons = []
+                button_text_length = 0
+            
+            # 添加当前按钮
             new_buttons.append({
                 "tag": "button",
                 "text": {"tag": "plain_text", "content": rel},
@@ -268,21 +286,14 @@ class QueryResultsCard:
                     }
                 }]
             })
-            button_text_length += min(4, len(rel))
-            if button_text_length > 10:
-                button_columns = [
-                    {"tag": "column", "width": "auto", "elements": [btn]} for btn in new_buttons
-                ]
-                content.append({"tag": "column_set", "horizontal_align": "left", "columns": button_columns, "margin": "0px 0px 0px 0px"})
-                new_buttons = []
-                button_text_length = 0
+            button_text_length += current_button_length
 
-        button_columns = [
-            {"tag": "column", "width": "auto", "elements": [btn]} for btn in new_buttons
-        ]
-        content.append({"tag": "column_set", "horizontal_align": "left", "columns": button_columns, "margin": "0px 0px 0px 0px"})
-        new_buttons = []
-        button_text_length = 0
+        # 输出剩余按钮
+        if new_buttons:
+            button_columns = [
+                {"tag": "column", "width": "auto", "elements": [btn]} for btn in new_buttons
+            ]
+            content.append({"tag": "column_set", "horizontal_align": "left", "columns": button_columns, "margin": "0px 0px 0px 0px"})
         # 头部信息
         head_info = f"**{event_name}**"
         scheduled_time = record.get("data", {}).get("scheduled_start_time", "")

@@ -293,6 +293,10 @@ class RoutineCardManager(BaseCardManager):
         """显示查询信息"""
         return self.quick_select_card.show_query_info(context)
 
+    def toggle_continuous_record(self, context: MessageContext_Refactor):
+        """切换连续记录状态"""
+        return self.quick_select_card.toggle_continuous_record(context)
+
     # ----- query_results_card 的回调事件代理 -----
     def update_category_filter(self, context: MessageContext_Refactor):
         """更新分类过滤器"""

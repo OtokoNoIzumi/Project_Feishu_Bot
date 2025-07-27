@@ -375,7 +375,6 @@ class BaseCardManager(ABC):
 
         return {
             "tag": "column_set",
-            "horizontal_spacing": "8px",
             "horizontal_align": "left",
             "element_id": element_id,
             "columns": [

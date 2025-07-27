@@ -812,6 +812,7 @@ class RoutineRecord(BaseProcessor):
 
         # 加载记录数据
         records_data = self.load_event_records(user_id)
+        source_record_data = {}
         if source_record_id:
             source_record_data = records_data.get("active_records", {}).get(source_record_id, {}) or records_data.get("records", {}).get(source_record_id, {})
             if source_record_data:
@@ -906,7 +907,7 @@ class RoutineRecord(BaseProcessor):
 
     @safe_execute("构建快速选择记录卡片数据失败")
     def build_quick_select_card_data(
-        self, user_id: str, max_items: int = 5
+        self, user_id: str, max_items: int = 6
     ) -> Dict[str, Any]:
         """
         构建快速选择记录卡片数据（扩展版本：支持集成模式）

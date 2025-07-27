@@ -1245,10 +1245,24 @@ class RecordCard:
         new_card_dsl = self.parent.build_cancel_update_card_data(
             business_data, "cancel_record", build_method_name, verbose=False
         )
+        # 检查是否为连续记录模式
+        continuous_record = business_data.get("continuous_record", False)
+        
+        if continuous_record:
+            
+            return self.parent.save_and_respond_with_update(
+                context.user_id,
+                card_id,
+                business_data,
+                new_card_dsl,
+                "已取消当前记录",
+                ToastTypes.INFO,
+            )
+        else:
 
-        return self.parent.delete_and_respond_with_update(
-            context.user_id, card_id, new_card_dsl, "操作已取消", ToastTypes.INFO
-        )
+            return self.parent.delete_and_respond_with_update(
+                context.user_id, card_id, new_card_dsl, "操作已取消", ToastTypes.INFO
+            )
 
     def confirm_record(self, context: MessageContext_Refactor) -> ProcessResult:
         """确认直接记录"""
@@ -1291,20 +1305,32 @@ class RecordCard:
             )
 
         # 4. 创建成功，构建确认后的卡片
+        event_name = data_source.get("event_name", "直接记录")
+        continuous_record = business_data.get("continuous_record", False)
         business_data["is_confirmed"] = True
         business_data["result"] = "确认"
         new_card_dsl = self.parent.build_update_card_data(
             business_data, build_method_name
         )
-
-        event_name = data_source.get("event_name", "直接记录")
-        return self.parent.delete_and_respond_with_update(
-            context.user_id,
-            card_id,
-            new_card_dsl,
-            f"【{event_name}】 {message}",
-            ToastTypes.SUCCESS,
-        )
+        
+        if continuous_record:             
+             return self.parent.save_and_respond_with_update(
+                 context.user_id,
+                 card_id,
+                 business_data,
+                 new_card_dsl,
+                 f"【{event_name}】 {message}，可继续添加新记录",
+                 ToastTypes.SUCCESS,
+             )
+        else:
+            # 非连续记录模式：删除数据并显示确认状态
+            return self.parent.delete_and_respond_with_update(
+                context.user_id,
+                card_id,
+                new_card_dsl,
+                f"【{event_name}】 {message}",
+                ToastTypes.SUCCESS,
+            )
 
     def _handle_card_data(
         self, data_source: Dict, form_data: Dict, fields_in_event_definition: List[str]
