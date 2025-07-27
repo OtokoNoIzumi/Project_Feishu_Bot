@@ -600,13 +600,6 @@ class RoutineRecord(BaseProcessor):
                 "business_data": routine_business_data,
             },
         )
-        # card_data = self.build_new_event_card_data(user_id, item_name)
-        # route_result = RouteResult.create_route_result(
-        #     route_type=RouteTypes.ROUTINE_NEW_EVENT_CARD,
-        #     route_params={
-        #         "business_data": card_data,
-        #     },
-        # )
         return route_result
 
     @safe_execute("构建日程记录卡片数据失败")
@@ -728,9 +721,32 @@ class RoutineRecord(BaseProcessor):
                     }
                     computed_data["cycle_info"] = cycle_info
 
+        # 构建分类选项
+        categories_data = definitions_data.get("categories", [])
+        category_names = set()
+
+        # 从分类数据中收集分类名称
+        for category_obj in categories_data:
+            category_name = category_obj.get("name", "")
+            if category_name:
+                category_names.add(category_name)
+
+        # 从所有事件定义中收集分类
+        for def_name, definition in definitions_data.get("definitions", {}).items():
+            category = definition.get("category")
+            if category:
+                category_names.add(category)
+
+        # 返回分类名称列表（用于前端构建选项）
+        category_options = sorted(c for c in category_names if c)
+
         business_data["event_definition"] = event_definition
         business_data["record_data"] = new_record_data
         business_data["computed_data"] = computed_data
+        business_data["category_options"] = category_options
+        business_data["categories"] = definitions_data.get(
+            "categories", []
+        )  # 传递完整的分类数据
 
         return business_data
 
@@ -1017,7 +1033,14 @@ class RoutineRecord(BaseProcessor):
 
         # 收集active_records中的事件名称和分类
         active_event_names = set()
-        categories = set(event_data.get("categories", []))
+        categories_data = event_data.get("categories", [])
+        category_names = set()
+
+        # 从分类数据中收集分类名称
+        for category_obj in categories_data:
+            category_name = category_obj.get("name", "")
+            if category_name:
+                category_names.add(category_name)
 
         # 一次遍历active_records，按类型分组，同时收集分类
         today = datetime.now().strftime("%Y-%m-%d")
@@ -1032,7 +1055,7 @@ class RoutineRecord(BaseProcessor):
             event_def = event_data.get("definitions", {}).get(event_name, {})
             event_type = event_def.get("type", RoutineTypes.FUTURE.value)
             category = event_def.get("category", "未分类")
-            categories.add(category)
+            category_names.add(category)
 
             record_element = {
                 "record_type": "active_record",
@@ -1078,7 +1101,7 @@ class RoutineRecord(BaseProcessor):
             # 收集分类
             category = definition.get("category")
             if category:
-                categories.add(category)
+                category_names.add(category)
 
             # 为event_definition计算相关数据
             avg_duration = self._calculate_avg_duration(definition)
@@ -1118,11 +1141,18 @@ class RoutineRecord(BaseProcessor):
             }
             merged_records.append(definition_element)
 
-        category_options = ["全部"] + sorted(c for c in categories if c)
+        # 先分离"未分类"，其余排序后拼接，"未分类"放最后
+        category_list = [c for c in category_names if c]
+        if "未分类" in category_list:
+            category_list.remove("未分类")
+            category_options = ["全部"] + sorted(category_list) + ["未分类"]
+        else:
+            category_options = ["全部"] + sorted(category_list)
 
         query_business_data = {
             "category_options": category_options,
             "query_data": merged_records,
+            "categories": event_data.get("categories", []),  # 传递完整的分类数据
         }
 
         return query_business_data
@@ -1180,6 +1210,9 @@ class RoutineRecord(BaseProcessor):
             # 目前这里的效果是更新degree_options，其他是后续功能自动支持。
             existing_def = event_definitions["definitions"][event_name]
             existing_def["properties"] = event_definition.get("properties", {})
+            existing_def["category"] = event_definition.get(
+                "category", existing_def["category"]
+            )
 
             # stats
             existing_def_stats = event_definitions["definitions"][event_name].get(
@@ -1239,6 +1272,8 @@ class RoutineRecord(BaseProcessor):
                 new_definition, dup_business_data, current_time
             )
 
+            new_definition["category"] = event_definition.get("category", "")
+
             new_definition["last_record_id"] = record_id
             # 添加到定义集合中
             event_definitions["definitions"][event_name] = new_definition
@@ -1253,6 +1288,42 @@ class RoutineRecord(BaseProcessor):
         # 更新全局时间戳
         event_definitions["last_updated"] = current_time
         event_definitions["last_record_time"] = current_time
+
+        # 更新categories列表（去重）
+        categories_data = event_definitions.get("categories", [])
+        category_names = set()
+
+        # 从现有分类数据中收集分类名称
+        for category_obj in categories_data:
+            category_name = category_obj.get("name", "")
+            if category_name:
+                category_names.add(category_name)
+
+        # 从所有事件定义中收集分类
+        for def_name, definition in event_definitions.get("definitions", {}).items():
+            category = definition.get("category")
+            if category and category.strip():
+                category_names.add(category.strip())
+
+        # 构建新的分类数据结构
+        new_categories = []
+        for category_name in sorted(category_names):
+            # 查找现有的分类对象以保留颜色信息
+            existing_category = None
+            for cat_obj in categories_data:
+                if cat_obj.get("name") == category_name:
+                    existing_category = cat_obj
+                    break
+
+            if existing_category:
+                new_categories.append(existing_category)
+            else:
+                # 新分类使用默认颜色
+                new_categories.append(
+                    {"name": category_name, "color": "blue"}  # 默认颜色
+                )
+
+        event_definitions["categories"] = new_categories
 
         # 保存事件定义
         return self.save_event_definitions(user_id, event_definitions)
@@ -1505,136 +1576,3 @@ class RoutineRecord(BaseProcessor):
         return 0
 
     # endregion
-
-    # region 废弃的event方法
-
-    @safe_execute("构建新事件定义卡片数据失败")
-    def build_new_event_card_data(
-        self, user_id: str, initial_event_name: str = ""
-    ) -> Dict[str, Any]:
-        """
-        构建新事件定义卡片数据
-
-        Args:
-            user_id: 用户ID
-            initial_event_name: 初始事项名称
-            operation_id: 操作ID
-
-        Returns:
-            Dict[str, Any]: 卡片数据
-        """
-        return {
-            "user_id": user_id,
-            "initial_event_name": initial_event_name,
-            "form_data": {
-                "event_name": initial_event_name,
-                "event_type": RoutineTypes.INSTANT.value,
-                "category": "",
-                "include_in_daily_check": False,
-                "degree_options": "",
-                "notes": "",
-            },
-        }
-
-    @safe_execute("处理事件创建业务逻辑失败")
-    def create_new_event_from_form(
-        self, user_id: str, form_data: Dict[str, Any]
-    ) -> Tuple[bool, str]:
-        """
-        根据表单数据创建新事件
-
-        Args:
-            user_id: 用户ID
-            form_data: 表单数据
-
-        Returns:
-            Tuple[bool, str]: (是否成功, 消息)
-        """
-        try:
-            # 验证必填字段
-            event_name = form_data.get("event_name", "").strip()
-            if not event_name:
-                return False, "事项名称不能为空"
-
-            event_type = form_data.get("event_type", RoutineTypes.INSTANT.value)
-            if not isinstance(event_type, RoutineTypes):
-                return False, "无效的事项类型"
-
-            # 加载数据
-            definitions_data = self.load_event_definitions(user_id)
-            if event_name in definitions_data.get("definitions", {}):
-                return False, f"事项 '{event_name}' 已存在"
-
-            # 创建事件定义
-            new_event_def = self._create_event_definition(event_name, event_type)
-
-            # 更新属性
-            new_event_def["category"] = form_data.get("category", "")
-            new_event_def["description"] = form_data.get("notes", "")
-
-            # 根据事项类型设置特定属性
-            properties = new_event_def["properties"]
-
-            if event_type == RoutineTypes.END.value:
-                properties["related_start_event"] = form_data.get("related_start_event")
-
-            if event_type in [RoutineTypes.INSTANT.value, RoutineTypes.ONGOING.value]:
-                properties["include_in_daily_check"] = form_data.get(
-                    "include_in_daily_check", False
-                )
-
-            if event_type == RoutineTypes.FUTURE.value:
-                properties["future_date"] = form_data.get("future_date")
-
-            if event_type != RoutineTypes.FUTURE.value:
-                # 处理程度选项
-                degree_options_str = form_data.get("degree_options", "").strip()
-                if degree_options_str:
-                    degree_options = [
-                        opt.strip()
-                        for opt in degree_options_str.split(",")
-                        if opt.strip()
-                    ]
-                    properties["degree_options"] = degree_options
-                    if degree_options:
-                        properties["default_degree"] = degree_options[0]
-
-            # 保存数据
-            definitions_data["definitions"][event_name] = new_event_def
-            if self.save_event_definitions(user_id, definitions_data):
-                return True, f"成功创建事项 '{event_name}'"
-
-            return False, "保存事项失败"
-
-        except Exception as e:
-            debug_utils.log_and_print(f"创建事项失败: {e}", log_level="ERROR")
-            return False, f"创建事项失败: {str(e)}"
-
-    @safe_execute("获取关联开始事项失败")
-    def get_related_start_events(self, user_id: str) -> List[Dict[str, Any]]:
-        """
-        获取可作为关联开始事项的列表
-
-        Args:
-            user_id: 用户ID
-
-        Returns:
-            List[Dict[str, Any]]: 开始事项选项列表
-        """
-        definitions_data = self.load_event_definitions(user_id)
-        if not definitions_data:
-            return []
-
-        definitions = definitions_data.get("definitions", {})
-        start_events = []
-
-        for event_name, event_def in definitions.items():
-            if event_def.get("type") == RoutineTypes.START.value:
-                start_events.append(
-                    {
-                        "text": {"tag": "plain_text", "content": event_name},
-                        "value": event_name,
-                    }
-                )
-
-        return start_events

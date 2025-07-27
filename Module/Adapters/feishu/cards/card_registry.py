@@ -283,6 +283,27 @@ class BaseCardManager(ABC):
             toast_message=toast_message,
         )
 
+    def get_category_color(self, category_name: str, categories_data: List) -> str:
+        """
+        获取分类的颜色信息
+
+        Args:
+            category_name: 分类名称
+            categories_data: 分类数据列表（包含name和color的对象数组）
+
+        Returns:
+            str: 分类颜色，默认为"blue"
+        """
+        if not categories_data:
+            return "blue"
+
+        # 从分类数据中查找对应的颜色
+        for category_obj in categories_data:
+            if category_obj.get("name") == category_name:
+                return category_obj.get("color", "blue")
+
+        return "blue"  # 默认颜色
+
     def print_json(self, mark: str, data: Dict[str, Any]):
         """打印json数据"""
         print(

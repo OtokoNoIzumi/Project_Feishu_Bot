@@ -232,7 +232,13 @@ class RecordCard:
         # 显示分类（如果有）
         category = event_definition.get("category", "")
         if category:
-            info_content += f"**分类：** <text_tag color='blue'>{category}</text_tag>\n"
+            # 获取分类颜色
+            categories_data = data_source.get("categories", [])
+            category_color = self.parent.get_category_color(category, categories_data)
+
+            info_content += (
+                f"**分类：** <text_tag color='{category_color}'>{category}</text_tag>\n"
+            )
 
         if info_content:
             elements.append(
@@ -680,6 +686,7 @@ class RecordCard:
         构建瞬间完成和开始事项类型的表单字段
 
         表单内字段包括：
+        - 所属分类 category（在表单）
         - 耗时 duration（在表单）
         - 完成方式 degree（在表单）
         - 备注 note（在表单）
@@ -692,12 +699,17 @@ class RecordCard:
         record_mode = data_source.get("record_mode", "")
         selected_degree = record_data.get("degree", "")
 
+        # 1. 所属分类字段（仅在ADD模式下显示）
+        if record_mode == RoutineRecordModes.ADD:
+            elements.append(
+                self._build_category_select_field(data_source, is_confirmed)
+            )
+
+        # 2. 完成方式字段（条件显示）
         need_degree_input = (record_mode == RoutineRecordModes.ADD) or (
             selected_degree == "其他" and record_mode == RoutineRecordModes.RECORD
         )
-
         if need_degree_input:
-            # 1. 完成方式字段
             degree_value = record_data.get("custom_degree", "")
             elements.append(
                 self.parent.build_form_row(
@@ -712,7 +724,7 @@ class RecordCard:
                 )
             )
 
-        # 2. 耗时字段
+        # 3. 耗时字段
         duration_value = record_data.get("duration", "")
         elements.append(
             self.parent.build_form_row(
@@ -726,41 +738,16 @@ class RecordCard:
                 ),
             )
         )
-        # 3. 指标值字段（根据指标类型动态显示）
-        progress_type = event_definition.get("properties", {}).get(
-            "progress_type", RoutineProgressTypes.NONE.value
+
+        # 4. 指标值字段（根据指标类型动态显示）
+        elements.extend(
+            self._build_progress_field(event_definition, record_data, is_confirmed)
         )
-        if progress_type != RoutineProgressTypes.NONE.value:
-            placeholder_text = RoutineProgressTypes.get_by_value(
-                progress_type
-            ).placeholder
 
-            progress_value = record_data.get("progress_value", "")
-            elements.append(
-                self.parent.build_form_row(
-                    "📈 指标值",
-                    self.parent.build_input_element(
-                        placeholder=placeholder_text,
-                        initial_value=str(progress_value) if progress_value else "",
-                        disabled=is_confirmed,
-                        action_data={},
-                        name="progress_value",
-                    ),
-                )
-            )
-
-        # 4. 备注字段
-        note_value = record_data.get("note", "")
-        elements.append(
-            self.parent.build_form_row(
-                "📝 备注",
-                self.parent.build_input_element(
-                    placeholder="请输入备注（可选）",
-                    initial_value=str(note_value) if note_value else "",
-                    disabled=is_confirmed,
-                    action_data={},
-                    name="note",
-                ),
+        # 5. 附加信息字段（分类和备注）
+        elements.extend(
+            self._build_additional_info_fields(
+                data_source, record_data, is_confirmed, record_mode
             )
         )
 
@@ -773,6 +760,7 @@ class RecordCard:
         构建长期持续类型的表单字段
 
         表单内字段包括：
+        - 所属分类 category（在表单）
         - 间隔类型（单选，在表单）
         - 目标类型（无/time/count，在表单）
         - 目标值（可以为空，在表单）
@@ -782,8 +770,15 @@ class RecordCard:
         elements = []
         event_definition = data_source.get("event_definition", {})
         record_data = data_source.get("record_data", {})
+        record_mode = data_source.get("record_mode", "")
 
-        # 1. 检查周期选择器
+        # 1. 所属分类字段（仅在ADD模式下显示）
+        if record_mode == RoutineRecordModes.ADD:
+            elements.append(
+                self._build_category_select_field(data_source, is_confirmed)
+            )
+
+        # 2. 循环周期选择器
         check_cycle = event_definition.get("properties", {}).get("check_cycle", "")
         elements.append(
             self.parent.build_form_row(
@@ -799,65 +794,20 @@ class RecordCard:
             )
         )
 
-        # 2. 指标值字段（根据指标类型动态显示）
-        progress_type = event_definition.get("properties", {}).get(
-            "progress_type", RoutineProgressTypes.NONE.value
+        # 3. 指标值字段（根据指标类型动态显示）
+        elements.extend(
+            self._build_progress_field(event_definition, record_data, is_confirmed)
         )
-        if progress_type != RoutineProgressTypes.NONE.value:
-            placeholder_text = RoutineProgressTypes.get_by_value(
-                progress_type
-            ).placeholder
 
-            progress_value = record_data.get("progress_value", "")
-            elements.append(
-                self.parent.build_form_row(
-                    "📈 指标值",
-                    self.parent.build_input_element(
-                        placeholder=placeholder_text,
-                        initial_value=str(progress_value) if progress_value else "",
-                        disabled=is_confirmed,
-                        action_data={},
-                        name="progress_value",
-                    ),
-                )
-            )
-
-        # 3. 目标值字段（根据目标类型动态显示）
-        target_type = event_definition.get("properties", {}).get(
-            "target_type", RoutineTargetTypes.NONE.value
+        # 4. 目标值字段（根据目标类型动态显示）
+        elements.extend(
+            self._build_target_field(event_definition, record_data, is_confirmed)
         )
-        if target_type and target_type != RoutineTargetTypes.NONE.value:
-            placeholder_text = (
-                "目标时间（分钟）"
-                if target_type == RoutineTargetTypes.TIME.value
-                else "目标次数"
-            )
-            target_value = record_data.get("target_value", "")
-            elements.append(
-                self.parent.build_form_row(
-                    "🎯 目标值",
-                    self.parent.build_input_element(
-                        placeholder=placeholder_text,
-                        initial_value=str(target_value) if target_value else "",
-                        disabled=is_confirmed,
-                        action_data={},
-                        name="target_value",
-                    ),
-                )
-            )
 
-        # 4. 备注字段
-        note_value = record_data.get("note", "")
-        elements.append(
-            self.parent.build_form_row(
-                "📝 备注",
-                self.parent.build_input_element(
-                    placeholder="请输入备注（可选）",
-                    initial_value=str(note_value) if note_value else "",
-                    disabled=is_confirmed,
-                    action_data={},
-                    name="note",
-                ),
+        # 5. 附加信息字段（分类和备注）
+        elements.extend(
+            self._build_additional_info_fields(
+                data_source, record_data, is_confirmed, record_mode
             )
         )
 
@@ -911,13 +861,113 @@ class RecordCard:
             )
         )
 
-        # 4. 提醒设置字段（根据提醒模式显示）
+        # 3. 提醒设置字段（根据提醒模式显示）
+        elements.extend(self._build_reminder_fields(record_data, is_confirmed))
+
+        # 4. 附加信息字段（预估耗时和备注）
+        elements.append(
+            self._build_collapsible_additional_info(
+                [
+                    self._build_duration_field(record_data, is_confirmed),
+                    self._build_note_field(record_data, is_confirmed),
+                ]
+            )
+        )
+
+        return elements
+
+    # region 表单内字段组件
+    def _build_category_select_field(
+        self, data_source: Dict, is_confirmed: bool
+    ) -> Dict:
+        """构建分类选择字段"""
+        category_options = data_source.get("category_options", [])
+        event_definition = data_source.get("event_definition", {})
+        category_value = event_definition.get("category", "")
+
+        # 构建分类选项
+        options_dict = {option: option for option in category_options}
+        category_select_options = self.parent.build_options(options_dict)
+
+        return self.parent.build_form_row(
+            "所属分类",
+            self.parent.build_select_element(
+                placeholder="选择分类",
+                options=category_select_options,
+                initial_value=category_value,
+                disabled=is_confirmed,
+                action_data={},
+                name="category_select",
+            ),
+        )
+
+    def _build_progress_field(
+        self, event_definition: Dict, record_data: Dict, is_confirmed: bool
+    ) -> List[Dict]:
+        """构建指标值字段"""
+        progress_type = event_definition.get("properties", {}).get(
+            "progress_type", RoutineProgressTypes.NONE.value
+        )
+        if progress_type == RoutineProgressTypes.NONE.value:
+            return []
+
+        placeholder_text = RoutineProgressTypes.get_by_value(progress_type).placeholder
+        progress_value = record_data.get("progress_value", "")
+
+        return [
+            self.parent.build_form_row(
+                "📈 指标值",
+                self.parent.build_input_element(
+                    placeholder=placeholder_text,
+                    initial_value=str(progress_value) if progress_value else "",
+                    disabled=is_confirmed,
+                    action_data={},
+                    name="progress_value",
+                ),
+            )
+        ]
+
+    def _build_target_field(
+        self, event_definition: Dict, record_data: Dict, is_confirmed: bool
+    ) -> List[Dict]:
+        """构建目标值字段"""
+        target_type = event_definition.get("properties", {}).get(
+            "target_type", RoutineTargetTypes.NONE.value
+        )
+        if not target_type or target_type == RoutineTargetTypes.NONE.value:
+            return []
+
+        placeholder_text = (
+            "目标时间（分钟）"
+            if target_type == RoutineTargetTypes.TIME.value
+            else "目标次数"
+        )
+        target_value = record_data.get("target_value", "")
+
+        return [
+            self.parent.build_form_row(
+                "🎯 目标值",
+                self.parent.build_input_element(
+                    placeholder=placeholder_text,
+                    initial_value=str(target_value) if target_value else "",
+                    disabled=is_confirmed,
+                    action_data={},
+                    name="target_value",
+                ),
+            )
+        ]
+
+    def _build_reminder_fields(
+        self, record_data: Dict, is_confirmed: bool
+    ) -> List[Dict]:
+        """构建提醒相关字段"""
         reminder_mode = record_data.get("reminder_mode", RoutineReminderModes.OFF.value)
+
         match reminder_mode:
             case RoutineReminderModes.TIME.value:
                 # TIME模式：具体时间提醒，使用日期时间选择器
                 reminder_time = record_data.get("reminder_time", "")
-                elements.append(
+                return [
                     self.parent.build_form_row(
                         "提醒时间",
                         self.parent.build_date_picker_element(
@@ -928,12 +978,11 @@ class RecordCard:
                             name="reminder_time",
                         ),
                     )
-                )
-
+                ]
             case RoutineReminderModes.RELATIVE.value:
                 # RELATIVE模式：相对时间提醒，使用多选框选择相对时间
                 reminder_relative = record_data.get("reminder_relative", [])
-                elements.append(
+                return [
                     self.parent.build_form_row(
                         "提醒时间",
                         self.parent.build_multi_select_element(
@@ -945,53 +994,83 @@ class RecordCard:
                             name="reminder_relative",
                         ),
                     )
-                )
+                ]
+            case _:
+                return []
 
-        # 3. 预估耗时和备注字段 - 放在折叠面板中
-        additional_fields = []
+    def _build_additional_info_fields(
+        self,
+        data_source: Dict,
+        record_data: Dict,
+        is_confirmed: bool,
+        record_mode: str,
+    ) -> List[Dict]:
+        """构建附加信息字段（分类和备注）"""
+        if record_mode == RoutineRecordModes.ADD:
+            # ADD模式下显示分类和备注字段
+            event_definition = data_source.get("event_definition", {})
+            additional_fields = [
+                self._build_category_input_field(event_definition, is_confirmed),
+                self._build_note_field(record_data, is_confirmed),
+            ]
+            return [self._build_collapsible_additional_info(additional_fields)]
 
-        # 预估耗时字段
-        duration_value = record_data.get("duration", "")
-        additional_fields.append(
-            self.parent.build_form_row(
-                "预估耗时",
-                self.parent.build_input_element(
-                    placeholder="预估耗时（分钟）",
-                    initial_value=str(duration_value) if duration_value else "",
-                    disabled=is_confirmed,
-                    action_data={},
-                    name="duration",
-                ),
-                width_list=["80px", "180px"],
-            )
+        # RECORD模式下只显示备注字段
+        return [self._build_note_field(record_data, is_confirmed)]
+
+    def _build_category_input_field(
+        self, event_definition: Dict, is_confirmed: bool
+    ) -> Dict:
+        """构建分类输入字段"""
+        category_value = event_definition.get("category", "")
+        return self.parent.build_form_row(
+            "新建分类",
+            self.parent.build_input_element(
+                placeholder="优先级更高",
+                initial_value=category_value,
+                disabled=is_confirmed,
+                action_data={},
+                name="category_input",
+            ),
         )
 
-        # 备注字段
+    def _build_note_field(self, record_data: Dict, is_confirmed: bool) -> Dict:
+        """构建备注字段"""
         note_value = record_data.get("note", "")
-        additional_fields.append(
-            self.parent.build_form_row(
-                "📝 备注",
-                self.parent.build_input_element(
-                    placeholder="请输入备注（可选）",
-                    initial_value=str(note_value) if note_value else "",
-                    disabled=is_confirmed,
-                    action_data={},
-                    name="note",
-                ),
-                width_list=["80px", "180px"],
-            )
+        return self.parent.build_form_row(
+            "📝 备注",
+            self.parent.build_input_element(
+                placeholder="请输入备注（可选）",
+                initial_value=str(note_value) if note_value else "",
+                disabled=is_confirmed,
+                action_data={},
+                name="note",
+            ),
         )
 
-        # 将附加字段放入折叠面板
-        collapsible_panel = self.parent.build_collapsible_panel_element(
+    def _build_duration_field(self, record_data: Dict, is_confirmed: bool) -> Dict:
+        """构建耗时字段"""
+        duration_value = record_data.get("duration", "")
+        return self.parent.build_form_row(
+            "预估耗时",
+            self.parent.build_input_element(
+                placeholder="预估耗时（分钟）",
+                initial_value=str(duration_value) if duration_value else "",
+                disabled=is_confirmed,
+                action_data={},
+                name="duration",
+            ),
+            width_list=["80px", "180px"],
+        )
+
+    def _build_collapsible_additional_info(self, additional_fields: List[Dict]) -> Dict:
+        """构建可折叠的附加信息面板"""
+        return self.parent.build_collapsible_panel_element(
             header_text="📋 附加信息",
             header_icon="down-small-ccm_outlined",
             expanded=False,
             content=additional_fields,
         )
-        elements.append(collapsible_panel)
-
-        return elements
 
     def _get_priority_options(self) -> List[Dict]:
         """获取重要性选项"""
@@ -1141,11 +1220,10 @@ class RecordCard:
                 "已取消当前记录",
                 ToastTypes.INFO,
             )
-        else:
 
-            return self.parent.delete_and_respond_with_update(
-                context.user_id, card_id, new_card_dsl, "操作已取消", ToastTypes.INFO
-            )
+        return self.parent.delete_and_respond_with_update(
+            context.user_id, card_id, new_card_dsl, "操作已取消", ToastTypes.INFO
+        )
 
     def confirm_record(self, context: MessageContext_Refactor) -> ProcessResult:
         """确认直接记录"""
@@ -1205,15 +1283,15 @@ class RecordCard:
                 f"【{event_name}】 {message}，可继续添加新记录",
                 ToastTypes.SUCCESS,
             )
-        else:
-            # 非连续记录模式：删除数据并显示确认状态
-            return self.parent.delete_and_respond_with_update(
-                context.user_id,
-                card_id,
-                new_card_dsl,
-                f"【{event_name}】 {message}",
-                ToastTypes.SUCCESS,
-            )
+
+        # 非连续记录模式：删除数据并显示确认状态
+        return self.parent.delete_and_respond_with_update(
+            context.user_id,
+            card_id,
+            new_card_dsl,
+            f"【{event_name}】 {message}",
+            ToastTypes.SUCCESS,
+        )
 
     def _handle_card_data(
         self, data_source: Dict, form_data: Dict, fields_in_event_definition: List[str]
@@ -1227,6 +1305,19 @@ class RecordCard:
         event_definition = data_source.get("event_definition", {})
         if "properties" not in event_definition:
             event_definition["properties"] = {}
+
+        # 处理分类字段的优先级逻辑
+        category_input = form_data.get("category_input", "").strip()
+        category_select = form_data.get("category_select", "").strip()
+
+        # 优先使用输入框的内容，如果为空则使用选择框的内容
+        final_category = category_input if category_input else category_select
+        if final_category:
+            event_definition["category"] = final_category
+
+        # 移除原始的分类字段，避免重复处理
+        form_data.pop("category_input", None)
+        form_data.pop("category_select", None)
 
         for field in fields_in_event_definition:
             if field in form_data:
