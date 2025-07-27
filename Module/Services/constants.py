@@ -6,6 +6,7 @@
 
 from enum import Enum
 from typing import Dict, Any, List
+import random
 
 
 # ========== 服务名称常量 ==========
@@ -600,3 +601,60 @@ class RoutineRecordModes:
     RECORD = "record"
     QUERY = "query"  # 查询模式
     ADD = "add"  # 添加模式
+
+
+class ColorTypes(Enum):
+    """颜色类型"""
+
+    BLUE = {"value": "blue", "light_color": "#1456F0", "dark_color": "#75A4FF"}
+    CARMINE = {"value": "carmine", "light_color": "#B82879", "dark_color": "#ED77BA"}
+    GREEN = {"value": "green", "light_color": "#1A7526", "dark_color": "#51BA43"}
+    RED = {"value": "red", "light_color": "#C02A26", "dark_color": "#F6827E"}
+    INDIGO = {"value": "indigo", "light_color": "#4752E6", "dark_color": "#9499F7"}
+    LIME = {"value": "lime", "light_color": "#5C6D08", "dark_color": "#93AF04"}
+    GREY = {"value": "grey", "light_color": "#646a73", "dark_color": "#a6a6a6"}
+    ORANGE = {"value": "orange", "light_color": "#A44904", "dark_color": "#F3871B"}
+    PINK = {"value": "pink", "light_color": "#A630A6", "dark_color": "#E17FE1"}
+    PURPLE = {"value": "purple", "light_color": "#7A35F0", "dark_color": "#B88FFE"}
+    TURQUOISE = {
+        "value": "turquoise",
+        "light_color": "#067062",
+        "dark_color": "#1AB7A1",
+    }
+    SUNFLOWER = {
+        "value": "sunflower",
+        "light_color": "#8F7C00",
+        "dark_color": "#F5DF36",
+    }
+
+    WATHE = {"value": "wateh", "light_color": "#076A94", "dark_color": "#25B2E5"}
+    YELLOW = {"value": "yellow", "light_color": "#865B03", "dark_color": "#FBCB46"}
+    CARMINE_300 = {
+        "value": "carmine_300",
+        "light_color": "#F598CC",
+        "dark_color": "#94386C",
+    }
+
+    @property
+    def value(self) -> str:
+        return self._value_["value"]
+
+    @property
+    def light_color(self) -> str:
+        return self._value_["light_color"]
+
+    @property
+    def dark_color(self) -> str:
+        return self._value_["dark_color"]
+
+    @classmethod
+    def get_by_value(cls, value: str):
+        """根据value获取对应的枚举成员"""
+        return next((member for member in cls if member.value == value), cls.BLUE)
+
+    @classmethod
+    def get_random_color(cls, ignore_value: str = None) -> str:
+        """根据value获取亮色"""
+        return random.choice(
+            [color for color in cls if color.value not in ["grey", ignore_value]]
+        )

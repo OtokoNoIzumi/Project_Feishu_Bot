@@ -6,8 +6,7 @@ Shared Utilities for Routine Cards
 
 from typing import Dict, Any
 from Module.Business.processors.base_processor import MessageContext_Refactor
-from Module.Common.scripts.common import debug_utils
-from Module.Services.constants import ToastTypes, RoutineTypes, CardOperationTypes
+from Module.Services.constants import ToastTypes, CardOperationTypes, ColorTypes
 
 
 class SharedUtils:
@@ -84,13 +83,21 @@ class SharedUtils:
         """构建工作流程卡片头部"""
         if workflow_state == "quick_record" and event_name:
             return self.parent.build_card_header(
-                f"📝 记录：{event_name}", "确认记录信息", "blue", "edit_outlined"
+                f"📝 记录：{event_name}",
+                "确认记录信息",
+                ColorTypes.BLUE.value,
+                "edit_outlined",
             )
         if workflow_state == "new_event_option":
             return self.parent.build_card_header(
-                "🆕 新建事项", "事项不存在，是否新建？", "orange", "add_outlined"
+                "🆕 新建事项",
+                "事项不存在，是否新建？",
+                ColorTypes.ORANGE.value,
+                "add_outlined",
             )
         if is_confirmed:
             return self.parent.build_status_based_header("", is_confirmed, result)
 
-        return self.parent.build_card_header("🚀 快速记录", "输入或选择事项", "purple")
+        return self.parent.build_card_header(
+            "🚀 快速记录", "输入或选择事项", ColorTypes.PURPLE.value
+        )

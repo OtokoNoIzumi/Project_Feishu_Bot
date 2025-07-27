@@ -17,6 +17,7 @@ from Module.Services.constants import (
     CardOperationTypes,
     RoutineCheckCycle,
     RoutineRecordModes,
+    ColorTypes,
 )
 from Module.Business.processors.base_processor import (
     MessageContext_Refactor,
@@ -71,7 +72,9 @@ class RecordCard:
                 subtitle = "请确认记录信息"
                 icon = "edit_outlined"
 
-        return self.parent.build_card_header(title, subtitle, "blue", icon)
+        return self.parent.build_card_header(
+            title, subtitle, ColorTypes.BLUE.value, icon
+        )
 
     def build_record_elements(self, business_data: Dict[str, Any]) -> List[Dict]:
         """
@@ -1314,6 +1317,15 @@ class RecordCard:
         final_category = category_input if category_input else category_select
         if final_category:
             event_definition["category"] = final_category
+
+        if final_category not in data_source.get("category_options", []):
+            color_value = ColorTypes.get_random_color().value
+            data_source["categories"].append(
+                {
+                    "name": final_category,
+                    "color": color_value,
+                }
+            )
 
         # 移除原始的分类字段，避免重复处理
         form_data.pop("category_input", None)

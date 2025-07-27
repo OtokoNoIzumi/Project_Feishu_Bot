@@ -11,7 +11,12 @@ from lark_oapi.event.callback.model.p2_card_action_trigger import (
     P2CardActionTriggerResponse,
 )
 from Module.Common.scripts.common import debug_utils
-from Module.Services.constants import ServiceNames, CardOperationTypes, ReplyModes
+from Module.Services.constants import (
+    ServiceNames,
+    CardOperationTypes,
+    ReplyModes,
+    ColorTypes,
+)
 from Module.Business.processors import MessageContext_Refactor
 
 # 配置驱动的管理器映射 - 从配置文件获取
@@ -292,17 +297,18 @@ class BaseCardManager(ABC):
             categories_data: 分类数据列表（包含name和color的对象数组）
 
         Returns:
-            str: 分类颜色，默认为"blue"
+            str: 分类颜色，默认为ColorTypes.BLUE.value
         """
+        match_color = ColorTypes.get_by_value(category_name).value
         if not categories_data:
-            return "blue"
+            return match_color
 
         # 从分类数据中查找对应的颜色
         for category_obj in categories_data:
             if category_obj.get("name") == category_name:
-                return category_obj.get("color", "blue")
+                return category_obj.get("color", match_color)
 
-        return "blue"  # 默认颜色
+        return match_color  # 默认颜色
 
     def print_json(self, mark: str, data: Dict[str, Any]):
         """打印json数据"""
@@ -352,7 +358,11 @@ class BaseCardManager(ABC):
         return final_element
 
     def build_card_header(
-        self, title: str, subtitle: str = "", template: str = "blue", icon: str = ""
+        self,
+        title: str,
+        subtitle: str = "",
+        template: str = ColorTypes.BLUE.value,
+        icon: str = "",
     ) -> Dict[str, Any]:
         """构建通用卡片头部"""
         header = {
@@ -378,7 +388,7 @@ class BaseCardManager(ABC):
         """构建基于状态的卡片头部 - 适用于确认类卡片"""
         if not is_confirmed:
             return self.build_card_header(
-                base_title, "请确认记录信息", "blue", "edit_outlined"
+                base_title, "请确认记录信息", ColorTypes.BLUE.value, "edit_outlined"
             )
 
         if result == "确认":
@@ -386,10 +396,12 @@ class BaseCardManager(ABC):
                 f"{confirmed_prefix}{base_title}" if confirmed_prefix else base_title
             )
             return self.build_card_header(
-                title, "记录信息已确认并保存", "green", "done_outlined"
+                title, "记录信息已确认并保存", ColorTypes.GREEN.value, "done_outlined"
             )
 
-        return self.build_card_header("操作已取消", "", "grey", "close_outlined")
+        return self.build_card_header(
+            "操作已取消", "", ColorTypes.GREY.value, "close_outlined"
+        )
 
     # 辅助方法
     def build_form_row(

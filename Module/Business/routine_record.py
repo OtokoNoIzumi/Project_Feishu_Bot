@@ -25,6 +25,7 @@ from Module.Services.constants import (
     RoutineProgressTypes,
     RoutineTargetTypes,
     RoutineRecordModes,
+    ColorTypes,
 )
 from Module.Business.processors.base_processor import (
     BaseProcessor,
@@ -1191,6 +1192,7 @@ class RoutineRecord(BaseProcessor):
         # 对于stats的，是复合操作，从配置里加载，计算，再更新。
         event_definitions = self.load_event_definitions(user_id)
         event_definition = dup_business_data.get("event_definition", {})
+        catagory_options = dup_business_data.get("category_options", [])
         event_type = event_definition.get("type", RoutineTypes.INSTANT.value)
         computed_data = dup_business_data.get("computed_data", {})
         cycle_info = computed_data.get("cycle_info", {})
@@ -1272,11 +1274,28 @@ class RoutineRecord(BaseProcessor):
                 new_definition, dup_business_data, current_time
             )
 
-            new_definition["category"] = event_definition.get("category", "")
+            category = event_definition.get("category", "")
+            new_definition["category"] = category
 
             new_definition["last_record_id"] = record_id
             # 添加到定义集合中
             event_definitions["definitions"][event_name] = new_definition
+
+            if category and category not in catagory_options:
+                categories_data = dup_business_data.get("categories", [])
+                # 从分类数据中查找对应的颜色
+                for category_obj in categories_data:
+                    if category_obj.get("name") == category:
+                        new_color = category_obj.get("color", "")
+                        break
+                if not new_color:
+                    new_color = ColorTypes.get_random_color().value
+                event_definitions["categories"].append(
+                    {
+                        "name": category,
+                        "color": new_color,
+                    }
+                )
 
         if source_record_name:
             source_definition = event_definitions["definitions"].get(
@@ -1288,42 +1307,6 @@ class RoutineRecord(BaseProcessor):
         # 更新全局时间戳
         event_definitions["last_updated"] = current_time
         event_definitions["last_record_time"] = current_time
-
-        # 更新categories列表（去重）
-        categories_data = event_definitions.get("categories", [])
-        category_names = set()
-
-        # 从现有分类数据中收集分类名称
-        for category_obj in categories_data:
-            category_name = category_obj.get("name", "")
-            if category_name:
-                category_names.add(category_name)
-
-        # 从所有事件定义中收集分类
-        for def_name, definition in event_definitions.get("definitions", {}).items():
-            category = definition.get("category")
-            if category and category.strip():
-                category_names.add(category.strip())
-
-        # 构建新的分类数据结构
-        new_categories = []
-        for category_name in sorted(category_names):
-            # 查找现有的分类对象以保留颜色信息
-            existing_category = None
-            for cat_obj in categories_data:
-                if cat_obj.get("name") == category_name:
-                    existing_category = cat_obj
-                    break
-
-            if existing_category:
-                new_categories.append(existing_category)
-            else:
-                # 新分类使用默认颜色
-                new_categories.append(
-                    {"name": category_name, "color": "blue"}  # 默认颜色
-                )
-
-        event_definitions["categories"] = new_categories
 
         # 保存事件定义
         return self.save_event_definitions(user_id, event_definitions)
