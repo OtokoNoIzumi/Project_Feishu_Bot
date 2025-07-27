@@ -5,7 +5,6 @@ Main Coordinator
 
 来源：routine_cards.py RoutineCardManager类
 """
-
 from typing import Dict, Any, List
 from Module.Adapters.feishu.cards.card_registry import BaseCardManager
 from Module.Business.processors.base_processor import (

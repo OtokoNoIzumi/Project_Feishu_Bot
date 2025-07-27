@@ -672,20 +672,24 @@ class RecordCard:
                         disabled=is_confirmed,
                         action_data={},
                         name="event_name",
-                        required=True,
+                        required=True and not is_confirmed,
                     ),
                 )
             )
 
         match event_type:
             case RoutineTypes.INSTANT.value | RoutineTypes.START.value:
-                form_fields.extend(self._build_instant_start_form_fields(
-                    data_source, is_confirmed
-                ))
+                form_fields.extend(
+                    self._build_instant_start_form_fields(data_source, is_confirmed)
+                )
             case RoutineTypes.ONGOING.value:
-                form_fields.extend(self._build_ongoing_form_fields(data_source, is_confirmed))
+                form_fields.extend(
+                    self._build_ongoing_form_fields(data_source, is_confirmed)
+                )
             case RoutineTypes.FUTURE.value:
-                form_fields.extend(self._build_future_form_fields(data_source, is_confirmed))
+                form_fields.extend(
+                    self._build_future_form_fields(data_source, is_confirmed)
+                )
         # 返回完整的表单容器
         return {
             "tag": "form",
@@ -1247,9 +1251,7 @@ class RecordCard:
         )
         # 检查是否为连续记录模式
         continuous_record = business_data.get("continuous_record", False)
-        
         if continuous_record:
-            
             return self.parent.save_and_respond_with_update(
                 context.user_id,
                 card_id,
@@ -1312,16 +1314,16 @@ class RecordCard:
         new_card_dsl = self.parent.build_update_card_data(
             business_data, build_method_name
         )
-        
-        if continuous_record:             
-             return self.parent.save_and_respond_with_update(
-                 context.user_id,
-                 card_id,
-                 business_data,
-                 new_card_dsl,
-                 f"【{event_name}】 {message}，可继续添加新记录",
-                 ToastTypes.SUCCESS,
-             )
+
+        if continuous_record:
+            return self.parent.save_and_respond_with_update(
+                context.user_id,
+                card_id,
+                business_data,
+                new_card_dsl,
+                f"【{event_name}】 {message}，可继续添加新记录",
+                ToastTypes.SUCCESS,
+            )
         else:
             # 非连续记录模式：删除数据并显示确认状态
             return self.parent.delete_and_respond_with_update(

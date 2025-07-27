@@ -239,62 +239,47 @@ class QueryResultsCard:
         # 按钮区
         buttons = []
         # 完成按钮
+        complete_action_data = {
+            "card_action": "complete_active_record",
+            "card_config_key": CardConfigKeys.ROUTINE_QUERY,
+            "record_id": record_id,
+            "event_name": event_name,
+            "container_build_method": build_method_name,
+        }
         buttons.append(
-            {
-                "tag": "button",
-                "text": {"tag": "plain_text", "content": "完成"},
-                "type": "primary",
-                "size": "small",
-                "disabled": is_confirmed,
-                "behaviors": [
-                    {
-                        "type": "callback",
-                        "value": {
-                            "card_action": "complete_active_record",
-                            "card_config_key": CardConfigKeys.ROUTINE_QUERY,
-                            "record_id": record_id,
-                            "event_name": event_name,
-                            "container_build_method": build_method_name,
-                        },
-                    }
-                ],
-            }
+            self.parent.build_button_element(
+                text="完成",
+                disabled=is_confirmed,
+                action_data=complete_action_data,
+                type="primary",
+                size="small",
+            )
         )
+
         # 新关联事件按钮
+        new_related_action_data = {
+            "card_action": "create_related_event",
+            "card_config_key": CardConfigKeys.ROUTINE_QUERY,
+            "record_id": record_id,
+            "container_build_method": build_method_name,
+            "expand_position": expand_position,
+        }
         buttons.append(
-            {
-                "tag": "button",
-                "text": {"tag": "plain_text", "content": "新关联事件"},
-                "type": "default",
-                "size": "small",
-                "disabled": is_confirmed,
-                "behaviors": [
-                    {
-                        "type": "callback",
-                        "value": {
-                            "card_action": "create_related_event",
-                            "card_config_key": CardConfigKeys.ROUTINE_QUERY,
-                            "record_id": record_id,
-                            "container_build_method": build_method_name,
-                            "expand_position": expand_position,
-                        },
-                    }
-                ],
-            }
+            self.parent.build_button_element(
+                text="新关联事件",
+                disabled=is_confirmed,
+                action_data=new_related_action_data,
+                size="small",
+            )
         )
+
         # 按钮行
-        button_columns = [
-            {"tag": "column", "width": "auto", "elements": [btn]} for btn in buttons
-        ]
+        button_columns = self.parent.build_button_line_element(buttons)
         # 折叠容器内容
         content = [
-            {
-                "tag": "column_set",
-                "horizontal_align": "left",
-                "columns": button_columns,
-                "margin": "0px 0px 0px 0px",
-            }
+            self.parent.build_column_set_element(button_columns),
         ]
+
         button_text_length = 0
         new_buttons = []
         # related_events 按钮
@@ -302,60 +287,38 @@ class QueryResultsCard:
             current_button_length = min(4, len(rel))
             # 预检测：如果添加当前按钮会超出限制，先输出已有按钮
             if button_text_length + current_button_length > 10 and new_buttons:
-                button_columns = [
-                    {"tag": "column", "width": "auto", "elements": [btn]}
-                    for btn in new_buttons
-                ]
+                button_columns = self.parent.build_button_line_element(new_buttons)
                 content.append(
-                    {
-                        "tag": "column_set",
-                        "horizontal_align": "left",
-                        "columns": button_columns,
-                        "margin": "0px 0px 0px 0px",
-                    }
+                    self.parent.build_column_set_element(button_columns),
                 )
                 new_buttons = []
                 button_text_length = 0
 
-            # 添加当前按钮
+            new_action_data = {
+                "card_action": "related_event_action",
+                "card_config_key": CardConfigKeys.ROUTINE_QUERY,
+                "record_id": record_id,
+                "event_name": rel,
+                "container_build_method": build_method_name,
+                "expand_position": expand_position,
+            }
             new_buttons.append(
-                {
-                    "tag": "button",
-                    "text": {"tag": "plain_text", "content": rel},
-                    "type": "default",
-                    "size": "small",
-                    "disabled": is_confirmed,
-                    "behaviors": [
-                        {
-                            "type": "callback",
-                            "value": {
-                                "card_action": "related_event_action",
-                                "card_config_key": CardConfigKeys.ROUTINE_QUERY,
-                                "record_id": record_id,
-                                "event_name": rel,
-                                "container_build_method": build_method_name,
-                                "expand_position": expand_position,
-                            },
-                        }
-                    ],
-                }
+                self.parent.build_button_element(
+                    text=rel,
+                    disabled=is_confirmed,
+                    action_data=new_action_data,
+                    size="small",
+                )
             )
             button_text_length += current_button_length
 
         # 输出剩余按钮
         if new_buttons:
-            button_columns = [
-                {"tag": "column", "width": "auto", "elements": [btn]}
-                for btn in new_buttons
-            ]
+            button_columns = self.parent.build_button_line_element(new_buttons)
             content.append(
-                {
-                    "tag": "column_set",
-                    "horizontal_align": "left",
-                    "columns": button_columns,
-                    "margin": "0px 0px 0px 0px",
-                }
+                self.parent.build_column_set_element(button_columns),
             )
+
         # 头部信息
         head_info = f"**{event_name}**"
         scheduled_time = record.get("data", {}).get("scheduled_start_time", "")
@@ -368,22 +331,12 @@ class QueryResultsCard:
         elif create_time:
             head_info += f"  开始: {self._get_short_time(create_time)}"
         elements.append(
-            {
-                "tag": "collapsible_panel",
-                "expanded": current_expand,
-                "header": {
-                    "title": {"tag": "markdown", "content": head_info},
-                    "icon": {
-                        "tag": "standard_icon",
-                        "token": "down-small-ccm_outlined",
-                        "color": "",
-                        "size": "16px 16px",
-                    },
-                    "icon_position": "right",
-                    "icon_expanded_angle": -180,
-                },
-                "elements": content,
-            }
+            self.parent.build_collapsible_panel_element(
+                header_text=head_info,
+                header_icon="down-small-ccm_outlined",
+                expanded=current_expand,
+                content=content,
+            )
         )
         return elements
 

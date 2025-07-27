@@ -4,6 +4,7 @@
 为所有feishu卡片管理器提供通用的基础接口和功能
 """
 
+import json
 from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional, List
 from lark_oapi.event.callback.model.p2_card_action_trigger import (
@@ -280,6 +281,13 @@ class BaseCardManager(ABC):
             toast_message=toast_message,
         )
 
+    def print_json(self, mark: str, data: Dict[str, Any]):
+        """打印json数据"""
+        print(
+            f"test-[{mark}]\n",
+            json.dumps(json.dumps(data, ensure_ascii=False), ensure_ascii=False),
+        )
+
     # region json卡片方法
     def build_base_card_structure(
         self,
@@ -518,9 +526,80 @@ class BaseCardManager(ABC):
             )
         return options
 
+    def build_button_element(
+        self,
+        text: str,
+        action_data: Dict[str, Any],
+        disabled: bool = False,
+        element_id: str = "",
+        name: str = "",
+        type: str = "default",
+        size: str = "medium",
+    ) -> Dict[str, Any]:
+        """构建按钮元素"""
+        final_element = {
+            "tag": "button",
+            "text": {"tag": "plain_text", "content": text},
+            "disabled": disabled,
+            "type": type,
+            "size": size,
+            "behaviors": [{"type": "callback", "value": action_data}],
+        }
+        if name:
+            final_element["name"] = name
+        if element_id:
+            final_element["element_id"] = element_id
+        return final_element
+
+    def build_button_line_element(
+        self,
+        buttons: List[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        """构建按钮组元素"""
+        return [
+            {"tag": "column", "width": "auto", "elements": [btn]} for btn in buttons
+        ]
+
+    def build_column_set_element(
+        self,
+        columns: List[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        """构建列组元素"""
+        return {"tag": "column_set", "columns": columns}
+
+    def build_collapsible_panel_element(
+        self,
+        header_text: str,
+        header_icon: str,
+        icon_size: str = "16px 16px",
+        expanded: bool = False,
+        content: List[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """构建折叠面板元素"""
+        if content is None:
+            content = []
+
+        return {
+            "tag": "collapsible_panel",
+            "expanded": expanded,
+            "header": {
+                "title": {"tag": "markdown", "content": header_text},
+                "icon": {
+                    "tag": "standard_icon",
+                    "token": header_icon,
+                    "color": "",
+                    "size": icon_size,
+                },
+                "icon_position": "right",
+                "icon_expanded_angle": -180,
+            },
+            "elements": content,
+        }
+
     # endregion
 
 
+# region 卡片注册表
 class FeishuCardRegistry:
     """飞书卡片管理器注册表"""
 
