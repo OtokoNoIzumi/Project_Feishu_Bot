@@ -231,12 +231,14 @@ class BaseCardManager(ABC):
                 break
             node = child
 
-        # 循环结束：
-        #   - 如果给了名字但没找到，说明不存在，直接返回原数据
-        #   - 如果没给名字，node 此时就是最深一层
-        is_container_mode = node is not business_data
-        data = node if not sub_business_name else business_data
-        return data, is_container_mode
+        # 循环结束的处理
+        if sub_business_name:
+            # 给了名字但在深度限制内都没找到，返回原始数据
+            return business_data, False
+        else:
+            # 没给名字，返回走到的最深层
+            is_container_mode = node is not business_data
+            return node, is_container_mode
 
     def save_and_respond_with_update(
         self,
@@ -529,12 +531,14 @@ class BaseCardManager(ABC):
     def build_button_element(
         self,
         text: str,
-        action_data: Dict[str, Any],
+        action_data: Dict[str, Any] = None,
         disabled: bool = False,
         element_id: str = "",
         name: str = "",
         type: str = "default",
         size: str = "medium",
+        icon: str = "",
+        form_action_type: str = "",
     ) -> Dict[str, Any]:
         """构建按钮元素"""
         final_element = {
@@ -543,22 +547,18 @@ class BaseCardManager(ABC):
             "disabled": disabled,
             "type": type,
             "size": size,
-            "behaviors": [{"type": "callback", "value": action_data}],
         }
+        if action_data:
+            final_element["behaviors"] = [{"type": "callback", "value": action_data}]
         if name:
             final_element["name"] = name
         if element_id:
             final_element["element_id"] = element_id
+        if icon:
+            final_element["icon"] = {"tag": "standard_icon", "token": icon}
+        if form_action_type:
+            final_element["form_action_type"] = form_action_type
         return final_element
-
-    def build_button_line_element(
-        self,
-        buttons: List[Dict[str, Any]],
-    ) -> Dict[str, Any]:
-        """构建按钮组元素"""
-        return [
-            {"tag": "column", "width": "auto", "elements": [btn]} for btn in buttons
-        ]
 
     def build_column_set_element(
         self,
@@ -566,6 +566,24 @@ class BaseCardManager(ABC):
     ) -> Dict[str, Any]:
         """构建列组元素"""
         return {"tag": "column_set", "columns": columns}
+
+    def build_column_element(
+        self,
+        elements: List[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        """构建列元素"""
+        return {
+            "tag": "column",
+            "elements": elements,
+        }
+
+    def build_button_group_element(
+        self,
+        buttons: List[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        """构建按钮组元素"""
+        columns = [self.build_column_element([button]) for button in buttons]
+        return self.build_column_set_element(columns)
 
     def build_collapsible_panel_element(
         self,
@@ -595,6 +613,14 @@ class BaseCardManager(ABC):
             },
             "elements": content,
         }
+
+    def build_form_element(
+        self,
+        elements: List[Dict[str, Any]],
+        name: str = "",
+    ) -> Dict[str, Any]:
+        """构建表单元素"""
+        return {"tag": "form", "elements": elements, "name": name}
 
     # endregion
 

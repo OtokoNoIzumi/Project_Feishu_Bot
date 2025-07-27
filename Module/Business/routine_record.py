@@ -641,7 +641,9 @@ class RoutineRecord(BaseProcessor):
             new_record_data = copy.deepcopy(current_record_data)
             last_record_time = new_record_data.get("create_time", None)
         else:
-            new_record_data = self._create_event_record(event_name, user_id, record_mode)
+            new_record_data = self._create_event_record(
+                event_name, user_id, record_mode
+            )
             last_record_time = definitions_data.get("last_record_time", None)
 
         # 公共的计算可以放在外面
@@ -798,7 +800,9 @@ class RoutineRecord(BaseProcessor):
         else:
             record_id = new_record.get("record_id", "")
 
-        if (event_type == RoutineTypes.INSTANT.value) or (record_mode == RoutineRecordModes.QUERY):
+        if (event_type == RoutineTypes.INSTANT.value) or (
+            record_mode == RoutineRecordModes.QUERY
+        ):
             new_record["end_time"] = current_time
 
         # 针对不同事件类型的特殊处理
@@ -814,7 +818,9 @@ class RoutineRecord(BaseProcessor):
         records_data = self.load_event_records(user_id)
         source_record_data = {}
         if source_record_id:
-            source_record_data = records_data.get("active_records", {}).get(source_record_id, {}) or records_data.get("records", {}).get(source_record_id, {})
+            source_record_data = records_data.get("active_records", {}).get(
+                source_record_id, {}
+            ) or records_data.get("records", {}).get(source_record_id, {})
             if source_record_data:
                 source_record_data.setdefault("related_records", {})
                 source_record_data["related_records"].setdefault(event_name, [])
@@ -825,9 +831,13 @@ class RoutineRecord(BaseProcessor):
         # 对于非 future 类型的事项，创建事件定义
         if event_type != RoutineTypes.FUTURE.value:
             self._update_event_definition(
-                user_id, event_name, dup_business_data, record_id, record_mode, source_record_data.get("event_name", "")
+                user_id,
+                event_name,
+                dup_business_data,
+                record_id,
+                record_mode,
+                source_record_data.get("event_name", ""),
             )
-
 
         # 特殊处理 QUERY 模式：编辑已有的 active_record
         if record_mode == RoutineRecordModes.QUERY:
@@ -1031,14 +1041,18 @@ class RoutineRecord(BaseProcessor):
                 "event_type": event_type,
                 "category": category,
                 "data": record,
-                "related_events": event_def.get("properties", {}).get("related_events", []),
+                "related_events": event_def.get("properties", {}).get(
+                    "related_events", []
+                ),
             }
 
             match event_type:
                 case RoutineTypes.START.value:
                     start_events.append(record_element)
                 case RoutineTypes.FUTURE.value:
-                    scheduled_date = record.get("scheduled_start_time", "")[:10]  # "2025-07-28 10:00" -> "2025-07-28"
+                    scheduled_date = record.get("scheduled_start_time", "")[
+                        :10
+                    ]  # "2025-07-28 10:00" -> "2025-07-28"
                     if scheduled_date == today:
                         future_today.append(record_element)
                     else:
@@ -1081,8 +1095,13 @@ class RoutineRecord(BaseProcessor):
             priority_definitions.append((event_name, definition))
 
         # 按quick_access和last_updated排序definitions
-        priority_definitions.sort(key=lambda x: (not x[1].get("quick_access", False),
-                                                x[1].get("last_updated", "")), reverse=True)
+        priority_definitions.sort(
+            key=lambda x: (
+                not x[1].get("quick_access", False),
+                x[1].get("last_updated", ""),
+            ),
+            reverse=True,
+        )
 
         # 限制处理数量，避免过多计算
         for event_name, definition in priority_definitions:
@@ -1225,7 +1244,9 @@ class RoutineRecord(BaseProcessor):
             event_definitions["definitions"][event_name] = new_definition
 
         if source_record_name:
-            source_definition = event_definitions["definitions"].get(source_record_name, {})
+            source_definition = event_definitions["definitions"].get(
+                source_record_name, {}
+            )
             if event_name not in source_definition["properties"]["related_events"]:
                 source_definition["properties"]["related_events"].append(event_name)
             source_definition["last_updated"] = current_time
@@ -1413,11 +1434,11 @@ class RoutineRecord(BaseProcessor):
         need_refresh = False
 
         match check_cycle:
-            case RoutineCheckCycle.DAILY:
+            case RoutineCheckCycle.DAILY.value:
                 days_diff = (now.date() - last_refresh.date()).days
                 cycle_gap = max(0, days_diff)
                 need_refresh = days_diff > 0
-            case RoutineCheckCycle.WEEKLY:
+            case RoutineCheckCycle.WEEKLY.value:
                 last_week = last_refresh.isocalendar()[1]
                 current_week = now.isocalendar()[1]
                 last_year = last_refresh.year
@@ -1432,13 +1453,13 @@ class RoutineRecord(BaseProcessor):
                         0, (current_week - 1) + (weeks_in_last_year - last_week)
                     )
                 need_refresh = cycle_gap > 0
-            case RoutineCheckCycle.MONTHLY:
+            case RoutineCheckCycle.MONTHLY.value:
                 months_diff = (current_year - last_year) * 12 + (
                     now.month - last_refresh.month
                 )
                 cycle_gap = max(0, months_diff)
                 need_refresh = cycle_gap > 0
-            case RoutineCheckCycle.SEASONALLY:
+            case RoutineCheckCycle.SEASONALLY.value:
                 last_season = (last_refresh.month - 1) // 3
                 current_season = (now.month - 1) // 3
                 seasons_diff = (current_year - last_year) * 4 + (
@@ -1446,7 +1467,7 @@ class RoutineRecord(BaseProcessor):
                 )
                 cycle_gap = max(0, seasons_diff)
                 need_refresh = cycle_gap > 0
-            case RoutineCheckCycle.YEARLY:
+            case RoutineCheckCycle.YEARLY.value:
                 cycle_gap = max(0, current_year - last_year)
                 need_refresh = cycle_gap > 0
             case _:
@@ -1454,19 +1475,9 @@ class RoutineRecord(BaseProcessor):
         # 生成描述
         gap_description = "前一" if cycle_gap <= 1 else f"前{cycle_gap}"
 
-        match check_cycle:
-            case RoutineCheckCycle.DAILY:
-                description = f"{gap_description}天"
-            case RoutineCheckCycle.WEEKLY:
-                description = f"{gap_description}周"
-            case RoutineCheckCycle.MONTHLY:
-                description = f"{gap_description}个月"
-            case RoutineCheckCycle.SEASONALLY:
-                description = f"{gap_description}个季度"
-            case RoutineCheckCycle.YEARLY:
-                description = f"{gap_description}年"
-            case _:
-                description = f"{gap_description}个{check_cycle}"
+        # 使用集中的描述单位
+        description_unit = RoutineCheckCycle.get_description_unit(check_cycle)
+        description = f"{gap_description}{description_unit}"
 
         return {
             "need_refresh": need_refresh,
@@ -1484,7 +1495,11 @@ class RoutineRecord(BaseProcessor):
         Returns:
             float: 平均耗时，如果没有数据则返回0
         """
-        event_duration_records = event_definition.get("stats", {}).get("duration", {}).get("recent_values", [])
+        event_duration_records = (
+            event_definition.get("stats", {})
+            .get("duration", {})
+            .get("recent_values", [])
+        )
         if event_duration_records:
             return round(sum(event_duration_records) / len(event_duration_records), 1)
         return 0

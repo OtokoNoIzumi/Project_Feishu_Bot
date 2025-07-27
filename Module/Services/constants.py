@@ -409,12 +409,51 @@ class RoutineTypes(Enum):
         return "📝"
 
 
-class RoutineCheckCycle:
-    DAILY = "天"
-    WEEKLY = "周"
-    MONTHLY = "月"
-    SEASONALLY = "季"  # 保持与业务层一致
-    YEARLY = "年"
+class RoutineCheckCycle(Enum):
+    """检查周期类型"""
+
+    DAILY = {"value": "天", "display_name": "每日", "description_unit": "天"}
+    WEEKLY = {"value": "周", "display_name": "每周", "description_unit": "周"}
+    MONTHLY = {"value": "月", "display_name": "每月", "description_unit": "个月"}
+    SEASONALLY = {
+        "value": "季",
+        "display_name": "每季",
+        "description_unit": "个季度",
+    }  # 保持与业务层一致
+    YEARLY = {"value": "年", "display_name": "每年", "description_unit": "年"}
+
+    @property
+    def value(self) -> str:
+        return self._value_["value"]
+
+    @property
+    def display_name(self) -> str:
+        return self._value_["display_name"]
+
+    @property
+    def description_unit(self) -> str:
+        return self._value_["description_unit"]
+
+    @classmethod
+    def build_options(cls) -> List[Dict[str, Any]]:
+        """构建选项元素 - 用于构建选择器元素的选项"""
+        return [
+            {
+                "text": {"tag": "plain_text", "content": member.display_name},
+                "value": member.value,
+            }
+            for member in cls
+        ]
+
+    @classmethod
+    def get_description_unit(cls, value: str) -> str:
+        """根据value获取描述单位"""
+        return cls.get_by_value(value).description_unit
+
+    @classmethod
+    def get_by_value(cls, value: str):
+        """根据value获取对应的枚举成员"""
+        return next((member for member in cls if member.value == value), cls.DAILY)
 
 
 class RoutineProgressTypes(Enum):
@@ -456,9 +495,24 @@ class RoutineProgressTypes(Enum):
 
 
 class RoutineTargetTypes(Enum):
-    NONE = {"value": "none", "display_name": "无目标", "chinese_name": "其他", "unit": ""}
-    TIME = {"value": "time", "display_name": "时间目标", "chinese_name": "时长", "unit": "分钟"}
-    COUNT = {"value": "count", "display_name": "次数目标", "chinese_name": "次数", "unit": "次"}
+    NONE = {
+        "value": "none",
+        "display_name": "无目标",
+        "chinese_name": "其他",
+        "unit": "",
+    }
+    TIME = {
+        "value": "time",
+        "display_name": "时间目标",
+        "chinese_name": "时长",
+        "unit": "分钟",
+    }
+    COUNT = {
+        "value": "count",
+        "display_name": "次数目标",
+        "chinese_name": "次数",
+        "unit": "次",
+    }
 
     @property
     def value(self) -> str:
@@ -513,17 +567,36 @@ class RoutineTargetTypes(Enum):
         return cls.get_by_value(value).unit
 
 
-class RoutineReminderModes:
+class RoutineReminderModes(Enum):
     """直接记录提醒模式"""
 
-    OFF = "none"
-    TIME = "time"
-    RELATIVE = "relative"
+    OFF = {"value": "none", "display_name": "关闭提醒"}
+    TIME = {"value": "time", "display_name": "具体时间"}
+    RELATIVE = {"value": "relative", "display_name": "相对时间"}
+
+    @property
+    def value(self) -> str:
+        return self._value_["value"]
+
+    @property
+    def display_name(self) -> str:
+        return self._value_["display_name"]
+
+    @classmethod
+    def build_options(cls) -> List[Dict[str, Any]]:
+        """构建选项元素 - 用于构建选择器元素的选项"""
+        return [
+            {
+                "text": {"tag": "plain_text", "content": member.display_name},
+                "value": member.value,
+            }
+            for member in cls
+        ]
 
 
 class RoutineRecordModes:
     """记录模式"""
 
     RECORD = "record"
-    QUERY = "query" # 查询模式
-    ADD = "add" # 添加模式
+    QUERY = "query"  # 查询模式
+    ADD = "add"  # 添加模式

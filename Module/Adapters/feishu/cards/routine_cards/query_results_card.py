@@ -5,6 +5,7 @@ Query Results Card
 """
 
 from typing import Dict, Any
+import pprint
 import datetime
 from Module.Business.processors.base_processor import MessageContext_Refactor
 from Module.Services.constants import CardConfigKeys, ToastTypes, RoutineRecordModes
@@ -278,10 +279,8 @@ class QueryResultsCard:
         )
 
         # 按钮行
-        button_columns = self.parent.build_button_line_element(buttons)
-        # 折叠容器内容
         content = [
-            self.parent.build_column_set_element(button_columns),
+            self.parent.build_button_group_element(buttons),
         ]
 
         button_text_length = 0
@@ -291,9 +290,8 @@ class QueryResultsCard:
             current_button_length = min(4, len(rel))
             # 预检测：如果添加当前按钮会超出限制，先输出已有按钮
             if button_text_length + current_button_length > 10 and new_buttons:
-                button_columns = self.parent.build_button_line_element(new_buttons)
                 content.append(
-                    self.parent.build_column_set_element(button_columns),
+                    self.parent.build_button_group_element(new_buttons),
                 )
                 new_buttons = []
                 button_text_length = 0
@@ -319,9 +317,8 @@ class QueryResultsCard:
 
         # 输出剩余按钮
         if new_buttons:
-            button_columns = self.parent.build_button_line_element(new_buttons)
             content.append(
-                self.parent.build_column_set_element(button_columns),
+                self.parent.build_button_group_element(new_buttons),
             )
 
         # 头部信息
@@ -376,9 +373,8 @@ class QueryResultsCard:
                 size="small",
             )
         )
-        button_columns = self.parent.build_button_line_element(buttons)
         content = [
-            self.parent.build_column_set_element(button_columns),
+            self.parent.build_button_group_element(buttons),
         ]
 
         stat_lines = []

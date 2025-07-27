@@ -130,7 +130,7 @@ class RecordCard:
         if sub_business_build_method and hasattr(
             self.parent, sub_business_build_method
         ):
-            # 这里必须要用business_data，有很多最外层的通用方法在这里，不要偷懒。
+            # 这里必须要用business_data，有很多最外层的通用方法在这里。
             sub_elements = getattr(self.parent, sub_business_build_method)(
                 business_data
             )
@@ -139,12 +139,12 @@ class RecordCard:
 
         return elements
 
-    # region 辅助信息区域
+    # region 信息区域
     def _build_computed_info_by_type(
         self, data_source: Dict[str, Any], is_container_mode: bool
     ) -> List[Dict[str, Any]]:
         """
-        构建计算信息区域（包含基础信息、时间预估、循环进度等）
+        构建基础信息区域（包含基础信息、时间预估、循环进度等）
         """
         elements = []
 
@@ -171,7 +171,7 @@ class RecordCard:
             )
         )
 
-        # 循环进度信息（如果有周期设置）
+        # 循环进度信息
         elements.extend(self._build_cycle_progress_section(data_source))
 
         return elements
@@ -429,11 +429,7 @@ class RecordCard:
 
         # 指标类型选择器
         if event_type != RoutineTypes.FUTURE.value:
-            need_progress_selector = (
-                record_mode
-                == RoutineRecordModes.ADD
-                # or (record_mode == RoutineRecordModes.RECORD and record_data.get("progress_type", ""))
-            )
+            need_progress_selector = record_mode == RoutineRecordModes.ADD
             if need_progress_selector:
                 progress_type = event_definition.get("properties", {}).get(
                     "progress_type", RoutineProgressTypes.NONE.value
@@ -448,12 +444,7 @@ class RecordCard:
                 )
 
             # 2. 目标类型选择器
-            # if event_type == RoutineTypes.ONGOING.value:
-            need_target_selector = (
-                record_mode
-                == RoutineRecordModes.ADD
-                # or (record_mode == RoutineRecordModes.RECORD and record_data.get("target_type", ""))
-            )
+            need_target_selector = record_mode == RoutineRecordModes.ADD
             if need_target_selector:
                 target_type = event_definition.get("properties", {}).get(
                     "target_type", RoutineTargetTypes.NONE.value
@@ -469,7 +460,9 @@ class RecordCard:
 
         # 提醒模式选择器
         if event_type == RoutineTypes.FUTURE.value:
-            reminder_mode = record_data.get("reminder_mode", RoutineReminderModes.OFF)
+            reminder_mode = record_data.get(
+                "reminder_mode", RoutineReminderModes.OFF.value
+            )
             elements.append(
                 self.parent.build_form_row(
                     "提醒模式",
@@ -611,20 +604,7 @@ class RecordCard:
         """
         构建提醒模式选择器（仅未来事项）
         """
-        options = [
-            {
-                "text": {"tag": "plain_text", "content": "关闭提醒"},
-                "value": RoutineReminderModes.OFF,
-            },
-            {
-                "text": {"tag": "plain_text", "content": "具体时间"},
-                "value": RoutineReminderModes.TIME,
-            },
-            {
-                "text": {"tag": "plain_text", "content": "相对时间"},
-                "value": RoutineReminderModes.RELATIVE,
-            },
-        ]
+        options = RoutineReminderModes.build_options()
 
         action_data = {
             "card_action": "handle_record_field_update",
@@ -691,11 +671,7 @@ class RecordCard:
                     self._build_future_form_fields(data_source, is_confirmed)
                 )
         # 返回完整的表单容器
-        return {
-            "tag": "form",
-            "name": "direct_record_form",
-            "elements": form_fields,
-        }
+        return self.parent.build_form_element(form_fields, "direct_record_form")
 
     def _build_instant_start_form_fields(
         self, data_source: Dict, is_confirmed: bool
@@ -814,7 +790,7 @@ class RecordCard:
                 "循环周期",
                 self.parent.build_select_element(
                     placeholder="设置检查周期",
-                    options=self._get_check_cycle_options(),
+                    options=RoutineCheckCycle.build_options(),
                     initial_value=check_cycle,
                     disabled=is_confirmed,
                     action_data={},
@@ -887,31 +863,6 @@ class RecordCard:
 
         return elements
 
-    def _get_check_cycle_options(self) -> List[Dict]:
-        """获取检查周期选项"""
-        return [
-            {
-                "text": {"tag": "plain_text", "content": "每日"},
-                "value": RoutineCheckCycle.DAILY,
-            },
-            {
-                "text": {"tag": "plain_text", "content": "每周"},
-                "value": RoutineCheckCycle.WEEKLY,
-            },
-            {
-                "text": {"tag": "plain_text", "content": "每月"},
-                "value": RoutineCheckCycle.MONTHLY,
-            },
-            {
-                "text": {"tag": "plain_text", "content": "每季"},
-                "value": RoutineCheckCycle.SEASONALLY,
-            },
-            {
-                "text": {"tag": "plain_text", "content": "每年"},
-                "value": RoutineCheckCycle.YEARLY,
-            },
-        ]
-
     def _build_future_form_fields(
         self, data_source: Dict, is_confirmed: bool
     ) -> List[Dict]:
@@ -961,9 +912,9 @@ class RecordCard:
         )
 
         # 4. 提醒设置字段（根据提醒模式显示）
-        reminder_mode = record_data.get("reminder_mode", RoutineReminderModes.OFF)
+        reminder_mode = record_data.get("reminder_mode", RoutineReminderModes.OFF.value)
         match reminder_mode:
-            case RoutineReminderModes.TIME:
+            case RoutineReminderModes.TIME.value:
                 # TIME模式：具体时间提醒，使用日期时间选择器
                 reminder_time = record_data.get("reminder_time", "")
                 elements.append(
@@ -979,7 +930,7 @@ class RecordCard:
                     )
                 )
 
-            case RoutineReminderModes.RELATIVE:
+            case RoutineReminderModes.RELATIVE.value:
                 # RELATIVE模式：相对时间提醒，使用多选框选择相对时间
                 reminder_relative = record_data.get("reminder_relative", [])
                 elements.append(
@@ -1032,60 +983,36 @@ class RecordCard:
         )
 
         # 将附加字段放入折叠面板
-        elements.append(
-            {
-                "tag": "collapsible_panel",
-                "expanded": False,
-                "header": {
-                    "title": {"tag": "markdown", "content": "📋 附加信息"},
-                    "icon": {
-                        "tag": "standard_icon",
-                        "token": "down-small-ccm_outlined",
-                        "color": "",
-                        "size": "16px 16px",
-                    },
-                    "icon_position": "right",
-                    "icon_expanded_angle": -180,
-                },
-                "elements": additional_fields,
-            }
+        collapsible_panel = self.parent.build_collapsible_panel_element(
+            header_text="📋 附加信息",
+            header_icon="down-small-ccm_outlined",
+            expanded=False,
+            content=additional_fields,
         )
+        elements.append(collapsible_panel)
 
         return elements
 
     def _get_priority_options(self) -> List[Dict]:
         """获取重要性选项"""
-        return [
-            {"text": {"tag": "plain_text", "content": "低"}, "value": "low"},
-            {"text": {"tag": "plain_text", "content": "中"}, "value": "medium"},
-            {"text": {"tag": "plain_text", "content": "高"}, "value": "high"},
-            {"text": {"tag": "plain_text", "content": "紧急"}, "value": "urgent"},
-        ]
+        dict_options = {
+            "low": "低",
+            "medium": "中",
+            "high": "高",
+            "urgent": "紧急",
+        }
+        return self.parent.build_options(dict_options)
 
     def _get_reminder_time_options(self) -> List[Dict]:
         """获取提醒时间选项"""
-        return [
-            {
-                "text": {"tag": "plain_text", "content": "提前5分钟"},
-                "value": "before_5min",
-            },
-            {
-                "text": {"tag": "plain_text", "content": "提前15分钟"},
-                "value": "before_15min",
-            },
-            {
-                "text": {"tag": "plain_text", "content": "提前30分钟"},
-                "value": "before_30min",
-            },
-            {
-                "text": {"tag": "plain_text", "content": "提前1小时"},
-                "value": "before_1hour",
-            },
-            {
-                "text": {"tag": "plain_text", "content": "提前1天"},
-                "value": "before_1day",
-            },
-        ]
+        dict_options = {
+            "before_5min": "提前5分钟",
+            "before_15min": "提前15分钟",
+            "before_30min": "提前30分钟",
+            "before_1hour": "提前1小时",
+            "before_1day": "提前1天",
+        }
+        return self.parent.build_options(dict_options)
 
     def _build_submit_button(
         self, is_confirmed: bool, build_method_name: str = None
@@ -1098,90 +1025,44 @@ class RecordCard:
         2. 重置按钮：使用 form_action_type="reset"
         3. 确认按钮：使用 callback 行为，触发表单提交处理
         """
-        return {
-            "tag": "column_set",
-            "horizontal_align": "left",
-            "columns": [
-                {
-                    "tag": "column",
-                    "width": "auto",
-                    "elements": [
-                        {
-                            "tag": "button",
-                            "text": {"tag": "plain_text", "content": "取消"},
-                            "type": "danger",
-                            "width": "default",
-                            "icon": {
-                                "tag": "standard_icon",
-                                "token": "close-bold_outlined",
-                            },
-                            "disabled": is_confirmed,
-                            "behaviors": [
-                                {
-                                    "type": "callback",
-                                    "value": {
-                                        "card_action": "cancel_record",
-                                        "card_config_key": CardConfigKeys.ROUTINE_RECORD,
-                                        "container_build_method": build_method_name,
-                                    },
-                                }
-                            ],
-                            "name": "cancel_record",
-                        }
-                    ],
-                    "vertical_spacing": "8px",
-                    "horizontal_align": "left",
-                    "vertical_align": "top",
-                },
-                {
-                    "tag": "column",
-                    "width": "auto",
-                    "elements": [
-                        {
-                            "tag": "button",
-                            "text": {"tag": "plain_text", "content": "重置"},
-                            "type": "default",
-                            "width": "default",
-                            "disabled": is_confirmed,
-                            "form_action_type": "reset",
-                            "name": "reset_form",
-                        }
-                    ],
-                    "vertical_spacing": "8px",
-                    "horizontal_align": "left",
-                    "vertical_align": "top",
-                },
-                {
-                    "tag": "column",
-                    "width": "auto",
-                    "elements": [
-                        {
-                            "tag": "button",
-                            "text": {"tag": "plain_text", "content": "确认"},
-                            "type": "primary",
-                            "width": "default",
-                            "icon": {"tag": "standard_icon", "token": "done_outlined"},
-                            "disabled": is_confirmed,
-                            "behaviors": [
-                                {
-                                    "type": "callback",
-                                    "value": {
-                                        "card_action": "confirm_record",
-                                        "card_config_key": CardConfigKeys.ROUTINE_RECORD,
-                                        "container_build_method": build_method_name,
-                                    },
-                                }
-                            ],
-                            "form_action_type": "submit",
-                            "name": "confirm_record",
-                        }
-                    ],
-                    "vertical_spacing": "8px",
-                    "horizontal_align": "left",
-                    "vertical_align": "top",
-                },
-            ],
+        cancel_action_data = {
+            "card_action": "cancel_record",
+            "card_config_key": CardConfigKeys.ROUTINE_RECORD,
+            "container_build_method": build_method_name,
         }
+
+        confirm_action_data = {
+            "card_action": "confirm_record",
+            "card_config_key": CardConfigKeys.ROUTINE_RECORD,
+            "container_build_method": build_method_name,
+        }
+        cancel_button = self.parent.build_button_element(
+            text="取消",
+            action_data=cancel_action_data,
+            disabled=is_confirmed,
+            type="danger",
+            icon="close-bold_outlined",
+            name="cancel_record",
+        )
+        reset_button = self.parent.build_button_element(
+            text="重置",
+            disabled=is_confirmed,
+            form_action_type="reset",
+            name="reset_form",
+        )
+        confirm_button = self.parent.build_button_element(
+            text="确认",
+            action_data=confirm_action_data,
+            disabled=is_confirmed,
+            type="primary",
+            icon="done_outlined",
+            form_action_type="submit",
+            name="confirm_record",
+        )
+
+        return self.parent.build_button_group_element(
+            [cancel_button, reset_button, confirm_button]
+        )
 
     # endregion
 
