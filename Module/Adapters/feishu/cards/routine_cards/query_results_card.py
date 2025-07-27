@@ -145,7 +145,7 @@ class QueryResultsCard:
         new_elements = self._build_record_elements(
             filtered_records,
             components_disabled,
-            build_method_name,
+            default_action_data,
             default_expanded,
             expand_position,
         )
@@ -170,7 +170,7 @@ class QueryResultsCard:
         self,
         filtered_records,
         is_confirmed: bool,
-        build_method_name: str,
+        default_action_data: dict,
         default_expanded: bool,
         expand_position: int,
     ) -> list:
@@ -200,13 +200,13 @@ class QueryResultsCard:
                 case "active_record":
                     active_elements.extend(
                         self._build_active_record_elements(
-                            record, current_expand, is_confirmed, build_method_name, i
+                            record, current_expand, is_confirmed, default_action_data, i
                         )
                     )
                 case "event_definition":
                     definition_elements.extend(
                         self._build_definition_elements(
-                            record, current_expand, is_confirmed, build_method_name
+                            record, current_expand, is_confirmed, default_action_data
                         )
                     )
 
@@ -226,7 +226,7 @@ class QueryResultsCard:
         record: dict,
         current_expand: bool,
         is_confirmed: bool,
-        build_method_name: str,
+        default_action_data: dict,
         expand_position: int,
     ) -> list:
         """
@@ -241,10 +241,9 @@ class QueryResultsCard:
         # 完成按钮
         complete_action_data = {
             "card_action": "complete_active_record",
-            "card_config_key": CardConfigKeys.ROUTINE_QUERY,
             "record_id": record_id,
             "event_name": event_name,
-            "container_build_method": build_method_name,
+            **default_action_data,
         }
         buttons.append(
             self.parent.build_button_element(
@@ -259,10 +258,9 @@ class QueryResultsCard:
         # 新关联事件按钮
         new_related_action_data = {
             "card_action": "create_related_event",
-            "card_config_key": CardConfigKeys.ROUTINE_QUERY,
             "record_id": record_id,
-            "container_build_method": build_method_name,
             "expand_position": expand_position,
+            **default_action_data,
         }
         buttons.append(
             self.parent.build_button_element(
@@ -296,11 +294,10 @@ class QueryResultsCard:
 
             new_action_data = {
                 "card_action": "related_event_action",
-                "card_config_key": CardConfigKeys.ROUTINE_QUERY,
                 "record_id": record_id,
                 "event_name": rel,
-                "container_build_method": build_method_name,
                 "expand_position": expand_position,
+                **default_action_data,
             }
             new_buttons.append(
                 self.parent.build_button_element(
@@ -345,7 +342,7 @@ class QueryResultsCard:
         record: dict,
         current_expand: bool,
         is_confirmed: bool,
-        build_method_name: str,
+        default_action_data: dict,
     ) -> list:
         """
         构建definition元素
@@ -354,37 +351,24 @@ class QueryResultsCard:
         event_name = record.get("event_name", "")
         definition = record.get("data", {})
         # 按钮区
-        buttons = [
-            {
-                "tag": "button",
-                "text": {"tag": "plain_text", "content": f"记录 {event_name}"},
-                "type": "primary",
-                "size": "small",
-                "disabled": is_confirmed,
-                "behaviors": [
-                    {
-                        "type": "callback",
-                        "value": {
-                            "card_action": "quick_record_select",
-                            "card_config_key": CardConfigKeys.ROUTINE_QUERY,
-                            "event_name": event_name,
-                            "container_build_method": build_method_name,
-                        },
-                    }
-                ],
-            }
-        ]
-        button_columns = [
-            {"tag": "column", "width": "auto", "elements": [btn]} for btn in buttons
-        ]
-        # 折叠容器内容
+        record_action_data = {
+            "card_action": "quick_record_select",
+            "event_name": event_name,
+            **default_action_data,
+        }
+        buttons = []
+        buttons.append(
+            self.parent.build_button_element(
+                text=f"记录 {event_name}",
+                action_data=record_action_data,
+                disabled=is_confirmed,
+                type="primary",
+                size="small",
+            )
+        )
+        button_columns = self.parent.build_button_line_element(buttons)
         content = [
-            {
-                "tag": "column_set",
-                "horizontal_align": "left",
-                "columns": button_columns,
-                "margin": "0px 0px 0px 0px",
-            }
+            self.parent.build_column_set_element(button_columns),
         ]
 
         stat_lines = []
@@ -404,28 +388,19 @@ class QueryResultsCard:
                     content="\n".join(stat_lines), text_size="small"
                 )
             )
+
         # 头部信息
         head_info = f"**{event_name}**"
         last_record_time = definition.get("last_record_time", "")
         if last_record_time:
             head_info += f"  上次完成: {self._get_short_time(last_record_time)}"
         elements.append(
-            {
-                "tag": "collapsible_panel",
-                "expanded": current_expand,
-                "header": {
-                    "title": {"tag": "markdown", "content": head_info},
-                    "icon": {
-                        "tag": "standard_icon",
-                        "token": "down-small-ccm_outlined",
-                        "color": "",
-                        "size": "16px 16px",
-                    },
-                    "icon_position": "right",
-                    "icon_expanded_angle": -180,
-                },
-                "elements": content,
-            }
+            self.parent.build_collapsible_panel_element(
+                header_text=head_info,
+                header_icon="down-small-ccm_outlined",
+                expanded=current_expand,
+                content=content,
+            )
         )
         return elements
 
@@ -461,25 +436,23 @@ class QueryResultsCard:
             record = filtered_records[i]
             record_type = record.get("record_type")
 
-            if record_type == "active_record":
-                # active_record 只有按钮组，内容元素数量为1
-                content_count = 1
-            elif record_type == "event_definition":
-                # event_definition 可能有统计信息，需要计算实际内容元素数量
-                definition = record.get("data", {})
-                stats = definition.get("stats", {})
-                content_count = 1  # 按钮组
+            match record_type:
+                case "active_record":
+                    content_count = 1
+                case "event_definition":
+                    content_count = 1
+                    definition = record.get("data", {})
+                    stats = definition.get("stats", {})
+                    if (
+                        definition.get("avg_duration")
+                        or stats.get("record_count")
+                        or stats.get("cycle_count")
+                        or stats.get("last_refresh_date")
+                    ):
+                        content_count = 2
 
-                # 如果有统计信息，内容元素数量+1
-                if (
-                    definition.get("avg_duration")
-                    or stats.get("record_count")
-                    or stats.get("cycle_count")
-                    or stats.get("last_refresh_date")
-                ):
-                    content_count += 1
-            else:
-                content_count = 1
+                case _:
+                    content_count = 1
 
             # 如果前2个记录中有任何一个内容元素数量大于1，则不是简单内容
             if content_count > 1:
@@ -524,7 +497,7 @@ class QueryResultsCard:
         )
 
     def complete_active_record(self, context: MessageContext_Refactor):
-        """完成active_record - 打开记录填写界面"""
+        """完成活动记录 - 打开记录填写界面"""
         # 主体业务都一样，可能用参数控制区别就可以兼容所有回调了
         action_value = context.content.value
         user_id = context.user_id
