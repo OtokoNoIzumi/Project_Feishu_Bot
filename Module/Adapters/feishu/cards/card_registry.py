@@ -35,7 +35,7 @@ class BaseCardManager(ABC):
         self.single_instance = single_instance
 
         # 存储所有配置
-        if not hasattr(self, '_configs'):
+        if not hasattr(self, "_configs"):
             self._configs = {}
 
         # 直接从card_info获取配置，这个可以用在非单例的卡片管理器上，单例的特殊卡片管理器需要自己实现。
@@ -54,16 +54,18 @@ class BaseCardManager(ABC):
     def get_card_name_by_config_key(self, card_config_key=None):
         """获取指定配置键的卡片名称"""
         if self.single_instance:
-            return self._configs.get(card_config_key, {}).get('card_name', '未知卡片')
-        else:
-            return self.card_name
+            return self._configs.get(card_config_key, {}).get("card_name", "未知卡片")
+
+        return self.card_name
 
     def get_reply_mode_by_config_key(self, card_config_key=None):
         """获取指定配置键的卡片名称"""
         if self.single_instance:
-            return self._configs.get(card_config_key, {}).get('reply_mode', ReplyModes.REPLY)
-        else:
-            return self.card_static_config.get('reply_mode', ReplyModes.REPLY)
+            return self._configs.get(card_config_key, {}).get(
+                "reply_mode", ReplyModes.REPLY
+            )
+
+        return self.card_static_config.get("reply_mode", ReplyModes.REPLY)
 
     def get_card_type_name(self) -> str:
         """获取卡片类型名称 - 默认返回card_name，子类可根据需要重写"""
@@ -72,7 +74,9 @@ class BaseCardManager(ABC):
     def _initialize_templates(self):
         """统一的配置驱动模板初始化 - 基于子类的card_config_key"""
         # 正好单例的特例模式业务太复杂，没有这套逻辑，暂时不用考虑兼容。
-        if self.card_static_config.get("template_id") and self.card_static_config.get("template_version"):
+        if self.card_static_config.get("template_id") and self.card_static_config.get(
+            "template_version"
+        ):
             self.templates = {
                 "template_id": self.card_static_config.get("template_id"),
                 "template_version": self.card_static_config.get("template_version"),
@@ -124,8 +128,11 @@ class BaseCardManager(ABC):
         match card_operation_type:
             case CardOperationTypes.SEND:
                 # 构建发送参数
-                current_config_key = kwargs.get('card_config_key', self.card_config_key)
-                reply_mode = self.get_reply_mode_by_config_key(card_config_key=current_config_key)
+                current_config_key = kwargs.get("card_config_key", self.card_config_key)
+                reply_mode = self.get_reply_mode_by_config_key(
+                    card_config_key=current_config_key
+                )
+                card_name = self.get_card_name_by_config_key(current_config_key)
 
                 card_id = self.sender.create_card_entity(card_content)
                 if card_id:
@@ -151,7 +158,7 @@ class BaseCardManager(ABC):
                 success, message_id = self.sender.send_interactive_card(**send_params)
                 if not success:
                     debug_utils.log_and_print(
-                        f"❌ {self.card_info.get('card_name')}卡片发送失败",
+                        f"❌ {card_name}卡片发送失败",
                         log_level="ERROR",
                     )
                     return False, None
@@ -181,12 +188,13 @@ class BaseCardManager(ABC):
 
             case _:
                 debug_utils.log_and_print(
-                    f"❌ 未知的{self.card_info.get('card_name')}卡片操作类型: {card_operation_type}",
+                    f"❌ 未知的{self.card_name}卡片操作类型: {card_operation_type}",
                     log_level="ERROR",
                 )
                 return False, None
 
     def get_core_data(self, context: MessageContext_Refactor):
+        """获取卡片核心数据"""
         message_id = context.message_id
         cache_service = self.app_controller.get_service(ServiceNames.CACHE)
         card_info = cache_service.get_card_info(message_id)
@@ -295,9 +303,10 @@ class BaseCardManager(ABC):
         action_data: Dict[str, Any],
         name: str = "",
         element_id: str = "",
+        required: bool = False,
     ) -> Dict[str, Any]:
         """构建输入框元素"""
-        return {
+        final_element = {
             "tag": "input",
             "element_id": element_id,
             "placeholder": {"tag": "plain_text", "content": placeholder},
@@ -306,6 +315,10 @@ class BaseCardManager(ABC):
             "name": name or element_id,
             "behaviors": [{"type": "callback", "value": action_data}],
         }
+        if required:
+            # 仅表单里可用用，表单外赋值会报错。
+            final_element["required"] = True
+        return final_element
 
     def build_card_header(
         self, title: str, subtitle: str = "", template: str = "blue", icon: str = ""
@@ -472,11 +485,13 @@ class BaseCardManager(ABC):
     def build_markdown_element(
         self,
         content: str,
+        text_size: str = "normal",
     ) -> Dict[str, Any]:
         """构建markdown元素"""
         return {
             "tag": "markdown",
             "content": content,
+            "text_size": text_size,
         }
 
     def build_line_element(
@@ -496,10 +511,12 @@ class BaseCardManager(ABC):
         """构建选项元素 - 用于构建选择器元素的选项"""
         options = []
         for key, content in options_dict.items():
-            options.append({
-                "text": {"tag": "plain_text", "content": content},
-                "value": key,
-            })
+            options.append(
+                {
+                    "text": {"tag": "plain_text", "content": content},
+                    "value": key,
+                }
+            )
         return options
 
     # endregion
@@ -519,7 +536,8 @@ class FeishuCardRegistry:
         single_instance = manager.single_instance
         if single_instance:
             debug_utils.log_and_print(
-                f"✅ 单例卡片{manager.__class__.__name__}的{card_name}管理器复用注册成功", log_level="INFO"
+                f"✅ 单例卡片{manager.__class__.__name__}的{card_name}管理器复用注册成功",
+                log_level="INFO",
             )
         else:
             debug_utils.log_and_print(
