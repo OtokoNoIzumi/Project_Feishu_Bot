@@ -456,17 +456,23 @@ class BaseCardManager(ABC):
 
         return element
 
-    def _build_checker_element(
-        self, text: str, checked: bool, disabled: bool, action_data: Dict[str, Any]
+    def build_checker_element(
+        self,
+        text: str,
+        checked: bool,
+        disabled: bool,
+        action_data: Dict[str, Any] = None,
     ) -> Dict[str, Any]:
         """构建复选框元素"""
-        return {
+        final_element = {
             "tag": "checker",
             "text": {"tag": "plain_text", "content": text},
             "checked": checked,
             "disabled": disabled,
-            "behaviors": [{"type": "callback", "value": action_data}],
         }
+        if action_data:
+            final_element["behaviors"] = [{"type": "callback", "value": action_data}]
+        return final_element
 
     def build_multi_select_element(
         self,
@@ -570,10 +576,16 @@ class BaseCardManager(ABC):
     def build_column_element(
         self,
         elements: List[Dict[str, Any]],
+        width: str = "auto",
+        vertical_align: str = "top",
+        horizontal_align: str = "left",
     ) -> Dict[str, Any]:
         """构建列元素"""
         return {
             "tag": "column",
+            "width": width,
+            "vertical_align": vertical_align,
+            "horizontal_align": horizontal_align,
             "elements": elements,
         }
 

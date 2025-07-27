@@ -4,7 +4,6 @@ Quick Select Card
 快速选择卡片
 """
 
-import json
 from typing import Dict, Any
 from Module.Business.processors.base_processor import (
     MessageContext_Refactor,
@@ -59,68 +58,47 @@ class QuickSelectCard:
         components_disabled = (
             not cancel_confirmed and is_confirmed and not continuous_record
         )
+        query_action_data = {
+            "card_action": "show_query_info",
+            "card_config_key": CardConfigKeys.ROUTINE_QUICK_SELECT,
+            "container_build_method": build_method_name,
+        }
+        query_button = self.parent.build_button_element(
+            text="查询日程",
+            action_data=query_action_data,
+            disabled=components_disabled,
+            type="primary",
+            size="small",
+        )
+
+        continuous_action_data = {
+            "card_action": "toggle_continuous_record",
+            "card_config_key": CardConfigKeys.ROUTINE_QUICK_SELECT,
+            "container_build_method": build_method_name,
+        }
+
+        continuous_checker = self.parent.build_checker_element(
+            text="连续记录",
+            checked=continuous_record,
+            disabled=components_disabled,
+            action_data=continuous_action_data,
+        )
 
         elements.append(
-            {
-                "tag": "column_set",
-                "horizontal_align": "left",
-                "vertical_align": "center",
-                "columns": [
-                    {
-                        "tag": "column",
-                        "width": "90px",
-                        "elements": [
-                            {
-                                "tag": "button",
-                                "text": {"tag": "plain_text", "content": "查询日程"},
-                                "type": "primary",
-                                "width": "default",
-                                "size": "small",
-                                "disabled": components_disabled,
-                                "behaviors": [
-                                    {
-                                        "type": "callback",
-                                        "value": {
-                                            "card_action": "show_query_info",
-                                            "card_config_key": CardConfigKeys.ROUTINE_QUICK_SELECT,
-                                            "container_build_method": build_method_name,
-                                        },
-                                    }
-                                ],
-                            }
-                        ],
-                    },
-                    {
-                        "tag": "column",
-                        "width": "170px",
-                        "weight": 1,
-                        "vertical_align": "center",
-                        "horizontal_align": "right",
-                        "elements": [
-                            {
-                                "tag": "checker",
-                                "text": {
-                                    "tag": "plain_text",
-                                    "content": "连续记录",
-                                    "text_size": "normal",
-                                },
-                                "checked": continuous_record,
-                                "disabled": components_disabled,
-                                "behaviors": [
-                                    {
-                                        "type": "callback",
-                                        "value": {
-                                            "card_action": "toggle_continuous_record",
-                                            "card_config_key": CardConfigKeys.ROUTINE_QUICK_SELECT,
-                                            "container_build_method": build_method_name,
-                                        },
-                                    }
-                                ],
-                            }
-                        ],
-                    },
+            self.parent.build_column_set_element(
+                columns=[
+                    self.parent.build_column_element(
+                        elements=[query_button],
+                        width="90px",
+                    ),
+                    self.parent.build_column_element(
+                        elements=[continuous_checker],
+                        width="170px",
+                        vertical_align="center",
+                        horizontal_align="right",
+                    ),
                 ],
-            }
+            )
         )
 
         elements.append(
@@ -145,14 +123,7 @@ class QuickSelectCard:
         # 快捷添加按钮组 - 使用压缩布局
         if quick_events:
             # 添加快捷添加标题
-            elements.append(
-                {
-                    "tag": "markdown",
-                    "content": "**快捷添加**",
-                    "text_align": "left",
-                    "margin": "8px 0px 4px 0px",
-                }
-            )
+            elements.append(self.parent.build_markdown_element("**快捷添加**"))
 
             button_text_length = 0
             new_buttons = []
@@ -169,60 +140,34 @@ class QuickSelectCard:
                     button_text_length + current_button_length > 14
                     or len(new_buttons) >= 3
                 ) and new_buttons:
-                    button_columns = [
-                        {"tag": "column", "width": "auto", "elements": [btn]}
-                        for btn in new_buttons
-                    ]
                     elements.append(
-                        {
-                            "tag": "column_set",
-                            "horizontal_align": "left",
-                            "columns": button_columns,
-                            "margin": "0px 0px 4px 0px",
-                        }
+                        self.parent.build_button_group_element(buttons=new_buttons)
                     )
                     new_buttons = []
                     button_text_length = 0
 
+                button_action_data = {
+                    "card_action": "quick_record_select",
+                    "card_config_key": CardConfigKeys.ROUTINE_QUICK_SELECT,
+                    "event_name": event_name_btn,
+                    "container_build_method": build_method_name,
+                }
                 new_buttons.append(
-                    {
-                        "tag": "button",
-                        "text": {
-                            "tag": "plain_text",
-                            "content": f"{type_emoji} {event_name_btn}",
-                        },
-                        "type": "primary" if is_quick_access else "default",
-                        "size": "small",
-                        "disabled": components_disabled,
-                        "behaviors": [
-                            {
-                                "type": "callback",
-                                "value": {
-                                    "card_action": "quick_record_select",
-                                    "card_config_key": CardConfigKeys.ROUTINE_QUICK_SELECT,
-                                    "event_name": event_name_btn,
-                                    "container_build_method": build_method_name,
-                                },
-                            }
-                        ],
-                    }
+                    self.parent.build_button_element(
+                        text=f"{type_emoji} {event_name_btn}",
+                        action_data=button_action_data,
+                        type="primary" if is_quick_access else "default",
+                        size="small",
+                        disabled=components_disabled,
+                    )
                 )
 
                 button_text_length += current_button_length
 
             # 添加剩余的按钮
             if new_buttons:
-                button_columns = [
-                    {"tag": "column", "width": "auto", "elements": [btn]}
-                    for btn in new_buttons
-                ]
                 elements.append(
-                    {
-                        "tag": "column_set",
-                        "horizontal_align": "left",
-                        "columns": button_columns,
-                        "margin": "0px 0px 4px 0px",
-                    }
+                    self.parent.build_button_group_element(buttons=new_buttons)
                 )
 
         # 集成模式：根据工作流程状态显示不同内容
