@@ -32,6 +32,7 @@ class QuickSelectCard:
     ) -> Dict[str, Any]:
         """
         快速选择记录卡片核心构建逻辑
+        作为最上层的嵌套容器，要注意控制元素(tag)数量，不要超过200个，否则会报错。
         """
         # 1级入口，不需要嵌套，但其实也可以来一个？嵌套应该是通用能力？等第4个做的时候再改吧。
         build_method_name = business_data.get(
@@ -234,7 +235,7 @@ class QuickSelectCard:
 
         routine_business = self.parent.message_router.routine_record
         new_record_data = routine_business.build_record_business_data(user_id, event_name)
-        
+
         business_data["workflow_state"] = (
             "quick_record"  # 集成模式状态，这个姑且先保留吧，稍微冗余一点点
         )
@@ -286,62 +287,58 @@ class QuickSelectCard:
             return error_response
 
         routine_business = self.parent.message_router.routine_record
-        definitions_data = routine_business.load_event_definitions(user_id)
+        new_query_node_data = routine_business.build_query_business_data(user_id)
+        new_query_node_data["filter_limit"] = 5
 
-        if definitions_data:
-            # 事件存在，进入快速记录模式
-            business_data["workflow_state"] = (
-                "quick_record"  # 集成模式状态，这个姑且先保留吧，稍微冗余一点点
-            )
-            business_data["container_build_method"] = container_build_method
+        business_data["workflow_state"] = (
+            "quick_record"  # 集成模式状态，这个姑且先保留吧，稍微冗余一点点
+        )
+        business_data["container_build_method"] = container_build_method
 
-            parent_data, _ = self.parent.safe_get_business_data(
-                business_data, parent_business_name
-            )
+        parent_data, _ = self.parent.safe_get_business_data(
+            business_data, parent_business_name
+        )
 
-            # query 的数据结构非常简单，就是definitions_data
-            new_query_node_data = definitions_data
+        # 1. 准备工作：检查并"抢救"需要保留的孙子节点
+        #    只有当父节点的子业务本身就是QUERY，且这个QUERY下面还有子业务（即孙子节点）时，我们才需要保留。
+        existing_sub_name = parent_data.get("sub_business_name")
+        existing_sub_data = parent_data.get("sub_business_data")
 
-            # 1. 准备工作：检查并"抢救"需要保留的孙子节点
-            #    只有当父节点的子业务本身就是QUERY，且这个QUERY下面还有子业务（即孙子节点）时，我们才需要保留。
-            existing_sub_name = parent_data.get("sub_business_name")
-            existing_sub_data = parent_data.get("sub_business_data")
+        if (
+            existing_sub_name == CardConfigKeys.ROUTINE_QUERY
+            and existing_sub_data
+            and existing_sub_data.get("sub_business_data")
+        ):
 
-            if (
-                existing_sub_name == CardConfigKeys.ROUTINE_QUERY
-                and existing_sub_data
-                and existing_sub_data.get("sub_business_data")
-            ):
+            # 找到了需要保留的孙子节点，我们把它从旧的结构中取出来
+            grandchild_data = existing_sub_data.get("sub_business_data")
+            grandchild_name = existing_sub_data.get("sub_business_name")
+            grandchild_method = existing_sub_data.get("sub_business_build_method")
 
-                # 找到了需要保留的孙子节点，我们把它从旧的结构中取出来
-                grandchild_data = existing_sub_data.get("sub_business_data")
-                grandchild_name = existing_sub_data.get("sub_business_name")
-                grandchild_method = existing_sub_data.get("sub_business_build_method")
+            # 将孙子节点挂载到我们即将使用的新查询节点上
+            new_query_node_data["sub_business_data"] = grandchild_data
+            new_query_node_data["sub_business_name"] = grandchild_name
+            new_query_node_data["sub_business_build_method"] = grandchild_method
 
-                # 将孙子节点挂载到我们即将使用的新查询节点上
-                new_query_node_data["sub_business_data"] = grandchild_data
-                new_query_node_data["sub_business_name"] = grandchild_name
-                new_query_node_data["sub_business_build_method"] = grandchild_method
+        # 2. 执行操作：用准备好的新查询节点覆盖父节点的子业务
+        #    无论之前是什么情况（没有子业务、子业务不是QUERY、子业务是QUERY但没有孙子），
+        #    父节点的子业务都会被设置为我们刚刚准备好的新查询节点。
+        parent_data["sub_business_data"] = new_query_node_data
+        parent_data["sub_business_name"] = CardConfigKeys.ROUTINE_QUERY
+        sub_business_build_method = self.parent.get_sub_business_build_method(
+            CardConfigKeys.ROUTINE_QUERY
+        )
+        parent_data["sub_business_build_method"] = sub_business_build_method
 
-            # 2. 执行操作：用准备好的新查询节点覆盖父节点的子业务
-            #    无论之前是什么情况（没有子业务、子业务不是QUERY、子业务是QUERY但没有孙子），
-            #    父节点的子业务都会被设置为我们刚刚准备好的新查询节点。
-            parent_data["sub_business_data"] = new_query_node_data
-            parent_data["sub_business_name"] = CardConfigKeys.ROUTINE_QUERY
-            sub_business_build_method = self.parent.get_sub_business_build_method(
-                CardConfigKeys.ROUTINE_QUERY
-            )
-            parent_data["sub_business_build_method"] = sub_business_build_method
-
-            # 更新卡片显示
-            new_card_dsl = self.parent.build_update_card_data(
-                business_data, container_build_method
-            )
-            return self.parent.save_and_respond_with_update(
-                context.user_id,
-                card_id,
-                business_data,
-                new_card_dsl,
-                "",
-                ToastTypes.SUCCESS,
-            )
+        # 更新卡片显示
+        new_card_dsl = self.parent.build_update_card_data(
+            business_data, container_build_method
+        )
+        return self.parent.save_and_respond_with_update(
+            context.user_id,
+            card_id,
+            business_data,
+            new_card_dsl,
+            "",
+            ToastTypes.SUCCESS,
+        )

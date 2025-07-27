@@ -324,6 +324,23 @@ class RoutineCardManager(BaseCardManager):
         """确认记录"""
         return self.record_card.confirm_record(context)
 
+    # ----- active_record 操作的回调事件代理 -----
+    def complete_active_record(self, context: MessageContext_Refactor):
+        """完成active_record - 代理到query_results_card"""
+        return self.query_results_card.complete_active_record(context)
+
+    def create_related_event(self, context: MessageContext_Refactor):
+        """创建关联事件 - 代理到query_results_card"""
+        return self.query_results_card.create_related_event(context)
+
+    def quick_create_value(self, context: MessageContext_Refactor):
+        """快速新建值 - 代理到query_results_card"""
+        return self.query_results_card.quick_create_value(context)
+
+    def related_event_action(self, context: MessageContext_Refactor):
+        """关联事件操作 - 代理到query_results_card"""
+        return self.query_results_card.related_event_action(context)
+
     # endregion
 
     # region 废弃的事件卡片

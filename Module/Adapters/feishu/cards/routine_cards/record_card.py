@@ -192,16 +192,16 @@ class RecordCard:
         event_definition = data_source.get("event_definition", {})
 
         # 基础信息卡片
-        event_type = event_definition.get("type", RoutineTypes.INSTANT.value)
-        if record_mode == RoutineRecordModes.ADD:
-            if is_container_mode:
-                # 容器模式下，显示事件名称，主卡片模式有标题显示，没必要重复。
-                info_content = f"**事件名称： {event_name}**\n"
-            else:
-                info_content = ""
+        event_type = event_definition.get("type", RoutineTypes.FUTURE.value)
 
+        if is_container_mode and event_name:
+            # 容器模式下，显示事件名称，主卡片模式有标题显示，没必要重复。
+            info_content = f"**事件名称： {event_name}**\n"
         else:
-            info_content = (
+            info_content = ""
+
+        if record_mode == RoutineRecordModes.RECORD:
+            info_content += (
                 f"**事项类型：** {RoutineTypes.get_type_display_name(event_type)}\n"
             )
 
@@ -224,7 +224,10 @@ class RecordCard:
         if time_field:
             info_content += f"**{time_label}：** {time_field}\n"
             if diff_minutes > 0 and event_type != RoutineTypes.FUTURE.value:
-                info_content += f"**上次记录距今：** {diff_minutes}分钟\n"
+                if record_mode == RoutineRecordModes.QUERY:
+                    info_content += f"**已经持续：** {diff_minutes}分钟\n"
+                else:
+                    info_content += f"**上次记录距今：** {diff_minutes}分钟\n"
 
         # 显示分类（如果有）
         category = event_definition.get("category", "")
@@ -657,18 +660,32 @@ class RecordCard:
         """
         # 获取基础表单字段
         form_fields = []
+        record_data = data_source.get("record_data", {})
+        event_name = record_data.get("event_name", "")
+        if not event_name:
+            form_fields.append(
+                self.parent.build_form_row(
+                    "事件名称",
+                    self.parent.build_input_element(
+                        placeholder="新事件名称（必填）",
+                        initial_value=event_name,
+                        disabled=is_confirmed,
+                        action_data={},
+                        name="event_name",
+                        required=True,
+                    ),
+                )
+            )
+
         match event_type:
             case RoutineTypes.INSTANT.value | RoutineTypes.START.value:
-                form_fields = self._build_instant_start_form_fields(
+                form_fields.extend(self._build_instant_start_form_fields(
                     data_source, is_confirmed
-                )
+                ))
             case RoutineTypes.ONGOING.value:
-                form_fields = self._build_ongoing_form_fields(data_source, is_confirmed)
+                form_fields.extend(self._build_ongoing_form_fields(data_source, is_confirmed))
             case RoutineTypes.FUTURE.value:
-                form_fields = self._build_future_form_fields(data_source, is_confirmed)
-            case _:
-                # 未知类型，返回空字段列表
-                form_fields = []
+                form_fields.extend(self._build_future_form_fields(data_source, is_confirmed))
         # 返回完整的表单容器
         return {
             "tag": "form",
