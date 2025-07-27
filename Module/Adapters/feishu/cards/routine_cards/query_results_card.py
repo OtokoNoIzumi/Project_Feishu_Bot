@@ -16,8 +16,8 @@ class QueryResultsCard:
     """
 
     def __init__(self, parent_manager):
-        self.parent = parent_manager  # 访问主管理器的共享方法和属性
-        self.default_update_build_method = "update_query_results_card"  # 目前是对接主容器里的方法，最终调用在那边，这里只是传标识
+        self.parent = parent_manager
+        self.default_update_build_method = "update_query_results_card"
         self.today = ""
         self.year = ""
 
@@ -43,8 +43,11 @@ class QueryResultsCard:
         is_confirmed = business_data.get("is_confirmed", False)
         cancel_confirmed = business_data.get("cancel_confirmed", False)
         continuous_record = business_data.get("continuous_record", False)
+
         # 统一的disabled变量 - 连续记录模式下，查询元素不被disabled
-        components_disabled = not cancel_confirmed and is_confirmed and not continuous_record
+        components_disabled = (
+            not cancel_confirmed and is_confirmed and not continuous_record
+        )
         build_method_name = business_data.get(
             "container_build_method", self.default_update_build_method
         )
@@ -56,17 +59,13 @@ class QueryResultsCard:
             "container_build_method": build_method_name,
         }
 
-
         query_data = data_source.get("query_data", [])
         selected_category = data_source.get("selected_category", "")
         type_name_filter = data_source.get("type_name_filter", "")
         expand_position = data_source.get("expand_position", -1)
         filter_limit = data_source.get("filter_limit", 10)
 
-        # 直接使用后端提供的category_options，避免重复计算
         category_options_raw = data_source.get("category_options", [])
-
-        # 将字符串列表转换为前端需要的结构
 
         options_dict = {option: option for option in category_options_raw}
         category_options = self.parent.build_options(options_dict)
@@ -79,7 +78,11 @@ class QueryResultsCard:
             category = record.get("category", "")
 
             # 类型筛选：如果选择了具体类型且不是"全部"，则进行筛选
-            if selected_category and selected_category != "全部" and category != selected_category:
+            if (
+                selected_category
+                and selected_category != "全部"
+                and category != selected_category
+            ):
                 continue
             if type_name_filter:
                 keywords = [k for k in type_name_filter.strip().split() if k]
@@ -105,7 +108,6 @@ class QueryResultsCard:
                     },
                     name="category_filter",
                 ),
-                width_list=["80px", "180px"],
             )
         )
         elements.append(
@@ -121,16 +123,17 @@ class QueryResultsCard:
                     },
                     name="type_name_filter",
                 ),
-                width_list=["80px", "180px"],
             )
         )
         if is_container_mode:
             query_length = len(query_data)
             if query_length > filter_limit:
-                elements.append(self.parent.build_markdown_element(content=f"共有 {query_length} 个已知日程，当前显示上限 {filter_limit}"))
+                elements.append(
+                    self.parent.build_markdown_element(
+                        content=f"共有 {query_length} 个已知日程，当前显示上限 {filter_limit}"
+                    )
+                )
         elements.append(self.parent.build_line_element())
-
-
 
         # 特地从中途取出数据再判断子业务，用来判断要不要修改展开的默认状态。
         query_business_data = data_source.get("sub_business_data", {})
@@ -139,26 +142,38 @@ class QueryResultsCard:
         if has_query_business_data:
             default_expanded = False
 
-        new_elements = self._build_record_elements(filtered_records, components_disabled, build_method_name, default_expanded, expand_position)
+        new_elements = self._build_record_elements(
+            filtered_records,
+            components_disabled,
+            build_method_name,
+            default_expanded,
+            expand_position,
+        )
         elements.extend(new_elements)
 
-        # 集成模式：根据工作流程状态显示不同内容
         sub_business_build_method = data_source.get("sub_business_build_method", "")
         if sub_business_build_method and hasattr(
             self.parent, sub_business_build_method
         ):
-            # 这里必须要用business_data，有很多最外层的通用方法在这里，不要偷懒。
+            # 这里必须要用business_data，有很多最外层的通用方法在这里。
             sub_elements = getattr(self.parent, sub_business_build_method)(
                 business_data
             )
 
-            elements.append({"tag": "hr", "margin": "6px 0px"})
+            elements.append(self.parent.build_line_element())
             elements.extend(sub_elements)
 
         return elements
 
     # region 记录元素构建
-    def _build_record_elements(self, filtered_records, is_confirmed: bool, build_method_name: str, default_expanded: bool, expand_position: int) -> list:
+    def _build_record_elements(
+        self,
+        filtered_records,
+        is_confirmed: bool,
+        build_method_name: str,
+        default_expanded: bool,
+        expand_position: int,
+    ) -> list:
         """
         构建记录元素
         """
@@ -181,14 +196,19 @@ class QueryResultsCard:
             record_type = record.get("record_type")
             current_expand = expand_logic[i]
 
-
-            # active_record
             match record_type:
                 case "active_record":
-                    active_elements.extend(self._build_active_record_elements(record, current_expand, is_confirmed, build_method_name, i))
+                    active_elements.extend(
+                        self._build_active_record_elements(
+                            record, current_expand, is_confirmed, build_method_name, i
+                        )
+                    )
                 case "event_definition":
-                    definition_elements.extend(self._build_definition_elements(record, current_expand, is_confirmed, build_method_name))
-
+                    definition_elements.extend(
+                        self._build_definition_elements(
+                            record, current_expand, is_confirmed, build_method_name
+                        )
+                    )
 
         elements.extend(active_elements)
         if active_elements and definition_elements:
@@ -196,10 +216,19 @@ class QueryResultsCard:
         elements.extend(definition_elements)
 
         if not elements:
-            elements.append(self.parent.build_markdown_element(content="**📝 没有符合条件的记录**"))
+            elements.append(
+                self.parent.build_markdown_element(content="**📝 没有符合条件的记录**")
+            )
         return elements
 
-    def _build_active_record_elements(self, record: dict, current_expand: bool, is_confirmed: bool, build_method_name: str, expand_position: int) -> list:
+    def _build_active_record_elements(
+        self,
+        record: dict,
+        current_expand: bool,
+        is_confirmed: bool,
+        build_method_name: str,
+        expand_position: int,
+    ) -> list:
         """
         构建active_record元素
         """
@@ -210,48 +239,61 @@ class QueryResultsCard:
         # 按钮区
         buttons = []
         # 完成按钮
-        buttons.append({
-            "tag": "button",
-            "text": {"tag": "plain_text", "content": "完成"},
-            "type": "primary",
-            "size": "small",
-            "disabled": is_confirmed,
-            "behaviors": [{
-                "type": "callback",
-                "value": {
-                    "card_action": "complete_active_record",
-                    "card_config_key": CardConfigKeys.ROUTINE_QUERY,
-                    "record_id": record_id,
-                    "event_name": event_name,
-                    "container_build_method": build_method_name,
-                },
-            }]
-        })
+        buttons.append(
+            {
+                "tag": "button",
+                "text": {"tag": "plain_text", "content": "完成"},
+                "type": "primary",
+                "size": "small",
+                "disabled": is_confirmed,
+                "behaviors": [
+                    {
+                        "type": "callback",
+                        "value": {
+                            "card_action": "complete_active_record",
+                            "card_config_key": CardConfigKeys.ROUTINE_QUERY,
+                            "record_id": record_id,
+                            "event_name": event_name,
+                            "container_build_method": build_method_name,
+                        },
+                    }
+                ],
+            }
+        )
         # 新关联事件按钮
-        buttons.append({
-            "tag": "button",
-            "text": {"tag": "plain_text", "content": "新关联事件"},
-            "type": "default",
-            "size": "small",
-            "disabled": is_confirmed,
-            "behaviors": [{
-                "type": "callback",
-                "value": {
-                    "card_action": "create_related_event",
-                    "card_config_key": CardConfigKeys.ROUTINE_QUERY,
-                    "record_id": record_id,
-                    "container_build_method": build_method_name,
-                    "expand_position": expand_position,
-                },
-            }]
-        })
+        buttons.append(
+            {
+                "tag": "button",
+                "text": {"tag": "plain_text", "content": "新关联事件"},
+                "type": "default",
+                "size": "small",
+                "disabled": is_confirmed,
+                "behaviors": [
+                    {
+                        "type": "callback",
+                        "value": {
+                            "card_action": "create_related_event",
+                            "card_config_key": CardConfigKeys.ROUTINE_QUERY,
+                            "record_id": record_id,
+                            "container_build_method": build_method_name,
+                            "expand_position": expand_position,
+                        },
+                    }
+                ],
+            }
+        )
         # 按钮行
         button_columns = [
             {"tag": "column", "width": "auto", "elements": [btn]} for btn in buttons
         ]
         # 折叠容器内容
         content = [
-            {"tag": "column_set", "horizontal_align": "left", "columns": button_columns, "margin": "0px 0px 0px 0px"}
+            {
+                "tag": "column_set",
+                "horizontal_align": "left",
+                "columns": button_columns,
+                "margin": "0px 0px 0px 0px",
+            }
         ]
         button_text_length = 0
         new_buttons = []
@@ -261,39 +303,59 @@ class QueryResultsCard:
             # 预检测：如果添加当前按钮会超出限制，先输出已有按钮
             if button_text_length + current_button_length > 10 and new_buttons:
                 button_columns = [
-                    {"tag": "column", "width": "auto", "elements": [btn]} for btn in new_buttons
+                    {"tag": "column", "width": "auto", "elements": [btn]}
+                    for btn in new_buttons
                 ]
-                content.append({"tag": "column_set", "horizontal_align": "left", "columns": button_columns, "margin": "0px 0px 0px 0px"})
+                content.append(
+                    {
+                        "tag": "column_set",
+                        "horizontal_align": "left",
+                        "columns": button_columns,
+                        "margin": "0px 0px 0px 0px",
+                    }
+                )
                 new_buttons = []
                 button_text_length = 0
-            
+
             # 添加当前按钮
-            new_buttons.append({
-                "tag": "button",
-                "text": {"tag": "plain_text", "content": rel},
-                "type": "default",
-                "size": "small",
-                "disabled": is_confirmed,
-                "behaviors": [{
-                    "type": "callback",
-                    "value": {
-                        "card_action": "related_event_action",
-                        "card_config_key": CardConfigKeys.ROUTINE_QUERY,
-                        "record_id": record_id,
-                        "event_name": rel,
-                        "container_build_method": build_method_name,
-                        "expand_position": expand_position,
-                    }
-                }]
-            })
+            new_buttons.append(
+                {
+                    "tag": "button",
+                    "text": {"tag": "plain_text", "content": rel},
+                    "type": "default",
+                    "size": "small",
+                    "disabled": is_confirmed,
+                    "behaviors": [
+                        {
+                            "type": "callback",
+                            "value": {
+                                "card_action": "related_event_action",
+                                "card_config_key": CardConfigKeys.ROUTINE_QUERY,
+                                "record_id": record_id,
+                                "event_name": rel,
+                                "container_build_method": build_method_name,
+                                "expand_position": expand_position,
+                            },
+                        }
+                    ],
+                }
+            )
             button_text_length += current_button_length
 
         # 输出剩余按钮
         if new_buttons:
             button_columns = [
-                {"tag": "column", "width": "auto", "elements": [btn]} for btn in new_buttons
+                {"tag": "column", "width": "auto", "elements": [btn]}
+                for btn in new_buttons
             ]
-            content.append({"tag": "column_set", "horizontal_align": "left", "columns": button_columns, "margin": "0px 0px 0px 0px"})
+            content.append(
+                {
+                    "tag": "column_set",
+                    "horizontal_align": "left",
+                    "columns": button_columns,
+                    "margin": "0px 0px 0px 0px",
+                }
+            )
         # 头部信息
         head_info = f"**{event_name}**"
         scheduled_time = record.get("data", {}).get("scheduled_start_time", "")
@@ -305,20 +367,33 @@ class QueryResultsCard:
             head_info += f"  更新: {self._get_short_time(last_updated)}"
         elif create_time:
             head_info += f"  开始: {self._get_short_time(create_time)}"
-        elements.append({
-            "tag": "collapsible_panel",
-            "expanded": current_expand,
-            "header": {
-                "title": {"tag": "markdown", "content": head_info},
-                "icon": {"tag": "standard_icon", "token": "down-small-ccm_outlined", "color": "", "size": "16px 16px"},
-                "icon_position": "right",
-                "icon_expanded_angle": -180,
-            },
-            "elements": content,
-        })
+        elements.append(
+            {
+                "tag": "collapsible_panel",
+                "expanded": current_expand,
+                "header": {
+                    "title": {"tag": "markdown", "content": head_info},
+                    "icon": {
+                        "tag": "standard_icon",
+                        "token": "down-small-ccm_outlined",
+                        "color": "",
+                        "size": "16px 16px",
+                    },
+                    "icon_position": "right",
+                    "icon_expanded_angle": -180,
+                },
+                "elements": content,
+            }
+        )
         return elements
 
-    def _build_definition_elements(self, record: dict, current_expand: bool, is_confirmed: bool, build_method_name: str) -> list:
+    def _build_definition_elements(
+        self,
+        record: dict,
+        current_expand: bool,
+        is_confirmed: bool,
+        build_method_name: str,
+    ) -> list:
         """
         构建definition元素
         """
@@ -326,28 +401,37 @@ class QueryResultsCard:
         event_name = record.get("event_name", "")
         definition = record.get("data", {})
         # 按钮区
-        buttons = [{
-            "tag": "button",
-            "text": {"tag": "plain_text", "content": f"记录 {event_name}"},
-            "type": "primary",
-            "size": "small",
-            "disabled": is_confirmed,
-            "behaviors": [{
-                "type": "callback",
-                "value": {
-                    "card_action": "quick_record_select",
-                    "card_config_key": CardConfigKeys.ROUTINE_QUERY,
-                    "event_name": event_name,
-                    "container_build_method": build_method_name,
-                }
-            }]
-        }]
+        buttons = [
+            {
+                "tag": "button",
+                "text": {"tag": "plain_text", "content": f"记录 {event_name}"},
+                "type": "primary",
+                "size": "small",
+                "disabled": is_confirmed,
+                "behaviors": [
+                    {
+                        "type": "callback",
+                        "value": {
+                            "card_action": "quick_record_select",
+                            "card_config_key": CardConfigKeys.ROUTINE_QUERY,
+                            "event_name": event_name,
+                            "container_build_method": build_method_name,
+                        },
+                    }
+                ],
+            }
+        ]
         button_columns = [
             {"tag": "column", "width": "auto", "elements": [btn]} for btn in buttons
         ]
         # 折叠容器内容
         content = [
-            {"tag": "column_set", "horizontal_align": "left", "columns": button_columns, "margin": "0px 0px 0px 0px"}
+            {
+                "tag": "column_set",
+                "horizontal_align": "left",
+                "columns": button_columns,
+                "margin": "0px 0px 0px 0px",
+            }
         ]
 
         stat_lines = []
@@ -362,30 +446,41 @@ class QueryResultsCard:
             stat_lines.append(f"上次重置时间: {stats.get('last_refresh_date')}")
 
         if stat_lines:
-            content.append(self.parent.build_markdown_element(content="\n".join(stat_lines), text_size="small"))
+            content.append(
+                self.parent.build_markdown_element(
+                    content="\n".join(stat_lines), text_size="small"
+                )
+            )
         # 头部信息
         head_info = f"**{event_name}**"
         last_record_time = definition.get("last_record_time", "")
         if last_record_time:
             head_info += f"  上次完成: {self._get_short_time(last_record_time)}"
-        elements.append({
-            "tag": "collapsible_panel",
-            "expanded": current_expand,
-            "header": {
-                "title": {"tag": "markdown", "content": head_info},
-                "icon": {"tag": "standard_icon", "token": "down-small-ccm_outlined", "color": "", "size": "16px 16px"},
-                "icon_position": "right",
-                "icon_expanded_angle": -180,
-            },
-            "elements": content,
-        })
+        elements.append(
+            {
+                "tag": "collapsible_panel",
+                "expanded": current_expand,
+                "header": {
+                    "title": {"tag": "markdown", "content": head_info},
+                    "icon": {
+                        "tag": "standard_icon",
+                        "token": "down-small-ccm_outlined",
+                        "color": "",
+                        "size": "16px 16px",
+                    },
+                    "icon_position": "right",
+                    "icon_expanded_angle": -180,
+                },
+                "elements": content,
+            }
+        )
         return elements
 
     def _get_short_time(self, time_string: str) -> str:
         """
         生成短时间字符串
         """
-        return time_string.replace(f'{self.today} ', '').replace(f'{self.year}-', '')
+        return time_string.replace(f"{self.today} ", "").replace(f"{self.year}-", "")
 
     def _calculate_expand_logic(self, filtered_records: list) -> list:
         """
@@ -423,10 +518,12 @@ class QueryResultsCard:
                 content_count = 1  # 按钮组
 
                 # 如果有统计信息，内容元素数量+1
-                if (definition.get("avg_duration") or
-                    stats.get("record_count") or
-                    stats.get("cycle_count") or
-                    stats.get("last_refresh_date")):
+                if (
+                    definition.get("avg_duration")
+                    or stats.get("record_count")
+                    or stats.get("cycle_count")
+                    or stats.get("last_refresh_date")
+                ):
                     content_count += 1
             else:
                 content_count = 1
@@ -505,7 +602,12 @@ class QueryResultsCard:
         # 构建记录填写界面数据
         routine_business = self.parent.message_router.routine_record
         # 如果这里需要另一个record计算的话，最好是传回去？
-        new_record_data = routine_business.build_record_business_data(user_id, event_name, record_mode=RoutineRecordModes.QUERY, current_record_data=active_record.get("data", {}))
+        new_record_data = routine_business.build_record_business_data(
+            user_id,
+            event_name,
+            record_mode=RoutineRecordModes.QUERY,
+            current_record_data=active_record.get("data", {}),
+        )
 
         # 在记录数据中标记这是完成active_record的操作
         new_record_data["operation_type"] = "complete_active_record"
@@ -584,7 +686,7 @@ class QueryResultsCard:
             card_id,
             business_data,
             new_card_dsl,
-            f"正在创建关联事件",
+            "正在创建关联事件",
             ToastTypes.SUCCESS,
         )
 
@@ -616,7 +718,9 @@ class QueryResultsCard:
         routine_business = self.parent.message_router.routine_record
         # 对于这个新增事件，有一个额外的信息就是关联的active_record（至少是query的id）
         # 除了新增一个事件外，其实核心目的也就是创建一个关联。
-        new_record_data = routine_business.build_record_business_data(user_id, event_name)
+        new_record_data = routine_business.build_record_business_data(
+            user_id, event_name
+        )
 
         # 在记录数据中标记这是关联事件的操作
         new_record_data["operation_type"] = "related_event_action"
@@ -664,7 +768,9 @@ class QueryResultsCard:
 
         # 构建快速新建值的记录填写界面数据
         routine_business = self.parent.message_router.routine_record
-        new_record_data = routine_business.build_record_business_data(user_id, event_name)
+        new_record_data = routine_business.build_record_business_data(
+            user_id, event_name
+        )
 
         # 在记录数据中标记这是快速新建值的操作
         new_record_data["operation_type"] = "quick_create_value"
