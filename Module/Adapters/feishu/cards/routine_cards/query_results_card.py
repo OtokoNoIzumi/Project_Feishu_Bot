@@ -526,6 +526,9 @@ class QueryResultsCard:
         if error_response:
             return error_response
 
+        business_data["is_confirmed"] = False
+        business_data["cancel_confirmed"] = False
+
         parent_data, _ = self.parent.safe_get_business_data(
             business_data, CardConfigKeys.ROUTINE_QUERY
         )

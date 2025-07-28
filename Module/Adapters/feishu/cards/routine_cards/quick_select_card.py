@@ -364,6 +364,9 @@ class QuickSelectCard:
         if error_response:
             return error_response
 
+        business_data["is_confirmed"] = False
+        business_data["cancel_confirmed"] = False
+
         routine_business = self.parent.message_router.routine_record
         new_record_data = routine_business.build_record_business_data(
             user_id, event_name
