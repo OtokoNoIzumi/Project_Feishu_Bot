@@ -4,6 +4,7 @@ Quick Select Card
 快速选择卡片
 """
 
+from datetime import datetime, timedelta
 from typing import Dict, Any
 from Module.Business.processors.base_processor import (
     MessageContext_Refactor,
@@ -169,6 +170,47 @@ class QuickSelectCard:
                 elements.append(
                     self.parent.build_button_group_element(buttons=new_buttons)
                 )
+
+        # 添加计算按钮组
+        elements.append(self.parent.build_markdown_element("**颜色计算**"))
+
+        calculate_buttons = []
+
+        # 计算昨天按钮
+        yesterday_action_data = {
+            "card_action": "calculate_yesterday_color",
+            "card_config_key": CardConfigKeys.ROUTINE_QUICK_SELECT,
+            "container_build_method": build_method_name,
+        }
+        calculate_buttons.append(
+            self.parent.build_button_element(
+                text="🎨 计算昨天",
+                action_data=yesterday_action_data,
+                type="default",
+                size="small",
+                disabled=components_disabled,
+            )
+        )
+
+        # 计算今天按钮
+        today_action_data = {
+            "card_action": "calculate_today_color",
+            "card_config_key": CardConfigKeys.ROUTINE_QUICK_SELECT,
+            "container_build_method": build_method_name,
+        }
+        calculate_buttons.append(
+            self.parent.build_button_element(
+                text="🎨 计算今天",
+                action_data=today_action_data,
+                type="default",
+                size="small",
+                disabled=components_disabled,
+            )
+        )
+
+        elements.append(
+            self.parent.build_button_group_element(buttons=calculate_buttons)
+        )
 
         # 集成模式：根据工作流程状态显示不同内容
         sub_business_build_method = business_data.get("sub_business_build_method", "")
@@ -430,5 +472,70 @@ class QuickSelectCard:
             business_data,
             new_card_dsl,
             "",
+            ToastTypes.SUCCESS,
+        )
+
+    def calculate_yesterday_color(
+        self, context: MessageContext_Refactor
+    ) -> ProcessResult:
+        """
+        计算昨天的颜色
+        """
+        # 计算昨天的日期
+        yesterday = datetime.now() - timedelta(days=1)
+        target_date = yesterday.strftime("%Y-%m-%d")
+        return self.calculate_color_palette(context, target_date)
+
+    def calculate_today_color(self, context: MessageContext_Refactor) -> ProcessResult:
+        """
+        计算今天的颜色
+        """
+        # 计算今天的日期
+
+        today = datetime.now()
+        target_date = today.strftime("%Y-%m-%d")
+        return self.calculate_color_palette(context, target_date)
+
+    def calculate_color_palette(
+        self, context: MessageContext_Refactor, target_date: str
+    ) -> ProcessResult:
+        """
+        计算颜色调色盘
+        """
+        action_value = context.content.value
+        user_id = context.user_id
+        container_build_method = action_value.get(
+            "container_build_method", self.default_update_build_method
+        )
+        # 获取当前卡片的业务数据
+        business_data, card_id, error_response = self.parent.ensure_valid_context(
+            context, "calculate_color_palette", container_build_method
+        )
+        if error_response:
+            return error_response
+
+        # 调用routine_record的计算方法
+        routine_business = self.parent.message_router.routine_record
+        color_result, palette_data = routine_business.calculate_daily_color(
+            user_id, target_date
+        )
+
+        # 输出详细的计算过程日志
+        print(f"\n{'='*50}")
+        print(f"({target_date})的详细构成:")
+        print(f"颜色: {color_result}")
+        print(f"调色盘: {palette_data}")
+        print(f"{'='*50}")
+
+        # 更新卡片显示（保持原样）
+        new_card_dsl = self.parent.build_update_card_data(
+            business_data, container_build_method
+        )
+        return self.parent.save_and_respond_with_update(
+            context.user_id,
+            card_id,
+            business_data,
+            new_card_dsl,
+            f"({target_date})的颜色: {color_result.get('name')}, hex: {color_result.get('hex')}",
             ToastTypes.SUCCESS,
         )

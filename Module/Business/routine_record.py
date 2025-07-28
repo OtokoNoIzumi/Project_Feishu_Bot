@@ -12,11 +12,18 @@
 import os
 import json
 import copy
-from typing import Dict, Any, List, Optional, Tuple
-from datetime import datetime
+import math
+from typing import Dict, Any, Optional, Tuple
+from datetime import datetime, timedelta
 from collections import OrderedDict
 
+
 from Module.Common.scripts.common import debug_utils
+from Module.Business.shared_process import (
+    hex_to_hsl,
+    safe_parse_number,
+    hsl_to_hex,
+)
 from Module.Services.constants import (
     ServiceNames,
     RoutineTypes,
@@ -40,7 +47,7 @@ class EventStorage:
     def save_event(self, event_data):
         pass
 
-    def load_events(self):
+    def load_events(self, user_data_path, user_id):
         pass
 
     def query_events(self, filter_func):
@@ -456,12 +463,12 @@ class RoutineRecord(BaseProcessor):
             # 验证ID唯一性（防御性编程）
             if self._verify_id_uniqueness(user_id, candidate_id):
                 return candidate_id
-            else:
-                # 如果统计不准确，回退到扫描方式并修复统计
-                return self._generate_id_with_scan_and_fix(user_id, event_name)
-        else:
-            # 事件定义不存在，扫描现有记录生成ID
-            return self._generate_id_with_scan(user_id, event_name)
+
+            # 如果统计不准确，回退到扫描方式并修复统计
+            return self._generate_id_with_scan_and_fix(user_id, event_name)
+
+        # 事件定义不存在，扫描现有记录生成ID
+        return self._generate_id_with_scan(user_id, event_name)
 
     def _verify_id_uniqueness(self, user_id: str, candidate_id: str) -> bool:
         """
@@ -733,7 +740,7 @@ class RoutineRecord(BaseProcessor):
                 category_names.add(category_name)
 
         # 从所有事件定义中收集分类
-        for def_name, definition in definitions_data.get("definitions", {}).items():
+        for _, definition in definitions_data.get("definitions", {}).items():
             category = definition.get("category")
             if category:
                 category_names.add(category)
@@ -1227,7 +1234,7 @@ class RoutineRecord(BaseProcessor):
                 )
 
             # 更新耗时统计
-            duration = self._safe_parse_number(record_data.get("duration"))
+            duration = safe_parse_number(record_data.get("duration"))
             if duration > 0:
                 self._update_duration_stats(existing_def_stats, duration)
 
@@ -1255,9 +1262,7 @@ class RoutineRecord(BaseProcessor):
             # 更新指标统计
             progress_type = event_definition.get("properties", {}).get("progress_type")
             if progress_type and progress_type != RoutineProgressTypes.NONE.value:
-                progress_value = self._safe_parse_number(
-                    record_data.get("progress_value")
-                )
+                progress_value = safe_parse_number(record_data.get("progress_value"))
                 self._update_progress_stats(
                     existing_def_stats, progress_type, progress_value
                 )
@@ -1415,45 +1420,6 @@ class RoutineRecord(BaseProcessor):
         """
         return datetime.now().strftime("%Y-%m-%d %H:%M")
 
-    def _safe_parse_number(self, value, as_int: bool = False) -> float:
-        """
-        安全解析数值
-
-        Args:
-            value: 数值字符串或数值
-            as_int: 是否返回整数
-
-        Returns:
-            float/int: 解析后的数值，失败返回0
-        """
-        if value is None or value == "":
-            return 0
-
-        try:
-            result = float(value)
-            return int(result) if as_int else result
-        except (ValueError, TypeError):
-            return 0
-
-    def _is_valid_number(self, value) -> bool:
-        """
-        检查值是否为有效数字
-
-        Args:
-            value: 待检查的值
-
-        Returns:
-            bool: 是否为有效数字
-        """
-        if value is None or value == "":
-            return True  # 空值视为有效（可选字段）
-
-        try:
-            float(value)
-            return True
-        except (ValueError, TypeError):
-            return False
-
     def _analyze_cycle_status(
         self, last_refresh_date: str, check_cycle: str
     ) -> Dict[str, Any]:
@@ -1557,5 +1523,515 @@ class RoutineRecord(BaseProcessor):
         if event_duration_records:
             return round(sum(event_duration_records) / len(event_duration_records), 1)
         return 0
+
+    # endregion
+
+    # region 报表计算
+
+    def preprocess_and_filter_records(
+        self, all_records_dict: Dict[str, Any], start_range, end_range
+    ):
+        """
+        预处理和过滤记录数据
+        1. 将字典转为列表，并转换时间格式
+        2. 筛选出与时间范围有交集的记录
+        3. 按开始时间升序排序
+        """
+        record_list = []
+        for record in all_records_dict.values():
+            try:
+                # 兼容不同的时间字段名
+                create_time_str = record.get("create_time") or record.get(
+                    "created_time", ""
+                )
+                end_time_str = record.get("end_time", "")
+
+                if not create_time_str:
+                    continue
+
+                start_time = datetime.fromisoformat(create_time_str.replace(" ", "T"))
+
+                # 如果没有end_time，使用create_time作为end_time（即时事件）
+                if not end_time_str:
+                    end_time = start_time
+                    start_time = start_time - timedelta(
+                        minutes=record.get("duration", 0)
+                    )
+                else:
+                    end_time = datetime.fromisoformat(end_time_str.replace(" ", "T"))
+
+                if start_time < end_range and end_time > start_range:
+                    record["start_dt"] = start_time
+                    record["end_dt"] = end_time
+                    record_list.append(record)
+            except (ValueError, KeyError) as e:
+                print(
+                    f"Skipping record due to error: {record.get('record_id', 'N/A')}, {e}"
+                )
+                continue
+
+        record_list.sort(key=lambda x: x["start_dt"])
+        return record_list
+
+    def generate_atomic_timeline(self, sorted_records, start_range, end_range):
+        """
+        生成一个由不重叠的"原子时间块"构成的有序列表。
+        每个块都包含其归属的原始事件信息。
+        """
+        if not sorted_records:
+            return []
+
+        # 1. 收集所有不重复的时间点，并限制在分析范围内
+        time_points = {start_range, end_range}
+        for r in sorted_records:
+            clamped_start = max(r["start_dt"], start_range)
+            clamped_end = min(r["end_dt"], end_range)
+            if clamped_start < clamped_end:
+                time_points.add(clamped_start)
+                time_points.add(clamped_end)
+
+        sorted_points = sorted(list(time_points))
+        atomic_timeline = []
+
+        # 2. 遍历由时间点切割出的每个微小时间段
+        for i in range(len(sorted_points) - 1):
+            segment_start, segment_end = sorted_points[i], sorted_points[i + 1]
+
+            if segment_start >= segment_end:
+                continue
+
+            # 3. 找出覆盖这个时间段的、开始时间最晚的事件 ("顶层事件")
+            top_event = None
+            for record in sorted_records:
+                if (
+                    record["start_dt"] <= segment_start
+                    and record["end_dt"] >= segment_end
+                ):
+                    top_event = record  # 因为已排序，最后一个匹配的就是最顶层的
+
+            # 4. 如果找到归属事件，则创建原子块
+            if top_event:
+                atomic_block = {
+                    "start_time": segment_start,
+                    "end_time": segment_end,
+                    "duration_minutes": (segment_end - segment_start).total_seconds()
+                    / 60.0,
+                    "source_event": top_event,  # 关键！保留完整的原始事件引用
+                }
+                atomic_timeline.append(atomic_block)
+
+        return atomic_timeline
+
+    def aggregate_for_color_blending(self, atomic_timeline, event_map):
+        """
+        聚合原子时间线，按颜色分类聚合数据
+        """
+        # 按颜色类型聚合
+        color_aggregated_data = {}
+
+        for block in atomic_timeline:
+            event_name = block["source_event"]["event_name"]
+            record_id = block["source_event"]["record_id"]
+            duration = block["duration_minutes"]
+
+            # 获取原始记录的duration，如果存在的话
+            original_duration = block["source_event"].get("duration", None)
+
+            # 获取颜色类型
+            color_type = event_map.get(event_name).get("color")
+
+            # 找到对应的分类名称
+            category_name = event_map.get(event_name).get("category")
+
+            # 使用分类名称作为聚合键
+            if category_name not in color_aggregated_data:
+                color_aggregated_data[category_name] = {
+                    "duration": 0,
+                    "count": 0,
+                    "records": set(),
+                    "color_type": color_type,
+                    "record_durations": {},
+                }
+
+            # 累计时间，但每个记录不超过其原始duration
+            if original_duration is not None:
+                # 检查这个record_id是否已经被处理过
+                if record_id not in color_aggregated_data[category_name]["records"]:
+                    # 第一次处理这个记录
+                    color_aggregated_data[category_name]["records"].add(record_id)
+                    color_aggregated_data[category_name]["count"] += 1
+                    color_aggregated_data[category_name]["record_durations"][
+                        record_id
+                    ] = 0
+
+                # 计算这个记录ID已经累计的时间
+                current_record_duration = color_aggregated_data[category_name][
+                    "record_durations"
+                ].get(record_id, 0)
+                # 计算还能累计多少时间（不超过原始duration）
+                remaining_duration = max(0, original_duration - current_record_duration)
+                # 实际累计的时间
+                actual_duration = min(duration, remaining_duration)
+
+                color_aggregated_data[category_name]["duration"] += actual_duration
+                color_aggregated_data[category_name]["record_durations"][
+                    record_id
+                ] += actual_duration
+            else:
+                # 没有原始duration限制，直接累计
+                color_aggregated_data[category_name]["duration"] += duration
+                if record_id not in color_aggregated_data[category_name]["records"]:
+                    color_aggregated_data[category_name]["records"].add(record_id)
+                    color_aggregated_data[category_name]["count"] += 1
+
+        # 格式化为最终输出
+        final_list = []
+        for category_name, data in color_aggregated_data.items():
+            final_list.append(
+                {
+                    "category_color": data["color_type"],
+                    "category_name": category_name,
+                    "duration": data["duration"],
+                    "count": data["count"],
+                }
+            )
+        return final_list
+
+    def _calculate_nonlinear_weight(
+        self, duration, count, duration_importance=0.7, count_importance=0.3
+    ):
+        """
+        使用加权求和的方式计算影响力。
+        duration_importance 和 count_importance 的和应该为1。
+        """
+        if duration <= 0 or count <= 0:
+            return 0
+
+        # 1. 对时长和次数进行归一化或函数变换，使其处于可比较的范围
+        #    我们仍然使用之前的函数变换来压缩数值
+        duration_component = math.sqrt(duration)
+        #    次数分量可以稍微加强一下，因为它的原始数值小
+        count_component = (1 + math.log2(count)) * 5  # 乘以一个系数来放大它的基础值
+
+        # 2. 加权求和
+        #    这里，我们假设时长的重要性占70%，次数的重要性占30%
+        #    你可以根据你的感觉来调整这两个系数！
+        additive_score = (duration_component * duration_importance) + (
+            count_component * count_importance
+        )
+
+        # 乘以一个常数让数值变大
+        return additive_score * 5
+
+    # endregion
+
+    # region 颜色计算
+
+    def calculate_daily_color(
+        self, user_id: str, target_date: str = None
+    ) -> Dict[str, Any]:
+        """
+        计算指定日期的颜色值（使用原子时间线算法）
+
+        Args:
+            user_id: 用户ID
+            target_date: 目标日期 (YYYY-MM-DD)，默认为昨天
+
+        Returns:
+            str: 计算出的颜色值
+        """
+
+        # 确定目标日期
+        if target_date is None:
+            yesterday = datetime.now() - timedelta(days=1)
+            target_date = yesterday.strftime("%Y-%m-%d")
+
+        # 定义分析范围
+        target_date_dt = datetime.strptime(target_date, "%Y-%m-%d")
+        day_start = target_date_dt
+        day_end = day_start + timedelta(days=1)
+        return self.calculate_color_palette(user_id, day_start, day_end)
+
+    def calculate_weekly_color(
+        self, user_id: str, target_week_start: str = None
+    ) -> str:
+        """
+        计算指定周的颜色值
+
+        Args:
+            user_id: 用户ID
+            target_week_start: 目标周开始日期 (YYYY-MM-DD)，默认为上周
+
+        Returns:
+            str: 计算出的颜色值
+        """
+
+        # 确定目标周
+        if target_week_start is None:
+            today = datetime.now()
+            days_since_monday = today.weekday()
+            last_monday = today - datetime.timedelta(days=days_since_monday + 7)
+            target_week_start = last_monday.strftime("%Y-%m-%d")
+
+        # 计算周结束日期
+        start_date = datetime.strptime(target_week_start, "%Y-%m-%d")
+        end_date = start_date + datetime.timedelta(days=6)
+        return self.calculate_color_palette(user_id, start_date, end_date)
+
+    def calculate_color_palette(
+        self,
+        user_id: str,
+        day_start: datetime = None,
+        day_end: datetime = None,
+    ) -> Dict[str, Any]:
+        """
+        计算颜色调色盘
+        """
+
+        default_return = {
+            "type": "default",
+            "name": "蓝色",
+            "hex": ColorTypes.BLUE.light_color,
+            "distance": 0,
+        }
+
+        # 获取记录数据
+        records_data = self.load_event_records(user_id)
+        records = records_data.get("records", {})
+
+        if not records:
+            return default_return  # 默认颜色
+
+        # 加载分类数据
+        definitions_data = self.load_event_definitions(user_id)
+        categories_data = definitions_data.get("categories", [])
+
+        # 创建事件名到颜色类型的映射
+        event_to_color_map = {}
+        for event_name, event_def in definitions_data.get("definitions", {}).items():
+            category = event_def.get("category", "")
+            cata_info = {}
+            if category:
+                # 查找分类对应的颜色
+                cata_info["category"] = category
+                for category_obj in categories_data:
+                    if category_obj.get("name") == category:
+                        color_value = category_obj.get("color", ColorTypes.BLUE.value)
+                        cata_info["color"] = ColorTypes.get_by_value(color_value)
+                        break
+            else:
+                cata_info["category"] = "无分类"
+                cata_info["color"] = ColorTypes.GREY
+            event_to_color_map[event_name] = cata_info
+
+        # 1. 预处理和排序
+        relevant_records = self.preprocess_and_filter_records(
+            records, day_start, day_end
+        )
+        if not relevant_records:
+            return default_return
+
+        # 2. 生成核心数据结构：原子时间线
+        atomic_timeline = self.generate_atomic_timeline(
+            relevant_records, day_start, day_end
+        )
+
+        # 3. 聚合数据用于颜色混合
+        category_data = self.aggregate_for_color_blending(
+            atomic_timeline, event_to_color_map
+        )
+
+        if not category_data:
+            return default_return
+
+        # 4. 计算分类权重
+        category_weights = {}
+        for item in category_data:
+            category_name = item["category_name"]
+            duration = item["duration"]
+            count = item["count"]
+
+            weight = self._calculate_nonlinear_weight(duration, count)
+            if category_name not in category_weights:
+                category_weights[category_name] = {}
+                category_weights[category_name]["color"] = item["category_color"]
+                category_weights[category_name]["weight"] = 0
+
+            category_weights[category_name]["weight"] += weight
+
+        # 5. 计算最终颜色
+        final_color = self._blend_colors_by_weights(category_weights)
+        palette_data = self.prepare_palette_data(category_weights)
+
+        return final_color, palette_data
+
+    def _blend_colors_by_weights(
+        self, category_weights: Dict[str, float]
+    ) -> Dict[str, Any]:
+        """
+        根据权重混合颜色（在HSL色彩空间中进行计算）
+
+        Args:
+            category_weights: 分类权重字典
+
+        Returns:
+            str: 混合后的颜色值
+        """
+        # 在HSL色彩空间中混合颜色
+        blended_hsl = self._blend_colors_in_hsl_space(category_weights)
+
+        # 找到最接近的预定义颜色
+        return self._find_closest_color_from_hsl(blended_hsl)
+
+    def _blend_colors_in_hsl_space(self, category_weights: Dict[str, float]) -> tuple:
+        """
+        在HSL色彩空间中混合颜色
+
+        Args:
+            category_weights: 分类权重字典
+            categories_data: 分类数据列表
+
+        Returns:
+            tuple: (H, S, L) 混合后的HSL值
+        """
+        sum_h_x, sum_h_y = 0, 0
+        total_s, total_l, total_h = 0, 0, 0
+        total_weight = sum(
+            category_info["weight"] for category_info in category_weights.values()
+        )
+
+        if total_weight == 0:
+            return 0, 0, 0.5  # 返回一个中性灰色
+
+        for _, category_info in category_weights.items():
+            # 查找分类对应的颜色
+            weight = category_info["weight"]
+            category_color = category_info["color"]
+
+            # 获取颜色对应的HSL值
+            color_type = ColorTypes.get_by_value(category_color.value)
+            hex_color = color_type.light_color  # 使用亮色
+
+            # 转换十六进制为HSL
+            color_h, color_s, color_l = hex_to_hsl(hex_color)
+
+            # 按权重累加HSL值
+            total_s += color_s * weight
+            total_l += color_l * weight
+            total_h += color_h * weight
+
+            # 2. 对色相(H)进行向量加权平均
+            #    首先将角度转换为弧度
+            color_h_rad = math.radians(color_h)
+            #    计算向量的x, y分量并按权重累加
+            sum_h_x += math.cos(color_h_rad) * weight
+            sum_h_y += math.sin(color_h_rad) * weight
+
+        final_s = total_s / total_weight
+        final_l = total_l / total_weight
+        final_h_rad = math.atan2(sum_h_y, sum_h_x)
+        # 将弧度转换回角度（0-360度）
+        final_h_deg = math.degrees(final_h_rad)
+        if final_h_deg < 0:
+            final_h_deg += 360
+
+        return (final_h_deg, final_s, final_l)
+
+    def _find_closest_color_from_hsl(
+        self, target_hsl: tuple, threshold: float = 10
+    ) -> Dict[str, Any]:
+        """
+        从HSL值找到最接近的预定义颜色
+
+        Args:
+            target_hsl: 目标HSL值 (H, S, L)
+
+        Returns:
+            str: 最接近的颜色值
+        """
+        min_distance = float("inf")
+        closest_color = ColorTypes.BLUE
+
+        for color_type in ColorTypes:
+            if color_type.value == "grey":  # 跳过灰色
+                continue
+
+            hex_color = color_type.light_color
+            color_hsl = hex_to_hsl(hex_color)
+
+            # 计算HSL距离
+            distance = self._calculate_hsl_distance(target_hsl, color_hsl)
+
+            if distance < min_distance:
+                min_distance = distance
+                closest_color = color_type
+
+        if closest_color and min_distance < threshold:
+            return {
+                "type": "predefined",
+                "name": closest_color.value,
+                "hex": closest_color.light_color,
+                "distance": round(min_distance, 2),
+            }
+
+        hex_color = hsl_to_hex(target_hsl[0], target_hsl[1], target_hsl[2])
+        return {
+            "type": "unique",
+            "name": f"独特的颜色({hex_color})",  # 临时名字
+            "hex": hex_color,
+            "closest_to": closest_color.value if closest_color else "N/A",
+            "distance_to_closest": round(min_distance, 2),
+        }
+
+    def _calculate_hsl_distance(self, hsl1: tuple, hsl2: tuple) -> float:
+        """
+        计算两个HSL颜色之间的距离
+
+        Args:
+            hsl1, hsl2: HSL值元组
+
+        Returns:
+            float: 颜色距离
+        """
+        h1, s1, l1 = hsl1
+        h2, s2, l2 = hsl2
+
+        # 色相距离（考虑环形）
+        h_diff = min(abs(h1 - h2), 360 - abs(h1 - h2))
+
+        # 饱和度和亮度距离
+        s_diff = s1 - s2
+        l_diff = l1 - l2
+
+        # 加权距离（色相权重更高）
+        distance = math.sqrt(
+            (h_diff * 1.5) ** 2 + (s_diff * 1.0) ** 2 + (l_diff * 1.0) ** 2
+        )
+        return distance
+
+    def prepare_palette_data(self, category_weights):
+        """
+        将权重字典转换为用于绘图的调色盘数据列表。
+        """
+        total_weight = sum(info["weight"] for info in category_weights.values())
+        if total_weight == 0:
+            return []
+
+        palette_data = []
+        for category_name, info in category_weights.items():
+            palette_data.append(
+                {
+                    "name": category_name,
+                    "color_enum": info["color"],
+                    "color_hex": info["color"].light_color,
+                    "weight": info["weight"],
+                    "percentage": (info["weight"] / total_weight) * 100.0,
+                }
+            )
+
+        # 按百分比降序排序，方便后续绘图
+        palette_data.sort(key=lambda x: x["percentage"], reverse=True)
+
+        return palette_data
 
     # endregion

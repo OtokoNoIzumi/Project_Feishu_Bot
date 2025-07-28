@@ -296,6 +296,14 @@ class RoutineCardManager(BaseCardManager):
         """切换连续记录状态"""
         return self.quick_select_card.toggle_continuous_record(context)
 
+    def calculate_yesterday_color(self, context: MessageContext_Refactor):
+        """计算昨天的颜色"""
+        return self.quick_select_card.calculate_yesterday_color(context)
+
+    def calculate_today_color(self, context: MessageContext_Refactor):
+        """计算今天的颜色"""
+        return self.quick_select_card.calculate_today_color(context)
+
     # ----- query_results_card 的回调事件代理 -----
     def update_category_filter(self, context: MessageContext_Refactor):
         """更新分类过滤器"""

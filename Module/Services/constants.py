@@ -606,34 +606,25 @@ class RoutineRecordModes:
 class ColorTypes(Enum):
     """颜色类型"""
 
-    BLUE = {"value": "blue", "light_color": "#1456F0", "dark_color": "#75A4FF"}
-    CARMINE = {"value": "carmine", "light_color": "#B82879", "dark_color": "#ED77BA"}
-    GREEN = {"value": "green", "light_color": "#1A7526", "dark_color": "#51BA43"}
-    RED = {"value": "red", "light_color": "#C02A26", "dark_color": "#F6827E"}
-    INDIGO = {"value": "indigo", "light_color": "#4752E6", "dark_color": "#9499F7"}
-    LIME = {"value": "lime", "light_color": "#5C6D08", "dark_color": "#93AF04"}
-    GREY = {"value": "grey", "light_color": "#646a73", "dark_color": "#a6a6a6"}
-    ORANGE = {"value": "orange", "light_color": "#A44904", "dark_color": "#F3871B"}
-    PINK = {"value": "pink", "light_color": "#A630A6", "dark_color": "#E17FE1"}
-    PURPLE = {"value": "purple", "light_color": "#7A35F0", "dark_color": "#B88FFE"}
-    TURQUOISE = {
-        "value": "turquoise",
-        "light_color": "#067062",
-        "dark_color": "#1AB7A1",
-    }
+    BLUE = {"value": "blue", "light_color": "#C2D4FF", "dark_color": "#194294"}
+    CARMINE = {"value": "carmine", "light_color": "#F8C4E1", "dark_color": "#782B57"}
+    GREEN = {"value": "green", "light_color": "#95E599", "dark_color": "#21511A"}
+    LIME = {"value": "lime", "light_color": "#C8DD5F", "dark_color": "#404C06"}
+    GREY = {"value": "grey", "light_color": "#eff0f1", "dark_color": "#373737"}
+    ORANGE = {"value": "orange", "light_color": "#FEC48B", "dark_color": "#683A12"}
+    PURPLE = {"value": "purple", "light_color": "#DCC9FD", "dark_color": "#5529A3"}
+    RED = {"value": "red", "light_color": "#FDC6C4", "dark_color": "#7B2524"}
     SUNFLOWER = {
         "value": "sunflower",
-        "light_color": "#8F7C00",
-        "dark_color": "#F5DF36",
+        "light_color": "#FFF67A",
+        "dark_color": "#574D01",
     }
-
-    WATHE = {"value": "wateh", "light_color": "#076A94", "dark_color": "#25B2E5"}
-    YELLOW = {"value": "yellow", "light_color": "#865B03", "dark_color": "#FBCB46"}
-    CARMINE_300 = {
-        "value": "carmine_300",
-        "light_color": "#F598CC",
-        "dark_color": "#94386C",
+    TURQUOISE = {
+        "value": "turquoise",
+        "light_color": "#6FE8D8",
+        "dark_color": "#1D4E47",
     }
+    WATHET = {"value": "wathet", "light_color": "#97DCFC", "dark_color": "#164359"}
 
     @property
     def value(self) -> str:
