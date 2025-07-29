@@ -286,7 +286,9 @@ class ImageService:
             prompt: 文本提示词
         """
         if not self.hunyuan_image_generator.requests_available:
-            cookies = self.app_controller.get_service("config").get("HUNYUAN_COOKIES", "")
+            cookies = self.app_controller.get_service("config").get(
+                "HUNYUAN_COOKIES", ""
+            )
             self.hunyuan_image_generator.update_cookie(cookies)
 
         result = self.hunyuan_image_generator.generate_image(prompt=prompt.strip())
@@ -545,7 +547,7 @@ class HunyuanImageGenerator:
     def generate_image(
         self,
         prompt: str,
-        result_mode: str = "image",  # image, base64
+        result_mode: str = "image_path",  # image, base64
         seed: int = None,
         size: str = "9:16",
         image_base64: str = None,
@@ -640,16 +642,15 @@ class HunyuanImageGenerator:
 
         # 保存图片
         match result_mode:
-            case "image":
+            case "image_path":
                 filename = f"output_from_hunyuan_{seed}.jpg"
                 if self.file_folder_path:
                     filename = os.path.join(self.file_folder_path, filename)
                 with open(filename, "wb") as f:
                     f.write(image_bytes)
+                debug_utils.log_and_print(f"图片已保存为: {filename}", log_level="INFO")
             case "base64":
                 return base64_str
-
-        debug_utils.log_and_print(f"图片已保存为: {filename}", log_level="INFO")
 
         return {
             "success": True,

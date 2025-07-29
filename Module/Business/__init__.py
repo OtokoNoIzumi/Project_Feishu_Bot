@@ -6,7 +6,6 @@
 """
 
 from .message_router import MessageRouter
+from .routine_record import wax_stamp_prompt
 
-__all__ = [
-    'MessageRouter'
-]
+__all__ = ["MessageRouter", "wax_stamp_prompt"]

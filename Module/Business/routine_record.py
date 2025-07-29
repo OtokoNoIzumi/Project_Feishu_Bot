@@ -2043,3 +2043,170 @@ class RoutineRecord(BaseProcessor):
         return palette_data
 
     # endregion
+
+
+# region 绘图提示词
+def color_desc(color_name, color_hex):
+    """根据颜色名和色值生成英文描述"""
+    color_map = {
+        "turquoise": "brilliant turquoise",
+        "blue": "soft, light pastel blue",
+        "wathet": "serene sky blue",
+        "carmine": "gentle pink",
+        "orange": "warm, vibrant apricot orange",
+        "purple": "soft lavender purple",
+        "grey": "subtle, pearlescent off-white",
+        "red": "delicate, classic soft rose red",
+        "green": "fresh, lively mint green",
+        "lime": "zesty lime green",
+        "sunflower": "bright sunflower yellow",
+    }
+    # 优先使用预设的描述
+    description = color_map.get(color_name.lower())
+    if description:
+        return description
+    # 如果没有预设，则提供一个基于通用名称的备用描述
+    elif color_name:
+        return f"shade of {color_name.lower()}"
+    # 最后才使用HEX值作为备用
+    else:
+        return f"color with hex code {color_hex}"
+
+
+def subject_desc(subject_name):
+    """
+    生成印章内主体造型的英文描述
+    例如 subject_name="book"，返回 "The center of the seal features a detailed relief of an open book."
+    """
+    # 注释: 所有的值都从完整的句子修改为了名词短语，例如 "a book" 而不是 "the seal has a book"。
+    subject_map = {
+        "book": "an open book with finely etched lines representing pages and text",
+        "star": "a classic five-pointed star with clean, raised edges",
+        "cat": "a stylized silhouette of a sitting cat with a gracefully curved tail",
+        "flower": "elegant curved lines forming a rose silhouette",
+        "工作与创作": "the clean, modern outline of a laptop computer, its screen displaying a simple line graph",
+        "学习": "a charming relief of a graduation cap, with a tassel dangling to the side",
+        "运动": "a graceful female yoga pose line representing a feminine silhouette",
+        "家务": "the simple, iconic outline of a house with a small chimney",
+        "个人护理": "a minimalist design of a shower head with delicate droplets appearing to fall from it",
+        "饮食": "simple, elegant lines forming fruits shapes",
+        "休息": "a serene crescent moon hanging over a soft, puffy pillow",
+        "娱乐": "a musical note and a game controller, side-by-side",
+    }
+    return subject_map.get(
+        subject_name.lower(),
+        f"an abstract, swirling pattern that evokes the essence of '{subject_name}'",
+    )
+
+
+def generate_color_details_text(color_list: list) -> str:
+    """
+    (重写版) 根据颜色列表生成一段生动、完整且保留比例的自然语言描述。
+    """
+    if not color_list:
+        return "The wax has a single, solid, lustrous color."
+
+    # --- 1. 准备工作 ---
+    # 调用你的 color_desc 函数，将数据转换为带描述的字典列表
+    descriptive_colors = []
+    for color in color_list:
+        name = color.get("color_enum").value if color.get("color_enum") else ""
+        hex_val = color.get("color_hex", "")
+        percent = color.get("percentage", 0)
+
+        descriptive_colors.append(
+            {"desc": color_desc(name, hex_val), "percent_str": f"{percent:.0f}%"}
+        )
+
+    # --- 2. 核心描述逻辑 ---
+    color_description_template_dict = {
+        1: "The dominant color is {desc}, making up about {percent_str} of the material.",
+        2: "It is intricately swirled with prominent ribbons of {desc} (~{percent_str}).",
+        3: "Veins of {desc} (~{percent_str}) add complexity.",
+        4: "Accents of {desc} are subtly blended in.",
+        5: "A hint of {desc} is present in the mix.",
+        6: "Traces of {desc} can be found.",
+    }
+    # 主色调描述
+    details = []
+    for idx, color in enumerate(descriptive_colors):
+        if idx < 3:
+            # 前3个颜色使用百分比
+            details.append(
+                color_description_template_dict[idx + 1].format(
+                    desc=color["desc"], percent_str=color["percent_str"]
+                )
+            )
+        elif idx < 5:
+            # 第4-5个颜色不使用百分比
+            details.append(
+                color_description_template_dict[idx + 1].format(desc=color["desc"])
+            )
+        elif idx == 5:
+            # 第6个及之后的颜色合并为一句
+            remaining_colors = [c["desc"] for c in descriptive_colors[5:]]
+            combined_desc = ", ".join(remaining_colors)
+            details.append(
+                color_description_template_dict[6].format(desc=combined_desc)
+            )
+            break
+        else:
+            break
+
+    return " ".join(details)
+
+
+def wax_stamp_prompt(color_palette, subject_name=None):
+    """
+    根据color_palette结果组装英文画图提示词，并根据subject_name智能插入主体造型描述
+    color_palette: (unique_color_info, color_list)
+    subject_name: 印章内主体造型的名称（可为None或空字符串）
+    """
+    _, color_list = color_palette
+
+    # 颜色按比例排序
+    color_list = (
+        sorted(color_list, key=lambda x: -x.get("percentage", 0)) if color_list else []
+    )
+
+    color_detail_text = generate_color_details_text(color_list)
+
+    # 主体造型描述
+    subject_name = subject_name or color_list[0].get("name") if color_list else ""
+    subject_text = subject_desc(subject_name) if subject_name else ""
+
+    # --- 4. 全新Prompt结构化组装 ---
+
+    # [A] 开场白: 定义物体和不规则形态。
+    prompt = (
+        "A hyper-realistic macro photograph of a single wax seal, stamped onto textured handmade paper. "
+        "The seal has an organic, irregular, free-form shape with thick, molten edges, a result of hot wax naturally spilling and cooling. "
+    )
+
+    # [B] 主体图案的形成过程描述 (核心 - 使用你的文本)
+    if subject_text:
+        # 注释: 这里完整地、核心地嵌入了你提供的、最有效的描述。
+        # 我只做了一处微调：将你的 "a musical note and game controller" 替换为动态的 {subject_text}。
+        prompt += (
+            f"**When stamped, the hot, swirling wax was pressed into shape, forming a raised, integrated pattern featuring {subject_text} on its surface. **"
+            "**This pattern is part of the wax itself, not a separate addition. **"
+            "**The contours and details of the pattern are formed by the stamp's impression in the hot wax, and the marbled colors flow uninterrupted from the base up through this raised relief.** "
+        )
+
+    # [C] 统一材质与颜色描述 (作为基础)
+    prompt += (
+        "The marbled effect is achieved through the blending of lustrous, **opaque** wax during the stamping process. "
+        "The material has a beautiful liquid marble effect, where multiple colors flow and blend seamlessly. "
+        f"{color_detail_text} "
+        "Subtle, shimmering gold dust is suspended within the wax, catching the light and adding a touch of luxury. "
+    )
+    # [D] 风格和光照 (强化材质感)
+    prompt += (
+        "Professional product photography style, dramatic cinematic lighting that **accentuates the waxy sheen, the glossy highlights, and the soft shadows** within the embossed pattern's crevices. "
+        "Extreme detail, shallow depth of field, bokeh background."
+    )
+
+    return prompt
+
+
+# endregion
