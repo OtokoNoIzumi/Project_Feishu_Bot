@@ -79,13 +79,15 @@ class RoutineRecord(BaseProcessor):
     - 使用抽象方法准备多个数据储存逻辑的话，最好用一个set storage的接口，在初始化的内部做一个设置？好像也没必要set，直接赋值就行。
     """
 
-    def __init__(self, app_controller):
+    def __init__(self, app_controller, developer_mode=False):
         """初始化日常事项记录业务"""
         super().__init__(app_controller)
-        self.config_service = self.app_controller.get_service(ServiceNames.CONFIG)
-        self.user_permission_service = self.app_controller.get_service(
-            ServiceNames.USER_BUSINESS_PERMISSION
-        )
+        self.developer_mode = developer_mode
+        if not developer_mode:
+            self.config_service = self.app_controller.get_service(ServiceNames.CONFIG)
+            self.user_permission_service = self.app_controller.get_service(
+                ServiceNames.USER_BUSINESS_PERMISSION
+            )
         self.storage = JSONEventStorage()
 
     # region Route和入口
@@ -169,6 +171,9 @@ class RoutineRecord(BaseProcessor):
         Returns:
             bool: 是否有权限
         """
+        if self.developer_mode:
+            return True
+
         if not self.user_permission_service:
             debug_utils.log_and_print("用户权限服务不可用", log_level="WARNING")
             return False
@@ -187,6 +192,9 @@ class RoutineRecord(BaseProcessor):
         Returns:
             str: 用户数据文件夹路径
         """
+        if self.developer_mode:
+            return f"C:/Users/A/Project_Feishu_Bot/user_data/{user_id}"
+
         storage_path = self.config_service.get(
             "routine_record.storage_path", "user_data/"
         )
@@ -464,11 +472,11 @@ class RoutineRecord(BaseProcessor):
             if self._verify_id_uniqueness(user_id, candidate_id):
                 return candidate_id
 
-            # 如果统计不准确，回退到扫描方式并修复统计
-            return self._generate_id_with_scan_and_fix(user_id, event_name)
+                # 如果统计不准确，回退到扫描方式并修复统计
+                return self._generate_id_with_scan_and_fix(user_id, event_name)
 
-        # 事件定义不存在，扫描现有记录生成ID
-        return self._generate_id_with_scan(user_id, event_name)
+            # 事件定义不存在，扫描现有记录生成ID
+            return self._generate_id_with_scan(user_id, event_name)
 
     def _verify_id_uniqueness(self, user_id: str, candidate_id: str) -> bool:
         """
@@ -1637,11 +1645,11 @@ class RoutineRecord(BaseProcessor):
             # 获取原始记录的duration，如果存在的话
             original_duration = block["source_event"].get("duration", None)
 
-            # 获取颜色类型
-            color_type = event_map.get(event_name).get("color")
+            # 获取颜色类型——对于未来事件这样没有definition的，设置灰色
+            color_type = event_map.get(event_name, {}).get("color", ColorTypes.GREY)
 
             # 找到对应的分类名称
-            category_name = event_map.get(event_name).get("category")
+            category_name = event_map.get(event_name, {}).get("category", "无分类")
 
             # 使用分类名称作为聚合键
             if category_name not in color_aggregated_data:
