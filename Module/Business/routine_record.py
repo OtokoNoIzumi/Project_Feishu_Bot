@@ -79,11 +79,11 @@ class RoutineRecord(BaseProcessor):
     - 使用抽象方法准备多个数据储存逻辑的话，最好用一个set storage的接口，在初始化的内部做一个设置？好像也没必要set，直接赋值就行。
     """
 
-    def __init__(self, app_controller, developer_mode=False):
+    def __init__(self, app_controller, developer_mode_path=None):
         """初始化日常事项记录业务"""
         super().__init__(app_controller)
-        self.developer_mode = developer_mode
-        if not developer_mode:
+        self.developer_mode_path = developer_mode_path
+        if not self.developer_mode_path:
             self.config_service = self.app_controller.get_service(ServiceNames.CONFIG)
             self.user_permission_service = self.app_controller.get_service(
                 ServiceNames.USER_BUSINESS_PERMISSION
@@ -171,7 +171,7 @@ class RoutineRecord(BaseProcessor):
         Returns:
             bool: 是否有权限
         """
-        if self.developer_mode:
+        if self.developer_mode_path:
             return True
 
         if not self.user_permission_service:
@@ -192,8 +192,8 @@ class RoutineRecord(BaseProcessor):
         Returns:
             str: 用户数据文件夹路径
         """
-        if self.developer_mode:
-            return f"C:/Users/A/Project_Feishu_Bot/user_data/{user_id}"
+        if self.developer_mode_path:
+            return f"{self.developer_mode_path}/user_data/{user_id}"
 
         storage_path = self.config_service.get(
             "routine_record.storage_path", "user_data/"
