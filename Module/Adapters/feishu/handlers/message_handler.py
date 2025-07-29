@@ -246,14 +246,14 @@ class MessageHandler:
             if result.success and result.response_type == ResponseTypes.IMAGE_LIST:
                 # 上传并发送图像
                 image_paths = result.response_content.get("image_paths", [])
+                error_msg = result.response_content.get("error_msg", "")
                 if image_paths:
                     self.sender.upload_and_send_images(original_data, image_paths)
-                else:
-                    # 图像列表为空，发送错误提示
-                    error_result = ProcessResult.error_result("图像生成失败，结果为空")
+                if error_msg:
+                    error_result = ProcessResult.error_result(error_msg)
                     self.sender.send_feishu_reply(original_data, error_result)
             else:
-                # 图像生成失败，发送错误信息
+                # 图像生成失败，发送错误信息，业务优化应该已经不需要了
                 self.sender.send_feishu_reply(original_data, result)
 
         self._execute_async(process_in_background)

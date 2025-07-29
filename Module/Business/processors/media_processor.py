@@ -101,12 +101,16 @@ class MediaProcessor(BaseProcessor):
 
         error_msg = ""
         if image_paths is None:
-            error_msg = "图片生成故障，已经通知管理员修复咯！"
+            error_msg = "默认图片生成服务故障，已经通知管理员修复咯！"
         elif len(image_paths) == 0:
-            error_msg = "图片生成失败了，建议您换个提示词再试试"
+            error_msg = "默认图片生成失败了，建议您换个提示词再试试"
 
         if error_msg:
-            return ProcessResult.error_result(error_msg)
+            image_paths = image_service.process_text_to_image_hunyuan(prompt)
+            if image_paths is None:
+                error_msg += "\n备用方案：混元图片生成服务也故障了！"
+            else:
+                error_msg += "\n备用方案：混元图片生成成功！"
 
         # 返回图像路径列表，由适配器处理上传
         return ProcessResult.success_result(ResponseTypes.IMAGE_LIST, {
