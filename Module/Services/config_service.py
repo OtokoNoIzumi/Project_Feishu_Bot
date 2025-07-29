@@ -124,8 +124,11 @@ class ConfigService:
             "ADMIN_ID",
             "ADMIN_SECRET_KEY",
             "FFMPEG_PATH",
+            "NOTION_TOKEN",
             # B站API配置
-            "BILI_API_BASE"
+            "BILI_API_BASE",
+            # 混元API配置
+            "HUNYUAN_COOKIES",
         ]
 
         for key in env_keys:

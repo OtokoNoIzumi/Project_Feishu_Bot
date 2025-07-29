@@ -9,5 +9,6 @@
 """
 
 from .image_service import ImageService
+from .image_service import HunyuanImageGenerator
 
-__all__ = ['ImageService']
+__all__ = ['ImageService', 'HunyuanImageGenerator']

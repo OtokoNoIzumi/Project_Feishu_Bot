@@ -99,15 +99,20 @@ class MediaProcessor(BaseProcessor):
         # 生成图像
         image_paths = image_service.process_text_to_image(prompt)
 
+        error_msg = ""
         if image_paths is None:
-            return ProcessResult.error_result("图片生成故障，已经通知管理员修复咯！")
+            error_msg = "图片生成故障，已经通知管理员修复咯！"
         elif len(image_paths) == 0:
-            return ProcessResult.error_result("图片生成失败了，建议您换个提示词再试试")
+            error_msg = "图片生成失败了，建议您换个提示词再试试"
+
+        if error_msg:
+            return ProcessResult.error_result(error_msg)
 
         # 返回图像路径列表，由适配器处理上传
         return ProcessResult.success_result(ResponseTypes.IMAGE_LIST, {
             "image_paths": image_paths,
-            "prompt": prompt[:50] + ("..." if len(prompt) > 50 else "")
+            "prompt": prompt[:50] + ("..." if len(prompt) > 50 else ""),
+            "error_msg": error_msg
         })
 
     @require_service('image', "图像处理服务未启动或不可用")

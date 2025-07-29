@@ -146,6 +146,7 @@ class AppController:
                     | ServiceNames.MESSAGE_AGGREGATION
                     | ServiceNames.BILI_ADSKIP
                     | ServiceNames.USER_BUSINESS_PERMISSION
+                    | ServiceNames.IMAGE
                 ):
                     instance = service_class(app_controller=self)
                 case ServiceNames.NOTION:
