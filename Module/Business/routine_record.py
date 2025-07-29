@@ -1854,6 +1854,8 @@ class RoutineRecord(BaseProcessor):
 
         # 4. 计算分类权重
         category_weights = {}
+        max_weight_category = None
+        max_weight = 0
         for item in category_data:
             category_name = item["category_name"]
             duration = item["duration"]
@@ -1866,9 +1868,14 @@ class RoutineRecord(BaseProcessor):
                 category_weights[category_name]["weight"] = 0
 
             category_weights[category_name]["weight"] += weight
+            if category_weights[category_name]["weight"] > max_weight:
+                max_weight = category_weights[category_name]["weight"]
+                max_weight_category = category_name
 
         # 5. 计算最终颜色
         final_color = self._blend_colors_by_weights(category_weights)
+        if max_weight_category:
+            final_color["max_weight_category"] = max_weight_category
         palette_data = self.prepare_palette_data(category_weights)
 
         return final_color, palette_data
@@ -1985,7 +1992,7 @@ class RoutineRecord(BaseProcessor):
         hex_color = hsl_to_hex(target_hsl[0], target_hsl[1], target_hsl[2])
         return {
             "type": "unique",
-            "name": f"独特的颜色({hex_color})",  # 临时名字
+            "name": "独特的颜色",  # 临时名字
             "hex": hex_color,
             "closest_to": closest_color.value if closest_color else "N/A",
             "distance_to_closest": round(min_distance, 2),
@@ -2162,7 +2169,7 @@ def wax_stamp_prompt(color_palette, subject_name=None):
     color_palette: (unique_color_info, color_list)
     subject_name: 印章内主体造型的名称（可为None或空字符串）
     """
-    _, color_list = color_palette
+    color_list = color_palette
 
     # 颜色按比例排序
     color_list = (

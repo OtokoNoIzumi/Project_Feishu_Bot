@@ -409,7 +409,10 @@ class MessageSender:
                 continue
 
             # 上传单张图片
-            if self.upload_and_send_single_image(original_data, image_path):
+            image_key = self.upload_and_get_image_key(image_path)
+            if image_key:
+                image_result = ProcessResult.success_result("image", {"image_key": image_key}, parent_id=original_data.event.message.message_id)
+                self.send_feishu_reply(original_data, image_result)
                 success_count += 1
 
         if success_count > 0:
@@ -419,9 +422,9 @@ class MessageSender:
         debug_utils.log_and_print("没有成功发送任何图片", log_level="ERROR")
         return False
 
-    @file_operation_safe("上传单张图片失败", return_value=False)
-    def upload_and_send_single_image(self, original_data, image_path: str) -> bool:
-        """上传并发送单张图片"""
+    @file_operation_safe("上传单张图片失败", return_value="")
+    def upload_and_get_image_key(self, image_path: str) -> bool:
+        """上传并获取图片key"""
         with open(image_path, "rb") as image_file:
             upload_response = self.client.im.v1.image.create(
                 CreateImageRequest.builder()
@@ -433,17 +436,10 @@ class MessageSender:
                 )
                 .build()
             )
-
-            if (upload_response.success() and
-                upload_response.data and
-                upload_response.data.image_key):
-
-                # 发送图片消息
-                image_result = ProcessResult.success_result("image", {"image_key": upload_response.data.image_key}, parent_id=original_data.event.message.message_id)
-                return self.send_feishu_reply(original_data, image_result)
-
-            debug_utils.log_and_print(f"图片上传失败: {upload_response.code} - {upload_response.msg}", log_level="ERROR")
-            return False
+            if upload_response.success() and upload_response.data and upload_response.data.image_key:
+                return upload_response.data.image_key
+            debug_utils.log_and_print(f"图片上传失败: {upload_response.code} - {upload_response.msg}, image_path: {image_path}", log_level="ERROR")
+            return ""
 
     @file_operation_safe("音频上传处理失败", return_value=False)
     def upload_and_send_audio(self, original_data, audio_data: bytes) -> bool:

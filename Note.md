@@ -307,3 +307,102 @@ quick的按钮和布局
 可能的初步考虑是做一下分离，record id 在创建的时候保存，其他指标在编辑的时候保存
 
 填充时间的时候有一个顺序覆盖逻辑就可以了，按照开始先后时间先后进行覆盖，自然就可以把中间的时间挖出来？
+
+水晶球的多个备选也是异步来增加的，不要一开始就算进去——添加到一个队列里？作为一个持续更新的卡片，输入和刷新的问题要看一看。
+开始的清单，要能关闭
+
+中指的指甲——水晶球，添加到to do的健康检查里？是一个事项————有一个专属的输入入口，可以做AI接管
+不过这个要单独做一个按钮？可以从文本长度来做判断？
+
+新的事件定义属性就可以用上AI给一个初始的推荐了么？
+
+习惯追踪 airtable
+
+重要踩坑备忘
+1.P2CardActionTriggerResponse刷新是一个弱兼容强检测的场景，所有刷新失败一定都是语法错误——但发送则未必这么强检测错误。
+双重json.dump的内置方法打印出来去飞书上检查
+
+对于menu来说，还有一个time关联性，比如早上点的不太可能是夜宵？
+
+语音识别+录像？做一个秀，这个可以下周弄
+
+热力图的时候要有一个忽略名称——特殊事项才加，方便对外分享。
+换言之这个还是一个开关，要不要用别名
+
+sender再坚持一下
+
+schedule日报的触发逻辑最好也分两部分注册，一部分是adapter层面的……吗？这个应该就只是回调，这个还要再看。
+
+快捷按钮点的时候也要考虑是不是active_record，这样会更好。另外再多一个新建就行。
+
+ongoing的relate问题，这个也是debug一下很快就能解决
+
+____
+# 装饰器使用心得
+
+## 问题分析
+
+### 当前装饰器的问题
+1. **错误信息模糊**：`@safe_execute` 装饰器捕获了所有异常，但只显示装饰器定义的错误消息，丢失了原始错误信息
+2. **调试困难**：无法准确定位错误发生的具体位置和原因
+3. **错误堆栈丢失**：装饰器重新抛出异常时，丢失了原始的错误堆栈信息
+
+### 错误示例
+```
+2025-07-29 21:30:52,904 ERROR 🔴 业务处理异常 创建每日信息汇总失败 [daily_summary]: too many values to unpack (expected 2)
+```
+这个错误信息告诉我们：
+- 错误发生在 `daily_summary` 方法中
+- 具体错误是 "too many values to unpack (expected 2)"
+- 但无法知道是在哪一行代码发生的
+
+## 更好的做法
+
+### 1. 分层错误处理
+```python
+# 业务层：只处理业务逻辑错误
+def business_method():
+    try:
+        # 业务逻辑
+        pass
+    except BusinessException as e:
+        # 处理业务异常
+        return ProcessResult.error_result(str(e))
+    except Exception as e:
+        # 记录技术异常，但不重新包装
+        debug_utils.log_and_print(f"技术异常: {e}", log_level="ERROR")
+        raise
+
+# 装饰器：只处理技术异常
+@safe_execute("业务方法执行失败")
+def decorated_method():
+    return business_method()
+```
+
+### 2. 增强装饰器
+```python
+def safe_execute(error_message: str):
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            try:
+                return func(*args, **kwargs)
+            except Exception as e:
+                # 保留原始错误信息
+                full_error = f"{error_message}: {str(e)}"
+                debug_utils.log_and_print(full_error, log_level="ERROR")
+                # 记录错误堆栈
+                import traceback
+                debug_utils.log_and_print(f"错误堆栈: {traceback.format_exc()}", log_level="ERROR")
+                return ProcessResult.error_result(full_error)
+        return wrapper
+    return decorator
+```
+
+### 3. 调试友好的做法
+- 在关键方法中添加详细的日志
+- 使用 try-except 包装可能出错的代码块
+- 记录详细的错误上下文信息
+- 避免在装饰器中丢失原始错误信息
+
+## 当前解决方案
+在 `daily_summary` 方法中添加了详细的日志，帮助定位 "too many values to unpack" 错误的具体位置。
