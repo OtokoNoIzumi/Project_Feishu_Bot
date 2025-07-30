@@ -2,6 +2,7 @@
 和业务、上下文或鉴权无关的辅助函数
 """
 
+
 def safe_parse_number(value, as_int: bool = False) -> float:
     """
     安全解析数值
@@ -21,6 +22,7 @@ def safe_parse_number(value, as_int: bool = False) -> float:
         return int(result) if as_int else result
     except (ValueError, TypeError):
         return 0
+
 
 def hex_to_hsl(hex_color: str) -> tuple:
     """
@@ -67,6 +69,7 @@ def hex_to_hsl(hex_color: str) -> tuple:
 
     return (h, s, l)
 
+
 def hex_to_rgb(hex_color: str) -> tuple:
     """
     将十六进制颜色转换为RGB
@@ -77,8 +80,9 @@ def hex_to_rgb(hex_color: str) -> tuple:
     Returns:
         tuple: (R, G, B) RGB值
     """
-    hex_str = hex_color.lstrip('#')
-    return tuple(int(hex_str[i:i+2], 16) for i in (0, 2, 4))
+    hex_str = hex_color.lstrip("#")
+    return tuple(int(hex_str[i : i + 2], 16) for i in (0, 2, 4))
+
 
 def rgb_to_hex(r: int, g: int, b: int) -> str:
     """
@@ -91,6 +95,7 @@ def rgb_to_hex(r: int, g: int, b: int) -> str:
         str: 十六进制颜色值
     """
     return f"#{r:02x}{g:02x}{b:02x}".upper()
+
 
 def hsl_to_hex(h: float, s: float, l: float) -> str:
     """
@@ -131,3 +136,25 @@ def hsl_to_hex(h: float, s: float, l: float) -> str:
     b = int((b + m) * 255)
 
     return rgb_to_hex(r, g, b)
+
+
+def format_time_label(minutes: int) -> str:
+    """
+    格式化时间标签
+
+    Args:
+        minutes: 分钟数
+
+    Returns:
+        str: 格式化后的时间标签
+    """
+    if minutes > 1440:
+        days = int(minutes // 1440)
+        hours = round((minutes % 1440) / 60, 1)
+        return f"{days}天{hours}小时"
+    elif minutes > 60:
+        hours = int(minutes // 60)
+        minutes = int(minutes % 60)
+        return f"{hours}小时{minutes}分钟"
+    else:
+        return f"{int(minutes)}分钟"

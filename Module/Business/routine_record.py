@@ -653,7 +653,7 @@ class RoutineRecord(BaseProcessor):
             new_record_data = self._create_event_record(
                 event_name, user_id, record_mode
             )
-            last_record_time = definitions_data.get("last_record_time", None)
+            last_record_time = event_definition.get("last_record_time", None)
 
         # 公共的计算可以放在外面
         computed_data = {}

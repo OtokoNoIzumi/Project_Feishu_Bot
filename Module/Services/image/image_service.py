@@ -649,8 +649,8 @@ class HunyuanImageGenerator:
                 with open(filename, "wb") as f:
                     f.write(image_bytes)
                 debug_utils.log_and_print(f"图片已保存为: {filename}", log_level="INFO")
-            case "base64":
-                return base64_str
+            case "image_bytes":
+                return image_bytes
 
         return {
             "success": True,

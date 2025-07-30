@@ -24,6 +24,7 @@ from Module.Business.processors.base_processor import (
     ProcessResult,
 )
 from Module.Services.config_service import set_nested_value
+from Module.Business.shared_process import format_time_label
 
 
 class RecordCard:
@@ -227,10 +228,12 @@ class RecordCard:
         if time_field:
             info_content += f"**{time_label}：** {time_field}\n"
             if diff_minutes > 0 and event_type != RoutineTypes.FUTURE.value:
+                time_label = format_time_label(diff_minutes)
+
                 if record_mode == RoutineRecordModes.QUERY:
-                    info_content += f"**已经持续：** {diff_minutes}分钟\n"
+                    info_content += f"**已经持续：** {time_label}\n"
                 else:
-                    info_content += f"**上次记录距今：** {diff_minutes}分钟\n"
+                    info_content += f"**上次记录距今：** {time_label}\n"
 
         # 显示分类（如果有）
         category = event_definition.get("category", "")
