@@ -296,6 +296,10 @@ class RoutineCardManager(BaseCardManager):
         """切换连续记录状态"""
         return self.quick_select_card.toggle_continuous_record(context)
 
+    def complete_active_record(self, context: MessageContext_Refactor):
+        """完成active_record"""
+        return self.quick_select_card.complete_active_record(context)
+
     def calculate_yesterday_color(self, context: MessageContext_Refactor):
         """计算昨天的颜色"""
         return self.quick_select_card.calculate_yesterday_color(context)

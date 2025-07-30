@@ -1005,6 +1005,11 @@ class RoutineRecord(BaseProcessor):
     ) -> Dict[str, Any]:
         """
         构建快速选择记录卡片数据（扩展版本：支持集成模式）
+        优化入选逻辑：
+        1. 时间匹配事件（昨天/前天同一时间±1小时）- 最多2席，优先级最高
+        2. quick_access事件 - 最多3席
+        3. 最近更新的事件 - 填满剩余席位
+        对于有active_record的事件会添加相应标识
 
         Args:
             user_id: 用户ID
@@ -1013,44 +1018,149 @@ class RoutineRecord(BaseProcessor):
         Returns:
             Dict[str, Any]: 卡片数据
         """
-        # 业务数据未必都需要在这里定义，是否连续更新是前端的事，取值或者设定值，这里是业务逻辑的数据。
         definitions_data = self.load_event_definitions(user_id)
-        quick_events = []
-        definitions = definitions_data.get("definitions", {})
-
-        if definitions:
-            # 分离快速访问事件和最近事件
-            quick_access_events = []
-            recent_events = []
-
-            for event_name, event_def in definitions.items():
-                event_info = {
-                    "name": event_name,
-                    "type": event_def.get("type", RoutineTypes.INSTANT.value),
-                    "properties": event_def.get("properties", {}),
-                    "last_updated": event_def.get("last_updated", ""),
-                    "definition": event_def,  # 保留完整定义，用于快速记录
-                }
-
-                if event_def.get("properties", {}).get("quick_access", False):
-                    quick_access_events.append(event_info)
-                else:
-                    recent_events.append(event_info)
-
-            # 排序并合并事件列表
-            quick_access_events.sort(key=lambda x: x["last_updated"], reverse=True)
-            recent_events.sort(key=lambda x: x["last_updated"], reverse=True)
-
-            # 确保快速访问事件优先显示
-            result = quick_access_events[:3]
-            remaining_slots = max_items - len(result)
-            if remaining_slots > 0:
-                result.extend(recent_events[:remaining_slots])
-            quick_events = result
-
-        # 加载active_records数据
         records_data = self.load_event_records(user_id)
         active_records = records_data.get("active_records", {})
+        definitions = definitions_data.get("definitions", {})
+
+        quick_events = []
+        current_time = datetime.now()
+
+        # 构建active_records映射，用于检查事件是否有active_record
+        active_record_map = {}
+        for record_id, record in active_records.items():
+            event_name = record.get("event_name", "")
+            if event_name:
+                active_record_map[event_name] = {
+                    "record_id": record_id,
+                    "record_data": record,
+                }
+
+        def create_event_info(
+            event_name: str, event_def: dict, priority_type: str = ""
+        ) -> dict:
+            """创建事件信息字典"""
+            is_active_record = event_name in active_record_map
+            event_info = {
+                "name": event_name,
+                "type": event_def.get("type", RoutineTypes.INSTANT.value),
+                "properties": event_def.get("properties", {}),
+                "last_updated": event_def.get("last_updated", ""),
+                "definition": event_def,
+                "is_active_record": is_active_record,
+                "priority_type": priority_type,
+            }
+
+            if is_active_record:
+                active_info = active_record_map[event_name]
+                event_info["active_record_id"] = active_info["record_id"]
+                event_info["active_record_data"] = active_info["record_data"]
+
+            return event_info
+
+        # 第一优先级：时间匹配事件（昨天和前天同一时间±1小时）
+        time_matched_events = []
+        for event_name, event_def in definitions.items():
+            last_record_id = event_def.get("stats", {}).get("last_record_id", "")
+            last_record_data = records_data.get("records", {}).get(last_record_id, {})
+            last_record_create_time = last_record_data.get("create_time", "")
+            last_record_end_time = last_record_data.get("end_time", "")
+            last_record_time = last_record_create_time or event_def.get(
+                "last_record_time"
+            )
+            if not last_record_time:
+                continue
+
+            try:
+                last_time = datetime.strptime(last_record_time, "%Y-%m-%d %H:%M")
+                # 补记的情况，要倒退duration分钟
+                if (
+                    not last_record_end_time
+                    or last_record_end_time == last_record_create_time
+                ):
+                    last_record_end_time = last_time - timedelta(
+                        minutes=last_record_data.get("duration", 0)
+                    )
+
+                # 检查昨天同一时间（±1小时）
+                # 正确理解：昨天同一时间 = 上次执行时间 + 1天
+                yesterday_target = last_time + timedelta(days=1)
+                yesterday_diff = abs(
+                    (current_time - yesterday_target).total_seconds() / 3600
+                )  # 小时差
+
+                # 检查前天同一时间（±1小时）
+                # 正确理解：前天同一时间 = 上次执行时间 + 2天
+                day_before_yesterday_target = last_time + timedelta(days=2)
+                day_before_yesterday_diff = abs(
+                    (current_time - day_before_yesterday_target).total_seconds() / 3600
+                )  # 小时差
+
+                # 如果在±1小时范围内，加入候选
+                if yesterday_diff <= 1:
+                    event_info = create_event_info(
+                        event_name, event_def, "time_matched_yesterday"
+                    )
+                    event_info["time_diff"] = yesterday_diff
+                    time_matched_events.append(event_info)
+                elif day_before_yesterday_diff <= 1:
+                    event_info = create_event_info(
+                        event_name, event_def, "time_matched_day_before_yesterday"
+                    )
+                    event_info["time_diff"] = day_before_yesterday_diff
+                    time_matched_events.append(event_info)
+
+            except (ValueError, TypeError):
+                # 时间格式错误，跳过
+                continue
+        # 按时间差排序，时间差越小优先级越高，昨天优先于前天
+        time_matched_events.sort(
+            key=lambda x: (
+                x["priority_type"] != "time_matched_yesterday",
+                x["time_diff"],
+            )
+        )
+
+        # 第二优先级：quick_access事件
+        quick_access_events = []
+        for event_name, event_def in definitions.items():
+            if event_def.get("properties", {}).get("quick_access", False):
+                # 排除已经在时间匹配中的事件
+                if not any(e["name"] == event_name for e in time_matched_events):
+                    event_info = create_event_info(
+                        event_name, event_def, "quick_access"
+                    )
+                    quick_access_events.append(event_info)
+
+        # 按last_updated排序quick_access_events
+        quick_access_events.sort(key=lambda x: x["last_updated"], reverse=True)
+
+        # 第三优先级：最近更新的事件
+        recent_events = []
+        excluded_event_names = set(
+            e["name"] for e in time_matched_events + quick_access_events
+        )
+        for event_name, event_def in definitions.items():
+            if event_name not in excluded_event_names:
+                event_info = create_event_info(event_name, event_def, "recent")
+                recent_events.append(event_info)
+
+        # 按last_updated排序recent_events
+        recent_events.sort(key=lambda x: x["last_updated"], reverse=True)
+
+        # 按优先级合并事件列表，确保不超过max_items
+        # 时间匹配事件最多2席
+        quick_events.extend(time_matched_events[:2])
+        remaining_slots = max_items - len(quick_events)
+
+        # quick_access事件最多3席
+        if remaining_slots > 0:
+            quick_events.extend(quick_access_events[: min(3, remaining_slots)])
+            remaining_slots = max_items - len(quick_events)
+
+            # 剩余席位给最近更新的事件
+            if remaining_slots > 0:
+                quick_events.extend(recent_events[:remaining_slots])
 
         # 构建基础卡片数据
         quick_select_data = {

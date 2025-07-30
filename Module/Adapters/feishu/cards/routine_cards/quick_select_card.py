@@ -15,6 +15,7 @@ from Module.Services.constants import (
     CardOperationTypes,
     ToastTypes,
     RoutineTypes,
+    RoutineRecordModes,
 )
 
 
@@ -133,10 +134,10 @@ class QuickSelectCard:
                 event_name_btn = event.get("name", "")
                 event_type = event.get("type", RoutineTypes.INSTANT.value)
                 type_emoji = RoutineTypes.get_type_emoji(event_type)
-                is_quick_access = event.get("properties", {}).get("quick_access", False)
+                is_active_record = event.get("is_active_record", False)
 
                 # 预检测长度，如果添加当前按钮会超出限制，先输出当前行
-                current_button_length = len(event_name_btn) + 2  # 加上emoji和空格的长度
+                current_button_length = max(4, len(event_name_btn) + 2)
                 if (
                     button_text_length + current_button_length > 13
                     or len(new_buttons) >= 3
@@ -147,17 +148,32 @@ class QuickSelectCard:
                     new_buttons = []
                     button_text_length = 0
 
-                button_action_data = {
-                    "card_action": "quick_record_select",
-                    "card_config_key": CardConfigKeys.ROUTINE_QUICK_SELECT,
-                    "event_name": event_name_btn,
-                    "container_build_method": build_method_name,
-                }
+                # 根据是否为active_record设置不同的action_data
+                if is_active_record:
+                    # active_record事件：进入完成模式
+                    button_action_data = {
+                        "card_action": "complete_active_record",
+                        "record_id": event.get("active_record_id", ""),
+                        "event_name": event_name_btn,
+                        "card_config_key": CardConfigKeys.ROUTINE_QUICK_SELECT,
+                        "container_build_method": build_method_name,
+                    }
+                    button_type = "primary"  # active_record使用primary样式
+                else:
+                    # 普通事件：进入新建模式
+                    button_action_data = {
+                        "card_action": "quick_record_select",
+                        "card_config_key": CardConfigKeys.ROUTINE_QUICK_SELECT,
+                        "event_name": event_name_btn,
+                        "container_build_method": build_method_name,
+                    }
+                    button_type = "default"  # 非active_record使用default样式
+
                 new_buttons.append(
                     self.parent.build_button_element(
                         text=f"{type_emoji} {event_name_btn}",
                         action_data=button_action_data,
-                        type="primary" if is_quick_access else "default",
+                        type=button_type,
                         size="small",
                         disabled=components_disabled,
                     )
@@ -341,6 +357,89 @@ class QuickSelectCard:
             card_operation_type=CardOperationTypes.UPDATE_RESPONSE,
             update_toast_type=ToastTypes.INFO,
             toast_message=f"输入了新事项 '{event_name}'",
+        )
+
+    def complete_active_record(self, context: MessageContext_Refactor) -> ProcessResult:
+        """
+        完成活跃记录的专用方法
+        """
+        action_value = context.content.value
+        user_id = context.user_id
+        parent_business_name = action_value.get(
+            "card_config_key", CardConfigKeys.ROUTINE_QUICK_SELECT
+        )
+        event_name = action_value.get("event_name", "")
+        record_id = action_value.get("record_id", "")
+        container_build_method = action_value.get(
+            "container_build_method", self.default_update_build_method
+        )
+
+        # 获取当前卡片的业务数据
+        business_data, card_id, error_response = self.parent.ensure_valid_context(
+            context, "complete_active_record", container_build_method
+        )
+        if error_response:
+            return error_response
+
+        business_data["is_confirmed"] = False
+        business_data["cancel_confirmed"] = False
+
+        # 获取routine_business实例
+        routine_business = self.parent.message_router.routine_record
+
+        active_record_data = {}
+
+        # 查找对应的active_record_data
+        for event in business_data.get("quick_events", []):
+            if (
+                event.get("name") == event_name
+                and event.get("is_active_record")
+                and event.get("active_record_id") == record_id
+            ):
+                active_record_data = event.get("active_record_data")
+                break
+
+        # 使用routine_business的build_record_business_data方法构建完整数据
+        new_record_data = routine_business.build_record_business_data(
+            user_id,
+            event_name,
+            record_mode=RoutineRecordModes.QUERY,
+            current_record_data=active_record_data,
+        )
+
+        # 添加完成active_record特有的字段
+        new_record_data["operation_type"] = "complete_active_record"
+        new_record_data["source_record_id"] = record_id
+
+        business_data["workflow_state"] = "quick_record"
+        business_data["container_build_method"] = container_build_method
+
+        parent_data, _ = self.parent.safe_get_business_data(
+            business_data, parent_business_name
+        )
+
+        parent_data["sub_business_data"] = new_record_data
+        parent_data["sub_business_name"] = CardConfigKeys.ROUTINE_RECORD
+        sub_business_build_method = self.parent.get_sub_business_build_method(
+            CardConfigKeys.ROUTINE_RECORD
+        )
+        parent_data["sub_business_build_method"] = sub_business_build_method
+
+        # 更新卡片显示
+        new_card_dsl = self.parent.build_update_card_data(
+            business_data, container_build_method
+        )
+        if active_record_data:
+            toast_msg = f"正在完成 [{event_name}]"
+        else:
+            toast_msg = f"无法找到活跃记录 [{event_name}] 的数据"
+        return self.parent.save_and_respond_with_update(
+            context.user_id,
+            card_id,
+            business_data,
+            new_card_dsl,
+            toast_msg,
+            ToastTypes.SUCCESS,
         )
 
     def select_record_by_input(self, context: MessageContext_Refactor) -> ProcessResult:
