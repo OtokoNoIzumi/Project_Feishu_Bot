@@ -138,7 +138,7 @@ class QuickSelectCard:
                 # 预检测长度，如果添加当前按钮会超出限制，先输出当前行
                 current_button_length = len(event_name_btn) + 2  # 加上emoji和空格的长度
                 if (
-                    button_text_length + current_button_length > 14
+                    button_text_length + current_button_length > 13
                     or len(new_buttons) >= 3
                 ) and new_buttons:
                     elements.append(

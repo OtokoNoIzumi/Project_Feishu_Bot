@@ -280,6 +280,14 @@ class RecordCard:
 
             content_parts.append(f"⏱️ **预估用时：** {duration_str}")
 
+        computed_data = data_source.get("computed_data", {})
+        estimated_duration = computed_data.get("estimated_duration", 0)
+        if estimated_duration > 0:
+            content_parts.append(f"**扣除其他事件后的时间：** {estimated_duration}分钟")
+            last_duration = computed_data.get("last_duration", 0)
+            if last_duration > 0:
+                content_parts.append(f"**开始事件用时：** {last_duration}分钟")
+
         # 格式化进度信息
         event_definition = data_source.get("event_definition", {})
         progress_type = event_definition.get("properties", {}).get("progress_type", "")

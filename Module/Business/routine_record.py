@@ -663,6 +663,17 @@ class RoutineRecord(BaseProcessor):
             diff_minutes = round((datetime.now() - last_time).total_seconds() / 60, 1)
             computed_data["diff_minutes"] = diff_minutes
 
+            # 计算估计持续时间
+            if record_mode == RoutineRecordModes.QUERY and current_record_data:
+                estimated_duration = self._calculate_estimated_duration(
+                    user_id, last_time, datetime.now()
+                )
+                computed_data["estimated_duration"] = estimated_duration
+                computed_data["last_duration"] = new_record_data.get("duration", 0)
+                new_record_data["duration"] = (
+                    computed_data["last_duration"] + estimated_duration
+                )
+
         match record_mode:
             case RoutineRecordModes.ADD:
                 event_definition["type"] = RoutineTypes.INSTANT.value
@@ -788,6 +799,47 @@ class RoutineRecord(BaseProcessor):
         duration_count = event_duration_info.get("duration_count", 0)
         avg_duration = event_duration_info.get("avg_all_time", 0)
         return round(avg_duration * duration_count, 1)
+
+    def _calculate_estimated_duration(
+        self, user_id: str, start_time: datetime, end_time: datetime
+    ) -> float:
+        """
+        计算估计持续时间，通过分析当前时间段的记录来更精准地估计
+
+        Args:
+            user_id: 用户ID
+            start_time: 开始时间
+            end_time: 结束时间
+
+        Returns:
+            float: 估计持续时间（分钟）
+        """
+        # 加载所有记录
+        records_data = self.load_event_records(user_id)
+        all_records_dict = records_data["records"]
+
+        # 预处理和过滤记录
+        filtered_records = self.preprocess_and_filter_records(
+            all_records_dict, start_time, end_time
+        )
+
+        # 生成原子时间线
+        atomic_timeline = self.generate_atomic_timeline(
+            filtered_records, start_time, end_time
+        )
+
+        # 计算已占用的时间
+        occupied_duration = 0.0
+        for atomic_block in atomic_timeline:
+            occupied_duration += atomic_block["duration_minutes"]
+
+        # 总时间跨度
+        total_span = (end_time - start_time).total_seconds() / 60.0
+
+        # 估计持续时间 = 总时间跨度 - 已占用时间
+        estimated_duration = max(0.0, total_span - occupied_duration)
+
+        return round(estimated_duration, 1)
 
     @safe_execute("创建直接记录失败")
     def create_direct_record(
@@ -1560,7 +1612,7 @@ class RoutineRecord(BaseProcessor):
                 start_time = datetime.fromisoformat(create_time_str.replace(" ", "T"))
 
                 # 如果没有end_time，使用create_time作为end_time（即时事件）
-                if not end_time_str:
+                if (not end_time_str) or (end_time_str == create_time_str):
                     end_time = start_time
                     start_time = start_time - timedelta(
                         minutes=record.get("duration", 0)
@@ -2197,17 +2249,12 @@ def wax_stamp_prompt(color_palette, subject_name=None):
         sorted(color_list, key=lambda x: -x.get("percentage", 0)) if color_list else []
     )
 
-    # color_detail_text = generate_color_details_text(color_list)
-    # 注释: 调用我们全新的、智能的颜色描述函数。
     color_text = generate_intelligent_color_description(color_list)
 
     # 主体造型描述
     subject_name = subject_name or color_list[0].get("name") if color_list else ""
     subject_text = subject_desc(subject_name) if subject_name else ""
 
-    # --- 4. 全新Prompt结构化组装 ---
-    # --- 3. 终极Prompt组装 ---
-    # 注释: 完全采用你提供的、经过验证的极简模板结构。
     prompt = (
         "Macro photograph of a wax seal on cream textured paper. "
         # "Semi-translucent wax with organic, irregular, molten edges. "
