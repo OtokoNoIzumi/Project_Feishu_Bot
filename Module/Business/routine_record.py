@@ -1572,9 +1572,12 @@ class RoutineRecord(BaseProcessor):
                     record["start_dt"] = start_time
                     record["end_dt"] = end_time
                     record_list.append(record)
+                elif end_time <= start_range:
+                    break
             except (ValueError, KeyError) as e:
-                print(
-                    f"Skipping record due to error: {record.get('record_id', 'N/A')}, {e}"
+                debug_utils.log_and_print(
+                    f"Skipping record due to error: {record.get('record_id', 'N/A')}, {e}",
+                    log_level="ERROR",
                 )
                 continue
 
@@ -2207,19 +2210,19 @@ def wax_stamp_prompt(color_palette, subject_name=None):
     # 注释: 完全采用你提供的、经过验证的极简模板结构。
     prompt = (
         "Macro photograph of a wax seal on cream textured paper. "
-        "Semi-translucent wax with organic, irregular, molten edges. "
+        # "Semi-translucent wax with organic, irregular, molten edges. "
     )
 
     if subject_text:
         # 注释: 插入主体图案描述
-        prompt += f"The raised seal pattern shows {subject_text}. "
+        prompt += f"The raised wax seal pattern shows {subject_text}. "
 
     # 注释: 插入由智能算法生成的颜色描述，并加入金色闪粉
-    prompt += f"Marbled colors: {color_text}, with shimmering gold dust particles suspended within. "
+    prompt += f"Wax has marbled colors: {color_text}, with shimmering gold dust particles suspended within. "
 
     # 注释: 插入光照和风格描述
     prompt += (
-        "Dramatic lighting highlights the translucent, glossy surface. "
+        "Dramatic lighting highlights the surface. "
         "Professional photography, shallow depth of field."
     )
 
