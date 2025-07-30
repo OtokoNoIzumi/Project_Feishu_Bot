@@ -5,7 +5,12 @@ Record Card
 """
 
 import copy
+from datetime import datetime
 from typing import Dict, Any, List
+from lark_oapi.event.callback.model.p2_card_action_trigger import (
+    P2CardActionTriggerResponse,
+)
+
 from Module.Adapters.feishu.utils import safe_float
 from Module.Services.constants import (
     RoutineTypes,
@@ -120,7 +125,7 @@ class RecordCard:
 
         # 4. 表单内字段区域（表单数据，通过提交按钮回调一次性处理）
         form_container = self._build_form_fields_by_type(
-            event_type, data_source, is_confirmed
+            event_type, data_source, is_confirmed, build_method_name
         )
 
         # 5. 提交按钮
@@ -647,7 +652,11 @@ class RecordCard:
 
     # region 表单内字段区域
     def _build_form_fields_by_type(
-        self, event_type: str, data_source: Dict, is_confirmed: bool
+        self,
+        event_type: str,
+        data_source: Dict,
+        is_confirmed: bool,
+        build_method_name: str,
     ) -> Dict:
         """
         根据事件类型构建表单容器
@@ -680,7 +689,9 @@ class RecordCard:
         match event_type:
             case RoutineTypes.INSTANT.value | RoutineTypes.START.value:
                 form_fields.extend(
-                    self._build_instant_start_form_fields(data_source, is_confirmed)
+                    self._build_instant_start_form_fields(
+                        data_source, is_confirmed, build_method_name
+                    )
                 )
             case RoutineTypes.ONGOING.value:
                 form_fields.extend(
@@ -694,7 +705,7 @@ class RecordCard:
         return self.parent.build_form_element(form_fields, "direct_record_form")
 
     def _build_instant_start_form_fields(
-        self, data_source: Dict, is_confirmed: bool
+        self, data_source: Dict, is_confirmed: bool, build_method_name: str
     ) -> List[Dict]:
         """
         构建瞬间完成和开始事项类型的表单字段
@@ -740,18 +751,53 @@ class RecordCard:
 
         # 3. 耗时字段
         duration_value = record_data.get("duration", "")
-        elements.append(
-            self.parent.build_form_row(
+        if record_mode != RoutineRecordModes.QUERY:
+            # 创建快填按钮
+
+            action_data = {
+                "card_action": "handle_record_field_update",
+                "card_config_key": CardConfigKeys.ROUTINE_RECORD,
+                "container_build_method": build_method_name,
+                "nested_field_pos": "record_data.duration",
+                "toast_message": "耗时已更新",
+                "value_mode": "diff_create_time",
+            }
+
+            quick_fill_button = self.parent.build_button_element(
+                text="⏱快填",
+                action_data=action_data,
+                disabled=is_confirmed,
+                name="quick_fill_duration",
+                type="default",
+                size="small",
+            )
+
+            width_list = ["80px", "100px", "70px"]
+            duration_elements = self.parent.build_form_row(
                 "⏱️ 耗时",
                 self.parent.build_input_element(
-                    placeholder="请输入耗时（分钟）",
+                    placeholder="单位:分钟",
+                    initial_value=str(duration_value) if duration_value else "",
+                    disabled=is_confirmed,
+                    action_data={},
+                    name="duration",
+                ),
+                width_list=width_list,
+                third_element=quick_fill_button,
+            )
+        else:
+            duration_elements = self.parent.build_form_row(
+                "⏱️ 耗时",
+                self.parent.build_input_element(
+                    placeholder="单位:分钟",
                     initial_value=str(duration_value) if duration_value else "",
                     disabled=is_confirmed,
                     action_data={},
                     name="duration",
                 ),
             )
-        )
+
+        elements.append(duration_elements)
 
         # 4. 指标值字段（根据指标类型动态显示）
         elements.extend(
@@ -1164,13 +1210,17 @@ class RecordCard:
         self, context: MessageContext_Refactor
     ) -> ProcessResult:
         """通用字段更新处理方法"""
+
         # 提取选择的值
         extracted_value = context.content.value.get("option", "")
         if not extracted_value:
             extracted_value = context.content.value.get("value", "")
 
-        if not extracted_value:
-            return self.parent.create_error_result("未能获取选择的值")
+        value_mode = context.content.value.get("value_mode", "")
+        if not extracted_value and not value_mode:
+            return P2CardActionTriggerResponse(
+                {"toast": {"type": "error", "content": "未能获取选择的值"}}
+            )
 
         # 获取构建方法名称
         build_method_name = context.content.value.get(
@@ -1192,6 +1242,16 @@ class RecordCard:
         data_source, _ = self.parent.safe_get_business_data(
             business_data, CardConfigKeys.ROUTINE_RECORD
         )
+
+        match value_mode:
+            case "diff_create_time":
+                last_time = datetime.strptime(
+                    data_source.get("record_data", {}).get("create_time", ""),
+                    "%Y-%m-%d %H:%M",
+                )
+                extracted_value = round(
+                    (datetime.now() - last_time).total_seconds() / 60, 1
+                )
 
         set_nested_value(data_source, nested_field_pos, extracted_value)
 

@@ -410,13 +410,14 @@ class BaseCardManager(ABC):
         element: Dict[str, Any],
         width_list: List[str] = None,
         element_id: str = "",
+        third_element: Dict[str, Any] = None,
     ) -> Dict[str, Any]:
         """构建表单行"""
 
         if width_list is None:
             width_list = ["80px", "180px"]
 
-        return {
+        final_row = {
             "tag": "column_set",
             "horizontal_align": "left",
             "element_id": element_id,
@@ -436,6 +437,17 @@ class BaseCardManager(ABC):
                 {"tag": "column", "width": width_list[1], "elements": [element]},
             ],
         }
+        if (third_element is not None) and (len(width_list) > 2):
+            third_elem = third_element if third_element is not None else element
+            final_row["columns"].append(
+                {
+                    "tag": "column",
+                    "width": width_list[2] if len(width_list) > 2 else "fill",
+                    "elements": [third_elem],
+                    "vertical_align": "center",
+                }
+            )
+        return final_row
 
     def build_select_element(
         self,
