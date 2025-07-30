@@ -2057,14 +2057,14 @@ def color_desc(color_name, color_hex):
     """根据颜色名和色值生成英文描述"""
     color_map = {
         "turquoise": "brilliant turquoise",
-        "blue": "soft, light pastel blue",
+        "blue": "soft light pastel blue",
         "wathet": "serene sky blue",
         "carmine": "gentle pink",
-        "orange": "warm, vibrant apricot orange",
+        "orange": "warm vibrant apricot orange",
         "purple": "soft lavender purple",
-        "grey": "subtle, pearlescent off-white",
-        "red": "delicate, classic soft rose red",
-        "green": "fresh, lively mint green",
+        "grey": "pearlescent off-white",
+        "red": "delicate soft rose red",
+        "green": "fresh lively mint green",
         "lime": "zesty lime green",
         "sunflower": "bright sunflower yellow",
     }
@@ -2102,65 +2102,84 @@ def subject_desc(subject_name):
     }
     return subject_map.get(
         subject_name.lower(),
-        f"an abstract, swirling pattern that evokes the essence of '{subject_name}'",
+        f"a clean {subject_name} silhouette",
     )
 
 
-def generate_color_details_text(color_list: list) -> str:
+def generate_intelligent_color_description(color_list: list) -> str:
     """
-    (重写版) 根据颜色列表生成一段生动、完整且保留比例的自然语言描述。
+    (智能版) 分析权重分布，用最多三层量级来动态生成颜色描述。
     """
     if not color_list:
-        return "The wax has a single, solid, lustrous color."
+        return ""
 
-    # --- 1. 准备工作 ---
-    # 调用你的 color_desc 函数，将数据转换为带描述的字典列表
-    descriptive_colors = []
-    for color in color_list:
-        name = color.get("color_enum").value if color.get("color_enum") else ""
-        hex_val = color.get("color_hex", "")
-        percent = color.get("percentage", 0)
+    num_colors = len(color_list)
+    descriptive_colors = [
+        color_desc(c.get("color_enum").value, c.get("color_hex", ""))
+        for c in color_list
+    ]
 
-        descriptive_colors.append(
-            {"desc": color_desc(name, hex_val), "percent_str": f"{percent:.0f}%"}
-        )
+    # --- 核心分析逻辑 ---
 
-    # --- 2. 核心描述逻辑 ---
-    color_description_template_dict = {
-        1: "The dominant color is {desc}, making up about {percent_str} of the material.",
-        2: "It is intricately swirled with prominent ribbons of {desc} (~{percent_str}).",
-        3: "Veins of {desc} (~{percent_str}) add complexity.",
-        4: "Accents of {desc} are subtly blended in.",
-        5: "A hint of {desc} is present in the mix.",
-        6: "Traces of {desc} can be found.",
-    }
-    # 主色调描述
-    details = []
-    for idx, color in enumerate(descriptive_colors):
-        if idx < 3:
-            # 前3个颜色使用百分比
-            details.append(
-                color_description_template_dict[idx + 1].format(
-                    desc=color["desc"], percent_str=color["percent_str"]
-                )
-            )
-        elif idx < 5:
-            # 第4-5个颜色不使用百分比
-            details.append(
-                color_description_template_dict[idx + 1].format(desc=color["desc"])
-            )
-        elif idx == 5:
-            # 第6个及之后的颜色合并为一句
-            remaining_colors = [c["desc"] for c in descriptive_colors[5:]]
-            combined_desc = ", ".join(remaining_colors)
-            details.append(
-                color_description_template_dict[6].format(desc=combined_desc)
-            )
-            break
+    # 情况1: 只有一个颜色
+    if num_colors == 1:
+        return f"a solid {descriptive_colors[0]} color"
+
+    # 情况2: 只有两种颜色
+    if num_colors == 2:
+        # 比较权重，如果差距不大，则为并列主色
+        if (
+            color_list[0]["percentage"] / color_list[1]["percentage"] < 1.2
+        ):  # 权重比小于1.2倍，视为并列
+            return f"a marbled blend of {descriptive_colors[0]} and {descriptive_colors[1]}"
         else:
-            break
+            return f"{descriptive_colors[0]} marbled with {descriptive_colors[1]}"
 
-    return " ".join(details)
+    # 情况3: 三个及以上颜色，进行层级分析
+    # Tier 1: 主色调 (The main players)
+    tier1 = [descriptive_colors[0]]
+    # 检查第二名是否与第一名差距不大，如果是，则并入主色调
+    if (
+        color_list[1]["percentage"] / color_list[0]["percentage"] > 0.8
+    ):  # 第二名权重超过第一名的70%
+        tier1.append(descriptive_colors[1])
+        # 检查第三名是否与第二名差距不大
+        if (
+            num_colors > 2
+            and color_list[2]["percentage"] / color_list[1]["percentage"] > 0.7
+        ):
+            tier1.append(descriptive_colors[2])
+
+    tier1_text = f"a rich marble of {' and '.join(tier1)}"
+
+    # Tier 2 & 3: 次要色和点缀色
+    remaining_colors = descriptive_colors[len(tier1) :]
+    if not remaining_colors:
+        return tier1_text  # 只有主色调
+
+    # Tier 2: 次要色 (The supporting cast)
+    tier2 = []
+    if remaining_colors:
+        tier2.append(remaining_colors.pop(0))
+        # 检查下一个是否与当前差距不大
+        if (
+            remaining_colors
+            and color_list[len(tier1) + 1]["percentage"]
+            / color_list[len(tier1)]["percentage"]
+            > 0.6
+        ):
+            tier2.append(remaining_colors.pop(0))
+
+    tier2_text = f"swirled with prominent streaks of {' and '.join(tier2)}"
+
+    if not remaining_colors:
+        return f"{tier1_text}, {tier2_text}"
+
+    # Tier 3: 点缀色 (The final touches)
+    tier3 = remaining_colors
+    tier3_text = f"and subtle hints of {', '.join(tier3)}"
+
+    return f"{tier1_text}, {tier2_text}, {tier3_text}"
 
 
 def wax_stamp_prompt(color_palette, subject_name=None):
@@ -2170,47 +2189,38 @@ def wax_stamp_prompt(color_palette, subject_name=None):
     subject_name: 印章内主体造型的名称（可为None或空字符串）
     """
     color_list = color_palette
-
     # 颜色按比例排序
     color_list = (
         sorted(color_list, key=lambda x: -x.get("percentage", 0)) if color_list else []
     )
 
-    color_detail_text = generate_color_details_text(color_list)
+    # color_detail_text = generate_color_details_text(color_list)
+    # 注释: 调用我们全新的、智能的颜色描述函数。
+    color_text = generate_intelligent_color_description(color_list)
 
     # 主体造型描述
     subject_name = subject_name or color_list[0].get("name") if color_list else ""
     subject_text = subject_desc(subject_name) if subject_name else ""
 
     # --- 4. 全新Prompt结构化组装 ---
-
-    # [A] 开场白: 定义物体和不规则形态。
+    # --- 3. 终极Prompt组装 ---
+    # 注释: 完全采用你提供的、经过验证的极简模板结构。
     prompt = (
-        "A hyper-realistic macro photograph of a single wax seal, stamped onto textured handmade paper. "
-        "The seal has an organic, irregular, free-form shape with thick, molten edges, a result of hot wax naturally spilling and cooling. "
+        "Macro photograph of a wax seal on cream textured paper. "
+        "Semi-translucent wax with organic, irregular, molten edges. "
     )
 
-    # [B] 主体图案的形成过程描述 (核心 - 使用你的文本)
     if subject_text:
-        # 注释: 这里完整地、核心地嵌入了你提供的、最有效的描述。
-        # 我只做了一处微调：将你的 "a musical note and game controller" 替换为动态的 {subject_text}。
-        prompt += (
-            f"**When stamped, the hot, swirling wax was pressed into shape, forming a raised, integrated pattern featuring {subject_text} on its surface. **"
-            "**This pattern is part of the wax itself, not a separate addition. **"
-            "**The contours and details of the pattern are formed by the stamp's impression in the hot wax, and the marbled colors flow uninterrupted from the base up through this raised relief.** "
-        )
+        # 注释: 插入主体图案描述
+        prompt += f"The raised seal pattern shows {subject_text}. "
 
-    # [C] 统一材质与颜色描述 (作为基础)
+    # 注释: 插入由智能算法生成的颜色描述，并加入金色闪粉
+    prompt += f"Marbled colors: {color_text}, with shimmering gold dust particles suspended within. "
+
+    # 注释: 插入光照和风格描述
     prompt += (
-        "The marbled effect is achieved through the blending of lustrous, **opaque** wax during the stamping process. "
-        "The material has a beautiful liquid marble effect, where multiple colors flow and blend seamlessly. "
-        f"{color_detail_text} "
-        "Subtle, shimmering gold dust is suspended within the wax, catching the light and adding a touch of luxury. "
-    )
-    # [D] 风格和光照 (强化材质感)
-    prompt += (
-        "Professional product photography style, dramatic cinematic lighting that **accentuates the waxy sheen, the glossy highlights, and the soft shadows** within the embossed pattern's crevices. "
-        "Extreme detail, shallow depth of field, bokeh background."
+        "Dramatic lighting highlights the translucent, glossy surface. "
+        "Professional photography, shallow depth of field."
     )
 
     return prompt
