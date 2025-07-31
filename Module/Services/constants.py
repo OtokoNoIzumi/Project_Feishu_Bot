@@ -598,8 +598,8 @@ class RoutineReminderModes(Enum):
 class RoutineRecordModes:
     """记录模式"""
 
-    RECORD = "record"
-    QUERY = "query"  # 查询模式
+    REGIST = "regist"  # 注册模式
+    EDIT = "edit"  # 编辑模式
     ADD = "add"  # 添加模式
 
 

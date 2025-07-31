@@ -84,8 +84,12 @@ class RecordCard_Old:
 
         event_type = event_definition.get("type", RoutineTypes.INSTANT.value)
         progress_type = event_definition.get("properties", {}).get("progress_type", "")
-        last_progress_value = event_definition.get("stats", {}).get("last_progress_value", 0)
-        total_progress_value = event_definition.get("stats", {}).get("total_progress_value", 0)
+        last_progress_value = event_definition.get("stats", {}).get(
+            "last_progress_value", 0
+        )
+        total_progress_value = event_definition.get("stats", {}).get(
+            "total_progress_value", 0
+        )
 
         elements = []
 
@@ -134,7 +138,11 @@ class RecordCard_Old:
                 )
 
         # 6. 条件化展示：持续时间输入区域
-        if event_type in [RoutineTypes.INSTANT.value, RoutineTypes.END.value, RoutineTypes.START.value]:
+        if event_type in [
+            RoutineTypes.INSTANT.value,
+            RoutineTypes.END.value,
+            RoutineTypes.START.value,
+        ]:
             form_elements["elements"].extend(
                 self._build_duration_input_section(
                     record_data.get("duration", ""), is_confirmed
@@ -176,7 +184,10 @@ class RecordCard_Old:
         return elements
 
     def _build_basic_info_section(
-        self, event_definition: Dict[str, Any], record_data: Dict[str, Any], diff_minutes: int
+        self,
+        event_definition: Dict[str, Any],
+        record_data: Dict[str, Any],
+        diff_minutes: int,
     ) -> List[Dict[str, Any]]:
         """构建基础信息区域"""
         elements = []
@@ -326,9 +337,7 @@ class RecordCard_Old:
         else:
             # 无目标：显示累计进度
             unit = RoutineTargetTypes.get_unit(target_type)
-            progress_content_parts.append(
-                f"📊 **累计进度：** {cycle_count}{unit}"
-            )
+            progress_content_parts.append(f"📊 **累计进度：** {cycle_count}{unit}")
 
         # 组装最终内容
         progress_content = "\n".join(progress_content_parts)
@@ -651,7 +660,9 @@ class RecordCard_Old:
                     progress_value != 0
                 ):
                     event_definition["stats"]["total_progress_value"] = round(
-                        event_definition["stats"]["total_progress_value"] + progress_value, 3
+                        event_definition["stats"]["total_progress_value"]
+                        + progress_value,
+                        3,
                     )
                     event_definition["stats"]["last_progress_value"] = progress_value
             else:
@@ -692,7 +703,9 @@ class RecordCard_Old:
         )
         cycle_info = data_source.get("cycle_info", {})
         if cycle_info:
-            event_definition["stats"]["cycle_count"] = cycle_info.get("cycle_count", 0) + 1
+            event_definition["stats"]["cycle_count"] = (
+                cycle_info.get("cycle_count", 0) + 1
+            )
             event_definition["stats"]["last_cycle_count"] = cycle_info.get(
                 "last_cycle_count", 0
             )

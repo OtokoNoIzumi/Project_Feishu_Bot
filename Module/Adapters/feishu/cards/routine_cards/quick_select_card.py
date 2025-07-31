@@ -242,6 +242,7 @@ class QuickSelectCard:
 
         return self.parent.build_base_card_structure(elements, header, "12px")
 
+    # region 回调方法
     def toggle_continuous_record(
         self, context: MessageContext_Refactor
     ) -> ProcessResult:
@@ -403,7 +404,7 @@ class QuickSelectCard:
         new_record_data = routine_business.build_record_business_data(
             user_id,
             event_name,
-            record_mode=RoutineRecordModes.QUERY,
+            record_mode=RoutineRecordModes.EDIT,
             current_record_data=active_record_data,
         )
 
@@ -577,6 +578,9 @@ class QuickSelectCard:
             ToastTypes.SUCCESS,
         )
 
+    # endregion
+
+    # region 测试方法
     def calculate_yesterday_color(
         self, context: MessageContext_Refactor
     ) -> ProcessResult:
@@ -641,3 +645,5 @@ class QuickSelectCard:
             f"({target_date})的颜色: {color_result.get('name')}, hex: {color_result.get('hex')}",
             ToastTypes.SUCCESS,
         )
+
+    # endregion

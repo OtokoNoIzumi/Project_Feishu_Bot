@@ -299,35 +299,6 @@ class RoutineRecord(BaseProcessor):
             "last_updated": current_time,
         }
 
-    def _create_event_record(
-        self,
-        event_name: str,
-        user_id: str,
-        record_mode: str,
-    ) -> Dict[str, Any]:
-        """
-        创建事件记录
-
-        Args:
-            event_name: 事件名称
-            user_id: 用户ID
-            record_mode: 记录模式
-        Returns:
-            Dict[str, Any]: 事件记录
-        """
-        current_time = self._get_formatted_time()
-        match record_mode:
-            case RoutineRecordModes.ADD | RoutineRecordModes.QUERY:
-                record_id = ""
-            case RoutineRecordModes.RECORD:
-                record_id = self._get_next_record_id(user_id, event_name)
-
-        return {
-            "record_id": record_id,
-            "event_name": event_name,
-            "create_time": current_time,
-        }
-
     @safe_execute("读取事件定义文件失败")
     def load_event_definitions(self, user_id: str) -> Dict[str, Any]:
         """
@@ -444,7 +415,7 @@ class RoutineRecord(BaseProcessor):
 
     # region record_id相关
 
-    def _get_next_record_id(self, user_id: str, event_name: str) -> str:
+    def _get_next_record_id(self, user_id: str, event_name: str) -> Tuple[str, int]:
         """
         生成下一个记录ID，基于事件定义中的record_count统计
         高效且可靠的ID生成方法
@@ -456,7 +427,6 @@ class RoutineRecord(BaseProcessor):
         Returns:
             str: 记录ID，格式为 event_name_00001
         """
-        # 优先使用事件定义中的统计信息
         definitions_data = self.load_event_definitions(user_id)
         definitions = definitions_data.get("definitions", {})
 
@@ -470,13 +440,13 @@ class RoutineRecord(BaseProcessor):
 
             # 验证ID唯一性（防御性编程）
             if self._verify_id_uniqueness(user_id, candidate_id):
-                return candidate_id
+                return candidate_id, next_num
 
-                # 如果统计不准确，回退到扫描方式并修复统计
-                return self._generate_id_with_scan_and_fix(user_id, event_name)
+            # 如果统计不准确，回退到扫描方式并修复统计
+            return self._generate_id_with_scan_and_fix(user_id, event_name)
 
-            # 事件定义不存在，扫描现有记录生成ID
-            return self._generate_id_with_scan(user_id, event_name)
+        # 事件定义不存在，扫描现有记录生成ID，要注意Future的特殊影响。
+        return self._generate_id_with_scan(user_id, event_name)
 
     def _verify_id_uniqueness(self, user_id: str, candidate_id: str) -> bool:
         """
@@ -501,7 +471,7 @@ class RoutineRecord(BaseProcessor):
 
         return True
 
-    def _generate_id_with_scan(self, user_id: str, event_name: str) -> str:
+    def _generate_id_with_scan(self, user_id: str, event_name: str) -> Tuple[str, int]:
         """
         通过扫描现有记录生成ID（用于事件定义不存在的情况）
 
@@ -529,13 +499,15 @@ class RoutineRecord(BaseProcessor):
         while True:
             candidate_id = f"{event_name}_{next_num:05d}"
             if candidate_id not in existing_ids:
-                return candidate_id
+                return candidate_id, next_num
             next_num += 1
 
             if next_num > 99999:
                 raise ValueError(f"无法为事件 '{event_name}' 生成唯一ID")
 
-    def _generate_id_with_scan_and_fix(self, user_id: str, event_name: str) -> str:
+    def _generate_id_with_scan_and_fix(
+        self, user_id: str, event_name: str
+    ) -> Tuple[str, int]:
         """
         扫描生成ID并修复事件定义中的统计信息
 
@@ -547,7 +519,7 @@ class RoutineRecord(BaseProcessor):
             str: 记录ID
         """
         # 先用扫描方式生成ID
-        new_id = self._generate_id_with_scan(user_id, event_name)
+        new_id, next_num = self._generate_id_with_scan(user_id, event_name)
 
         # 修复事件定义中的record_count
         definitions_data = self.load_event_definitions(user_id)
@@ -559,7 +531,7 @@ class RoutineRecord(BaseProcessor):
             ] = actual_count
             self.save_event_definitions(user_id, definitions_data)
 
-        return new_id
+        return new_id, next_num
 
     def _count_records_for_event(self, user_id: str, event_name: str) -> int:
         """
@@ -633,9 +605,8 @@ class RoutineRecord(BaseProcessor):
         definitions_data = self.load_event_definitions(user_id)
         event_definition = definitions_data["definitions"].get(event_name, {})
 
-        # query/record/add
         record_mode = record_mode or (
-            RoutineRecordModes.RECORD if event_definition else RoutineRecordModes.ADD
+            RoutineRecordModes.ADD if event_definition else RoutineRecordModes.REGIST
         )
 
         # 基础数据
@@ -645,14 +616,15 @@ class RoutineRecord(BaseProcessor):
             "event_name": event_name,
         }
 
-        if record_mode == RoutineRecordModes.QUERY and current_record_data:
+        if record_mode == RoutineRecordModes.EDIT and current_record_data:
             # 因为数据缓存和操作的间隔，需要深拷贝，防止操作时污染数据
             new_record_data = copy.deepcopy(current_record_data)
             last_record_time = new_record_data.get("create_time", None)
         else:
-            new_record_data = self._create_event_record(
-                event_name, user_id, record_mode
-            )
+            new_record_data = {
+                "event_name": event_name,
+                "create_time": self._get_formatted_time(),
+            }
             last_record_time = event_definition.get("last_record_time", None)
 
         # 公共的计算可以放在外面
@@ -664,7 +636,7 @@ class RoutineRecord(BaseProcessor):
             computed_data["diff_minutes"] = diff_minutes
 
             # 计算估计持续时间
-            if record_mode == RoutineRecordModes.QUERY and current_record_data:
+            if record_mode == RoutineRecordModes.EDIT and current_record_data:
                 estimated_duration = self._calculate_estimated_duration(
                     user_id, last_time, datetime.now()
                 )
@@ -675,10 +647,10 @@ class RoutineRecord(BaseProcessor):
                 )
 
         match record_mode:
-            case RoutineRecordModes.ADD:
+            case RoutineRecordModes.REGIST:
                 event_definition["type"] = RoutineTypes.INSTANT.value
 
-            case RoutineRecordModes.RECORD | RoutineRecordModes.QUERY:
+            case RoutineRecordModes.ADD | RoutineRecordModes.EDIT:
                 last_record_id = event_definition.get("stats", {}).get(
                     "last_record_id", ""
                 )
@@ -877,15 +849,12 @@ class RoutineRecord(BaseProcessor):
             if value is not None and value != "":
                 new_record[key] = value
 
-        # 添加系统字段
-        if "record_id" not in new_record:
-            record_id = self._get_next_record_id(user_id, event_name)
-            new_record["record_id"] = record_id
-        else:
-            record_id = new_record.get("record_id", "")
+        # 添加唯一id
+        record_id, record_count = self._get_next_record_id(user_id, event_name)
+        new_record["record_id"] = record_id
 
         if (event_type == RoutineTypes.INSTANT.value) or (
-            record_mode == RoutineRecordModes.QUERY
+            record_mode == RoutineRecordModes.EDIT
         ):
             new_record["end_time"] = current_time
 
@@ -921,10 +890,11 @@ class RoutineRecord(BaseProcessor):
                 record_id,
                 record_mode,
                 source_record_data.get("event_name", ""),
+                record_count,
             )
 
         # 特殊处理 QUERY 模式：编辑已有的 active_record
-        if record_mode == RoutineRecordModes.QUERY:
+        if record_mode == RoutineRecordModes.EDIT:
             # 从 active_records 中移除原记录
             if record_id in records_data.get("active_records", {}):
                 del records_data["active_records"][record_id]
@@ -1347,6 +1317,7 @@ class RoutineRecord(BaseProcessor):
         record_id: str,
         record_mode: str = "",
         source_record_name: str = "",
+        record_count: int = 0,
     ) -> bool:
         """
         从直接记录的business_data创建事件定义
@@ -1358,6 +1329,7 @@ class RoutineRecord(BaseProcessor):
             record_id: 记录ID
             record_mode: 记录模式
             source_record_name: 源记录名称
+            record_count: 记录数量
 
         Returns:
             bool: 是否成功创建事件定义
@@ -1398,10 +1370,8 @@ class RoutineRecord(BaseProcessor):
                 "stats", {}
             )
 
-            if record_mode != RoutineRecordModes.QUERY:
-                existing_def_stats["record_count"] = (
-                    existing_def_stats.get("record_count", 0) + 1
-                )
+            if record_mode != RoutineRecordModes.EDIT:
+                existing_def_stats["record_count"] = record_count
 
             # 更新耗时统计
             duration = safe_parse_number(record_data.get("duration"))
@@ -1446,7 +1416,7 @@ class RoutineRecord(BaseProcessor):
 
             # 从表单数据中提取并设置属性
             self._populate_definition_from_business_data(
-                new_definition, dup_business_data, current_time
+                new_definition, dup_business_data, current_time, record_count
             )
 
             category = event_definition.get("category", "")
@@ -1491,6 +1461,7 @@ class RoutineRecord(BaseProcessor):
         definition: Dict[str, Any],
         dup_business_data: Dict[str, Any],
         current_time: str,
+        record_count: int = 0,
     ) -> None:
         """
         从表单数据填充事件定义的属性
@@ -1515,7 +1486,7 @@ class RoutineRecord(BaseProcessor):
                 properties["degree_options"].append(degree)
 
         # 更新统计信息
-        stats["record_count"] = 1
+        stats["record_count"] = record_count
 
         definition["last_record_time"] = current_time
 

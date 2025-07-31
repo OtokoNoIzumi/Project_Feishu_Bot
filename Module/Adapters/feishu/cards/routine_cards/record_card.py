@@ -69,11 +69,11 @@ class RecordCard:
         record_mode = business_data.get("record_mode", "")
 
         match record_mode:
-            case RoutineRecordModes.ADD:
+            case RoutineRecordModes.REGIST:
                 title = "新建记录" + (f"：{event_name}" if event_name else "")
                 subtitle = "填写相关信息"
                 icon = "add_outlined"
-            case RoutineRecordModes.RECORD:
+            case RoutineRecordModes.ADD:
                 title = "添加记录" + (f"：{event_name}" if event_name else "")
                 subtitle = "请确认记录信息"
                 icon = "edit_outlined"
@@ -95,7 +95,7 @@ class RecordCard:
         is_confirmed = business_data.get("is_confirmed", False)
 
         # 使用 safe_get_business_data 处理递归嵌套的业务数据结构
-        data_source, is_container_mode = self.parent.safe_get_business_data(
+        data_source, _ = self.parent.safe_get_business_data(
             business_data, CardConfigKeys.ROUTINE_RECORD
         )
 
@@ -107,7 +107,7 @@ class RecordCard:
 
         # 1. 计算信息区域（包含基础信息、时间预估、循环进度等）
         elements.extend(
-            self._build_computed_info_by_type(data_source, is_container_mode)
+            self._build_computed_info_by_type(data_source)
         )
 
         # 2. 表单外字段区域（非表单数据，有回调事件，状态保存在配置中）
@@ -150,7 +150,7 @@ class RecordCard:
 
     # region 信息区域
     def _build_computed_info_by_type(
-        self, data_source: Dict[str, Any], is_container_mode: bool
+        self, data_source: Dict[str, Any]
     ) -> List[Dict[str, Any]]:
         """
         构建基础信息区域（包含基础信息、时间预估、循环进度等）
@@ -166,7 +166,7 @@ class RecordCard:
             diff_minutes = computed_data.get("diff_minutes", 0)
             elements.extend(
                 self._build_basic_info_section(
-                    data_source, event_name, diff_minutes, is_container_mode
+                    data_source, event_name, diff_minutes
                 )
             )
 
@@ -190,7 +190,6 @@ class RecordCard:
         data_source: Dict[str, Any],
         event_name: Dict[str, Any],
         diff_minutes: int,
-        is_container_mode: bool,
     ) -> List[Dict[str, Any]]:
         """
         构建基础信息区域
@@ -203,13 +202,9 @@ class RecordCard:
         # 基础信息卡片
         event_type = event_definition.get("type", RoutineTypes.FUTURE.value)
 
-        if is_container_mode and event_name:
-            # 容器模式下，显示事件名称，主卡片模式有标题显示，没必要重复。
-            info_content = f"**事件名称： {event_name}**\n"
-        else:
-            info_content = ""
+        info_content = ""
 
-        if record_mode == RoutineRecordModes.RECORD:
+        if record_mode == RoutineRecordModes.ADD:
             info_content += (
                 f"**事项类型：** {RoutineTypes.get_type_display_name(event_type)}\n"
             )
@@ -235,10 +230,10 @@ class RecordCard:
             if diff_minutes > 0 and event_type != RoutineTypes.FUTURE.value:
                 time_label = format_time_label(diff_minutes)
 
-                if record_mode == RoutineRecordModes.QUERY:
+                if record_mode == RoutineRecordModes.EDIT:
                     info_content += f"**已经持续：** {time_label}\n"
                 else:
-                    info_content += f"**上次记录距今：** {time_label}\n"
+                    info_content += f"**上次{event_name}距今：** {time_label}\n"
 
         # 显示分类（如果有）
         category = event_definition.get("category", "")
@@ -430,7 +425,7 @@ class RecordCard:
         record_mode = data_source.get("record_mode", "")
         record_data = data_source.get("record_data", {})
 
-        if record_mode == RoutineRecordModes.ADD:
+        if record_mode == RoutineRecordModes.REGIST:
             # 新建事件，显示类型选择器
             elements.append(
                 self.parent.build_form_row(
@@ -454,7 +449,7 @@ class RecordCard:
 
         # 指标类型选择器
         if event_type != RoutineTypes.FUTURE.value:
-            need_progress_selector = record_mode == RoutineRecordModes.ADD
+            need_progress_selector = record_mode == RoutineRecordModes.REGIST
             if need_progress_selector:
                 progress_type = event_definition.get("properties", {}).get(
                     "progress_type", RoutineProgressTypes.NONE.value
@@ -469,7 +464,7 @@ class RecordCard:
                 )
 
             # 2. 目标类型选择器
-            need_target_selector = record_mode == RoutineRecordModes.ADD
+            need_target_selector = record_mode == RoutineRecordModes.REGIST
             if need_target_selector:
                 target_type = event_definition.get("properties", {}).get(
                     "target_type", RoutineTargetTypes.NONE.value
@@ -725,14 +720,14 @@ class RecordCard:
         selected_degree = record_data.get("degree", "")
 
         # 1. 所属分类字段（仅在ADD模式下显示）
-        if record_mode == RoutineRecordModes.ADD:
+        if record_mode == RoutineRecordModes.REGIST:
             elements.append(
                 self._build_category_select_field(data_source, is_confirmed)
             )
 
         # 2. 完成方式字段（条件显示）
-        need_degree_input = (record_mode == RoutineRecordModes.ADD) or (
-            selected_degree == "其他" and record_mode == RoutineRecordModes.RECORD
+        need_degree_input = (record_mode == RoutineRecordModes.REGIST) or (
+            selected_degree == "其他" and record_mode == RoutineRecordModes.ADD
         )
         if need_degree_input:
             degree_value = record_data.get("custom_degree", "")
@@ -751,7 +746,7 @@ class RecordCard:
 
         # 3. 耗时字段
         duration_value = record_data.get("duration", "")
-        if record_mode != RoutineRecordModes.QUERY:
+        if record_mode != RoutineRecordModes.EDIT:
             # 创建快填按钮
 
             action_data = {
@@ -833,7 +828,7 @@ class RecordCard:
         record_mode = data_source.get("record_mode", "")
 
         # 1. 所属分类字段（仅在ADD模式下显示）
-        if record_mode == RoutineRecordModes.ADD:
+        if record_mode == RoutineRecordModes.REGIST:
             elements.append(
                 self._build_category_select_field(data_source, is_confirmed)
             )
@@ -1066,7 +1061,7 @@ class RecordCard:
         record_mode: str,
     ) -> List[Dict]:
         """构建附加信息字段（分类和备注）"""
-        if record_mode == RoutineRecordModes.ADD:
+        if record_mode == RoutineRecordModes.REGIST:
             # ADD模式下显示分类和备注字段
             event_definition = data_source.get("event_definition", {})
             additional_fields = [
@@ -1374,7 +1369,7 @@ class RecordCard:
         格式化记录数据，处理特殊字段
         """
         record_data = data_source.get("record_data", {})
-        record_mode = data_source.get("record_mode", RoutineRecordModes.RECORD)
+        record_mode = data_source.get("record_mode", RoutineRecordModes.ADD)
 
         event_definition = data_source.get("event_definition", {})
         if "properties" not in event_definition:
@@ -1414,7 +1409,7 @@ class RecordCard:
         if custom_degree and custom_degree != "其他":
 
             if (
-                record_mode == RoutineRecordModes.RECORD
+                record_mode == RoutineRecordModes.ADD
                 and record_data.get("degree") == "其他"
             ):
                 record_data["degree"] = custom_degree

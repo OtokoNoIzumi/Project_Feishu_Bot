@@ -245,7 +245,7 @@ class QueryResultsCard:
             "operation_type": "complete_active_record",
             "record_id": record_id,
             "event_name": event_name,
-            "record_mode": RoutineRecordModes.QUERY,
+            "record_mode": RoutineRecordModes.EDIT,
             "needs_active_record": True,
             "message": f"正在完成 [{event_name}]",
             **default_action_data,
@@ -511,7 +511,7 @@ class QueryResultsCard:
         operation_type = action_value.get("operation_type", "")
         record_id = action_value.get("record_id", "")
         event_name = action_value.get("event_name", "")
-        record_mode = action_value.get("record_mode", RoutineRecordModes.RECORD)
+        record_mode = action_value.get("record_mode", RoutineRecordModes.ADD)
         needs_active_record = action_value.get("needs_active_record", False)
         expand_position = action_value.get("expand_position", -1)
         message = action_value.get("message", "正在处理记录操作")
