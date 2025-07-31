@@ -1334,127 +1334,127 @@ class RoutineRecord(BaseProcessor):
         Returns:
             bool: 是否成功创建事件定义
         """
-        # 加载现有事件定义
-        # 分离一份临时的聚合数据导致编辑模式有挺大的问题，但不特别致命，备注一下。
-        # 逻辑上分成两部分，非stats的，和stats的。
-        # 对于properties的，是原子操作，且兼容后续编辑event_definition，直接更新。
-        # 对于stats的，是复合操作，从配置里加载，计算，再更新。
+        # 统一提取数据
         event_definitions = self.load_event_definitions(user_id)
         event_definition = dup_business_data.get("event_definition", {})
-        catagory_options = dup_business_data.get("category_options", [])
-        event_type = event_definition.get("type", RoutineTypes.INSTANT.value)
+        record_data = dup_business_data.get("record_data", {})
         computed_data = dup_business_data.get("computed_data", {})
         cycle_info = computed_data.get("cycle_info", {})
-
-        record_data = dup_business_data.get("record_data", {})
-        target_type = (
-            dup_business_data.get("computed_data", {})
-            .get("target_info", {})
-            .get("target_type", "")
-        )
-
+        target_type = computed_data.get("target_info", {}).get("target_type", "")
         current_time = self._get_formatted_time()
 
-        # 检查事件定义是否已存在
+        # 获取或创建事件定义
         if event_name in event_definitions.get("definitions", {}):
-            # 事件定义已存在
-            # 目前这里的效果是更新degree_options，其他是后续功能自动支持。
             existing_def = event_definitions["definitions"][event_name]
             existing_def["properties"] = event_definition.get("properties", {})
             existing_def["category"] = event_definition.get(
                 "category", existing_def["category"]
             )
-
-            # stats
-            existing_def_stats = event_definitions["definitions"][event_name].get(
-                "stats", {}
-            )
+            existing_def_stats = existing_def.get("stats", {})
 
             if record_mode != RoutineRecordModes.EDIT:
                 existing_def_stats["record_count"] = record_count
-
-            # 更新耗时统计
-            duration = safe_parse_number(record_data.get("duration"))
-            if duration > 0:
-                self._update_duration_stats(existing_def_stats, duration)
-
-            # 更新周期统计信息（如果存在）
-            if cycle_info:
-                # 在创建事件是包含了预刷新检测，所以要用computed_data里的cycle_info
-                if target_type == RoutineTargetTypes.TIME.value:
-                    existing_def_stats["cycle_count"] = (
-                        cycle_info.get("cycle_count", 0) + duration
-                    )
-                else:
-                    existing_def_stats["cycle_count"] = (
-                        cycle_info.get("cycle_count", 0) + 1
-                    )
-
-                existing_def_stats["last_cycle_count"] = cycle_info.get(
-                    "last_cycle_count", 0
-                )
-                existing_def_stats["last_refresh_date"] = cycle_info.get(
-                    "last_refresh_date", ""
-                )
-
-            existing_def_stats["last_record_id"] = record_id
-
-            # 更新指标统计
-            progress_type = event_definition.get("properties", {}).get("progress_type")
-            if progress_type and progress_type != RoutineProgressTypes.NONE.value:
-                progress_value = safe_parse_number(record_data.get("progress_value"))
-                self._update_progress_stats(
-                    existing_def_stats, progress_type, progress_value
-                )
-
-            existing_def["last_record_time"] = current_time
-            existing_def["last_updated"] = current_time
-
         else:
-            # 创建新的事件定义
-            new_definition = self._create_event_definition(event_name, event_type)
-
-            # 从表单数据中提取并设置属性
+            new_definition = self._create_event_definition(
+                event_name, event_definition.get("type", RoutineTypes.INSTANT.value)
+            )
             self._populate_definition_from_business_data(
                 new_definition, dup_business_data, current_time, record_count
             )
 
             category = event_definition.get("category", "")
             new_definition["category"] = category
-
-            new_definition["last_record_id"] = record_id
-            # 添加到定义集合中
+            existing_def_stats = new_definition.get("stats", {})
             event_definitions["definitions"][event_name] = new_definition
 
-            if category and category not in catagory_options:
-                categories_data = dup_business_data.get("categories", [])
-                # 从分类数据中查找对应的颜色
-                for category_obj in categories_data:
-                    if category_obj.get("name") == category:
-                        new_color = category_obj.get("color", "")
-                        break
-                if not new_color:
-                    new_color = ColorTypes.get_random_color().value
+            # 处理新分类
+            if category and category not in dup_business_data.get(
+                "category_options", []
+            ):
+                new_color = (
+                    next(
+                        (
+                            cate.get("color", "")
+                            for cate in dup_business_data.get("categories", [])
+                            if cate.get("name") == category
+                        ),
+                        None,
+                    )
+                    or ColorTypes.get_random_color().value
+                )
                 event_definitions["categories"].append(
-                    {
-                        "name": category,
-                        "color": new_color,
-                    }
+                    {"name": category, "color": new_color}
                 )
 
-        if source_record_name:
-            source_definition = event_definitions["definitions"].get(
-                source_record_name, {}
-            )
-            if event_name not in source_definition["properties"]["related_events"]:
-                source_definition["properties"]["related_events"].append(event_name)
-            source_definition["last_updated"] = current_time
-        # 更新全局时间戳
-        event_definitions["last_updated"] = current_time
-        event_definitions["last_record_time"] = current_time
+        # 统一更新统计信息
+        self._update_common_stats(
+            existing_def_stats,
+            record_data,
+            event_definition,
+            cycle_info,
+            target_type,
+            record_id,
+        )
 
-        # 保存事件定义
+        # 统一更新时间戳
+        self._update_timestamps(
+            event_definitions, current_time, event_name, source_record_name
+        )
+
         return self.save_event_definitions(user_id, event_definitions)
+
+    def _update_common_stats(
+        self,
+        stats: Dict[str, Any],
+        record_data: Dict[str, Any],
+        event_definition: Dict[str, Any],
+        cycle_info: Dict[str, Any],
+        target_type: str,
+        record_id: str,
+    ) -> None:
+        """统一更新统计信息"""
+        duration = safe_parse_number(record_data.get("duration"))
+        if duration > 0:
+            self._update_duration_stats(stats, duration)
+
+        if cycle_info:
+            increment = duration if target_type == RoutineTargetTypes.TIME.value else 1
+            stats["cycle_count"] = cycle_info.get("cycle_count", 0) + increment
+            stats["last_cycle_count"] = cycle_info.get("last_cycle_count", 0)
+            stats["last_refresh_date"] = cycle_info.get("last_refresh_date", "")
+
+        progress_type = event_definition.get("properties", {}).get("progress_type")
+        if progress_type and progress_type != RoutineProgressTypes.NONE.value:
+            progress_value = safe_parse_number(record_data.get("progress_value"))
+            self._update_progress_stats(stats, progress_type, progress_value)
+
+        stats["last_record_id"] = record_id
+
+    def _update_timestamps(
+        self,
+        event_definitions: Dict[str, Any],
+        current_time: str,
+        event_name: str,
+        source_record_name: str,
+    ) -> None:
+        """统一更新时间戳"""
+        event_definitions["definitions"][event_name].update(
+            {"last_record_time": current_time, "last_updated": current_time}
+        )
+
+        if source_record_name:
+            source_def = event_definitions["definitions"].get(source_record_name, {})
+            if event_name not in source_def.get("properties", {}).get(
+                "related_events", []
+            ):
+                source_def.setdefault("properties", {}).setdefault(
+                    "related_events", []
+                ).append(event_name)
+            source_def["last_updated"] = current_time
+
+        event_definitions.update(
+            {"last_updated": current_time, "last_record_time": current_time}
+        )
 
     def _populate_definition_from_business_data(
         self,
@@ -1463,44 +1463,17 @@ class RoutineRecord(BaseProcessor):
         current_time: str,
         record_count: int = 0,
     ) -> None:
-        """
-        从表单数据填充事件定义的属性
-
-        Args:
-            definition: 事件定义字典
-            record_data: 表单数据
-            current_time: 当前时间
-        """
+        """从表单数据填充事件定义的属性"""
         event_definition = dup_business_data.get("event_definition", {})
-        properties = definition["properties"].update(
-            event_definition.get("properties", {})
-        )
+        definition["properties"].update(event_definition.get("properties", {}))
 
-        stats = definition["stats"]
         record_data = dup_business_data.get("record_data", {})
-
-        # 设置程度选项
         degree = record_data.get("degree")
-        if degree:
-            if degree not in properties["degree_options"]:
-                properties["degree_options"].append(degree)
+        if degree and degree not in definition["properties"]["degree_options"]:
+            definition["properties"]["degree_options"].append(degree)
 
-        # 更新统计信息
-        stats["record_count"] = record_count
-
+        definition["stats"]["record_count"] = record_count
         definition["last_record_time"] = current_time
-
-        # 设置耗时统计（数据已在卡片层格式化）
-        duration = record_data.get("duration")
-        if duration and duration > 0:
-            self._update_duration_stats(stats, duration)
-
-        # 设置指标统计（数据已在卡片层格式化）
-        progress_type = event_definition.get("properties", {}).get("progress_type")
-        if progress_type and progress_type != RoutineProgressTypes.NONE.value:
-            progress_value = record_data.get("progress_value")
-            if progress_value is not None:
-                self._update_progress_stats(stats, progress_type, progress_value)
 
     def _update_duration_stats(self, stats: Dict[str, Any], duration: float) -> None:
         """
@@ -2209,11 +2182,10 @@ def color_desc(color_name, color_hex):
     if description:
         return description
     # 如果没有预设，则提供一个基于通用名称的备用描述
-    elif color_name:
+    if color_name:
         return f"shade of {color_name.lower()}"
     # 最后才使用HEX值作为备用
-    else:
-        return f"color with hex code {color_hex}"
+    return f"color with hex code {color_hex}"
 
 
 def subject_desc(subject_name):
@@ -2268,8 +2240,8 @@ def generate_intelligent_color_description(color_list: list) -> str:
             color_list[0]["percentage"] / color_list[1]["percentage"] < 1.2
         ):  # 权重比小于1.2倍，视为并列
             return f"a marbled blend of {descriptive_colors[0]} and {descriptive_colors[1]}"
-        else:
-            return f"{descriptive_colors[0]} marbled with {descriptive_colors[1]}"
+
+        return f"{descriptive_colors[0]} marbled with {descriptive_colors[1]}"
 
     # 情况3: 三个及以上颜色，进行层级分析
     # Tier 1: 主色调 (The main players)
