@@ -408,10 +408,6 @@ class QuickSelectCard:
             current_record_data=active_record_data,
         )
 
-        # 添加完成active_record特有的字段
-        new_record_data["operation_type"] = "complete_active_record"
-        new_record_data["source_record_id"] = record_id
-
         business_data["workflow_state"] = "quick_record"
         business_data["container_build_method"] = container_build_method
 

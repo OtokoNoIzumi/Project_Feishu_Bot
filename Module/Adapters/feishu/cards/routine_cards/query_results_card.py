@@ -242,11 +242,10 @@ class QueryResultsCard:
         # 完成按钮
         complete_action_data = {
             "card_action": "query_record",
-            "operation_type": "complete_active_record",
+            "operation_hint_str": "complete_active_record",
             "record_id": record_id,
             "event_name": event_name,
             "record_mode": RoutineRecordModes.EDIT,
-            "needs_active_record": True,
             "message": f"正在完成 [{event_name}]",
             **default_action_data,
         }
@@ -263,8 +262,8 @@ class QueryResultsCard:
         # 新关联事件按钮
         new_related_action_data = {
             "card_action": "query_record",
-            "operation_type": "create_related_event",
-            "record_id": record_id,
+            "operation_hint_str": "create_related_event",
+            "source_record_id": record_id,
             "expand_position": expand_position,
             "message": "正在创建关联事件",
             **default_action_data,
@@ -298,8 +297,8 @@ class QueryResultsCard:
 
             new_action_data = {
                 "card_action": "query_record",
-                "operation_type": "related_event_action",
-                "record_id": record_id,
+                "operation_hint_str": "related_event_action",
+                "source_record_id": record_id,
                 "event_name": rel,
                 "expand_position": expand_position,
                 "message": f"正在记录关联事件：{rel}",
@@ -358,7 +357,7 @@ class QueryResultsCard:
         # 按钮区
         record_action_data = {
             "card_action": "query_record",
-            "operation_type": "quick_record_select",
+            "operation_hint_str": "quick_record_select",
             "event_name": event_name,
             "message": f"正在记录 [{event_name}]",
             **default_action_data,
@@ -508,11 +507,11 @@ class QueryResultsCard:
         user_id = context.user_id
 
         # 从action_data中获取所有动态参数
-        operation_type = action_value.get("operation_type", "")
+        operation_hint_str = action_value.get("operation_hint_str", "")
         record_id = action_value.get("record_id", "")
+        source_record_id = action_value.get("source_record_id", "")
         event_name = action_value.get("event_name", "")
         record_mode = action_value.get("record_mode", RoutineRecordModes.ADD)
-        needs_active_record = action_value.get("needs_active_record", False)
         expand_position = action_value.get("expand_position", -1)
         message = action_value.get("message", "正在处理记录操作")
         container_build_method = action_value.get(
@@ -521,7 +520,7 @@ class QueryResultsCard:
 
         # 获取当前卡片的业务数据
         business_data, card_id, error_response = self.parent.ensure_valid_context(
-            context, operation_type, container_build_method
+            context, operation_hint_str, container_build_method
         )
         if error_response:
             return error_response
@@ -542,7 +541,7 @@ class QueryResultsCard:
         # 构建记录填写界面数据
         routine_business = self.parent.message_router.routine_record
 
-        if needs_active_record:
+        if record_mode == RoutineRecordModes.EDIT:
             # 查找active_record
             query_data = parent_data.get("query_data", [])
             active_record = next(
@@ -565,10 +564,7 @@ class QueryResultsCard:
             new_record_data = routine_business.build_record_business_data(
                 user_id, event_name
             )
-
-        # 设置操作标记
-        new_record_data["operation_type"] = operation_type
-        new_record_data["source_record_id"] = record_id
+        new_record_data["source_record_id"] = source_record_id
 
         # 更新业务数据
         business_data["container_build_method"] = container_build_method

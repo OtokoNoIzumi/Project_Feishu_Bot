@@ -106,9 +106,7 @@ class RecordCard:
         elements = []
 
         # 1. 计算信息区域（包含基础信息、时间预估、循环进度等）
-        elements.extend(
-            self._build_computed_info_by_type(data_source)
-        )
+        elements.extend(self._build_computed_info_by_type(data_source))
 
         # 2. 表单外字段区域（非表单数据，有回调事件，状态保存在配置中）
         non_form_elements = self._build_non_form_fields(
@@ -165,9 +163,7 @@ class RecordCard:
         if event_name or record_data.get("create_time"):
             diff_minutes = computed_data.get("diff_minutes", 0)
             elements.extend(
-                self._build_basic_info_section(
-                    data_source, event_name, diff_minutes
-                )
+                self._build_basic_info_section(data_source, event_name, diff_minutes)
             )
 
         # 时间预估和进度信息

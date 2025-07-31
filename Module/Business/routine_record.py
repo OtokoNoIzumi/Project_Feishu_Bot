@@ -875,6 +875,7 @@ class RoutineRecord(BaseProcessor):
                 source_record_id, {}
             ) or records_data.get("records", {}).get(source_record_id, {})
             if source_record_data:
+                # 添加关联记录
                 source_record_data.setdefault("related_records", {})
                 source_record_data["related_records"].setdefault(event_name, [])
                 if record_id not in source_record_data["related_records"][event_name]:
