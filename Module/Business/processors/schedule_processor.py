@@ -96,6 +96,7 @@ class ScheduleProcessor(BaseProcessor):
             debug_utils.log_and_print(f"创建定时消息失败: {e}", log_level="ERROR")
             return ProcessResult.error_result(f"创建定时消息失败: {str(e)}")
 
+    # region 7:30日报
     @safe_execute("创建每日信息汇总失败")
     def daily_summary(self, event_data: Dict[str, Any]) -> ProcessResult:
         """创建每日信息汇总消息（7:30定时卡片容器）"""
@@ -160,7 +161,9 @@ class ScheduleProcessor(BaseProcessor):
             os.remove(image_path)
 
         return result
+    # endregion
 
+    # region 15:30 B站更新
     @safe_execute("创建B站更新提醒失败")
     def bili_notification(
         self, sources: Optional[List[str]] = None, api_result: Dict[str, Any] = None
@@ -606,6 +609,7 @@ class ScheduleProcessor(BaseProcessor):
             )
 
         return card
+    # endregion
 
     def _get_admin_id(self) -> Optional[str]:
         """获取管理员ID"""
@@ -615,6 +619,7 @@ class ScheduleProcessor(BaseProcessor):
                 return config_service.get("ADMIN_ID", None)
         return None
 
+    # region 个人状态 demo
     @safe_execute("个人状态评估消息创建失败")
     def personal_status_evaluation(
         self, status_data: Dict[str, Any], evaluation_time: str
@@ -830,3 +835,5 @@ class ScheduleProcessor(BaseProcessor):
                 summary_parts.append(f"• {goal}")
 
         return "\n".join(summary_parts)
+
+    # endregion

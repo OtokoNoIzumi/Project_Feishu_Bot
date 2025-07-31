@@ -31,6 +31,21 @@ class DailySummaryBusiness(BaseProcessor):
     负责处理每日信息汇总的完整业务流程
     """
 
+    # region 后端业务入口
+    # 业务堆栈
+    ## 注册
+    # main.setup_scheduled_tasks  # 如果后续要区分user，在这里就要把user_id和各自的时间设置进去。虽然现在的user_id都来自飞书，但应该可以直接扩展到其他
+    # -> scheduler_service.TaskUtils.get_task_function
+    # -> scheduler_service.add_daily_task
+
+    ## 触发
+    # 这里service和processor的架构是旧版，以后重构
+    # ScheduledEvent的结构不够好，目前type有一份冗余，现在使用的是data里的scheduler_type
+    # scheduler_service.trigger_daily_schedule_reminder
+    # -> main.handle_scheduled_event
+    # -> schedule_processor.create_task
+    # -> schedule_processor.daily_summary
+    # -> daily_summary_business.create_daily_summary
     @require_service("bili_adskip", "B站广告跳过服务不可用")
     @safe_execute("创建每日信息汇总失败")
     def create_daily_summary(
@@ -65,6 +80,7 @@ class DailySummaryBusiness(BaseProcessor):
         )
 
         return ProcessResult.user_list_result("interactive", card_content)
+    # endregion
 
     # ------------------------------ 构建B站分析数据 ------------------------------
 
