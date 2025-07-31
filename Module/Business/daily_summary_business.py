@@ -44,8 +44,10 @@ class DailySummaryBusiness(BaseProcessor):
     # scheduler_service.trigger_daily_schedule_reminder
     # -> main.handle_scheduled_event
     # -> schedule_processor.create_task
-    # -> schedule_processor.daily_summary
+    # -> schedule_processor.daily_summary 这里更多应该是定时属性，业务集中在下面
     # -> daily_summary_business.create_daily_summary
+    # -> main.handle_scheduled_event
+
     @require_service("bili_adskip", "B站广告跳过服务不可用")
     @safe_execute("创建每日信息汇总失败")
     def create_daily_summary(
@@ -62,6 +64,7 @@ class DailySummaryBusiness(BaseProcessor):
             ProcessResult: 处理结果
         """
         # 构建B站信息cache分析数据（整合原来的分散逻辑）
+        # analysis 是后端的数据处理逻辑，然后提供给前端的卡片进行build_card
         services_status = event_data.get("services_status")
         analysis_data = self.build_bilibili_analysis_data()
 
@@ -80,9 +83,10 @@ class DailySummaryBusiness(BaseProcessor):
         )
 
         return ProcessResult.user_list_result("interactive", card_content)
+
     # endregion
 
-    # ------------------------------ 构建B站分析数据 ------------------------------
+    # region B站分析数据
 
     @safe_execute("构建B站分析数据失败")
     def build_bilibili_analysis_data(self) -> Dict[str, Any]:
@@ -228,7 +232,9 @@ class DailySummaryBusiness(BaseProcessor):
             "timestamp": now.isoformat(),
         }
 
-    # ------------------------------ 生成AI分析 ------------------------------
+    # endregion
+
+    # region 生成AI分析
 
     # 类级别常量 - 避免重复定义
     AI_ANALYSIS_BASE_INSTRUCTION = """你是一个专业的内容分析助理。
@@ -438,6 +444,9 @@ class DailySummaryBusiness(BaseProcessor):
 
         return high_relevance_videos
 
+    # endregion
+
+    # region 创建日报卡片
     @safe_execute("创建日报卡片失败")
     def create_daily_summary_card(
         self, analysis_data: Dict[str, Any], main_color: Dict[str, Any], image_key: str
@@ -641,39 +650,6 @@ class DailySummaryBusiness(BaseProcessor):
 
         return card
 
-    @require_service("notion", "标记服务暂时不可用")
-    @safe_execute("处理B站标记已读失败")
-    def mark_bili_read_v2(self, action_value: Dict[str, Any]) -> ProcessResult:
-        """
-        处理定时卡片中的标记B站视频为已读
-        """
-        # 获取notion服务
-        notion_service = self.app_controller.get_service(ServiceNames.NOTION)
-
-        # 获取参数
-        pageid = action_value.get("pageid", "")
-        video_index = action_value.get("video_index", 1)
-
-        # 执行标记为已读操作
-        success = notion_service.mark_video_as_read(pageid)
-        if not success:
-            return ProcessResult.error_result("标记为已读失败")
-
-        # 定时卡片：基于原始数据重构，只更新已读状态，不重新获取统计数据
-        # 这里要用异步的方法来解决了，而且最理想的情况还是不再这里处理，把需求传递出去。
-        # 这一步的需求是弹出气泡信息，并且去掉特定element_id的元素。
-        return ProcessResult.success_result(
-            ResponseTypes.SCHEDULER_CARD_UPDATE_BILI_BUTTON,
-            {
-                "toast": {
-                    "type": "success",
-                    "content": f"已标记第{video_index}个推荐为已读",
-                },
-                "remove_element_id": f"mark_bili_read_{video_index}",
-                "text_element_id": f"bili_video_{video_index}",
-            },
-        )
-
     def format_notion_bili_analysis(self, data: Dict[str, Any]) -> str:
         """格式化notion B站统计数据"""
         content = f"📊 **{data['date']} {data['weekday']}**"
@@ -713,8 +689,6 @@ class DailySummaryBusiness(BaseProcessor):
                 content += f"\n\n🌟 **AI汇总:**\n{ai_summary}"
 
         return content
-
-    # ------------------------------ 格式化运营数据 ------------------------------
 
     def format_operation_data(self, operation_data: Dict[str, Any]) -> str:
         """格式化运营数据信息"""
@@ -843,8 +817,6 @@ class DailySummaryBusiness(BaseProcessor):
 
         return content
 
-    # ------------------------------ 格式化服务状态 ------------------------------
-
     def format_services_status(self, services_status: Dict[str, Any]) -> str:
         """格式化服务状态信息"""
         content = "\n\n🔧 **外部服务状态检测**"
@@ -958,3 +930,42 @@ class DailySummaryBusiness(BaseProcessor):
             content += "\n\n⏸️ **Gradio图像服务**: 未启用"
 
         return content
+
+    # endregion
+
+    # region 处理回调事件
+
+    @require_service("notion", "标记服务暂时不可用")
+    @safe_execute("处理B站标记已读失败")
+    def mark_bili_read_v2(self, action_value: Dict[str, Any]) -> ProcessResult:
+        """
+        处理定时卡片中的标记B站视频为已读
+        """
+        # 获取notion服务
+        notion_service = self.app_controller.get_service(ServiceNames.NOTION)
+
+        # 获取参数
+        pageid = action_value.get("pageid", "")
+        video_index = action_value.get("video_index", 1)
+
+        # 执行标记为已读操作
+        success = notion_service.mark_video_as_read(pageid)
+        if not success:
+            return ProcessResult.error_result("标记为已读失败")
+
+        # 定时卡片：基于原始数据重构，只更新已读状态，不重新获取统计数据
+        # 这里要用异步的方法来解决了，而且最理想的情况还是不再这里处理，把需求传递出去。
+        # 这一步的需求是弹出气泡信息，并且去掉特定element_id的元素。
+        return ProcessResult.success_result(
+            ResponseTypes.SCHEDULER_CARD_UPDATE_BILI_BUTTON,
+            {
+                "toast": {
+                    "type": "success",
+                    "content": f"已标记第{video_index}个推荐为已读",
+                },
+                "remove_element_id": f"mark_bili_read_{video_index}",
+                "text_element_id": f"bili_video_{video_index}",
+            },
+        )
+
+    # endregion
