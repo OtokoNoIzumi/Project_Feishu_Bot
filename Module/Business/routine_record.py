@@ -850,7 +850,12 @@ class RoutineRecord(BaseProcessor):
                 new_record[key] = value
 
         # 添加唯一id
-        record_id, record_count = self._get_next_record_id(user_id, event_name)
+        record_id = record_data.get("record_id", "")
+        if not record_id:
+            record_id, record_count = self._get_next_record_id(user_id, event_name)
+        else:
+            record_count = -1
+
         new_record["record_id"] = record_id
 
         if (event_type == RoutineTypes.INSTANT.value) or (
