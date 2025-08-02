@@ -6,7 +6,8 @@
 
 import json
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Callable
+from functools import wraps
 from lark_oapi.event.callback.model.p2_card_action_trigger import (
     P2CardActionTriggerResponse,
 )
@@ -16,6 +17,7 @@ from Module.Services.constants import (
     CardOperationTypes,
     ReplyModes,
     ColorTypes,
+    ToastTypes,
 )
 from Module.Business.processors import MessageContext_Refactor
 from .json_builder import JsonBuilder
@@ -53,6 +55,73 @@ class BaseCardManager(ABC):
 
         self.templates = {}
         self._initialize_templates()
+
+    @classmethod
+    def card_updater(
+        cls,
+        sub_business_name: str = "",
+        toast_message: str = "",
+        default_update_method: str = None,
+    ):
+        """卡片更新装饰器 - 分离模板操作和业务逻辑
+
+        Args:
+            sub_business_name: 子业务名称，用于获取业务数据
+            toast_message: 默认的提示消息
+            default_update_method: 默认的更新构建方法名
+
+        Returns:
+            装饰器函数
+        """
+
+        def decorator(func: Callable) -> Callable:
+            @wraps(func)
+            def wrapper(card_instance, context: MessageContext_Refactor):
+                # 装饰器是实际handler的入口，所以只有context
+
+                manager = getattr(card_instance, "parent", card_instance)
+                # 1. 获取构建方法名
+                build_method_name = context.content.value.get(
+                    "container_build_method",
+                    default_update_method
+                    or getattr(manager, "default_update_build_method", "update_card"),
+                )
+
+                # 2. 确保上下文有效
+                business_data, card_id, error_response = manager.ensure_valid_context(
+                    context, func.__name__, build_method_name
+                )
+                if error_response:
+                    return error_response
+
+                # 3. 获取业务数据源
+                data_source, _ = manager.safe_get_business_data(
+                    business_data, sub_business_name
+                )
+
+                # 4. 执行业务逻辑，返回可选的toast消息，这里传参到装饰器修正的方法里，也就多了一个data_source
+                actual_toast = (
+                    func(card_instance, context, data_source) or toast_message
+                )
+
+                # 5. 构建新的卡片DSL
+                new_card_dsl = manager.build_update_card_data(
+                    business_data, build_method_name
+                )
+
+                # 6. 保存并响应更新
+                return manager.save_and_respond_with_update(
+                    context.user_id,
+                    card_id,
+                    business_data,
+                    new_card_dsl,
+                    actual_toast,
+                    ToastTypes.INFO,
+                )
+
+            return wrapper
+
+        return decorator
 
     @abstractmethod
     def build_card(self, data: Dict[str, Any]) -> Dict[str, Any]:

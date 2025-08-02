@@ -9,6 +9,7 @@ import datetime
 from Module.Business.processors.base_processor import MessageContext_Refactor
 from Module.Services.constants import CardConfigKeys, ToastTypes, RoutineRecordModes
 from Module.Services.config_service import set_nested_value
+from Module.Adapters.feishu.cards.card_registry import BaseCardManager
 
 
 class QueryResultsCard:
@@ -485,75 +486,24 @@ class QueryResultsCard:
     # endregion 记录元素构建
 
     # region 回调事件
-    def update_category_filter(self, context: MessageContext_Refactor):
+    @BaseCardManager.card_updater(
+        sub_business_name=CardConfigKeys.ROUTINE_QUERY, toast_message=""
+    )
+    def update_category_filter(self, context: MessageContext_Refactor, data_source):
         """处理类型筛选更新"""
-        # 从context获取build_method_name
-        # 从缓存获取business_data和card_id
-        # 解嵌套，获得当前卡片的business_data(data_source)
-        # 赋值，更新
-        # 构建新的card_dsl
-        # 保存business_data到缓存并更新
-        build_method_name = context.content.value.get(
-            "container_build_method", self.default_update_build_method
-        )
-        business_data, card_id, error_response = self.parent.ensure_valid_context(
-            context, "update_card_field", build_method_name
-        )
-        if error_response:
-            return error_response
-
-        data_source, _ = self.parent.safe_get_business_data(
-            business_data, CardConfigKeys.ROUTINE_QUERY
-        )
         set_nested_value(
             data_source, "selected_category", context.content.value.get("option", "")
         )
         set_nested_value(data_source, "expand_position", -1)
 
-        new_card_dsl = self.parent.build_update_card_data(
-            business_data, build_method_name
-        )
-
-        return self.parent.save_and_respond_with_update(
-            context.user_id,
-            card_id,
-            business_data,
-            new_card_dsl,
-            "",
-            ToastTypes.INFO,
-        )
-
-    def update_type_name_filter(self, context: MessageContext_Refactor):
+    @BaseCardManager.card_updater(
+        sub_business_name=CardConfigKeys.ROUTINE_QUERY, toast_message="已完成筛选"
+    )
+    def update_type_name_filter(self, context: MessageContext_Refactor, data_source):
         """处理名称筛选更新"""
         filter_value = context.content.value.get("value", "").strip()
-
-        build_method_name = context.content.value.get(
-            "container_build_method", self.default_update_build_method
-        )
-        business_data, card_id, error_response = self.parent.ensure_valid_context(
-            context, "update_card_field", build_method_name
-        )
-        if error_response:
-            return error_response
-
-        data_source, _ = self.parent.safe_get_business_data(
-            business_data, CardConfigKeys.ROUTINE_QUERY
-        )
         set_nested_value(data_source, "type_name_filter", filter_value)
         set_nested_value(data_source, "expand_position", -1)
-
-        new_card_dsl = self.parent.build_update_card_data(
-            business_data, build_method_name
-        )
-
-        return self.parent.save_and_respond_with_update(
-            context.user_id,
-            card_id,
-            business_data,
-            new_card_dsl,
-            "已完成筛选",
-            ToastTypes.INFO,
-        )
 
     def query_record(self, context: MessageContext_Refactor):
         """统一的记录操作回调方法 - 所有动态参数通过action_data传递"""

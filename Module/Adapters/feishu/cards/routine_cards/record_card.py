@@ -30,6 +30,7 @@ from Module.Business.processors.base_processor import (
 )
 from Module.Services.config_service import set_nested_value
 from Module.Business.shared_process import format_time_label
+from Module.Adapters.feishu.cards.card_registry import BaseCardManager
 
 
 class RecordCard:
@@ -1203,9 +1204,12 @@ class RecordCard:
     # endregion
 
     # region 回调处理方法
+    @BaseCardManager.card_updater(
+        sub_business_name=CardConfigKeys.ROUTINE_RECORD, toast_message="字段已更新"
+    )
     def handle_record_field_update(
-        self, context: MessageContext_Refactor
-    ) -> ProcessResult:
+        self, context: MessageContext_Refactor, data_source
+    ) -> str:
         """通用字段更新处理方法"""
 
         # 提取选择的值
@@ -1219,26 +1223,10 @@ class RecordCard:
                 {"toast": {"type": "error", "content": "未能获取选择的值"}}
             )
 
-        # 获取构建方法名称
-        build_method_name = context.content.value.get(
-            "container_build_method", self.default_update_build_method
-        )
-
         nested_field_pos = context.content.value.get("nested_field_pos", "record_data")
 
+        # 从context中动态获取toast消息
         toast_message = context.content.value.get("toast_message", "字段已更新")
-
-        # 获取业务数据
-        business_data, card_id, error_response = self.parent.ensure_valid_context(
-            context, "handle_record_field_update", build_method_name
-        )
-        if error_response:
-            return error_response
-
-        # 获取record的数据源
-        data_source, _ = self.parent.safe_get_business_data(
-            business_data, CardConfigKeys.ROUTINE_RECORD
-        )
 
         match value_mode:
             case "diff_create_time":
@@ -1252,19 +1240,8 @@ class RecordCard:
 
         set_nested_value(data_source, nested_field_pos, extracted_value)
 
-        # 构建新卡片
-        new_card_dsl = self.parent.build_update_card_data(
-            business_data, build_method_name
-        )
-
-        return self.parent.save_and_respond_with_update(
-            context.user_id,
-            card_id,
-            business_data,
-            new_card_dsl,
-            toast_message,
-            ToastTypes.INFO,
-        )
+        # 返回动态获取的toast消息，装饰器会使用这个值
+        return toast_message
 
     def cancel_record(self, context: MessageContext_Refactor) -> ProcessResult:
         """取消直接记录"""
