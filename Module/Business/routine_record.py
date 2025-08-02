@@ -625,7 +625,9 @@ class RoutineRecord(BaseProcessor):
                 "event_name": event_name,
                 "create_time": self._get_formatted_time(),
             }
-            last_record_time = event_definition.get("last_record_time", None)
+            last_record_time = event_definition.get(
+                "last_record_time", definitions_data.get("last_record_time", None)
+            )
 
         # 公共的计算可以放在外面
         computed_data = {}
@@ -1704,6 +1706,19 @@ class RoutineRecord(BaseProcessor):
 
     # region 报表计算
 
+    def safe_parse_datetime(self, time_str, field_name="time"):
+        """安全解析时间，提供清晰的错误信息"""
+        if not time_str or not isinstance(time_str, str):
+            raise ValueError(f"{field_name} 为空或格式错误: {repr(time_str)}")
+        try:
+            return datetime.strptime(time_str, "%Y-%m-%d %H:%M")
+        except ValueError as e:
+            debug_utils.log_and_print(
+                f"{field_name} 解析失败，尝试使用 %Y-%m-%d %H:%M:%S 格式: '{time_str}' -> {str(e)}",
+                log_level="ERROR",
+            )
+            return datetime.strptime(time_str, "%Y-%m-%d %H:%M:%S")
+
     def preprocess_and_filter_records(
         self, all_records_dict: Dict[str, Any], start_range, end_range
     ):
@@ -1715,39 +1730,32 @@ class RoutineRecord(BaseProcessor):
         """
         record_list = []
         for record in all_records_dict.values():
-            try:
-                # 兼容不同的时间字段名
-                create_time_str = record.get("create_time") or record.get(
-                    "created_time", ""
-                )
-                end_time_str = record.get("end_time", "")
+            # 兼容不同的时间字段名
+            create_time_str = record.get("create_time") or record.get(
+                "created_time", ""
+            )
+            end_time_str = record.get("end_time", "")
 
-                if not create_time_str:
-                    continue
-
-                start_time = datetime.strptime(create_time_str, "%Y-%m-%d %H:%M")
-
-                # 如果没有end_time，使用create_time作为end_time（即时事件）
-                if (not end_time_str) or (end_time_str == create_time_str):
-                    end_time = start_time
-                    start_time = start_time - timedelta(
-                        minutes=record.get("duration", 0)
-                    )
-                else:
-                    end_time = datetime.strptime(end_time_str, "%Y-%m-%d %H:%M")
-
-                if start_time < end_range and end_time > start_range:
-                    record["start_dt"] = start_time
-                    record["end_dt"] = end_time
-                    record_list.append(record)
-                elif end_time <= start_range:
-                    break
-            except (ValueError, KeyError) as e:
-                debug_utils.log_and_print(
-                    f"Skipping record due to error: {record.get('record_id', 'N/A')}, {e}",
-                    log_level="ERROR",
-                )
+            if not create_time_str:
                 continue
+
+            start_time = self.safe_parse_datetime(
+                create_time_str, field_name="create_time"
+            )
+
+            # 如果没有end_time，使用create_time作为end_time（即时事件）
+            if (not end_time_str) or (end_time_str == create_time_str):
+                end_time = start_time
+                start_time = start_time - timedelta(minutes=record.get("duration", 0))
+            else:
+                end_time = self.safe_parse_datetime(end_time_str, field_name="end_time")
+
+            if start_time < end_range and end_time > start_range:
+                record["start_dt"] = start_time
+                record["end_dt"] = end_time
+                record_list.append(record)
+            elif end_time <= start_range:
+                break
 
         record_list.sort(key=lambda x: x["start_dt"])
         return record_list
