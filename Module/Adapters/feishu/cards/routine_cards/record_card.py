@@ -161,6 +161,7 @@ class RecordCard:
         computed_data = data_source.get("computed_data", {})
 
         event_name = record_data.get("event_name", "")
+
         if event_name or record_data.get("create_time"):
             diff_minutes = computed_data.get("diff_minutes", 0)
             elements.extend(
@@ -210,33 +211,9 @@ class RecordCard:
             )
 
         # 显示时间信息
-        time_field = None
-        time_label = ""
-
-        if event_type == RoutineTypes.FUTURE.value:
-            # 未来事项显示预计开始时间
-            time_field = record_data.get("scheduled_start_time")
-            time_label = "预计开始时间"
-        else:
-            # 其他事项显示开始时间
-            time_field = record_data.get("create_time")
-            if event_type == RoutineTypes.INSTANT.value:
-                time_label = "记录时间"
-            else:
-                time_label = "开始时间"
-
-        if time_field:
-            if record_mode == RoutineRecordModes.REGIST:
-                info_content += f"**{event_name}{time_label}：** {time_field}\n"
-            else:
-                info_content += f"**{time_label}：** {time_field}\n"
-            if diff_minutes > 0 and event_type != RoutineTypes.FUTURE.value:
-                time_label = format_time_label(diff_minutes)
-
-                if record_mode == RoutineRecordModes.EDIT:
-                    info_content += f"**已经持续：** {time_label}\n"
-                else:
-                    info_content += f"**上次{event_name}距今：** {time_label}\n"
+        time_info = self._build_time_info_section(data_source, event_name, diff_minutes)
+        if time_info:
+            info_content += time_info
 
         # 显示分类（如果有）
         category = event_definition.get("category", "")
@@ -255,6 +232,157 @@ class RecordCard:
             )
 
         return elements
+
+    def _build_time_info_section(
+        self,
+        data_source: Dict[str, Any],
+        event_name: str,
+        diff_minutes: int,
+    ) -> str:
+        """
+        构建时间信息显示内容
+
+        Args:
+            data_source: 完整的数据源
+            event_name: 事件名称
+            diff_minutes: 时间差（分钟）
+
+        Returns:
+            str: 格式化的时间信息字符串
+        """
+        # 从data_source获取必要数据
+        record_data = data_source.get("record_data", {})
+        event_definition = data_source.get("event_definition", {})
+        record_mode = data_source.get("record_mode", "")
+        event_type = event_definition.get("type", RoutineTypes.FUTURE.value)
+        source_event_name = data_source.get("source_event_name", "")
+
+        # 组件1: 获取时间标签
+        time_label = self._get_time_label(
+            event_type, record_mode, event_name, source_event_name, record_data
+        )
+
+        # 组件2: 获取时间值
+        time_value = self._get_time_value(event_type, record_data)
+
+        # 组件3: 获取时间差标签
+        diff_time_label = self._get_diff_time_label(
+            event_type, record_mode, event_name, source_event_name, diff_minutes
+        )
+
+        # 组件4: 获取时间差值
+        diff_time_value = self._get_diff_time_value(event_type, diff_minutes)
+
+        # 合并组件
+        return self._merge_time_components(
+            time_label, time_value, diff_time_label, diff_time_value
+        )
+
+    def _get_time_value(self, event_type: str, record_data: Dict[str, Any]) -> str:
+        """获取时间值组件"""
+        if event_type == RoutineTypes.FUTURE.value:
+            return record_data.get("scheduled_start_time") or record_data.get(
+                "create_time", ""
+            )
+        else:
+            return record_data.get("create_time", "")
+
+    def _get_time_label(
+        self,
+        event_type: str,
+        record_mode: str,
+        event_name: str,
+        source_event_name: str,
+        record_data: Dict[str, Any],
+    ) -> str:
+        """获取时间标签组件"""
+        # 确定基础标签
+        if event_type == RoutineTypes.FUTURE.value:
+            base_label = (
+                "预计开始时间"
+                if record_data.get("scheduled_start_time")
+                else "记录时间"
+            )
+        elif event_type == RoutineTypes.INSTANT.value:
+            base_label = "记录时间"
+        else:
+            base_label = "开始时间"
+
+        # 获取事件前缀
+        event_prefix = self._get_record_mode_info(
+            record_mode, event_name, source_event_name, "event_prefix"
+        )
+        return f"{event_prefix}{base_label}"
+
+    def _get_diff_time_label(
+        self,
+        event_type: str,
+        record_mode: str,
+        event_name: str,
+        source_event_name: str,
+        diff_minutes: int,
+    ) -> str:
+        """获取时间差标签组件"""
+        if diff_minutes <= 0 or event_type == RoutineTypes.FUTURE.value:
+            return ""
+
+        return self._get_record_mode_info(
+            record_mode, event_name, source_event_name, "diff_label"
+        )
+
+    def _get_record_mode_info(
+        self,
+        record_mode: str,
+        event_name: str,
+        source_event_name: str,
+        info_type: str,
+    ) -> str:
+        """统一处理record_mode的匹配逻辑，根据info_type返回不同信息"""
+
+        # 使用字典映射替代冗长的match-case
+        mode_configs = {
+            RoutineRecordModes.REGIST: {
+                "diff_label": "上次记录距今",
+                "event_prefix": event_name
+                or (f"{source_event_name}的关联事件" if source_event_name else ""),
+            },
+            RoutineRecordModes.EDIT: {
+                "diff_label": "已经持续",
+                "event_prefix": event_name or "",
+            },
+            RoutineRecordModes.ADD: {
+                "diff_label": f"上次{event_name}距今",
+                "event_prefix": "",
+            },
+        }
+
+        return mode_configs.get(record_mode, {}).get(info_type, "")
+
+    def _get_diff_time_value(self, event_type: str, diff_minutes: int) -> str:
+        """获取时间差值组件"""
+        if diff_minutes <= 0 or event_type == RoutineTypes.FUTURE.value:
+            return ""
+        return format_time_label(diff_minutes)
+
+    def _merge_time_components(
+        self,
+        time_label: str,
+        time_value: str,
+        diff_time_label: str,
+        diff_time_value: str,
+    ) -> str:
+        """合并时间组件"""
+        result = ""
+
+        # 添加主时间信息
+        if time_label and time_value:
+            result += f"**{time_label}：** {time_value}\n"
+
+        # 添加时间差信息
+        if diff_time_label and diff_time_value:
+            result += f"**{diff_time_label}：** {diff_time_value}\n"
+
+        return result
 
     def _build_duration_and_progress_section(
         self,

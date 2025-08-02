@@ -270,6 +270,7 @@ class QueryResultsCard:
             "card_action": "query_record",
             "operation_hint_str": "create_related_event",
             "source_record_id": record_id,
+            "source_event_name": event_name,
             "expand_position": expand_position,
             "message": "正在创建关联事件",
             **default_action_data,
@@ -514,6 +515,7 @@ class QueryResultsCard:
         operation_hint_str = action_value.get("operation_hint_str", "")
         record_id = action_value.get("record_id", "")
         source_record_id = action_value.get("source_record_id", "")
+        source_event_name = action_value.get("source_event_name", "")
         event_name = action_value.get("event_name", "")
         record_mode = action_value.get("record_mode", RoutineRecordModes.ADD)
         expand_position = action_value.get("expand_position", -1)
@@ -569,6 +571,7 @@ class QueryResultsCard:
                 user_id, event_name
             )
         new_record_data["source_record_id"] = source_record_id
+        new_record_data["source_event_name"] = source_event_name
 
         # 更新业务数据
         business_data["container_build_method"] = container_build_method
