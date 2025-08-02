@@ -112,23 +112,10 @@ class RoutineCardManager(BaseCardManager):
             workflow_state, event_name, is_confirmed, result
         )
 
-    def update_card_field(
-        self,
-        context: MessageContext_Refactor,
-        field_key: str,
-        extracted_value,
-        sub_business_name: str,
-        toast_message: str,
-    ):
-        """代理到共享工具"""
-        return self.shared_utils.update_card_field(
-            context, field_key, extracted_value, sub_business_name, toast_message
-        )
-
-    def ensure_valid_context(self, context, method_name, default_method):
+    def ensure_valid_context(self, context, method_name_str, default_method):
         """确保上下文有效，失效时自动处理"""
         return self.shared_utils.ensure_valid_context(
-            context, method_name, default_method
+            context, method_name_str, default_method
         )
 
     def build_update_card_data(
@@ -146,14 +133,14 @@ class RoutineCardManager(BaseCardManager):
     def build_cancel_update_card_data(
         self,
         business_data: Dict[str, Any],
-        method_name: str,
+        method_name_str: str,
         default_method: str = "update_record_confirm_card",
         verbose: bool = True,
     ):
         """处理空数据情况，设置取消状态"""
         if verbose:
             debug_utils.log_and_print(
-                f"🔍 {method_name} - 卡片数据为空", log_level="WARNING"
+                f"🔍 {method_name_str} - 卡片数据为空", log_level="WARNING"
             )
         business_data["is_confirmed"] = True
         business_data["result"] = "取消"

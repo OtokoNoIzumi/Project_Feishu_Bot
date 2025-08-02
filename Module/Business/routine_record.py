@@ -1004,6 +1004,8 @@ class RoutineRecord(BaseProcessor):
 
         # 构建active_records映射，用于检查事件是否有active_record
         active_record_map = {}
+        start_records = []  # 存储start类型的记录
+
         for record_id, record in active_records.items():
             event_name = record.get("event_name", "")
             if event_name:
@@ -1011,6 +1013,18 @@ class RoutineRecord(BaseProcessor):
                     "record_id": record_id,
                     "record_data": record,
                 }
+
+                # 检查是否为start类型记录
+                event_def = definitions.get(event_name, {})
+                if event_def.get("type") == RoutineTypes.START.value:
+                    start_records.append(
+                        {
+                            "record_id": record_id,
+                            "event_name": event_name,
+                            "record_data": record,
+                            "last_updated": record.get("last_updated", ""),
+                        }
+                    )
 
         def create_event_info(
             event_name: str, event_def: dict, priority_type: str = ""
@@ -1097,25 +1111,55 @@ class RoutineRecord(BaseProcessor):
             )
         )
 
-        # 第二优先级：quick_access事件
+        # 初始化结果列表和排除集合
+        quick_events = []
+        excluded_event_names = set()
+
+        # 第一优先级：时间匹配事件（最多2席）
+        selected_time_matched = time_matched_events[:2]
+        quick_events.extend(selected_time_matched)
+        excluded_event_names.update(e["name"] for e in selected_time_matched)
+
+        # 第二优先级：start类型的active_record（最多1席）
+        available_start_records = [
+            record
+            for record in start_records
+            if record["event_name"] not in excluded_event_names
+        ]
+        available_start_records.sort(key=lambda x: x["last_updated"], reverse=True)
+
+        if available_start_records and len(quick_events) < max_items:
+            priority_start_record = available_start_records[0]
+            start_event_name = priority_start_record["event_name"]
+            start_event_def = definitions.get(start_event_name, {})
+            start_event_info = create_event_info(
+                start_event_name, start_event_def, "priority_start"
+            )
+            quick_events.append(start_event_info)
+            excluded_event_names.add(start_event_name)
+
+        # 第三优先级：quick_access事件（最多3席）
         quick_access_events = []
         for event_name, event_def in definitions.items():
-            if event_def.get("properties", {}).get("quick_access", False):
-                # 排除已经在时间匹配中的事件
-                if not any(e["name"] == event_name for e in time_matched_events):
-                    event_info = create_event_info(
-                        event_name, event_def, "quick_access"
-                    )
-                    quick_access_events.append(event_info)
+            if (
+                event_def.get("properties", {}).get("quick_access", False)
+                and event_name not in excluded_event_names
+            ):
+                event_info = create_event_info(event_name, event_def, "quick_access")
+                quick_access_events.append(event_info)
 
         # 按last_updated排序quick_access_events
         quick_access_events.sort(key=lambda x: x["last_updated"], reverse=True)
 
-        # 第三优先级：最近更新的事件
+        # 添加quick_access事件（最多3席）
+        remaining_slots = max_items - len(quick_events)
+        if remaining_slots > 0:
+            selected_quick_access = quick_access_events[: min(3, remaining_slots)]
+            quick_events.extend(selected_quick_access)
+            excluded_event_names.update(e["name"] for e in selected_quick_access)
+
+        # 第四优先级：最近更新的事件（剩余席位）
         recent_events = []
-        excluded_event_names = set(
-            e["name"] for e in time_matched_events + quick_access_events
-        )
         for event_name, event_def in definitions.items():
             if event_name not in excluded_event_names:
                 event_info = create_event_info(event_name, event_def, "recent")
@@ -1124,19 +1168,10 @@ class RoutineRecord(BaseProcessor):
         # 按last_updated排序recent_events
         recent_events.sort(key=lambda x: x["last_updated"], reverse=True)
 
-        # 按优先级合并事件列表，确保不超过max_items
-        # 时间匹配事件最多2席
-        quick_events.extend(time_matched_events[:2])
+        # 添加recent事件（剩余席位）
         remaining_slots = max_items - len(quick_events)
-
-        # quick_access事件最多3席
         if remaining_slots > 0:
-            quick_events.extend(quick_access_events[: min(3, remaining_slots)])
-            remaining_slots = max_items - len(quick_events)
-
-            # 剩余席位给最近更新的事件
-            if remaining_slots > 0:
-                quick_events.extend(recent_events[:remaining_slots])
+            quick_events.extend(recent_events[:remaining_slots])
 
         # 构建基础卡片数据
         quick_select_data = {
@@ -1351,8 +1386,29 @@ class RoutineRecord(BaseProcessor):
 
         # 获取或创建事件定义
         if event_name in event_definitions.get("definitions", {}):
+            # 增加已有名字的方法的时候这里要想办法同步数据
             existing_def = event_definitions["definitions"][event_name]
-            existing_def["properties"] = event_definition.get("properties", {})
+
+            # 合并properties而不是直接覆盖
+            new_properties = event_definition.get("properties", {})
+            existing_properties = existing_def.get("properties", {})
+
+            # 合并degree_options数组
+            if "degree_options" in new_properties:
+                existing_degree_options = existing_properties.get("degree_options", [])
+                new_degree_options = new_properties.get("degree_options", [])
+                # 合并并去重，保持原有顺序
+                merged_degree_options = existing_degree_options.copy()
+                for option in new_degree_options:
+                    if option not in merged_degree_options:
+                        merged_degree_options.append(option)
+                new_properties["degree_options"] = merged_degree_options
+
+            # 更新其他properties字段，保留已有值
+            for key, value in new_properties.items():
+                existing_properties[key] = value
+
+            existing_def["properties"] = existing_properties
             existing_def["category"] = event_definition.get(
                 "category", existing_def["category"]
             )
@@ -1669,7 +1725,7 @@ class RoutineRecord(BaseProcessor):
                 if not create_time_str:
                     continue
 
-                start_time = datetime.fromisoformat(create_time_str.replace(" ", "T"))
+                start_time = datetime.strptime(create_time_str, "%Y-%m-%d %H:%M")
 
                 # 如果没有end_time，使用create_time作为end_time（即时事件）
                 if (not end_time_str) or (end_time_str == create_time_str):
@@ -1678,7 +1734,7 @@ class RoutineRecord(BaseProcessor):
                         minutes=record.get("duration", 0)
                     )
                 else:
-                    end_time = datetime.fromisoformat(end_time_str.replace(" ", "T"))
+                    end_time = datetime.strptime(end_time_str, "%Y-%m-%d %H:%M")
 
                 if start_time < end_range and end_time > start_range:
                     record["start_dt"] = start_time

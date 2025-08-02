@@ -18,12 +18,12 @@ class SharedUtils:
         self.parent = parent_manager  # 访问主管理器的共享方法和属性
         self.default_update_build_method = "update_query_results_card"
 
-    def ensure_valid_context(self, context, method_name, default_method):
+    def ensure_valid_context(self, context, method_name_str, default_method):
         """确保上下文有效，失效时自动处理"""
         business_data, card_id, _ = self.parent.get_core_data(context)
         if not business_data:
             new_card_dsl = self.parent.build_cancel_update_card_data(
-                {}, method_name, default_method
+                {}, method_name_str, default_method
             )
             return (
                 None,
@@ -36,42 +36,6 @@ class SharedUtils:
                 ),
             )
         return business_data, card_id, None
-
-    def update_card_field(
-        self,
-        context: MessageContext_Refactor,
-        field_key: str,
-        extracted_value,
-        sub_business_name: str = "",
-        toast_message: str = "",
-    ):
-        """routine业务专用的字段更新和刷新模板"""
-        build_method_name = context.content.value.get(
-            "container_build_method", self.default_update_build_method
-        )
-        business_data, card_id, error_response = self.ensure_valid_context(
-            context, "update_card_field", build_method_name
-        )
-        if error_response:
-            return error_response
-
-        data_source, _ = self.parent.safe_get_business_data(
-            business_data, sub_business_name
-        )
-        data_source[field_key] = extracted_value
-
-        new_card_dsl = self.parent.build_update_card_data(
-            business_data, build_method_name
-        )
-
-        return self.parent.save_and_respond_with_update(
-            context.user_id,
-            card_id,
-            business_data,
-            new_card_dsl,
-            toast_message,
-            ToastTypes.INFO,
-        )
 
     def build_workflow_header(
         self,

@@ -5,10 +5,10 @@ Query Results Card
 """
 
 from typing import Dict, Any
-import pprint
 import datetime
 from Module.Business.processors.base_processor import MessageContext_Refactor
 from Module.Services.constants import CardConfigKeys, ToastTypes, RoutineRecordModes
+from Module.Services.config_service import set_nested_value
 
 
 class QueryResultsCard:
@@ -64,7 +64,7 @@ class QueryResultsCard:
         selected_category = data_source.get("selected_category", "")
         type_name_filter = data_source.get("type_name_filter", "")
         expand_position = data_source.get("expand_position", -1)
-        filter_limit = data_source.get("filter_limit", 10)
+        filter_limit = data_source.get("filter_limit", 7)
 
         category_options_raw = data_source.get("category_options", [])
 
@@ -181,6 +181,7 @@ class QueryResultsCard:
         elements = []
         self.year = datetime.datetime.now().strftime("%Y")
         self.today = datetime.datetime.now().strftime("%Y-%m-%d")
+
         # 计算展开逻辑的独立参数
         if expand_position > -1:
             expand_logic = [False] * len(filtered_records)
@@ -201,7 +202,11 @@ class QueryResultsCard:
                 case "active_record":
                     active_elements.extend(
                         self._build_active_record_elements(
-                            record, current_expand, is_confirmed, default_action_data, i
+                            record,
+                            current_expand,
+                            is_confirmed,
+                            default_action_data,
+                            expand_position=i,
                         )
                     )
                 case "event_definition":
@@ -372,9 +377,10 @@ class QueryResultsCard:
                 size="small",
             )
         )
-        content = [
-            self.parent.build_button_group_element(buttons),
-        ]
+        # content = [
+        #     self.parent.build_button_group_element(buttons),
+        # ]
+        content = buttons
 
         stat_lines = []
         stats = definition.get("stats", {})
@@ -481,24 +487,72 @@ class QueryResultsCard:
     # region 回调事件
     def update_category_filter(self, context: MessageContext_Refactor):
         """处理类型筛选更新"""
-        new_option = context.content.value.get("option", "")
-        return self.parent.update_card_field(
-            context,
-            field_key="selected_category",
-            extracted_value=new_option,
-            sub_business_name=CardConfigKeys.ROUTINE_QUERY,
-            toast_message="",
+        # 从context获取build_method_name
+        # 从缓存获取business_data和card_id
+        # 解嵌套，获得当前卡片的business_data(data_source)
+        # 赋值，更新
+        # 构建新的card_dsl
+        # 保存business_data到缓存并更新
+        build_method_name = context.content.value.get(
+            "container_build_method", self.default_update_build_method
+        )
+        business_data, card_id, error_response = self.parent.ensure_valid_context(
+            context, "update_card_field", build_method_name
+        )
+        if error_response:
+            return error_response
+
+        data_source, _ = self.parent.safe_get_business_data(
+            business_data, CardConfigKeys.ROUTINE_QUERY
+        )
+        set_nested_value(
+            data_source, "selected_category", context.content.value.get("option", "")
+        )
+        set_nested_value(data_source, "expand_position", -1)
+
+        new_card_dsl = self.parent.build_update_card_data(
+            business_data, build_method_name
+        )
+
+        return self.parent.save_and_respond_with_update(
+            context.user_id,
+            card_id,
+            business_data,
+            new_card_dsl,
+            "",
+            ToastTypes.INFO,
         )
 
     def update_type_name_filter(self, context: MessageContext_Refactor):
         """处理名称筛选更新"""
         filter_value = context.content.value.get("value", "").strip()
-        return self.parent.update_card_field(
-            context,
-            "type_name_filter",
-            filter_value,
-            CardConfigKeys.ROUTINE_QUERY,
+
+        build_method_name = context.content.value.get(
+            "container_build_method", self.default_update_build_method
+        )
+        business_data, card_id, error_response = self.parent.ensure_valid_context(
+            context, "update_card_field", build_method_name
+        )
+        if error_response:
+            return error_response
+
+        data_source, _ = self.parent.safe_get_business_data(
+            business_data, CardConfigKeys.ROUTINE_QUERY
+        )
+        set_nested_value(data_source, "type_name_filter", filter_value)
+        set_nested_value(data_source, "expand_position", -1)
+
+        new_card_dsl = self.parent.build_update_card_data(
+            business_data, build_method_name
+        )
+
+        return self.parent.save_and_respond_with_update(
+            context.user_id,
+            card_id,
+            business_data,
+            new_card_dsl,
             "已完成筛选",
+            ToastTypes.INFO,
         )
 
     def query_record(self, context: MessageContext_Refactor):
@@ -574,10 +628,10 @@ class QueryResultsCard:
             self.parent.get_sub_business_build_method(CardConfigKeys.ROUTINE_RECORD)
         )
 
-        # 更新卡片显示
         new_card_dsl = self.parent.build_update_card_data(
             business_data, container_build_method
         )
+
         return self.parent.save_and_respond_with_update(
             context.user_id,
             card_id,

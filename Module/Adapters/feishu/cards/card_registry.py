@@ -112,6 +112,30 @@ class BaseCardManager(ABC):
             },
         }
 
+    def count_tags_lightweight(self, node) -> int:
+        """
+        一个高性能、递归的函数，只用于计算嵌套字典/列表中 'tag' 键的总数。
+        不处理任何字符串转换或HTML生成，追求最高效率。
+        """
+        count = 0
+        # 使用栈（stack）来替代深度递归，避免在极深层级时爆栈，性能也更好
+        stack = [node]
+
+        while stack:
+            current_node = stack.pop()
+
+            if isinstance(current_node, dict):
+                if "tag" in current_node:
+                    count += 1
+                # 将字典的值（可能是dict或list）压入栈中
+                stack.extend(current_node.values())
+
+            elif isinstance(current_node, list):
+                # 将列表的元素压入栈中
+                stack.extend(current_node)
+
+        return count
+
     def handle_card_operation_common(
         self,
         card_content,
@@ -132,6 +156,12 @@ class BaseCardManager(ABC):
             发送操作: Tuple[bool, Optional[str]] (是否成功, 消息ID)
             更新响应操作: P2CardActionTriggerResponse (响应对象)
         """
+        tag_total = self.count_tags_lightweight(card_content)
+        if tag_total <= 200:
+            debug_utils.log_and_print(f"tag计数器结果: {tag_total}", log_level="DEBUG")
+        else:
+            debug_utils.log_and_print(f"tag数量过多: {tag_total}", log_level="ERROR")
+
         match card_operation_type:
             case CardOperationTypes.SEND:
                 # 构建发送参数

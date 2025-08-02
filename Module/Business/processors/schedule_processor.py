@@ -125,10 +125,15 @@ class ScheduleProcessor(BaseProcessor):
         # 获取颜色聚合数据，先用我自己的id，以后再拓展
         routine_business = RoutineRecord(self.app_controller)
 
+        now = datetime.now()
+        datetime_zero = datetime(now.year, now.month, now.day)
+        start_time = datetime_zero - timedelta(days=now.day - 1)
+        end_time = start_time + timedelta(days=1)
+
         main_color, color_palette = routine_business.calculate_color_palette(
             event_data.get(SchedulerConstKeys.ADMIN_ID),
-            datetime.now() - timedelta(days=2),
-            datetime.now() - timedelta(days=1),
+            start_time,
+            end_time,
         )
         raw_prompt = wax_stamp_prompt(
             color_palette, subject_name=main_color.get("max_weight_category", "")

@@ -95,7 +95,7 @@ class RecordCard:
         is_confirmed = business_data.get("is_confirmed", False)
 
         # 使用 safe_get_business_data 处理递归嵌套的业务数据结构
-        data_source, _ = self.parent.safe_get_business_data(
+        data_source, containing_mode = self.parent.safe_get_business_data(
             business_data, CardConfigKeys.ROUTINE_RECORD
         )
 
@@ -106,7 +106,7 @@ class RecordCard:
         elements = []
 
         # 1. 计算信息区域（包含基础信息、时间预估、循环进度等）
-        elements.extend(self._build_computed_info_by_type(data_source))
+        elements.extend(self._build_computed_info_by_type(data_source, containing_mode))
 
         # 2. 表单外字段区域（非表单数据，有回调事件，状态保存在配置中）
         non_form_elements = self._build_non_form_fields(
@@ -148,7 +148,7 @@ class RecordCard:
 
     # region 信息区域
     def _build_computed_info_by_type(
-        self, data_source: Dict[str, Any]
+        self, data_source: Dict[str, Any], containing_mode: str
     ) -> List[Dict[str, Any]]:
         """
         构建基础信息区域（包含基础信息、时间预估、循环进度等）
@@ -163,7 +163,9 @@ class RecordCard:
         if event_name or record_data.get("create_time"):
             diff_minutes = computed_data.get("diff_minutes", 0)
             elements.extend(
-                self._build_basic_info_section(data_source, event_name, diff_minutes)
+                self._build_basic_info_section(
+                    data_source, event_name, diff_minutes, containing_mode
+                )
             )
 
         # 时间预估和进度信息
@@ -186,6 +188,7 @@ class RecordCard:
         data_source: Dict[str, Any],
         event_name: Dict[str, Any],
         diff_minutes: int,
+        containing_mode: str,
     ) -> List[Dict[str, Any]]:
         """
         构建基础信息区域
@@ -222,7 +225,10 @@ class RecordCard:
                 time_label = "开始时间"
 
         if time_field:
-            info_content += f"**{time_label}：** {time_field}\n"
+            if record_mode == RoutineRecordModes.REGIST:
+                info_content += f"**{event_name}{time_label}：** {time_field}\n"
+            else:
+                info_content += f"**{time_label}：** {time_field}\n"
             if diff_minutes > 0 and event_type != RoutineTypes.FUTURE.value:
                 time_label = format_time_label(diff_minutes)
 
