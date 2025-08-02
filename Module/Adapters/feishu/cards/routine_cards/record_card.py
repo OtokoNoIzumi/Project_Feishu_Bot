@@ -1442,7 +1442,7 @@ class RecordCard:
             )
 
         # 4. 创建成功，构建确认后的卡片
-        event_name = data_source.get("event_name", "直接记录")
+        event_name = data_source.get("record_data", {}).get("event_name", "直接记录")
         continuous_record = business_data.get("continuous_record", False)
         business_data["is_confirmed"] = True
         business_data["result"] = "确认"
