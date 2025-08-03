@@ -1,5 +1,4 @@
-"""
-每日信息汇总业务
+"""每日信息汇总业务
 
 处理每日信息汇总的完整业务逻辑，包括：
 1. B站信息分析数据构建
@@ -8,12 +7,19 @@
 4. 用户权限验证
 """
 
+import os
 from typing import Dict, Any, List
-from datetime import datetime
+from datetime import datetime, timedelta
 import random
+from pprint import pprint
 
 from Module.Common.scripts.common import debug_utils
-from Module.Services.constants import ServiceNames, ResponseTypes
+from Module.Services.constants import (
+    ServiceNames,
+    ResponseTypes,
+    SchedulerConstKeys,
+    AdapterNames,
+)
 from Module.Business.processors.base_processor import (
     BaseProcessor,
     ProcessResult,
@@ -21,7 +27,8 @@ from Module.Business.processors.base_processor import (
     safe_execute,
 )
 from Module.Services.bili_adskip_service import convert_to_bili_app_link
-from Module.Business.shared_process import hex_to_rgb
+from Module.Business.shared_process import hex_to_rgb, format_time_label
+from Module.Business.routine_record import RoutineRecord, wax_stamp_prompt
 
 
 class DailySummaryBusiness(BaseProcessor):
@@ -50,9 +57,7 @@ class DailySummaryBusiness(BaseProcessor):
 
     @require_service("bili_adskip", "B站广告跳过服务不可用")
     @safe_execute("创建每日信息汇总失败")
-    def create_daily_summary(
-        self, event_data: Dict[str, Any], main_color: Dict[str, Any], image_key: str
-    ) -> ProcessResult:
+    def create_daily_summary(self, event_data: Dict[str, Any]) -> ProcessResult:
         """
         创建每日信息汇总消息（主业务入口）
 
@@ -65,37 +70,82 @@ class DailySummaryBusiness(BaseProcessor):
         """
         # 构建B站信息cache分析数据（整合原来的分散逻辑）
         # analysis 是后端的数据处理逻辑，然后提供给前端的卡片进行build_card
-        services_status = event_data.get("services_status")
-        analysis_data = self.build_bilibili_analysis_data()
+        user_id = event_data.get(SchedulerConstKeys.ADMIN_ID)
+        daily_raw_data = self.get_daily_raw_data(user_id)
+        print("test-daily_raw_data")
+        pprint(daily_raw_data)
 
-        # 获取运营数据（通过B站广告跳过服务）
-        bili_service = self.app_controller.get_service(ServiceNames.BILI_ADSKIP)
-        operation_data = bili_service.get_operation_data()
-        if operation_data:
-            analysis_data["operation_data"] = operation_data
-
-        # 将服务状态信息加入分析数据
-        if services_status:
-            analysis_data["services_status"] = services_status
-
-        card_content = self.create_daily_summary_card(
-            analysis_data, main_color, image_key
-        )
+        card_content = self.create_daily_summary_card(daily_raw_data)
 
         return ProcessResult.user_list_result("interactive", card_content)
 
     # endregion
 
-    # region B站分析数据
-
-    @safe_execute("构建B站分析数据失败")
-    def build_bilibili_analysis_data(self) -> Dict[str, Any]:
+    # region 采集模块数据
+    # 假设user_id信息存在来做，但实际上都先赋值为我——管理员id
+    # 业务信息顺序应该是从一个配置获得某个user_id的daily_summary 的触发时间，然后到时间了开始进入本模块采集信息，再通过前端发出去
+    # 这里是一个包含采集和处理两个部分的总接口
+    def get_daily_raw_data(self, user_id: str) -> Dict[str, Any]:
         """
-        构建B站信息分析数据（整合get_bili_videos_statistics逻辑）
+        获取每日信息汇总原始数据
         """
-        now = datetime.now()
+        # 后续要改成从用户数据读取，这里先写死
+        # 要不要进一步分离获取数据和处理，我觉得可以有，要合并回来就是剪切一下的事
+        info_modules = {
+            "routine": {
+                "name": "日常分析",
+                "system_permission": True,
+                "user_enabled": True,
+                "data_method": "get_routine_data",
+            },
+            "bili_video": {
+                "name": "B站视频",
+                "system_permission": True,
+                "user_enabled": True,
+                "sync_read_mark": True,  # 仅本地标记，还是额外同步到notion
+                "data_method": "get_notion_bili_data",
+                "analyze_method": "analyze_bili_video_data",
+            },
+            "bili_adskip": {
+                "name": "B站广告跳过",
+                "system_permission": True,
+                "user_enabled": True,
+                "data_method": "get_operation_data",
+            },
+            "services_status": {
+                "name": "服务状态",
+                "system_permission": True,
+                "user_enabled": True,
+                "data_method": "get_services_status",
+            },
+        }
 
-        # 尝试从notion服务获取B站视频缓存数据
+        for module_name, module_info in info_modules.items():
+            if module_info["system_permission"] and module_info["user_enabled"]:
+                data_method = module_info["data_method"]
+                if hasattr(self, data_method):
+                    module_data = getattr(self, data_method)(user_id)
+                    if module_data:
+                        info_modules[module_name]["data"] = module_data
+                        analyze_method = module_info.get("analyze_method", "")
+                        if hasattr(self, analyze_method):
+                            info_modules[module_name]["info"] = getattr(
+                                self, analyze_method
+                            )(module_data)
+                else:
+                    debug_utils.log_and_print(
+                        f"模块{module_name}没有实现{data_method}方法",
+                        log_level="WARNING",
+                    )
+
+        return info_modules
+
+    # endregion
+
+    # region B站视频推荐
+
+    def get_notion_bili_data(self, user_id: str = None) -> List[Dict]:
+        """获取notion B站视频数据"""
         if self.app_controller:
             notion_service = self.app_controller.get_service(ServiceNames.NOTION)
             if notion_service:
@@ -108,133 +158,176 @@ class DailySummaryBusiness(BaseProcessor):
                         notion_service.bili_cache_key, []
                     )
                     unread_videos = [v for v in videos if v.get("unread", True)]
-
-                    if unread_videos:
-                        # 统计各维度数据（移除时长分布和来源分布）
-                        priority_stats = {}
-
-                        for video in unread_videos:
-                            # 优先级统计
-                            priority = video.get("chinese_priority", "Unknown")
-                            if priority not in priority_stats:
-                                priority_stats[priority] = {"数量": 0, "总时长分钟": 0}
-
-                            priority_stats[priority]["数量"] += 1
-
-                            # 获取时长（分钟）
-                            duration_minutes = video.get("duration", 0)
-                            try:
-                                total_minutes = (
-                                    float(duration_minutes) if duration_minutes else 0
-                                )
-                                priority_stats[priority]["总时长分钟"] += int(
-                                    total_minutes
-                                )
-                            except (ValueError, TypeError):
-                                total_minutes = 0
-
-                        # 按优先级生成原始推荐视频（用于AI分析的fallback）
-                        original_recommendations = []
-
-                        # 按优先级分组
-                        high_priority = [
-                            v
-                            for v in unread_videos
-                            if v.get("chinese_priority") == "💖高"
-                        ]
-                        medium_priority = [
-                            v
-                            for v in unread_videos
-                            if v.get("chinese_priority") == "😜中"
-                        ]
-                        low_priority = [
-                            v
-                            for v in unread_videos
-                            if v.get("chinese_priority") == "👾低"
-                        ]
-
-                        # 按优先级依次选择，每个优先级内随机选择
-                        temp_selected = []
-                        for priority_group in [
-                            high_priority,
-                            medium_priority,
-                            low_priority,
-                        ]:
-                            if len(temp_selected) >= 3:
-                                break
-
-                            # 从当前优先级组中随机选择，直到达到3个或该组用完
-                            available = [
-                                v for v in priority_group if v not in temp_selected
-                            ]
-                            while available and len(temp_selected) < 3:
-                                selected = random.choice(available)
-                                temp_selected.append(selected)
-                                available.remove(selected)
-
-                        # 格式化原始推荐视频
-                        for video in temp_selected:
-                            original_recommendations.append(
-                                {
-                                    "标题": video.get("title", "无标题视频"),
-                                    "链接": video.get("url", ""),
-                                    "页面ID": video.get("pageid", ""),
-                                    "时长": video.get("duration_str", ""),
-                                    "优先级": video.get("chinese_priority", ""),
-                                    "来源": video.get("chinese_source", ""),
-                                }
-                            )
-
-                        # 生成AI分析结果（一次调用完成汇总和话题匹配）
-                        ai_analysis = self._generate_ai_analysis(unread_videos)
-
-                        # 基于AI话题匹配结果重新构建推荐视频
-                        final_recommendations = self._rebuild_recommendations_with_ai(
-                            unread_videos, original_recommendations, ai_analysis
-                        )
-
-                        total_count = len(unread_videos)
-                        return {
-                            "date": now.strftime("%Y年%m月%d日"),
-                            "weekday": [
-                                "周一",
-                                "周二",
-                                "周三",
-                                "周四",
-                                "周五",
-                                "周六",
-                                "周日",
-                            ][now.weekday()],
-                            "statistics": {
-                                "total_count": total_count,
-                                "priority_stats": priority_stats,
-                                "top_recommendations": final_recommendations,
-                                "ai_summary": ai_analysis.get("summary", ""),
-                                "ai_quality_score": ai_analysis.get("quality_score", 0),
-                            },
-                            "source": "notion_statistics",
-                            "timestamp": now.isoformat(),
-                        }
-
+                    return unread_videos
                 except Exception as e:
                     debug_utils.log_and_print(
                         f"获取notion B站统计数据失败: {e}", log_level="WARNING"
                     )
+        return None
 
-        # 基础状态信息作为fallback
+    def analyze_bili_video_data(self, unread_videos: List[Dict]) -> Dict[str, Any]:
+        """处理B站分析数据"""
+        # 后续调整输出内容，比如只关注收藏夹里的时长和总时长/总量——用来监测订阅量是否过多
+        # 这已经是模块的1级入口了
+        now = datetime.now()
+
+        # 统计各维度数据
+        total_count = len(unread_videos)
+        priority_stats = self._calculate_priority_stats(unread_videos)
+
+        # 按优先级生成原始推荐视频
+        original_recommendations = self._generate_original_recommendations(
+            unread_videos
+        )
+
+        # 生成AI分析结果——这个的依赖关系的先后顺序要再考虑一下，目前llm也是整合在app_controller里的service。
+        # 从这个角度来说app_controller要成为各种方法的背景信息，方便直接调用。
+        ai_analysis = self._generate_ai_analysis(unread_videos)
+
+        # 基于AI话题匹配结果重新构建推荐视频
+        final_recommendations = self._rebuild_recommendations_with_ai(
+            unread_videos, original_recommendations, ai_analysis
+        )
+
         return {
             "date": now.strftime("%Y年%m月%d日"),
-            "weekday": ["周一", "周二", "周三", "周四", "周五", "周六", "周日"][
-                now.weekday()
-            ],
-            "status": "目前没有待看的B站视频",
-            "source": "placeholder",
+            "weekday": [
+                "周一",
+                "周二",
+                "周三",
+                "周四",
+                "周五",
+                "周六",
+                "周日",
+            ][now.weekday()],
+            "statistics": {
+                "total_count": total_count,
+                "priority_stats": priority_stats,
+                "top_recommendations": final_recommendations,
+                "ai_summary": ai_analysis.get("summary", ""),
+                "ai_quality_score": ai_analysis.get("quality_score", 0),
+            },
+            "source": "notion_statistics",
             "timestamp": now.isoformat(),
         }
 
-    # endregion
+    def _calculate_priority_stats(self, unread_videos: List[Dict]) -> Dict[str, Any]:
+        """计算优先级统计"""
+        priority_stats = {}
 
-    # region 生成AI分析
+        for video in unread_videos:
+            # 优先级统计
+            priority = video.get("chinese_priority", "Unknown")
+            if priority not in priority_stats:
+                priority_stats[priority] = {"数量": 0, "总时长分钟": 0}
+
+            priority_stats[priority]["数量"] += 1
+
+            # 获取时长（分钟）
+            duration_minutes = video.get("duration", 0)
+            try:
+                total_minutes = float(duration_minutes) if duration_minutes else 0
+                priority_stats[priority]["总时长分钟"] += int(total_minutes)
+            except (ValueError, TypeError):
+                total_minutes = 0
+
+        return priority_stats
+
+    def _generate_original_recommendations(
+        self, unread_videos: List[Dict]
+    ) -> List[Dict]:
+        """生成原始推荐视频"""
+        original_recommendations = []
+
+        # 按优先级分组
+        high_priority = [
+            v for v in unread_videos if v.get("chinese_priority") == "💖高"
+        ]
+        medium_priority = [
+            v for v in unread_videos if v.get("chinese_priority") == "😜中"
+        ]
+        low_priority = [v for v in unread_videos if v.get("chinese_priority") == "👾低"]
+
+        # 按优先级依次选择，每个优先级内随机选择
+        temp_selected = []
+        for priority_group in [
+            high_priority,
+            medium_priority,
+            low_priority,
+        ]:
+            if len(temp_selected) >= 3:
+                break
+
+            # 从当前优先级组中随机选择，直到达到3个或该组用完
+            available = [v for v in priority_group if v not in temp_selected]
+            while available and len(temp_selected) < 3:
+                selected = random.choice(available)
+                temp_selected.append(selected)
+                available.remove(selected)
+
+        # 格式化原始推荐视频
+        for video in temp_selected:
+            original_recommendations.append(
+                {
+                    "标题": video.get("title", "无标题视频"),
+                    "链接": video.get("url", ""),
+                    "页面ID": video.get("pageid", ""),
+                    "时长": video.get("duration_str", ""),
+                    "优先级": video.get("chinese_priority", ""),
+                    "来源": video.get("chinese_source", ""),
+                }
+            )
+
+        return original_recommendations
+
+    def _generate_ai_analysis(self, all_videos: List[Dict]) -> Dict[str, Any]:
+        """使用AI一次性完成内容汇总和话题匹配分析"""
+        # 获取服务和配置
+        llm_service = self.app_controller.get_service(ServiceNames.LLM)
+        if not llm_service or not llm_service.is_available():
+            return {
+                "summary": "AI服务暂时不可用，无法生成分析",
+                "quality_score": 0,
+                "topic_matches": [],
+            }
+
+        config_service = self.app_controller.get_service(ServiceNames.CONFIG)
+        focus_topics = (
+            config_service.get("daily_summary", {}).get("focus_topics", [])
+            if config_service
+            else []
+        )
+
+        # 构建提示词和数据
+        video_list = self._format_video_list(all_videos)
+        topics_text = f"关注话题：{', '.join(focus_topics)}" if focus_topics else ""
+        prompt = f"{topics_text}\n\n今日待看视频清单({len(all_videos)}个)：\n{chr(10).join(video_list)}\n\n请按要求分析并返回结果。"
+
+        # 调用LLM
+        result = llm_service.structured_call(
+            prompt=prompt,
+            response_schema=self._build_response_schema(bool(focus_topics)),
+            system_instruction=self._build_system_instruction(focus_topics),
+            temperature=0.5,
+        )
+
+        # 处理结果
+        if "error" in result:
+            return {
+                "summary": f"AI分析失败: {result['error']}",
+                "quality_score": 0,
+                "topic_matches": [],
+            }
+
+        return result
+
+    def _format_video_list(self, all_videos: List[Dict]) -> List[str]:
+        """格式化视频列表"""
+        return [
+            f"{i}. 《{video.get('title', '无标题')}》 | UP主: {video.get('author', '未知')} | "
+            f"优先级: {video.get('chinese_priority', '未知')} | 推荐理由: {video.get('summary', '无理由')}"
+            for i, video in enumerate(all_videos, 1)
+        ]
 
     # 类级别常量 - 避免重复定义
     AI_ANALYSIS_BASE_INSTRUCTION = """你是一个专业的内容分析助理。
@@ -331,60 +424,6 @@ class DailySummaryBusiness(BaseProcessor):
             "required": base_required,
         }
 
-    def _format_video_list(self, all_videos: List[Dict]) -> List[str]:
-        """格式化视频列表"""
-        return [
-            f"{i}. 《{video.get('title', '无标题')}》 | UP主: {video.get('author', '未知')} | "
-            f"优先级: {video.get('chinese_priority', '未知')} | 推荐理由: {video.get('summary', '无理由')}"
-            for i, video in enumerate(all_videos, 1)
-        ]
-
-    @safe_execute("生成AI分析失败")
-    def _generate_ai_analysis(self, all_videos: List[Dict]) -> Dict[str, Any]:
-        """使用AI一次性完成内容汇总和话题匹配分析"""
-        # 获取服务和配置
-        llm_service = self.app_controller.get_service(ServiceNames.LLM)
-        if not llm_service or not llm_service.is_available():
-            return {
-                "summary": "AI服务暂时不可用，无法生成分析",
-                "quality_score": 0,
-                "topic_matches": [],
-            }
-
-        config_service = self.app_controller.get_service(ServiceNames.CONFIG)
-        focus_topics = (
-            config_service.get("daily_summary", {}).get("focus_topics", [])
-            if config_service
-            else []
-        )
-
-        # 构建提示词和数据
-        video_list = self._format_video_list(all_videos)
-        topics_text = f"关注话题：{', '.join(focus_topics)}" if focus_topics else ""
-        prompt = f"{topics_text}\n\n今日待看视频清单({len(all_videos)}个)：\n{chr(10).join(video_list)}\n\n请按要求分析并返回结果。"
-
-        # 调用LLM
-        result = llm_service.structured_call(
-            prompt=prompt,
-            response_schema=self._build_response_schema(bool(focus_topics)),
-            system_instruction=self._build_system_instruction(focus_topics),
-            temperature=0.5,
-        )
-
-        # 处理结果
-        if "error" in result:
-            return {
-                "summary": f"AI分析失败: {result['error']}",
-                "quality_score": 0,
-                "topic_matches": [],
-            }
-
-        return {
-            "summary": result.get("summary", ""),
-            "quality_score": result.get("quality_score", 0),
-            "topic_matches": result.get("topic_matches", []),
-        }
-
     @safe_execute("重构推荐视频失败")
     def _rebuild_recommendations_with_ai(
         self,
@@ -444,15 +483,115 @@ class DailySummaryBusiness(BaseProcessor):
 
         return high_relevance_videos
 
+    @safe_execute("构建B站分析数据失败")
+    def build_bilibili_analysis_data(self) -> Dict[str, Any]:
+        """
+        构建B站信息分析数据（整合get_bili_videos_statistics逻辑）
+        """
+        # 获取notion数据
+        notion_data = self.get_notion_bili_data()
+        if notion_data:
+            return self.analyze_bili_video_data(notion_data)
+        else:
+            return self._build_fallback_analysis_data()
+
+    def _build_fallback_analysis_data(self) -> Dict[str, Any]:
+        """构建fallback分析数据"""
+        now = datetime.now()
+        return {
+            "date": now.strftime("%Y年%m月%d日"),
+            "weekday": ["周一", "周二", "周三", "周四", "周五", "周六", "周日"][
+                now.weekday()
+            ],
+            "status": "目前没有待看的B站视频",
+            "source": "placeholder",
+            "timestamp": now.isoformat(),
+        }
+
     # endregion
 
-    # region 创建日报卡片
+    # region 日常分析
+    def get_routine_data(self, user_id: str = None) -> Dict[str, Any]:
+        """获取日常分析数据"""
+        # image key这个先做例外，但可以先完成prompt的处理，甚至image_data，反正最后是给到前端。
+        # 获取颜色聚合数据，先用我自己的id，以后再拓展
+        routine_business = RoutineRecord(self.app_controller)
+
+        now = datetime.now()
+        datetime_zero = datetime(now.year, now.month, now.day)
+        start_time = datetime_zero - timedelta(days=now.day - 1)
+        end_time = start_time + timedelta(days=1)
+
+        main_color, color_palette = routine_business.calculate_color_palette(
+            user_id,
+            start_time,
+            end_time,
+        )
+        raw_prompt = wax_stamp_prompt(
+            color_palette, subject_name=main_color.get("max_weight_category", "")
+        )
+
+        image_service = self.app_controller.get_service(ServiceNames.IMAGE)
+        result = image_service.hunyuan_image_generator.generate_image(
+            raw_prompt,
+            size="3:4",
+        )
+        image_path = result.get("file_path")
+        image_key = self.app_controller.get_adapter(
+            AdapterNames.FEISHU
+        ).sender.upload_and_get_image_key(image_path)
+
+        # 删除图片
+        if image_path:
+            os.remove(image_path)
+
+        routine_data = {
+            "image_key": image_key,
+            "main_color": main_color,
+            "color_palette": color_palette,
+        }
+
+        return routine_data
+
+    # endregion
+
+    # region 其他小模块
+
+    # 切片广告运营
+    def get_operation_data(self, user_id: str = None) -> Dict[str, Any]:
+        """获取切片广告运营数据"""
+        bili_service = self.app_controller.get_service(ServiceNames.BILI_ADSKIP)
+        operation_data = bili_service.get_operation_data()
+
+        return operation_data
+
+    # 服务状态
+    def get_services_status(self, user_id: str = None) -> Dict[str, Any]:
+        """获取服务状态"""
+        scheduler_service = self.app_controller.get_service(ServiceNames.SCHEDULER)
+        services_status = scheduler_service.check_services_status()
+
+        return services_status
+
+    # endregion
+
+    # region 前端日报卡片
+
     @safe_execute("创建日报卡片失败")
     def create_daily_summary_card(
-        self, analysis_data: Dict[str, Any], main_color: Dict[str, Any], image_key: str
+        self, daily_raw_data: Dict[str, Any]
     ) -> Dict[str, Any]:
         """创建每日信息汇总卡片"""
+
+        analysis_data = daily_raw_data.get("bili_video", {}).get("info", {})
         source = analysis_data.get("source", "unknown")
+
+        main_color = (
+            daily_raw_data.get("routine", {}).get("data", {}).get("main_color", {})
+        )
+        image_key = (
+            daily_raw_data.get("routine", {}).get("data", {}).get("image_key", "")
+        )
 
         if source == "notion_statistics":
             # notion服务提供的B站分析数据
@@ -462,12 +601,12 @@ class DailySummaryBusiness(BaseProcessor):
             content = f"📊 **{analysis_data['date']} {analysis_data['weekday']}** \n\n🔄 **系统状态**\n\n{analysis_data.get('status', '服务准备中...')}"
 
         # 添加运营数据信息
-        operation_data = analysis_data.get("operation_data")
+        operation_data = daily_raw_data.get("bili_adskip", {}).get("data", {})
         if operation_data:
             content += self.format_operation_data(operation_data)
 
         # 添加服务状态信息
-        services_status = analysis_data.get("services_status")
+        services_status = daily_raw_data.get("services_status", {}).get("data", {})
         if services_status:
             content += self.format_services_status(services_status)
 
@@ -650,18 +789,21 @@ class DailySummaryBusiness(BaseProcessor):
 
         return card
 
+    # endregion
+
+    # region 卡片内容格式化
+
     def format_notion_bili_analysis(self, data: Dict[str, Any]) -> str:
         """格式化notion B站统计数据"""
         content = f"📊 **{data['date']} {data['weekday']}**"
         content += "\n\n🎯 **B站信息分析汇总**"
 
+        print("test-data", data)
         statistics = data.get("statistics", {})
 
         # 总体统计
         total_count = statistics.get("total_count", None)
-        # 兼容新版字段
-        if total_count is None:
-            total_count = statistics.get("总未读数", 0)
+
         content += f"\n\n📈 **总计:** {total_count} 个未读视频"
 
         if total_count > 0:
@@ -672,14 +814,9 @@ class DailySummaryBusiness(BaseProcessor):
             if priority_stats:
                 content += "\n\n🎯 **优先级分布:**"
                 for priority, info in priority_stats.items():
-                    # 新版格式：{'😜中': {'数量': 1, '总时长分钟': 51}}
                     count = info.get("数量", info.get("count", 0))
                     total_minutes = info.get("总时长分钟", info.get("total_minutes", 0))
-                    hours = total_minutes // 60
-                    minutes = total_minutes % 60
-                    time_str = (
-                        f"{hours}小时{minutes}分钟" if hours > 0 else f"{minutes}分钟"
-                    )
+                    time_str = format_time_label(total_minutes)
                     content += f"\n• {priority}: {count} 个 ({time_str})"
 
             # AI汇总（只显示质量评分>=5的）
@@ -933,14 +1070,12 @@ class DailySummaryBusiness(BaseProcessor):
 
     # endregion
 
-    # region 处理回调事件
+    # region 回调处理层
 
     @require_service("notion", "标记服务暂时不可用")
     @safe_execute("处理B站标记已读失败")
     def mark_bili_read_v2(self, action_value: Dict[str, Any]) -> ProcessResult:
-        """
-        处理定时卡片中的标记B站视频为已读
-        """
+        """处理B站视频标记已读的回调"""
         # 获取notion服务
         notion_service = self.app_controller.get_service(ServiceNames.NOTION)
 
@@ -953,9 +1088,6 @@ class DailySummaryBusiness(BaseProcessor):
         if not success:
             return ProcessResult.error_result("标记为已读失败")
 
-        # 定时卡片：基于原始数据重构，只更新已读状态，不重新获取统计数据
-        # 这里要用异步的方法来解决了，而且最理想的情况还是不再这里处理，把需求传递出去。
-        # 这一步的需求是弹出气泡信息，并且去掉特定element_id的元素。
         return ProcessResult.success_result(
             ResponseTypes.SCHEDULER_CARD_UPDATE_BILI_BUTTON,
             {

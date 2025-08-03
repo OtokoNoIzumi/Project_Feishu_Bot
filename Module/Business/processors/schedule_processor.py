@@ -4,9 +4,8 @@
 处理每日汇总、B站更新等定时任务相关功能
 """
 
-import os
 from typing import Dict, Any, List, Optional
-from datetime import datetime, timedelta
+from datetime import datetime
 from .base_processor import BaseProcessor, ProcessResult, safe_execute
 from Module.Common.scripts.common import debug_utils
 from Module.Services.constants import (
@@ -15,11 +14,9 @@ from Module.Services.constants import (
     SchedulerConstKeys,
     DefaultValues,
     EnvVars,
-    AdapterNames,
 )
 from Module.Services.message_aggregation_service import MessagePriority
 from Module.Business.daily_summary_business import DailySummaryBusiness
-from Module.Business.routine_record import RoutineRecord, wax_stamp_prompt
 
 
 class ScheduleProcessor(BaseProcessor):
@@ -122,50 +119,18 @@ class ScheduleProcessor(BaseProcessor):
                 "no_reply", {"message": "没有启用日报功能的用户"}
             )
 
-        # 获取颜色聚合数据，先用我自己的id，以后再拓展
-        routine_business = RoutineRecord(self.app_controller)
-
-        now = datetime.now()
-        datetime_zero = datetime(now.year, now.month, now.day)
-        start_time = datetime_zero - timedelta(days=now.day - 1)
-        end_time = start_time + timedelta(days=1)
-
-        main_color, color_palette = routine_business.calculate_color_palette(
-            event_data.get(SchedulerConstKeys.ADMIN_ID),
-            start_time,
-            end_time,
-        )
-        raw_prompt = wax_stamp_prompt(
-            color_palette, subject_name=main_color.get("max_weight_category", "")
-        )
-
-        image_service = self.app_controller.get_service(ServiceNames.IMAGE)
-        result = image_service.hunyuan_image_generator.generate_image(
-            raw_prompt,
-            size="3:4",
-        )
-        image_path = result.get("file_path")
-        image_key = self.app_controller.get_adapter(
-            AdapterNames.FEISHU
-        ).sender.upload_and_get_image_key(image_path)
-
         # 创建日报业务实例
         daily_summary_business = DailySummaryBusiness(
             app_controller=self.app_controller
         )
 
         # 调用新的日报业务逻辑
-        result = daily_summary_business.create_daily_summary(
-            event_data, main_color, image_key
-        )
+        result = daily_summary_business.create_daily_summary(event_data)
         if result.success:
             result.user_list = enabled_users
 
-        # 删除图片
-        if image_path:
-            os.remove(image_path)
-
         return result
+
     # endregion
 
     # region 15:30 B站更新
@@ -614,6 +579,7 @@ class ScheduleProcessor(BaseProcessor):
             )
 
         return card
+
     # endregion
 
     def _get_admin_id(self) -> Optional[str]:
