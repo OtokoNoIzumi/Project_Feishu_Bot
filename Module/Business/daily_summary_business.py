@@ -11,6 +11,7 @@ import os
 from typing import Dict, Any, List
 from datetime import datetime, timedelta
 import random
+from pprint import pprint
 
 from Module.Common.scripts.common import debug_utils
 from Module.Services.constants import (
@@ -90,6 +91,7 @@ class DailySummaryBusiness(BaseProcessor):
         """
         # 后续要改成从用户数据读取，这里先写死
         # 要不要进一步分离获取数据和处理，我觉得可以有，要合并回来就是剪切一下的事
+        # 全开是我的，如果是其他user_id就只开日常分析
         info_modules = {
             "routine": {
                 "name": "日常分析",
@@ -128,14 +130,30 @@ class DailySummaryBusiness(BaseProcessor):
                         module_info["data"] = module_data
                         analyze_method = module_info.get("analyze_method", "")
                         if hasattr(self, analyze_method):
-                            module_info["info"] = getattr(
-                                self, analyze_method
-                            )(module_data)
+                            module_info["info"] = getattr(self, analyze_method)(
+                                module_data
+                            )
                 else:
                     debug_utils.log_and_print(
                         f"模块{module_name}没有实现{data_method}方法",
                         log_level="WARNING",
                     )
+
+        info_modules["system_status"] = {
+            "name": "系统状态",
+            "data": {
+                "date": datetime.now().strftime("%Y年%m月%d日"),
+                "weekday": [
+                    "周一",
+                    "周二",
+                    "周三",
+                    "周四",
+                    "周五",
+                    "周六",
+                    "周日",
+                ][datetime.now().weekday()],
+            },
+        }
 
         return info_modules
 
@@ -168,7 +186,6 @@ class DailySummaryBusiness(BaseProcessor):
         """处理B站分析数据"""
         # 后续调整输出内容，比如只关注收藏夹里的时长和总时长/总量——用来监测订阅量是否过多
         # 这已经是模块的1级入口了
-        now = datetime.now()
 
         # 统计各维度数据
         total_count = len(unread_videos)
@@ -189,25 +206,14 @@ class DailySummaryBusiness(BaseProcessor):
         )
 
         return {
-            "date": now.strftime("%Y年%m月%d日"),
-            "weekday": [
-                "周一",
-                "周二",
-                "周三",
-                "周四",
-                "周五",
-                "周六",
-                "周日",
-            ][now.weekday()],
             "statistics": {
                 "total_count": total_count,
                 "priority_stats": priority_stats,
-                "top_recommendations": final_recommendations,
                 "ai_summary": ai_analysis.get("summary", ""),
                 "ai_quality_score": ai_analysis.get("quality_score", 0),
+                "top_recommendations": final_recommendations,
             },
             "source": "notion_statistics",
-            "timestamp": now.isoformat(),
         }
 
     def _calculate_priority_stats(self, unread_videos: List[Dict]) -> Dict[str, Any]:
@@ -217,8 +223,7 @@ class DailySummaryBusiness(BaseProcessor):
         for video in unread_videos:
             # 优先级统计
             priority = video.get("chinese_priority", "Unknown")
-            if priority not in priority_stats:
-                priority_stats[priority] = {"数量": 0, "总时长分钟": 0}
+            priority_stats.setdefault(priority, {"数量": 0, "总时长分钟": 0})
 
             priority_stats[priority]["数量"] += 1
 
@@ -586,6 +591,13 @@ class DailySummaryBusiness(BaseProcessor):
             template=header_template,
         )
         elements = self.build_daily_summary_elements(daily_raw_data)
+        if elements:
+            system_status = daily_raw_data.get("system_status", {}).get("data", {})
+            date = system_status.get("date", "")
+            weekday = system_status.get("weekday", "")
+            date_element = JsonBuilder.build_markdown_element(f"**{date} {weekday}**")
+            elements.insert(0, date_element)
+
         return JsonBuilder.build_base_card_structure(elements, header)
 
     def build_daily_summary_elements(
@@ -634,7 +646,9 @@ class DailySummaryBusiness(BaseProcessor):
             content = self.format_notion_bili_analysis(bili_video_data)
         else:
             # 占位信息
-            content = f"📊 **{bili_video_data['date']} {bili_video_data['weekday']}** \n\n🔄 **系统状态**\n\n{bili_video_data.get('status', '服务准备中...')}"
+            content = (
+                f"🔄 **系统状态**\n\n{bili_video_data.get('status', '服务准备中...')}"
+            )
 
         elements.append(JsonBuilder.build_markdown_element(content))
 
@@ -718,8 +732,7 @@ class DailySummaryBusiness(BaseProcessor):
 
     def format_notion_bili_analysis(self, data: Dict[str, Any]) -> str:
         """格式化notion B站统计数据"""
-        content = f"📊 **{data['date']} {data['weekday']}**"
-        content += "\n\n🎯 **B站信息分析汇总**"
+        content = "🎯 **B站信息分析汇总**"
 
         statistics = data.get("statistics", {})
 
@@ -730,11 +743,9 @@ class DailySummaryBusiness(BaseProcessor):
 
         if total_count > 0:
             # 优先级统计（增加时长总计）
-            priority_stats = statistics.get("priority_stats", None)
-            if priority_stats is None:
-                priority_stats = statistics.get("优先级统计", {})
+            priority_stats = statistics.get("priority_stats", {})
             if priority_stats:
-                content += "\n\n🎯 **优先级分布:**"
+                content += "\n🎯 **优先级分布:**"
                 for priority, info in priority_stats.items():
                     count = info.get("数量", info.get("count", 0))
                     total_minutes = info.get("总时长分钟", info.get("total_minutes", 0))
@@ -745,7 +756,7 @@ class DailySummaryBusiness(BaseProcessor):
             ai_summary = statistics.get("ai_summary", "")
             ai_quality_score = statistics.get("ai_quality_score", 0)
             if ai_summary and ai_quality_score >= 5:
-                content += f"\n\n🌟 **AI汇总:**\n{ai_summary}"
+                content += f"\n🌟 **AI汇总:**\n{ai_summary}"
 
         return content
 
@@ -761,7 +772,9 @@ class DailySummaryBusiness(BaseProcessor):
         elements.append(JsonBuilder.build_markdown_element(content))
         return elements
 
-    def format_operation_data(self, operation_data: Dict[str, Any]) -> str:
+    def format_operation_data(
+        self, operation_data: Dict[str, Any], detail_mode: bool = False
+    ) -> str:
         """格式化运营数据信息"""
         content = "\n\n📈 **运营日报**"
 
@@ -785,11 +798,12 @@ class DailySummaryBusiness(BaseProcessor):
             )
 
             # 内容统计
-            new_videos_user = current.get("new_videos_user", 0)
-            new_videos_admin = current.get("new_videos_admin", 0)
-            total_requests = current.get("total_user_requests", 0)
-            content += f"\n🎬 **内容统计:** {new_videos_user} 用户视频 | {new_videos_admin} 管理员视频"
-            content += f"\n🔄 **请求总数:** {total_requests} 次"
+            if detail_mode:
+                new_videos_user = current.get("new_videos_user", 0)
+                new_videos_admin = current.get("new_videos_admin", 0)
+                total_requests = current.get("total_user_requests", 0)
+                content += f"\n🎬 **内容统计:** {new_videos_user} 用户视频 | {new_videos_admin} 管理员视频"
+                content += f"\n🔄 **请求总数:** {total_requests} 次"
 
             # 缓存效率
             cache_hits = current.get("cache_hits", 0)
@@ -807,36 +821,37 @@ class DailySummaryBusiness(BaseProcessor):
                     f"\n🚫 **拒绝请求:** {total_rejections} 次 ({rejected_users} 用户)"
                 )
 
-            # 显示关键变化趋势
-            if comparison:
-                trends = []
+            if detail_mode:
+                # 显示关键变化趋势
+                if comparison:
+                    trends = []
 
-                # 检查用户活跃度变化
-                if "active_users" in comparison:
-                    change = comparison["active_users"].get("change", 0)
-                    trend = comparison["active_users"].get("trend", "")
-                    if abs(change) >= 5:  # 显著变化
-                        trend_emoji = "📈" if trend == "up" else "📉"
-                        trends.append(f"活跃用户{trend_emoji}{abs(change)}")
+                    # 检查用户活跃度变化
+                    if "active_users" in comparison:
+                        change = comparison["active_users"].get("change", 0)
+                        trend = comparison["active_users"].get("trend", "")
+                        if abs(change) >= 5:  # 显著变化
+                            trend_emoji = "📈" if trend == "up" else "📉"
+                            trends.append(f"活跃用户{trend_emoji}{abs(change)}")
 
-                # 检查请求量变化
-                if "total_user_requests" in comparison:
-                    change = comparison["total_user_requests"].get("change", 0)
-                    trend = comparison["total_user_requests"].get("trend", "")
-                    if abs(change) >= 20:  # 显著变化
-                        trend_emoji = "📈" if trend == "up" else "📉"
-                        trends.append(f"请求量{trend_emoji}{abs(change)}")
+                    # 检查请求量变化
+                    if "total_user_requests" in comparison:
+                        change = comparison["total_user_requests"].get("change", 0)
+                        trend = comparison["total_user_requests"].get("trend", "")
+                        if abs(change) >= 20:  # 显著变化
+                            trend_emoji = "📈" if trend == "up" else "📉"
+                            trends.append(f"请求量{trend_emoji}{abs(change)}")
 
-                if trends:
-                    content += f"\n📊 **今日变化:** {' | '.join(trends)}"
+                    if trends:
+                        content += f"\n📊 **今日变化:** {' | '.join(trends)}"
 
-            # 广告检测统计（如果有）
-            ads_detected = current.get("ads_detected", 0)
-            total_ad_duration = current.get("total_ad_duration", 0)
-            ad_rate = ads_detected / total_requests if total_requests > 0 else 0
-            if ads_detected > 0:
-                ad_minutes = int(total_ad_duration / 60) if total_ad_duration else 0
-                content += f"\n🎯 **广告检测:** {ads_detected} 个广告，总时长 {ad_minutes} 分钟，占比 {ad_rate:.1%}"
+                # 广告检测统计（如果有）
+                ads_detected = current.get("ads_detected", 0)
+                total_ad_duration = current.get("total_ad_duration", 0)
+                ad_rate = ads_detected / total_requests if total_requests > 0 else 0
+                if ads_detected > 0:
+                    ad_minutes = int(total_ad_duration / 60) if total_ad_duration else 0
+                    content += f"\n🎯 **广告检测:** {ads_detected} 个广告，总时长 {ad_minutes} 分钟，占比 {ad_rate:.1%}"
 
         # 如果是周一，添加周报数据
         if is_monday:
@@ -902,13 +917,12 @@ class DailySummaryBusiness(BaseProcessor):
 
     def format_services_status(self, services_status: Dict[str, Any]) -> str:
         """格式化服务状态信息"""
-        content = "\n\n🔧 **外部服务状态检测**"
-        check_time = services_status.get("check_time", "未知时间")
-        content += f"\n检测时间: {check_time}"
+        content = ""
+        # 两个\n开头会被自动处理掉，所以不用额外写代码
 
         services = services_status.get("services", {})
 
-        # B站API服务状态
+        # B站API服务状态，只在异常是显示
         bili_api = services.get("bilibili_api", {})
         if bili_api.get("enabled", False):
             status = bili_api.get("status", "unknown")
@@ -923,16 +937,16 @@ class DailySummaryBusiness(BaseProcessor):
                 "disabled": "⏸️",
             }.get(status, "❓")
 
-            content += (
-                f"\n\n{status_emoji} **{bili_api.get('service_name', 'B站API服务')}**"
-            )
-            content += f"\n状态: {message}"
-            if response_time:
-                content += f" ({response_time})"
-            if url and status != "error":
-                # 截断长URL显示
-                display_url = url if len(url) <= 40 else url[:37] + "..."
-                content += f"\n地址: {display_url}"
+            if status != "healthy":
+                content += f"\n\n{status_emoji} **{bili_api.get('service_name', 'B站API服务')}**"
+                content += f"\n状态: {message}"
+                if response_time:
+                    content += f" ({response_time})"
+                if url and status != "error":
+                    # 截断长URL显示
+                    display_url = url if len(url) <= 40 else url[:37] + "..."
+                    content += f"\n地址: {display_url}"
+
         else:
             content += "\n\n⏸️ **B站API服务**: 未启用"
 
@@ -954,9 +968,10 @@ class DailySummaryBusiness(BaseProcessor):
             content += (
                 f"\n\n{status_emoji} **{gradio.get('service_name', 'Gradio图像服务')}**"
             )
-            content += f"\n状态: {message}"
-            if response_time:
-                content += f" ({response_time})"
+            if status != "healthy":
+                content += f"\n状态: {message}"
+                if response_time:
+                    content += f" ({response_time})"
             if url and status != "error":
                 # 截断长URL显示
                 display_url = url if len(url) <= 40 else url[:37] + "..."
