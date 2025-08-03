@@ -11,7 +11,6 @@ import os
 from typing import Dict, Any, List
 from datetime import datetime, timedelta
 import random
-from pprint import pprint
 
 from Module.Common.scripts.common import debug_utils
 from Module.Services.constants import (
@@ -19,6 +18,7 @@ from Module.Services.constants import (
     ResponseTypes,
     SchedulerConstKeys,
     AdapterNames,
+    ColorTypes,
 )
 from Module.Business.processors.base_processor import (
     BaseProcessor,
@@ -27,8 +27,9 @@ from Module.Business.processors.base_processor import (
     safe_execute,
 )
 from Module.Services.bili_adskip_service import convert_to_bili_app_link
-from Module.Business.shared_process import hex_to_rgb, format_time_label
+from Module.Business.shared_process import format_time_label
 from Module.Business.routine_record import RoutineRecord, wax_stamp_prompt
+from Module.Adapters.feishu.cards.json_builder import JsonBuilder
 
 
 class DailySummaryBusiness(BaseProcessor):
@@ -40,12 +41,12 @@ class DailySummaryBusiness(BaseProcessor):
 
     # region 后端业务入口
     # 业务堆栈
-    ## 注册
+    # 注册
     # main.setup_scheduled_tasks  # 如果后续要区分user，在这里就要把user_id和各自的时间设置进去。虽然现在的user_id都来自飞书，但应该可以直接扩展到其他
     # -> scheduler_service.TaskUtils.get_task_function
     # -> scheduler_service.add_daily_task
 
-    ## 触发
+    # 触发
     # 这里service和processor的架构是旧版，以后重构
     # ScheduledEvent的结构不够好，目前type有一份冗余，现在使用的是data里的scheduler_type
     # scheduler_service.trigger_daily_schedule_reminder
@@ -72,8 +73,6 @@ class DailySummaryBusiness(BaseProcessor):
         # analysis 是后端的数据处理逻辑，然后提供给前端的卡片进行build_card
         user_id = event_data.get(SchedulerConstKeys.ADMIN_ID)
         daily_raw_data = self.get_daily_raw_data(user_id)
-        print("test-daily_raw_data")
-        pprint(daily_raw_data)
 
         card_content = self.create_daily_summary_card(daily_raw_data)
 
@@ -126,10 +125,10 @@ class DailySummaryBusiness(BaseProcessor):
                 if hasattr(self, data_method):
                     module_data = getattr(self, data_method)(user_id)
                     if module_data:
-                        info_modules[module_name]["data"] = module_data
+                        module_info["data"] = module_data
                         analyze_method = module_info.get("analyze_method", "")
                         if hasattr(self, analyze_method):
-                            info_modules[module_name]["info"] = getattr(
+                            module_info["info"] = getattr(
                                 self, analyze_method
                             )(module_data)
                 else:
@@ -144,7 +143,7 @@ class DailySummaryBusiness(BaseProcessor):
 
     # region B站视频推荐
 
-    def get_notion_bili_data(self, user_id: str = None) -> List[Dict]:
+    def get_notion_bili_data(self, _user_id: str = None) -> List[Dict]:
         """获取notion B站视频数据"""
         if self.app_controller:
             notion_service = self.app_controller.get_service(ServiceNames.NOTION)
@@ -483,18 +482,6 @@ class DailySummaryBusiness(BaseProcessor):
 
         return high_relevance_videos
 
-    @safe_execute("构建B站分析数据失败")
-    def build_bilibili_analysis_data(self) -> Dict[str, Any]:
-        """
-        构建B站信息分析数据（整合get_bili_videos_statistics逻辑）
-        """
-        # 获取notion数据
-        notion_data = self.get_notion_bili_data()
-        if notion_data:
-            return self.analyze_bili_video_data(notion_data)
-        else:
-            return self._build_fallback_analysis_data()
-
     def _build_fallback_analysis_data(self) -> Dict[str, Any]:
         """构建fallback分析数据"""
         now = datetime.now()
@@ -558,7 +545,7 @@ class DailySummaryBusiness(BaseProcessor):
     # region 其他小模块
 
     # 切片广告运营
-    def get_operation_data(self, user_id: str = None) -> Dict[str, Any]:
+    def get_operation_data(self, _user_id: str = None) -> Dict[str, Any]:
         """获取切片广告运营数据"""
         bili_service = self.app_controller.get_service(ServiceNames.BILI_ADSKIP)
         operation_data = bili_service.get_operation_data()
@@ -566,7 +553,7 @@ class DailySummaryBusiness(BaseProcessor):
         return operation_data
 
     # 服务状态
-    def get_services_status(self, user_id: str = None) -> Dict[str, Any]:
+    def get_services_status(self, _user_id: str = None) -> Dict[str, Any]:
         """获取服务状态"""
         scheduler_service = self.app_controller.get_service(ServiceNames.SCHEDULER)
         services_status = scheduler_service.check_services_status()
@@ -582,70 +569,78 @@ class DailySummaryBusiness(BaseProcessor):
         self, daily_raw_data: Dict[str, Any]
     ) -> Dict[str, Any]:
         """创建每日信息汇总卡片"""
-
-        analysis_data = daily_raw_data.get("bili_video", {}).get("info", {})
-        source = analysis_data.get("source", "unknown")
+        # 内容是按照顺序排列的，所以天然可以分组，还是用card_registry里的方法。
 
         main_color = (
             daily_raw_data.get("routine", {}).get("data", {}).get("main_color", {})
         )
-        image_key = (
-            daily_raw_data.get("routine", {}).get("data", {}).get("image_key", "")
+        main_color_name = main_color.get("name", "独特的颜色")
+        header_template = (
+            main_color_name
+            if main_color_name != "独特的颜色"
+            else main_color.get("closest_to", ColorTypes.BLUE.value)
         )
+
+        header = JsonBuilder.build_card_header(
+            title="📊 每日信息汇总",
+            template=header_template,
+        )
+        elements = self.build_daily_summary_elements(daily_raw_data)
+        return JsonBuilder.build_base_card_structure(elements, header)
+
+    def build_daily_summary_elements(
+        self, daily_raw_data: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
+        """构建每日信息汇总元素"""
+        elements = []
+
+        bili_video_data = daily_raw_data.get("bili_video", {}).get("info", {})
+        video_list = []
+        if bili_video_data:
+            video_info, video_list = self.build_bili_video_elements(bili_video_data)
+            elements.extend(video_info)
+
+        operation_data = daily_raw_data.get("bili_adskip", {}).get("data", {})
+        if operation_data:
+            elements.extend(self.build_operation_elements(operation_data))
+
+        services_status = daily_raw_data.get("services_status", {}).get("data", {})
+        if services_status:
+            elements.extend(self.build_services_status_elements(services_status))
+
+        elements.append(JsonBuilder.build_line_element())
+
+        elements.extend(video_list)
+
+        routine_data = daily_raw_data.get("routine", {}).get("data", {})
+        if routine_data:
+            elements.extend(self.build_routine_elements(routine_data))
+
+        return elements
+
+    # region B站信息组件
+
+    def build_bili_video_elements(
+        self, bili_video_data: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
+        """构建B站视频元素"""
+        # 日期的信息要分离到公共组件
+        elements = []
+        video_list = []
+        source = bili_video_data.get("source", "unknown")
 
         if source == "notion_statistics":
             # notion服务提供的B站分析数据
-            content = self.format_notion_bili_analysis(analysis_data)
+            content = self.format_notion_bili_analysis(bili_video_data)
         else:
             # 占位信息
-            content = f"📊 **{analysis_data['date']} {analysis_data['weekday']}** \n\n🔄 **系统状态**\n\n{analysis_data.get('status', '服务准备中...')}"
+            content = f"📊 **{bili_video_data['date']} {bili_video_data['weekday']}** \n\n🔄 **系统状态**\n\n{bili_video_data.get('status', '服务准备中...')}"
 
-        # 添加运营数据信息
-        operation_data = daily_raw_data.get("bili_adskip", {}).get("data", {})
-        if operation_data:
-            content += self.format_operation_data(operation_data)
-
-        # 添加服务状态信息
-        services_status = daily_raw_data.get("services_status", {}).get("data", {})
-        if services_status:
-            content += self.format_services_status(services_status)
-
-        card = {
-            "schema": "2.0",
-            "config": {"wide_screen_mode": True},
-            "body": {
-                "elements": [
-                    {"tag": "div", "text": {"content": content, "tag": "lark_md"}},
-                    {"tag": "hr"},
-                ],
-            },
-            "header": {
-                "template": "blue",
-                "title": {"content": "📊 每日信息汇总", "tag": "plain_text"},
-            },
-        }
-
-        main_color_name = main_color.get("name", "独特的颜色")
-        if main_color_name == "独特的颜色":
-            main_color_rgb = hex_to_rgb(main_color.get("hex"))
-            rgba_str = (
-                f"rgba({main_color_rgb[0]},{main_color_rgb[1]},{main_color_rgb[2]}"
-            )
-            card["config"]["style"] = {
-                "color": {
-                    "unique": {
-                        "light_mode": f"{rgba_str},0.52)",
-                        "dark_mode": f"{rgba_str},0.35)",
-                    }
-                }
-            }
-            card["header"]["template"] = main_color.get("closest_to", "blue")
-        else:
-            card["header"]["template"] = main_color_name
+        elements.append(JsonBuilder.build_markdown_element(content))
 
         # 如果有推荐视频，添加推荐链接部分
         if source == "notion_statistics":
-            statistics = analysis_data.get("statistics", {})
+            statistics = bili_video_data.get("statistics", {})
 
             # 兼容新版字段名
             top_recommendations = statistics.get("top_recommendations", None)
@@ -659,16 +654,8 @@ class DailySummaryBusiness(BaseProcessor):
                     notion_service = self.app_controller.get_service("notion")
 
                 # 添加推荐视频标题
-                card["body"]["elements"].extend(
-                    [
-                        {
-                            "tag": "div",
-                            "text": {
-                                "content": "🎬 **今日精选推荐**",
-                                "tag": "lark_md",
-                            },
-                        }
-                    ]
+                video_list.append(
+                    JsonBuilder.build_markdown_element("🎬 **今日精选推荐**")
                 )
 
                 # 添加每个推荐视频的简化展示
@@ -681,124 +668,59 @@ class DailySummaryBusiness(BaseProcessor):
                         else False
                     )
 
-                    # 视频标题（兼容新旧字段）
-                    title = video.get("标题", video.get("title", "无标题视频"))
+                    # 视频标题
+                    title = video.get("标题", "无标题视频")
                     if len(title) > 30:
                         title = title[:30] + "..."
 
                     # 兼容新旧字段格式
-                    priority = video.get(
-                        "优先级", video.get("chinese_priority", "未知")
+                    priority = video.get("优先级", "未知")
+                    duration = video.get("时长", "未知")
+                    element_id = f"bili_video_{i}"
+                    video_info = JsonBuilder.build_markdown_element(
+                        f"**{title}** | 优先级: {priority} • 时长: {duration}{' | 已读' if video_read else ''}",
+                        element_id=element_id,
                     )
-                    duration = video.get("时长", video.get("duration_str", "未知"))
-
-                    card["body"]["elements"].append(
-                        {
-                            "tag": "div",
-                            "text": {
-                                "tag": "lark_md",
-                                "content": f"**{title}** | 优先级: {priority} • 时长: {duration}{' | 已读' if video_read else ''}",
-                            },
-                            "element_id": f"bili_video_{i}",
-                        }
-                    )
+                    video_list.append(video_info)
 
                     # 视频基本信息和链接按钮
-                    video_url = video.get("链接", video.get("url", ""))
-                    card["body"]["elements"].append(
-                        {
-                            "tag": "column_set",
-                            "layout": "flow",  # 使用flow布局让按钮在一行显示
-                            "columns": [
-                                {
-                                    "tag": "column",
-                                    "width": "auto",
-                                    "elements": [
-                                        {
-                                            "tag": "button",
-                                            "text": {
-                                                "tag": "plain_text",
-                                                "content": "📺 B站",
-                                            },
-                                            "type": "default",
-                                            "size": "tiny",
-                                            "behaviors": [
-                                                {
-                                                    "type": "open_url",
-                                                    "default_url": video_url,
-                                                    "pc_url": video_url,
-                                                    "ios_url": video_url,
-                                                    "android_url": convert_to_bili_app_link(
-                                                        video_url
-                                                    ),
-                                                }
-                                            ],
-                                        }
-                                    ],
-                                }
-                            ]
-                            + (
-                                []
-                                if video_read
-                                else (
-                                    [
-                                        {
-                                            "tag": "column",
-                                            "width": "auto",
-                                            "elements": [
-                                                {
-                                                    "tag": "button",
-                                                    "text": {
-                                                        "tag": "plain_text",
-                                                        "content": "✅ 已读",
-                                                    },
-                                                    "type": "primary",
-                                                    "size": "tiny",
-                                                    "value": {
-                                                        "card_action": "mark_bili_read_in_daily_summary",
-                                                        "pageid": video_pageid,
-                                                        "video_index": i,  # 推荐视频序号 (1,2,3)
-                                                    },
-                                                    "element_id": f"mark_bili_read_{i}",
-                                                }
-                                            ],
-                                        }
-                                    ]
-                                    if video_pageid
-                                    else []
-                                )
-                            ),
-                        }
+                    video_url = video.get("链接", "")
+
+                    video_button = JsonBuilder.build_button_element(
+                        text="📺 B站",
+                        size="tiny",
+                        url_data={
+                            "default_url": video_url,
+                            "pc_url": video_url,
+                            "ios_url": video_url,
+                            "android_url": convert_to_bili_app_link(video_url),
+                        },
                     )
-        if image_key:
-            card["body"]["elements"].append(
-                {
-                    "tag": "img",
-                    "img_key": image_key,
-                    "element_id": "daily_summary_image",
-                    "title": {"tag": "plain_text", "content": "昨日个性印章"},
-                    "alt": {
-                        "tag": "plain_text",
-                        "content": f"昨天你的{main_color.get('max_weight_category', '')}印章",
-                    },
-                    "corner_radius": "5px",
-                    "scale_type": "crop_center",
-                    "size": "80px 90px",
-                }
-            )
 
-        return card
+                    video_read_button = JsonBuilder.build_button_element(
+                        text="✅ 已读",
+                        size="tiny",
+                        action_data={
+                            "card_action": "mark_bili_read_in_daily_summary",
+                            "pageid": video_pageid,
+                            "video_index": i,  # 推荐视频序号 (1,2,3)
+                        },
+                        element_id=f"mark_bili_read_{i}",
+                    )
+                    button_list = [video_button]
+                    if (not video_read) and video_pageid:
+                        button_list.append(video_read_button)
 
-    # endregion
+                    button_group = JsonBuilder.build_button_group_element(button_list)
+                    video_list.append(button_group)
 
-    # region 卡片内容格式化
+        return elements, video_list
 
     def format_notion_bili_analysis(self, data: Dict[str, Any]) -> str:
         """格式化notion B站统计数据"""
         content = f"📊 **{data['date']} {data['weekday']}**"
         content += "\n\n🎯 **B站信息分析汇总**"
 
-        print("test-data", data)
         statistics = data.get("statistics", {})
 
         # 总体统计
@@ -826,6 +748,18 @@ class DailySummaryBusiness(BaseProcessor):
                 content += f"\n\n🌟 **AI汇总:**\n{ai_summary}"
 
         return content
+
+    # endregion
+
+    # region 运营数据组件
+    def build_operation_elements(
+        self, operation_data: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
+        """构建运营数据元素"""
+        elements = []
+        content = self.format_operation_data(operation_data)
+        elements.append(JsonBuilder.build_markdown_element(content))
+        return elements
 
     def format_operation_data(self, operation_data: Dict[str, Any]) -> str:
         """格式化运营数据信息"""
@@ -954,6 +888,18 @@ class DailySummaryBusiness(BaseProcessor):
 
         return content
 
+    # endregion
+
+    # region 服务状态组件
+    def build_services_status_elements(
+        self, services_status: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
+        """构建服务状态元素"""
+        elements = []
+        content = self.format_services_status(services_status)
+        elements.append(JsonBuilder.build_markdown_element(content))
+        return elements
+
     def format_services_status(self, services_status: Dict[str, Any]) -> str:
         """格式化服务状态信息"""
         content = "\n\n🔧 **外部服务状态检测**"
@@ -1070,7 +1016,32 @@ class DailySummaryBusiness(BaseProcessor):
 
     # endregion
 
-    # region 回调处理层
+    # region 日常组件
+
+    def build_routine_elements(
+        self, routine_data: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
+        """构建日常元素"""
+        elements = []
+        image_key = routine_data.get("image_key", "")
+        main_color = routine_data.get("main_color", {})
+
+        if image_key:
+            image_element = JsonBuilder.build_image_element(
+                image_key=image_key,
+                alt=f"昨天你的{main_color.get('max_weight_category', '')}印章",
+                title="昨日个性印章",
+                corner_radius="5px",
+                scale_type="crop_center",
+                size="80px 90px",
+            )
+            elements.append(image_element)
+
+        return elements
+
+    # endregion
+
+    # region 回调处理
 
     @require_service("notion", "标记服务暂时不可用")
     @safe_execute("处理B站标记已读失败")

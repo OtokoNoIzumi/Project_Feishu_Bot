@@ -894,7 +894,7 @@ class RecordCard:
                 action_data=action_data,
                 disabled=is_confirmed,
                 name="quick_fill_duration",
-                type="default",
+                button_type="default",
                 size="small",
             )
 
@@ -1305,7 +1305,7 @@ class RecordCard:
             text="取消",
             action_data=cancel_action_data,
             disabled=is_confirmed,
-            type="danger",
+            button_type="danger",
             icon="close-bold_outlined",
             name="cancel_record",
         )
@@ -1319,7 +1319,7 @@ class RecordCard:
             text="确认",
             action_data=confirm_action_data,
             disabled=is_confirmed,
-            type="primary",
+            button_type="primary",
             icon="done_outlined",
             form_action_type="submit",
             name="confirm_record",

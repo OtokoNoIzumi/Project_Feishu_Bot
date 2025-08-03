@@ -69,7 +69,7 @@ class QuickSelectCard:
             text="查询日程",
             action_data=query_action_data,
             disabled=components_disabled,
-            type="primary",
+            button_type="primary",
             size="small",
         )
 
@@ -180,7 +180,7 @@ class QuickSelectCard:
                     self.parent.build_button_element(
                         text=f"{type_emoji} {event_name_btn}",
                         action_data=button_action_data,
-                        type=button_type,
+                        button_type=button_type,
                         size="small",
                         disabled=components_disabled,
                     )

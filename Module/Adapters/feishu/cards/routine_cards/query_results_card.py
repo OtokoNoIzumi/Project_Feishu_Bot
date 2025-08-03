@@ -260,7 +260,7 @@ class QueryResultsCard:
                 text="完成",
                 disabled=is_confirmed,
                 action_data=complete_action_data,
-                type="primary",
+                button_type="primary",
                 size="small",
             )
         )
@@ -375,7 +375,7 @@ class QueryResultsCard:
                 text=f"记录 {event_name}",
                 action_data=record_action_data,
                 disabled=is_confirmed,
-                type="primary",
+                button_type="primary",
                 size="small",
             )
         )

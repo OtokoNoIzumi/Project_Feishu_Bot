@@ -179,6 +179,7 @@ def setup_message_aggregation(app_controller, feishu_adapter):
 @require_service(ServiceNames.CONFIG, "配置服务不可用，跳过定时任务配置")
 def setup_scheduled_tasks(app_controller):
     """配置定时任务（基于配置文件）"""
+    # 对每个用户鉴权并创建任务，默认值只是给管理员的。
     scheduler_service = app_controller.get_service(ServiceNames.SCHEDULER)
     config_service = app_controller.get_service(ServiceNames.CONFIG)
 

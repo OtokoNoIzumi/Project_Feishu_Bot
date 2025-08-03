@@ -16,7 +16,6 @@ from Module.Services.constants import (
     EnvVars,
 )
 from Module.Services.message_aggregation_service import MessagePriority
-from Module.Business.daily_summary_business import DailySummaryBusiness
 
 
 class ScheduleProcessor(BaseProcessor):
@@ -97,6 +96,7 @@ class ScheduleProcessor(BaseProcessor):
     @safe_execute("创建每日信息汇总失败")
     def daily_summary(self, event_data: Dict[str, Any]) -> ProcessResult:
         """创建每日信息汇总消息（7:30定时卡片容器）"""
+        from Module.Business.daily_summary_business import DailySummaryBusiness
 
         # 获取有权限的用户列表
         if not self.app_controller:
@@ -125,6 +125,7 @@ class ScheduleProcessor(BaseProcessor):
         )
 
         # 调用新的日报业务逻辑
+        # daily_summary已经是定时器触发之后的业务步骤了，这里只有一个触发用户清单——如果真的有必要清单的话。
         result = daily_summary_business.create_daily_summary(event_data)
         if result.success:
             result.user_list = enabled_users

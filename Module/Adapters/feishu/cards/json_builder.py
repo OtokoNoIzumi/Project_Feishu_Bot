@@ -1,3 +1,6 @@
+"""
+飞书卡片JSON格式封装构建工具类
+"""
 from typing import List, Dict, Any
 from Module.Services.constants import (
     ColorTypes,
@@ -196,13 +199,17 @@ class JsonBuilder:
     def build_markdown_element(
         content: str,
         text_size: str = "normal",
+        element_id: str = "",
     ) -> Dict[str, Any]:
         """构建markdown元素"""
-        return {
+        final_element = {
             "tag": "markdown",
             "content": content,
             "text_size": text_size,
         }
+        if element_id:
+            final_element["element_id"] = element_id
+        return final_element
 
     @staticmethod
     def build_line_element(
@@ -221,21 +228,24 @@ class JsonBuilder:
         disabled: bool = False,
         element_id: str = "",
         name: str = "",
-        type: str = "default",
+        button_type: str = "default",
         size: str = "medium",
         icon: str = "",
         form_action_type: str = "",
+        url_data: Dict[str, Any] = None,
     ) -> Dict[str, Any]:
         """构建按钮元素"""
         final_element = {
             "tag": "button",
             "text": {"tag": "plain_text", "content": text},
             "disabled": disabled,
-            "type": type,
+            "type": button_type,
             "size": size,
         }
         if action_data:
             final_element["behaviors"] = [{"type": "callback", "value": action_data}]
+        elif url_data:
+            final_element["behaviors"] = [{"type": "open_url", **url_data}]
         if name:
             final_element["name"] = name
         if element_id:
@@ -260,6 +270,31 @@ class JsonBuilder:
                 }
             )
         return options
+
+    @staticmethod
+    def build_image_element(
+        image_key: str,
+        alt: str,
+        title: str,
+        corner_radius: str = "",
+        scale_type: str = "",
+        size: str = "",
+    ) -> Dict[str, Any]:
+        """构建图片元素"""
+        final_element = {
+            "tag": "img",
+            "img_key": image_key,
+            "alt": {"tag": "plain_text", "content": alt},
+        }
+        if title:
+            final_element["title"] = {"tag": "plain_text", "content": title}
+        if corner_radius:
+            final_element["corner_radius"] = corner_radius
+        if scale_type:
+            final_element["scale_type"] = scale_type
+        if size and scale_type in ["crop_center", "crop_top"]:
+            final_element["size"] = size
+        return final_element
 
     # endregion
 
