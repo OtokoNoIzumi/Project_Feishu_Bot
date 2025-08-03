@@ -182,7 +182,7 @@ class CardHandler:
             value=action_value,
             card_config_key=card_config_key,
             card_action_key=content,
-            form_data=action.form_value,
+            form_data=action.form_value or {},
             selected_option=action.option if hasattr(action, 'option') else None,
             input_value=action.input_value if hasattr(action, 'input_value') else None
         )
