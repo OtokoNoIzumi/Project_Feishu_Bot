@@ -1,6 +1,7 @@
 """
 飞书卡片JSON格式封装构建工具类
 """
+
 from typing import List, Dict, Any
 from Module.Services.constants import (
     ColorTypes,
@@ -411,5 +412,42 @@ class JsonBuilder:
     ) -> Dict[str, Any]:
         """构建表单元素"""
         return {"tag": "form", "elements": elements, "name": name}
+
+    @staticmethod
+    def build_table_column_element(
+        name: str,
+        display_name: str,
+        data_type: str,
+        width: str = "auto",
+        horizontal_align: str = "center",
+    ) -> Dict[str, Any]:
+        """构建表格列元素"""
+        return {
+            "name": name,
+            "display_name": display_name,
+            "data_type": data_type,
+            "width": width,
+            "horizontal_align": horizontal_align,
+        }
+
+    @staticmethod
+    def build_table_element(
+        columns: List[Dict[str, Any]],
+        rows: List[Dict[str, Any]],
+        page_size: int = 6,
+        freeze_first_column: bool = False,
+    ) -> Dict[str, Any]:
+        """构建表格元素"""
+        return {
+            "tag": "table",
+            "columns": columns,
+            "rows": rows,
+            "page_size": page_size,
+            "freeze_first_column": freeze_first_column,
+            "header_style": {
+                "text_align": "center",
+                "background_style": "grey",
+            },
+        }
 
     # endregion

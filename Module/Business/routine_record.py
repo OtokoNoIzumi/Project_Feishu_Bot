@@ -13,7 +13,7 @@ import os
 import json
 import copy
 import math
-from typing import Dict, Any, Optional, Tuple
+from typing import Dict, Any, Optional, Tuple, List
 from datetime import datetime, timedelta
 from collections import OrderedDict
 
@@ -1731,8 +1731,8 @@ class RoutineRecord(BaseProcessor):
         record_list = []
         for record in all_records_dict.values():
             # 兼容不同的时间字段名
-            create_time_str = record.get("create_time") or record.get(
-                "created_time", ""
+            create_time_str = record.get("scheduled_start_time", "") or record.get(
+                "create_time", ""
             )
             end_time_str = record.get("end_time", "")
 
@@ -1965,30 +1965,10 @@ class RoutineRecord(BaseProcessor):
         end_date = start_date + datetime.timedelta(days=6)
         return self.calculate_color_palette(user_id, start_date, end_date)
 
-    def calculate_color_palette(
-        self,
-        user_id: str,
-        day_start: datetime = None,
-        day_end: datetime = None,
-    ) -> Dict[str, Any]:
+    def cal_event_map(self, user_id: str):
         """
-        计算颜色调色盘
+        计算事件映射
         """
-
-        default_return = {
-            "type": "default",
-            "name": "蓝色",
-            "hex": ColorTypes.BLUE.light_color,
-            "distance": 0,
-        }
-
-        # 获取记录数据
-        records_data = self.load_event_records(user_id)
-        records = records_data.get("records", {})
-
-        if not records:
-            return default_return  # 默认颜色
-
         # 加载分类数据
         definitions_data = self.load_event_definitions(user_id)
         categories_data = definitions_data.get("categories", [])
@@ -2011,17 +1991,52 @@ class RoutineRecord(BaseProcessor):
                 cata_info["color"] = ColorTypes.GREY
             event_to_color_map[event_name] = cata_info
 
-        # 1. 预处理和排序
-        relevant_records = self.preprocess_and_filter_records(
-            records, day_start, day_end
-        )
-        if not relevant_records:
-            return default_return
+        return event_to_color_map
 
-        # 2. 生成核心数据结构：原子时间线
-        atomic_timeline = self.generate_atomic_timeline(
-            relevant_records, day_start, day_end
-        )
+    def calculate_color_palette(
+        self,
+        user_id: str,
+        day_start: datetime = None,
+        day_end: datetime = None,
+        event_color_map: Dict[str, Any] = None,
+        timeline_data: List[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """
+        计算颜色调色盘
+        """
+
+        default_return = {
+            "type": "default",
+            "name": "grey",
+            "hex": ColorTypes.GREY.light_color,
+            "option_value": ColorTypes.GREY.option_value,
+            "distance": 0,
+        }
+
+        # 获取记录数据
+        records_data = self.load_event_records(user_id)
+        records = records_data.get("records", {})
+
+        if not records and not timeline_data:
+            return default_return, []  # 默认颜色
+
+        event_to_color_map = event_color_map or self.cal_event_map(user_id)
+
+        if timeline_data:
+            atomic_timeline = timeline_data
+
+        else:
+            # 1. 预处理和排序
+            relevant_records = self.preprocess_and_filter_records(
+                records, day_start, day_end
+            )
+            if not relevant_records:
+                return default_return, []
+
+            # 2. 生成核心数据结构：原子时间线
+            atomic_timeline = self.generate_atomic_timeline(
+                relevant_records, day_start, day_end
+            )
 
         # 3. 聚合数据用于颜色混合
         category_data = self.aggregate_for_color_blending(
@@ -2029,7 +2044,7 @@ class RoutineRecord(BaseProcessor):
         )
 
         if not category_data:
-            return default_return
+            return default_return, []
 
         # 4. 计算分类权重
         category_weights = {}
@@ -2165,6 +2180,7 @@ class RoutineRecord(BaseProcessor):
                 "type": "predefined",
                 "name": closest_color.value,
                 "hex": closest_color.light_color,
+                "option_value": closest_color.option_value,
                 "distance": round(min_distance, 2),
             }
 
@@ -2174,6 +2190,8 @@ class RoutineRecord(BaseProcessor):
             "name": "独特的颜色",  # 临时名字
             "hex": hex_color,
             "closest_to": closest_color.value if closest_color else "N/A",
+            "closest_to_hex": closest_color.light_color if closest_color else "",
+            "option_value": closest_color.option_value if closest_color else "",
             "distance_to_closest": round(min_distance, 2),
         }
 

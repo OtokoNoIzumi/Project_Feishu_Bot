@@ -2,6 +2,15 @@
 和业务、上下文或鉴权无关的辅助函数
 """
 
+import pprint
+
+
+def debug_dict_print(data):
+    """
+    调试字典的详细信息输出
+    """
+    pprint.pprint(data, indent=2, width=120)
+
 
 def safe_parse_number(value, as_int: bool = False) -> float:
     """

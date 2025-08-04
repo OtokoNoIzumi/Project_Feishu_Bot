@@ -607,29 +607,72 @@ class ColorTypes(Enum):
     """颜色类型"""
 
     # 按照从冷到暖的顺序排列，工作最冷，学习、健身中间，休息其次，娱乐最暖
-    WATHET = {"value": "wathet", "light_color": "#97DCFC", "dark_color": "#164359"}
-    BLUE = {"value": "blue", "light_color": "#C2D4FF", "dark_color": "#194294"}
+    WATHET = {
+        "value": "wathet",
+        "light_color": "#97DCFC",
+        "dark_color": "#164359",
+    }
+    BLUE = {
+        "value": "blue",
+        "light_color": "#C2D4FF",
+        "dark_color": "#194294",
+    }
     TURQUOISE = {
         "value": "turquoise",
         "light_color": "#6FE8D8",
         "dark_color": "#1D4E47",
     }
-    GREY = {"value": "grey", "light_color": "#eff0f1", "dark_color": "#373737"}
-    GREEN = {"value": "green", "light_color": "#95E599", "dark_color": "#21511A"}
-    LIME = {"value": "lime", "light_color": "#C8DD5F", "dark_color": "#404C06"}
-    PURPLE = {"value": "purple", "light_color": "#DCC9FD", "dark_color": "#5529A3"}
-    CARMINE = {"value": "carmine", "light_color": "#F8C4E1", "dark_color": "#782B57"}
+    GREY = {
+        "value": "grey",
+        "option_value": "neutral",
+        "light_color": "#eff0f1",
+        "dark_color": "#373737",
+    }
+    GREEN = {
+        "value": "green",
+        "light_color": "#95E599",
+        "dark_color": "#21511A",
+    }
+    LIME = {
+        "value": "lime",
+        "light_color": "#C8DD5F",
+        "dark_color": "#404C06",
+    }
+    PURPLE = {
+        "value": "purple",
+        "light_color": "#DCC9FD",
+        "dark_color": "#5529A3",
+    }
+    CARMINE = {
+        "value": "carmine",
+        "light_color": "#F8C4E1",
+        "dark_color": "#782B57",
+    }
     SUNFLOWER = {
         "value": "sunflower",
+        "option_value": "yellow",
         "light_color": "#FFF67A",
         "dark_color": "#574D01",
     }
-    ORANGE = {"value": "orange", "light_color": "#FEC48B", "dark_color": "#683A12"}
-    RED = {"value": "red", "light_color": "#FDC6C4", "dark_color": "#7B2524"}
+    ORANGE = {
+        "value": "orange",
+        "light_color": "#FEC48B",
+        "dark_color": "#683A12",
+    }
+    RED = {
+        "value": "red",
+        "light_color": "#FDC6C4",
+        "dark_color": "#7B2524",
+    }
 
     @property
     def value(self) -> str:
         return self._value_["value"]
+
+    @property
+    def option_value(self) -> str:
+        # 只有当定义了option_value时才返回，否则返回value
+        return self._value_.get("option_value", self.value)
 
     @property
     def light_color(self) -> str:

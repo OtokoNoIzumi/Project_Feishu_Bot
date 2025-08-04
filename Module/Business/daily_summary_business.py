@@ -11,7 +11,6 @@ import os
 from typing import Dict, Any, List
 from datetime import datetime, timedelta
 import random
-from pprint import pprint
 
 from Module.Common.scripts.common import debug_utils
 from Module.Services.constants import (
@@ -85,6 +84,8 @@ class DailySummaryBusiness(BaseProcessor):
     # 假设user_id信息存在来做，但实际上都先赋值为我——管理员id
     # 业务信息顺序应该是从一个配置获得某个user_id的daily_summary 的触发时间，然后到时间了开始进入本模块采集信息，再通过前端发出去
     # 这里是一个包含采集和处理两个部分的总接口
+    GRANULARITY_MINUTES = 30
+
     def get_daily_raw_data(self, user_id: str) -> Dict[str, Any]:
         """
         获取每日信息汇总原始数据
@@ -92,12 +93,15 @@ class DailySummaryBusiness(BaseProcessor):
         # 后续要改成从用户数据读取，这里先写死
         # 要不要进一步分离获取数据和处理，我觉得可以有，要合并回来就是剪切一下的事
         # 全开是我的，如果是其他user_id就只开日常分析
+        # AI的分析可能要并行，我感觉两个是完全无关的
+        # 不同人用的图片也可能不一样？但应该现在基本不着急，毕竟豆包也没啥开销
         info_modules = {
             "routine": {
                 "name": "日常分析",
                 "system_permission": True,
                 "user_enabled": True,
                 "data_method": "get_routine_data",
+                "image_method": "generate_routine_image",
             },
             "bili_video": {
                 "name": "B站视频",
@@ -507,9 +511,19 @@ class DailySummaryBusiness(BaseProcessor):
         """获取日常分析数据"""
         # image key这个先做例外，但可以先完成prompt的处理，甚至image_data，反正最后是给到前端。
         # 获取颜色聚合数据，先用我自己的id，以后再拓展
+        # 数据的深度按日、周、月、季、年来分，每个都是独立方法，用条件调用，而不是内部监测
         routine_business = RoutineRecord(self.app_controller)
 
         now = datetime.now()
+        is_monday = now.weekday() == 0  # 0是周一
+        is_first_day_of_month = now.day == 1
+        is_first_day_of_quarter = now.month % 3 == 1 and now.day == 1
+        is_first_day_of_year = now.month == 1 and now.day == 1
+
+        # 日：待办事项，提醒事项，image_key，主颜色
+        # 周：日 + 周日程分析，周image_key，周的日程记录表，规律分析
+        # 月：日 + 周 + 月程分析——最好维度有区别，否则就要因为月把周关闭掉，我不想有多份重复信息
+
         datetime_zero = datetime(now.year, now.month, now.day)
         start_time = datetime_zero - timedelta(days=now.day - 1)
         end_time = start_time + timedelta(days=1)
@@ -537,13 +551,173 @@ class DailySummaryBusiness(BaseProcessor):
         if image_path:
             os.remove(image_path)
 
+        weekly_data = None
+        if is_monday:
+            weekly_data = self.get_weekly_data(
+                user_id, granularity_minutes=self.GRANULARITY_MINUTES
+            )
+
         routine_data = {
-            "image_key": image_key,
-            "main_color": main_color,
-            "color_palette": color_palette,
+            "daily": {
+                "image_key": image_key,
+                "main_color": main_color,
+                "color_palette": color_palette,
+            },
+            "weekly": weekly_data,
         }
 
         return routine_data
+
+    def get_weekly_data(
+        self, user_id: str = None, granularity_minutes: int = 120
+    ) -> Dict[str, Any]:
+        """获取周分析数据"""
+        routine_business = RoutineRecord(self.app_controller)
+        now = datetime.now()
+        end_time = datetime(now.year, now.month, now.day) - timedelta(
+            days=now.weekday()
+        )
+        start_time = end_time - timedelta(days=7)
+
+        records = routine_business.load_event_records(user_id)
+        records = records.get("records", {})
+
+        filtered_records = routine_business.preprocess_and_filter_records(
+            records, start_time, end_time
+        )
+        event_map = routine_business.cal_event_map(user_id)
+
+        table_data = self.format_table_data(
+            filtered_records,
+            start_time,
+            event_map,
+            granularity_minutes,
+            user_id,
+        )
+
+        return table_data
+
+    def format_table_data(
+        self,
+        records: List[Dict[str, Any]],
+        start_time: datetime,
+        event_map: Dict[str, Any],
+        granularity_minutes: int = 120,
+        user_id: str = None,
+    ) -> Dict[str, Any]:
+        """格式化表格数据 - 构建真实的周数据结构"""
+        routine_business = RoutineRecord(self.app_controller)
+
+        # 生成时间标签
+        match granularity_minutes:
+            case 30:
+                time_labels = [
+                    label
+                    for hour in range(24)
+                    for label in (f"{hour:02d}:00", f"{hour:02d}:30")
+                ]
+            case 60:
+                time_labels = [f"{hour:02d}:00" for hour in range(24)]
+            case _:
+                time_labels = [f"{hour:02d}:00" for hour in range(0, 24, 2)]
+
+        # 初始化周数据结构
+        week_data = {
+            "time_labels": time_labels,
+            "days": {
+                "mon": {},
+                "tue": {},
+                "wed": {},
+                "thu": {},
+                "fri": {},
+                "sat": {},
+                "sun": {},
+            },
+        }
+
+        # 为每一天处理数据
+        current_day = start_time
+        day_keys = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
+
+        for day_idx in range(7):
+            day_key = day_keys[day_idx]
+            day_start = current_day
+            day_end = day_start + timedelta(days=1)
+
+            # 获取当天的记录
+            day_records = []
+            for record in records:
+                record_start = record.get("start_dt")
+                record_end = record.get("end_dt")
+
+                # 判断记录是否与当天有交集
+                if record_start < day_end and record_end > day_start:
+                    day_records.append(record)
+
+            # 为当天的每个时间槽生成数据
+            for time_label in time_labels:
+                hour_minute = time_label.split(":")
+                slot_hour = int(hour_minute[0])
+                slot_minute = int(hour_minute[1])
+
+                slot_start = day_start.replace(
+                    hour=slot_hour, minute=slot_minute, second=0, microsecond=0
+                )
+                slot_end = slot_start + timedelta(minutes=granularity_minutes)
+
+                # 生成该时间槽的原子时间线
+                atomic_timeline = routine_business.generate_atomic_timeline(
+                    day_records, slot_start, slot_end
+                )
+
+                if atomic_timeline:
+                    # 计算颜色和标签
+                    # 周的模式显示的是event_name，不适合融合颜色，而是匹配颜色
+
+                    # 找到持续时间最长的事件作为主要事件
+                    sorted_atomic_timeline = sorted(
+                        atomic_timeline,
+                        key=lambda x: x["duration_minutes"],
+                        reverse=True,
+                    )
+                    slot_event_label = sorted_atomic_timeline[0]["source_event"][
+                        "event_name"
+                    ]
+                    slot_event_info = event_map.get(slot_event_label, {})
+                    slot_event_color = slot_event_info.get(
+                        "color", ColorTypes.GREY
+                    ).option_value
+
+                    final_color, palette_data = (
+                        routine_business.calculate_color_palette(
+                            user_id,
+                            slot_start,
+                            slot_end,
+                            event_color_map=event_map,
+                            timeline_data=atomic_timeline,
+                        )
+                    )
+
+                    # slot_color_name = final_color.get("option_value", ColorTypes.GREY.option_value)
+
+                    slot_category_label = final_color.get("max_weight_category", "空闲")
+
+                    week_data["days"][day_key][time_label] = {
+                        "text": slot_event_label,
+                        "color": slot_event_color,
+                        "category_label": slot_category_label,
+                    }
+                else:
+                    # 空时间槽
+                    week_data["days"][day_key][time_label] = {
+                        "text": "空闲",
+                        "color": ColorTypes.GREY.option_value,
+                        "category_label": "空闲",
+                    }
+
+            current_day += timedelta(days=1)
+
+        return week_data
 
     # endregion
 
@@ -1038,8 +1212,9 @@ class DailySummaryBusiness(BaseProcessor):
     ) -> List[Dict[str, Any]]:
         """构建日常元素"""
         elements = []
-        image_key = routine_data.get("image_key", "")
-        main_color = routine_data.get("main_color", {})
+        image_key = routine_data.get("daily", {}).get("image_key", "")
+        main_color = routine_data.get("daily", {}).get("main_color", {})
+        weekly_data = routine_data.get("weekly", {})
 
         if image_key:
             image_element = JsonBuilder.build_image_element(
@@ -1052,6 +1227,72 @@ class DailySummaryBusiness(BaseProcessor):
             )
             elements.append(image_element)
 
+        # 构建表格结构
+        if weekly_data:
+            elements.append(JsonBuilder.build_markdown_element("上周时间表"))
+            columns = []
+            columns.append(
+                JsonBuilder.build_table_column_element(
+                    name="time",
+                    display_name="时间",
+                    data_type="text",
+                    width="80px",
+                )
+            )
+            day_dict = {
+                "mon": "周一",
+                "tue": "周二",
+                "wed": "周三",
+                "thu": "周四",
+                "fri": "周五",
+                "sat": "周六",
+                "sun": "周日",
+            }
+            for day_key, day_name in day_dict.items():
+                columns.append(
+                    JsonBuilder.build_table_column_element(
+                        name=day_key,
+                        display_name=day_name,
+                        data_type="options",
+                        width="120px",
+                    )
+                )
+            table_element = JsonBuilder.build_table_element(
+                columns=columns,
+                rows=[],
+                freeze_first_column=True,
+            )
+
+            time_labels = weekly_data.get("time_labels", [])
+            days_data = weekly_data.get("days", {})
+
+            DEFAULT_SLOT_DATA = {
+                "text": "空闲",
+                "color": ColorTypes.GREY.option_value,
+                "category_label": "空闲",
+            }
+
+            for time_label in time_labels:
+                row = {"time": time_label}
+
+                for day_key in day_dict.keys():
+                    day_data = days_data.get(day_key, {})
+                    slot_data = day_data.get(time_label, DEFAULT_SLOT_DATA)
+
+                    row[day_key] = [
+                        {
+                            "text": slot_data.get(
+                                "text", DEFAULT_SLOT_DATA.get("text")
+                            ),
+                            "color": slot_data.get(
+                                "color", DEFAULT_SLOT_DATA.get("color")
+                            ),
+                        }
+                    ]
+
+                table_element["rows"].append(row)
+
+            elements.append(table_element)
         return elements
 
     # endregion
