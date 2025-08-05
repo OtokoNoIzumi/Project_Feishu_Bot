@@ -516,6 +516,7 @@ class DailySummaryBusiness(BaseProcessor):
 
         now = datetime.now()
         is_monday = now.weekday() == 0  # 0是周一
+        is_monday = True
         is_first_day_of_month = now.day == 1
         is_first_day_of_quarter = now.month % 3 == 1 and now.day == 1
         is_first_day_of_year = now.month == 1 and now.day == 1
@@ -524,9 +525,28 @@ class DailySummaryBusiness(BaseProcessor):
         # 周：日 + 周日程分析，周image_key，周的日程记录表，规律分析
         # 月：日 + 周 + 月程分析——最好维度有区别，否则就要因为月把周关闭掉，我不想有多份重复信息
 
-        datetime_zero = datetime(now.year, now.month, now.day)
-        start_time = datetime_zero - timedelta(days=now.day - 1)
-        end_time = start_time + timedelta(days=1)
+        daily_data = self.get_daily_data(user_id)
+
+        weekly_data = None
+        if is_monday:
+            weekly_data = self.get_weekly_data(
+                user_id, granularity_minutes=self.GRANULARITY_MINUTES
+            )
+
+        routine_data = {
+            "daily": daily_data,
+            "weekly": weekly_data,
+        }
+
+        return routine_data
+
+    def get_daily_data(self, user_id: str = None) -> Dict[str, Any]:
+        """获取日分析数据"""
+        routine_business = RoutineRecord(self.app_controller)
+        now = datetime.now()
+
+        end_time = datetime(now.year, now.month, now.day)
+        start_time = end_time - timedelta(days=1)
 
         main_color, color_palette = routine_business.calculate_color_palette(
             user_id,
@@ -551,22 +571,12 @@ class DailySummaryBusiness(BaseProcessor):
         if image_path:
             os.remove(image_path)
 
-        weekly_data = None
-        if is_monday:
-            weekly_data = self.get_weekly_data(
-                user_id, granularity_minutes=self.GRANULARITY_MINUTES
-            )
-
-        routine_data = {
-            "daily": {
-                "image_key": image_key,
-                "main_color": main_color,
-                "color_palette": color_palette,
-            },
-            "weekly": weekly_data,
+        return {
+            "image_key": image_key,
+            "main_color": main_color,
+            "color_palette": color_palette,
         }
 
-        return routine_data
 
     def get_weekly_data(
         self, user_id: str = None, granularity_minutes: int = 120
