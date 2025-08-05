@@ -30,6 +30,10 @@ class BilibiliCardManager(BaseCardManager):
         """
         # 调用外部业务
         video_data = self.message_router.bili.process_bili_video_async()
+        if not video_data.get('success', False):
+            self.sender.send_feishu_message_reply(context, video_data.get('error_message', ''))
+            return
+
         return self.handle_card_operation_common(
             card_content=self.build_card(video_data),
             card_operation_type=CardOperationTypes.SEND,

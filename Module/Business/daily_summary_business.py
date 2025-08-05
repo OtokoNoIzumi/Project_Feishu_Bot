@@ -84,7 +84,7 @@ class DailySummaryBusiness(BaseProcessor):
     # 假设user_id信息存在来做，但实际上都先赋值为我——管理员id
     # 业务信息顺序应该是从一个配置获得某个user_id的daily_summary 的触发时间，然后到时间了开始进入本模块采集信息，再通过前端发出去
     # 这里是一个包含采集和处理两个部分的总接口
-    GRANULARITY_MINUTES = 30
+    GRANULARITY_MINUTES = 120
 
     def get_daily_raw_data(self, user_id: str) -> Dict[str, Any]:
         """

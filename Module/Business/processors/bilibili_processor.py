@@ -7,6 +7,7 @@ B站处理器
 from .base_processor import BaseProcessor, ProcessResult, require_service, safe_execute, RouteResult
 from Module.Services.constants import ServiceNames, RouteTypes
 from Module.Services.bili_adskip_service import convert_to_bili_app_link
+from Module.Common.scripts.common import debug_utils
 
 class BilibiliProcessor(BaseProcessor):
     """
@@ -54,8 +55,13 @@ class BilibiliProcessor(BaseProcessor):
         videos_data = notion_service.get_bili_videos_multiple()
 
         if not videos_data.get("success", False):
-            # debug_utils.log_and_print("⚠️ 未获取到有效的B站视频", log_level="WARNING")
-            return ProcessResult.error_result("暂时没有找到适合的B站视频，请稍后再试")
+            debug_utils.log_and_print("暂时没有找到适合的B站视频，请稍后再试", log_level="WARNING")
+            return {
+                "success": False,
+                "error_message": "暂时没有找到适合的B站视频，请稍后再试",
+                "main_video": {},
+                "additional_videos": []
+            }
 
         main_video = videos_data.get("main_video", {})
         additional_videos = videos_data.get("additional_videos", [])
