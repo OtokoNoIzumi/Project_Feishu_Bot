@@ -237,6 +237,19 @@ class RoutineRecord(BaseProcessor):
         user_folder = self._get_user_data_path(user_id)
         return os.path.join(user_folder, "event_records.json")
 
+    def get_weekly_record_file_path(self, user_id: str) -> str:
+        """
+        获取用户周报事件记录文件路径
+
+        Args:
+            user_id: 用户ID
+
+        Returns:
+            str: 周报事件记录文件路径
+        """
+        user_folder = self._get_user_data_path(user_id)
+        return os.path.join(user_folder, "weekly_record.json")
+
     # endregion
 
     # region 定义和数据结构
@@ -362,6 +375,29 @@ class RoutineRecord(BaseProcessor):
             data = json.load(f)
             return data
 
+    @safe_execute("加载周报记录失败")
+    def load_weekly_record(self, user_id: str) -> Dict[str, Any]:
+        """
+        加载用户周报记录
+        """
+        file_path = self.get_weekly_record_file_path(user_id)
+        if not os.path.exists(file_path):
+            # 这里不进行root_folder_token和business_folder_token的处理，业务要放到前端，不然就耦合了
+            current_time = self._get_formatted_time()
+            default_data = {
+                "user_id": user_id,
+                "weekly_record": {},
+                "root_folder_token": "",
+                "business_folder_token": {},
+                "last_updated": current_time,
+            }
+            self.save_weekly_record(user_id, default_data)
+            return default_data
+
+        with open(file_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            return data
+
     @safe_execute("保存事件定义失败")
     def save_event_definitions(self, user_id: str, data: Dict[str, Any]) -> bool:
         """
@@ -375,10 +411,6 @@ class RoutineRecord(BaseProcessor):
             bool: 保存是否成功
         """
         file_path = self._get_event_definitions_file_path(user_id)
-
-        # 更新最后修改时间
-        if "last_updated" not in data:
-            data["last_updated"] = self._get_formatted_time()
 
         try:
             with open(file_path, "w", encoding="utf-8") as f:
@@ -402,16 +434,27 @@ class RoutineRecord(BaseProcessor):
         """
         file_path = self._get_event_records_file_path(user_id)
 
-        # 更新最后修改时间
-        if "last_updated" not in data:
-            data["last_updated"] = self._get_formatted_time()
-
         try:
             with open(file_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
             return True
         except Exception as e:
             debug_utils.log_and_print(f"保存事件记录文件失败: {e}", log_level="ERROR")
+            return False
+
+    @safe_execute("保存周报记录失败")
+    def save_weekly_record(self, user_id: str, data: Dict[str, Any]) -> bool:
+        """
+        保存用户周报记录
+        """
+        file_path = self.get_weekly_record_file_path(user_id)
+
+        try:
+            with open(file_path, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+            return True
+        except Exception as e:
+            debug_utils.log_and_print(f"保存周报记录文件失败: {e}", log_level="ERROR")
             return False
 
     # endregion

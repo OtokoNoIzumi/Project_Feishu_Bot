@@ -15,6 +15,7 @@ from Module.Services.constants import UITypes, EnvVars, ServiceNames
 from .cards import initialize_card_managers
 from .handlers import MessageHandler, CardHandler, MenuHandler
 from .senders import MessageSender
+from .document import FeishuDocument
 from .utils import create_debug_functions
 
 
@@ -59,6 +60,8 @@ class FeishuAdapter:
         # ----第二层依赖关系，需要sender----
         # 创建消息发送器，这里的逻辑是sender通过app_controller访问服务，而不是反过来
         self.sender = MessageSender(self.client, app_controller)
+        # document大概率也类似，但需要观察一下
+        self.cloud_manager = FeishuDocument(self.client, app_controller, self.sender)
 
         # 导入并初始化新的卡片管理架构，这些每个卡片都是业务属地和整合的前端终端，完备独立的调用服务
         # message_router承载了部分未来要service化的业务，但这里不重构了，直接传进来【待优化

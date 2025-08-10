@@ -58,6 +58,14 @@ class DailySummaryBusiness(BaseProcessor):
     # -> daily_summary_business.create_daily_summary
     # -> main.handle_scheduled_event
 
+    def __init__(self, app_controller, developer_mode_path=None):
+        """初始化日常事项记录业务"""
+        super().__init__(app_controller)
+        self.developer_mode_path = developer_mode_path
+        if not self.developer_mode_path:
+            self.config_service = self.app_controller.get_service(ServiceNames.CONFIG)
+            self.routine_business = RoutineRecord(self.app_controller)
+
     @require_service("bili_adskip", "B站广告跳过服务不可用")
     @safe_execute("创建每日信息汇总失败")
     def create_daily_summary(self, event_data: Dict[str, Any]) -> ProcessResult:
@@ -164,6 +172,7 @@ class DailySummaryBusiness(BaseProcessor):
                     "周日",
                 ][datetime.now().weekday()],
             },
+            "user_id": user_id,
         }
 
         return info_modules
@@ -549,13 +558,12 @@ class DailySummaryBusiness(BaseProcessor):
     def get_daily_data(self, user_id: str = None) -> Dict[str, Any]:
         """获取日分析数据"""
         # 还需要加上一个今日提醒和今日待办，至于昨日思考，这个最后做
-        routine_business = RoutineRecord(self.app_controller)
         now = datetime.now()
 
         end_time = datetime(now.year, now.month, now.day)
         start_time = end_time - timedelta(days=1)
 
-        main_color, color_palette = routine_business.calculate_color_palette(
+        main_color, color_palette = self.routine_business.calculate_color_palette(
             user_id,
             start_time,
             end_time,
@@ -587,25 +595,24 @@ class DailySummaryBusiness(BaseProcessor):
     def get_weekly_data(
         self, user_id: str = None, granularity_minutes: int = 120
     ) -> Dict[str, Any]:
-        """获取周分析数据（Deprecated: 保留以兼容旧调用，不再直接使用user_id）"""
-        routine_business = RoutineRecord(self.app_controller)
+        """获取周分析数据"""
         now = datetime.now()
         end_time = datetime(now.year, now.month, now.day) - timedelta(
             days=now.weekday()
         )
         start_time = end_time - timedelta(days=7)
 
-        records = routine_business.load_event_records(user_id)
+        records = self.routine_business.load_event_records(user_id)
         records = records.get("records", {})
 
-        filtered_records = routine_business.preprocess_and_filter_records(
+        filtered_records = self.routine_business.preprocess_and_filter_records(
             records, start_time, end_time
         )
-        event_map = routine_business.cal_event_map(user_id)
+        event_map = self.routine_business.cal_event_map(user_id)
 
         weekly_raw_data = {
             "records": filtered_records,
-            "definitions": routine_business.load_event_definitions(user_id).get(
+            "definitions": self.routine_business.load_event_definitions(user_id).get(
                 "definitions", {}
             ),
             "start_time": start_time,
@@ -655,7 +662,6 @@ class DailySummaryBusiness(BaseProcessor):
         granularity_minutes: int = 120,
     ) -> Dict[str, Any]:
         """格式化表格数据 - 构建真实的周数据结构"""
-        routine_business = RoutineRecord(self.app_controller)
 
         # 生成时间标签
         match granularity_minutes:
@@ -715,7 +721,7 @@ class DailySummaryBusiness(BaseProcessor):
                 slot_end = slot_start + timedelta(minutes=granularity_minutes)
 
                 # 生成该时间槽的原子时间线
-                atomic_timeline = routine_business.generate_atomic_timeline(
+                atomic_timeline = self.routine_business.generate_atomic_timeline(
                     day_records, slot_start, slot_end
                 )
 
@@ -736,7 +742,7 @@ class DailySummaryBusiness(BaseProcessor):
                     slot_event_color = slot_event_info.get("color", ColorTypes.GREY)
 
                     final_color, palette_data = (
-                        routine_business.calculate_color_palette(
+                        self.routine_business.calculate_color_palette(
                             "no_user_id",
                             slot_start,
                             slot_end,
@@ -768,7 +774,6 @@ class DailySummaryBusiness(BaseProcessor):
 
     def analyze_weekly_document(self, weekly_raw: Dict[str, Any]) -> Dict[str, Any]:
         """封装周文档分析，输入为预取的weekly_raw数据，输出为weekly_document三项。"""
-        routine_business = RoutineRecord(self.app_controller)
         # DataFrame: 记录列表
         record_df = pd.DataFrame(weekly_raw.get("records", [])).fillna("")
 
@@ -783,10 +788,15 @@ class DailySummaryBusiness(BaseProcessor):
             )  # 空表占位
 
         # 统计原子时间线时长（按 record_id 聚合）
-        atomic_timeline = routine_business.generate_atomic_timeline(
+        start_time = weekly_raw.get("start_time")
+        end_time = weekly_raw.get("end_time")
+        document_title = (
+            f"周报告{start_time.strftime('%y%m%d')}-{end_time.strftime('%y%m%d')}"
+        )
+        atomic_timeline = self.routine_business.generate_atomic_timeline(
             weekly_raw.get("records", []),
-            weekly_raw.get("start_time"),
-            weekly_raw.get("end_time"),
+            start_time,
+            end_time,
         )
         atomic_df = pd.DataFrame(atomic_timeline)
         record_define_time = atomic_df.groupby("record_id", as_index=False)[
@@ -982,10 +992,33 @@ class DailySummaryBusiness(BaseProcessor):
         else:
             note_infos = []
 
+        content = {
+            "index": 0,
+            "children_id": ["heading_timetable", "table_timetable"],
+            "descendants": [
+                {
+                    "block_id": "heading_timetable",
+                    "block_type": 4,
+                    "heading2": {"elements": [{"text_run": {"content": "个人时间表"}}]},
+                    "children": [],
+                },
+                {
+                    "block_id": "table_timetable",
+                    "block_type": 2,
+                    "text": {
+                        "elements": [{"text_run": {"content": "\n".join(note_infos)}}]
+                    },
+                    "children": [],
+                },
+            ],
+        }
+
         return {
             "note_list": note_infos,
             "event_summary": summary_df.to_dict(orient="records"),
             "category_stats": category_stats.to_dict(orient="records"),
+            "document_title": document_title,
+            "content": content,
         }
 
     def _extract_interval_type(self, properties):
@@ -1155,7 +1188,8 @@ class DailySummaryBusiness(BaseProcessor):
 
         routine_info = daily_raw_data.get("routine", {}).get("info", {})
         if routine_info:
-            elements.extend(self.build_routine_elements(routine_info))
+            user_id = daily_raw_data.get("system_status", {}).get("user_id", "")
+            elements.extend(self.build_routine_elements(routine_info, user_id))
 
         return elements
 
@@ -1563,7 +1597,7 @@ class DailySummaryBusiness(BaseProcessor):
     # region 日常组件
 
     def build_routine_elements(
-        self, routine_data: Dict[str, Any]
+        self, routine_data: Dict[str, Any], user_id: str
     ) -> List[Dict[str, Any]]:
         """构建日常元素"""
         elements = []
@@ -1585,7 +1619,58 @@ class DailySummaryBusiness(BaseProcessor):
 
         if weekly_document:
             # 这里直接添加文档，还需要异步调用llm？这个似乎不应该是前端做的事，那就先增加文档吧。
-            pass
+            # 这里的业务逻辑结果就是往一个tokens的文件夹增加一个page，存在本地
+            weekly_record = self.routine_business.load_weekly_record(user_id)
+            root_folder_token = weekly_record.get("root_folder_token", "")
+            business_folder_token = weekly_record.get("business_folder_token", {}).get(
+                "周报告", ""
+            )
+            document_manager = self.app_controller.get_adapter(
+                AdapterNames.FEISHU
+            ).cloud_manager
+
+            need_update_tokens = False
+            if not root_folder_token:
+                root_folder_token = document_manager.get_user_root_folder_token(user_id)
+                weekly_record["root_folder_token"] = root_folder_token
+                need_update_tokens = True
+            if not business_folder_token:
+                business_folder_token = document_manager.get_user_business_folder_token(
+                    user_id, "周报告", root_folder_token
+                )
+                weekly_record["business_folder_token"]["周报告"] = business_folder_token
+                need_update_tokens = True
+
+            if need_update_tokens:
+                self.routine_business.save_weekly_record(user_id, weekly_record)
+
+            title = weekly_document.get("document_title", "")
+            # 原子化同步调用：先创建文档，再写入块（均带指数退避）。如需非阻塞，未来切换到异步客户端统一调度。
+            doc_data = document_manager.create_document(
+                folder_token=business_folder_token,
+                document_title=title,
+            )
+            # SDK 返回路径：data.document.document_id
+            document_id = (
+                getattr(getattr(doc_data, "document", None), "document_id", None)
+                if doc_data
+                else None
+            )
+            if document_id:
+                block_resp = document_manager.create_document_block_descendant(
+                    document_id=document_id,
+                    block_data=weekly_document.get("content", {}),
+                    document_title=title,
+                )
+                url = f"https://ddsz-peng13.feishu.cn/docx/{document_id}"
+                folder_url = f"https://ddsz-peng13.feishu.cn/drive/folder/{business_folder_token}"
+                # 要看看怎么设置为默认打开链接，但这是小事，还是要先加内容，以及后续稍微人多一点之前就要做异步的改造，包括配合LLM
+                markdown_element = JsonBuilder.build_markdown_element(
+                    content=f"[查看分析：{title}]({url})\n[访问报告文件夹]({folder_url})"
+                )
+                elements.append(markdown_element)
+            else:
+                debug_utils.log_and_print("创建周报告文档失败", log_level="ERROR")
 
         # 构建表格结构
         if weekly_data:
