@@ -74,6 +74,7 @@ class DailySummaryBusiness(BaseProcessor):
         user_id = event_data.get(SchedulerConstKeys.ADMIN_ID)
         daily_raw_data = self.get_daily_raw_data(user_id)
 
+        # 有数据之后再在前端写
         card_content = self.create_daily_summary_card(daily_raw_data)
 
         return ProcessResult.user_list_result("interactive", card_content)
@@ -101,6 +102,7 @@ class DailySummaryBusiness(BaseProcessor):
                 "system_permission": True,
                 "user_enabled": True,
                 "data_method": "get_routine_data",
+                "analyze_method": "analyze_routine_data",
                 "image_method": "generate_routine_image",
             },
             "bili_video": {
@@ -125,11 +127,14 @@ class DailySummaryBusiness(BaseProcessor):
             },
         }
 
+        # 这里的调用架构要分离出方法的参数来，不然拓展性太差
         for module_name, module_info in info_modules.items():
             if module_info["system_permission"] and module_info["user_enabled"]:
                 data_method = module_info["data_method"]
                 if hasattr(self, data_method):
-                    module_data = getattr(self, data_method)(user_id)
+                    data_params = module_info.get("data_params", {})
+                    data_params["user_id"] = user_id
+                    module_data = getattr(self, data_method)(data_params)
                     if module_data:
                         module_info["data"] = module_data
                         analyze_method = module_info.get("analyze_method", "")
@@ -165,7 +170,7 @@ class DailySummaryBusiness(BaseProcessor):
 
     # region B站视频推荐
 
-    def get_notion_bili_data(self, _user_id: str = None) -> List[Dict]:
+    def get_notion_bili_data(self, _data_params: Dict[str, Any] = None) -> List[Dict]:
         """获取notion B站视频数据"""
         if self.app_controller:
             notion_service = self.app_controller.get_service(ServiceNames.NOTION)
@@ -507,11 +512,14 @@ class DailySummaryBusiness(BaseProcessor):
     # endregion
 
     # region 日常分析
-    def get_routine_data(self, user_id: str = None) -> Dict[str, Any]:
+    def get_routine_data(self, data_params: Dict[str, Any] = None) -> Dict[str, Any]:
         """获取日常分析数据"""
         # image key这个先做例外，但可以先完成prompt的处理，甚至image_data，反正最后是给到前端。
         # 获取颜色聚合数据，先用我自己的id，以后再拓展
         # 数据的深度按日、周、月、季、年来分，每个都是独立方法，用条件调用，而不是内部监测
+        if not data_params:
+            return {}
+        user_id = data_params.get("user_id")
         routine_business = RoutineRecord(self.app_controller)
 
         now = datetime.now()
@@ -542,6 +550,7 @@ class DailySummaryBusiness(BaseProcessor):
 
     def get_daily_data(self, user_id: str = None) -> Dict[str, Any]:
         """获取日分析数据"""
+        # 还需要加上一个今日提醒和今日待办，至于昨日思考，这个最后做
         routine_business = RoutineRecord(self.app_controller)
         now = datetime.now()
 
@@ -577,11 +586,13 @@ class DailySummaryBusiness(BaseProcessor):
             "color_palette": color_palette,
         }
 
-
     def get_weekly_data(
         self, user_id: str = None, granularity_minutes: int = 120
     ) -> Dict[str, Any]:
         """获取周分析数据"""
+        # 按照架构逻辑，肯定是要有一份本地的文档的，然后再看情况一某种订阅的方式回调更新，比如设置一个有效期？但文章和notion不一样吧。
+        # 云文档可能需要一个储存容器，不要过于分散
+        # 周分析需要一个新的数据容器，从保存文件夹token开始
         routine_business = RoutineRecord(self.app_controller)
         now = datetime.now()
         end_time = datetime(now.year, now.month, now.day) - timedelta(
@@ -597,15 +608,39 @@ class DailySummaryBusiness(BaseProcessor):
         )
         event_map = routine_business.cal_event_map(user_id)
 
-        table_data = self.format_table_data(
-            filtered_records,
-            start_time,
-            event_map,
-            granularity_minutes,
-            user_id,
-        )
+        # 这里不再调用format_table_data，直接返回原始数据
+        weekly_raw_data = {
+            "records": filtered_records,
+            "start_time": start_time,
+            "event_map": event_map,
+            "granularity_minutes": granularity_minutes,
+        }
 
-        return table_data
+        return weekly_raw_data
+
+    def analyze_routine_data(self, routine_data: Dict[str, Any] = None) -> Dict[str, Any]:
+        """分析routine数据"""
+        weekly_data = routine_data.get("weekly", {})
+        formatted_weekly_data = {}
+        if weekly_data:
+            # 迁移format_table_data的调用到这里
+            formatted_weekly_data = self.format_table_data(
+                weekly_data.get("records", []),
+                weekly_data.get("start_time"),
+                weekly_data.get("event_map"),
+                weekly_data.get("granularity_minutes", 120),
+            )
+
+        # 分析routine数据，包括日、周、月、季、年
+        # 日：待办事项，提醒事项，image_key，主颜色
+        # 周：日 + 周日程分析，周image_key，周的日程记录表，规律分析
+        # 月：日 + 周 + 月程分析——最好维度有区别，否则就要因为月把周关闭掉，我不想有多份重复信息
+
+        routine_info = {
+            "daily": routine_data.get("daily", {}),
+            "weekly_card": formatted_weekly_data,
+        }
+        return routine_info
 
     def format_table_data(
         self,
@@ -613,7 +648,6 @@ class DailySummaryBusiness(BaseProcessor):
         start_time: datetime,
         event_map: Dict[str, Any],
         granularity_minutes: int = 120,
-        user_id: str = None,
     ) -> Dict[str, Any]:
         """格式化表格数据 - 构建真实的周数据结构"""
         routine_business = RoutineRecord(self.app_controller)
@@ -696,11 +730,11 @@ class DailySummaryBusiness(BaseProcessor):
                     slot_event_info = event_map.get(slot_event_label, {})
                     slot_event_color = slot_event_info.get(
                         "color", ColorTypes.GREY
-                    ).option_value
+                    )
 
                     final_color, palette_data = (
                         routine_business.calculate_color_palette(
-                            user_id,
+                            "no_user_id",
                             slot_start,
                             slot_end,
                             event_color_map=event_map,
@@ -721,7 +755,7 @@ class DailySummaryBusiness(BaseProcessor):
                     # 空时间槽
                     week_data["days"][day_key][time_label] = {
                         "text": "空闲",
-                        "color": ColorTypes.GREY.option_value,
+                        "color": ColorTypes.GREY,
                         "category_label": "空闲",
                     }
 
@@ -734,7 +768,7 @@ class DailySummaryBusiness(BaseProcessor):
     # region 其他小模块
 
     # 切片广告运营
-    def get_operation_data(self, _user_id: str = None) -> Dict[str, Any]:
+    def get_operation_data(self, _data_params: Dict[str, Any] = None) -> Dict[str, Any]:
         """获取切片广告运营数据"""
         bili_service = self.app_controller.get_service(ServiceNames.BILI_ADSKIP)
         operation_data = bili_service.get_operation_data()
@@ -742,7 +776,7 @@ class DailySummaryBusiness(BaseProcessor):
         return operation_data
 
     # 服务状态
-    def get_services_status(self, _user_id: str = None) -> Dict[str, Any]:
+    def get_services_status(self, _data_params: Dict[str, Any] = None) -> Dict[str, Any]:
         """获取服务状态"""
         scheduler_service = self.app_controller.get_service(ServiceNames.SCHEDULER)
         services_status = scheduler_service.check_services_status()
@@ -761,7 +795,7 @@ class DailySummaryBusiness(BaseProcessor):
         # 内容是按照顺序排列的，所以天然可以分组，还是用card_registry里的方法。
 
         main_color = (
-            daily_raw_data.get("routine", {}).get("data", {}).get("main_color", {})
+            daily_raw_data.get("routine", {}).get("data", {}).get("daily", {}).get("main_color", {})
         )
         main_color_name = main_color.get("name", "独特的颜色")
         header_template = (
@@ -808,9 +842,9 @@ class DailySummaryBusiness(BaseProcessor):
 
         elements.extend(video_list)
 
-        routine_data = daily_raw_data.get("routine", {}).get("data", {})
-        if routine_data:
-            elements.extend(self.build_routine_elements(routine_data))
+        routine_info = daily_raw_data.get("routine", {}).get("info", {})
+        if routine_info:
+            elements.extend(self.build_routine_elements(routine_info))
 
         return elements
 
@@ -1224,7 +1258,7 @@ class DailySummaryBusiness(BaseProcessor):
         elements = []
         image_key = routine_data.get("daily", {}).get("image_key", "")
         main_color = routine_data.get("daily", {}).get("main_color", {})
-        weekly_data = routine_data.get("weekly", {})
+        weekly_data = routine_data.get("weekly_card", {})
 
         if image_key:
             image_element = JsonBuilder.build_image_element(
@@ -1278,7 +1312,7 @@ class DailySummaryBusiness(BaseProcessor):
 
             DEFAULT_SLOT_DATA = {
                 "text": "空闲",
-                "color": ColorTypes.GREY.option_value,
+                "color": ColorTypes.GREY,
                 "category_label": "空闲",
             }
 
@@ -1296,7 +1330,7 @@ class DailySummaryBusiness(BaseProcessor):
                             ),
                             "color": slot_data.get(
                                 "color", DEFAULT_SLOT_DATA.get("color")
-                            ),
+                            ).option_value,
                         }
                     ]
 

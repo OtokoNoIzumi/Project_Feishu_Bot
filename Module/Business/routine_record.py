@@ -280,6 +280,8 @@ class RoutineRecord(BaseProcessor):
                 "target_value": None,  # 目标值
                 # 指标属性
                 "progress_type": RoutineProgressTypes.NONE.value,  # 进度类型
+                # 统计属性
+                "interval_type": "degree",  # 间隔类型，degree/category/ignore
             },
             "stats": {
                 "record_count": 0,
@@ -293,6 +295,7 @@ class RoutineRecord(BaseProcessor):
                 },
                 "last_refresh_date": None,
                 "last_record_id": None,
+                "interval_minutes": None,
             },
             "created_time": current_time,
             "last_record_time": None,
@@ -1803,6 +1806,7 @@ class RoutineRecord(BaseProcessor):
                     "end_time": segment_end,
                     "duration_minutes": (segment_end - segment_start).total_seconds()
                     / 60.0,
+                    "record_id": top_event.get("record_id", ""),
                     "source_event": top_event,  # 关键！保留完整的原始事件引用
                 }
                 atomic_timeline.append(atomic_block)
