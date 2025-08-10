@@ -5,3 +5,5 @@ gradio_client
 google-generativeai
 aiohttp
 qrcode
+pandas
+numpy

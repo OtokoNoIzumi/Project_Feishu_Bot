@@ -11,6 +11,8 @@ import os
 from typing import Dict, Any, List
 from datetime import datetime, timedelta
 import random
+import pandas as pd
+import numpy as np
 
 from Module.Common.scripts.common import debug_utils
 from Module.Services.constants import (
@@ -513,14 +515,10 @@ class DailySummaryBusiness(BaseProcessor):
 
     # region 日常分析
     def get_routine_data(self, data_params: Dict[str, Any] = None) -> Dict[str, Any]:
-        """获取日常分析数据"""
-        # image key这个先做例外，但可以先完成prompt的处理，甚至image_data，反正最后是给到前端。
-        # 获取颜色聚合数据，先用我自己的id，以后再拓展
-        # 数据的深度按日、周、月、季、年来分，每个都是独立方法，用条件调用，而不是内部监测
+        """获取日常分析数据（总入口）"""
         if not data_params:
             return {}
         user_id = data_params.get("user_id")
-        routine_business = RoutineRecord(self.app_controller)
 
         now = datetime.now()
         is_monday = now.weekday() == 0  # 0是周一
@@ -589,10 +587,7 @@ class DailySummaryBusiness(BaseProcessor):
     def get_weekly_data(
         self, user_id: str = None, granularity_minutes: int = 120
     ) -> Dict[str, Any]:
-        """获取周分析数据"""
-        # 按照架构逻辑，肯定是要有一份本地的文档的，然后再看情况一某种订阅的方式回调更新，比如设置一个有效期？但文章和notion不一样吧。
-        # 云文档可能需要一个储存容器，不要过于分散
-        # 周分析需要一个新的数据容器，从保存文件夹token开始
+        """获取周分析数据（Deprecated: 保留以兼容旧调用，不再直接使用user_id）"""
         routine_business = RoutineRecord(self.app_controller)
         now = datetime.now()
         end_time = datetime(now.year, now.month, now.day) - timedelta(
@@ -608,28 +603,37 @@ class DailySummaryBusiness(BaseProcessor):
         )
         event_map = routine_business.cal_event_map(user_id)
 
-        # 这里不再调用format_table_data，直接返回原始数据
         weekly_raw_data = {
             "records": filtered_records,
+            "definitions": routine_business.load_event_definitions(user_id).get(
+                "definitions", {}
+            ),
             "start_time": start_time,
+            "end_time": end_time,
             "event_map": event_map,
             "granularity_minutes": granularity_minutes,
         }
 
         return weekly_raw_data
 
-    def analyze_routine_data(self, routine_data: Dict[str, Any] = None) -> Dict[str, Any]:
+    def analyze_routine_data(
+        self, routine_data: Dict[str, Any] = None
+    ) -> Dict[str, Any]:
         """分析routine数据"""
-        weekly_data = routine_data.get("weekly", {})
+
+        weekly_raw = routine_data.get("weekly", {})
         formatted_weekly_data = {}
-        if weekly_data:
-            # 迁移format_table_data的调用到这里
+        weekly_document: Dict[str, Any] = {}
+        if weekly_raw:
+            # 生成卡片用时间表
             formatted_weekly_data = self.format_table_data(
-                weekly_data.get("records", []),
-                weekly_data.get("start_time"),
-                weekly_data.get("event_map"),
-                weekly_data.get("granularity_minutes", 120),
+                weekly_raw.get("records", []),
+                weekly_raw.get("start_time"),
+                weekly_raw.get("event_map"),
+                weekly_raw.get("granularity_minutes", 120),
             )
+            # 生成周文档
+            weekly_document = self.analyze_weekly_document(weekly_raw)
 
         # 分析routine数据，包括日、周、月、季、年
         # 日：待办事项，提醒事项，image_key，主颜色
@@ -639,6 +643,7 @@ class DailySummaryBusiness(BaseProcessor):
         routine_info = {
             "daily": routine_data.get("daily", {}),
             "weekly_card": formatted_weekly_data,
+            "weekly_document": weekly_document,
         }
         return routine_info
 
@@ -728,9 +733,7 @@ class DailySummaryBusiness(BaseProcessor):
                         "event_name"
                     ]
                     slot_event_info = event_map.get(slot_event_label, {})
-                    slot_event_color = slot_event_info.get(
-                        "color", ColorTypes.GREY
-                    )
+                    slot_event_color = slot_event_info.get("color", ColorTypes.GREY)
 
                     final_color, palette_data = (
                         routine_business.calculate_color_palette(
@@ -742,7 +745,7 @@ class DailySummaryBusiness(BaseProcessor):
                         )
                     )
 
-                    # slot_color_name = final_color.get("option_value", ColorTypes.GREY.option_value)
+                    # slot_color_name = final_color
 
                     slot_category_label = final_color.get("max_weight_category", "空闲")
 
@@ -763,6 +766,309 @@ class DailySummaryBusiness(BaseProcessor):
 
         return week_data
 
+    def analyze_weekly_document(self, weekly_raw: Dict[str, Any]) -> Dict[str, Any]:
+        """封装周文档分析，输入为预取的weekly_raw数据，输出为weekly_document三项。"""
+        routine_business = RoutineRecord(self.app_controller)
+        # DataFrame: 记录列表
+        record_df = pd.DataFrame(weekly_raw.get("records", [])).fillna("")
+
+        # event_df: 从定义中取出event_name行
+        definitions = weekly_raw.get("definitions", {})
+        event_df = pd.DataFrame(definitions).fillna("")
+        if not event_df.empty:
+            event_df = event_df.T.rename(columns={"name": "event_name"})
+        else:
+            event_df = pd.DataFrame(
+                columns=["event_name", "category", "properties"]
+            )  # 空表占位
+
+        # 统计原子时间线时长（按 record_id 聚合）
+        atomic_timeline = routine_business.generate_atomic_timeline(
+            weekly_raw.get("records", []),
+            weekly_raw.get("start_time"),
+            weekly_raw.get("end_time"),
+        )
+        atomic_df = pd.DataFrame(atomic_timeline)
+        record_define_time = atomic_df.groupby("record_id", as_index=False)[
+            "duration_minutes"
+        ].sum()
+
+        # interval_type 从 properties 中提取
+        if "properties" in event_df.columns:
+            event_df["interval_type"] = event_df["properties"].apply(
+                self._extract_interval_type
+            )
+        else:
+            event_df["interval_type"] = "degree"
+
+        # 合并记录与定义信息
+        merged_df = record_df.merge(
+            event_df[["event_name", "category", "interval_type"]],
+            on="event_name",
+            how="left",
+        ).fillna({"category": "", "degree": "", "interval_type": "degree"})
+        merged_df = merged_df.merge(record_define_time, on="record_id", how="left")
+
+        # 分组统计
+        grouped = merged_df.groupby(["category", "event_name", "degree"])
+        summary_df = grouped.agg(
+            count=("event_name", "size"),
+            total_duration=("duration_minutes", "sum"),
+            avg_duration=("duration_minutes", "mean"),
+            min_duration=("duration_minutes", "min"),
+            max_duration=("duration_minutes", "max"),
+        ).reset_index()
+
+        # 计算最大duration对应的start_at与三类interval
+        max_duration_start_at_list = []
+        degree_interval_minutes_list = []
+        degree_interval_label_list = []
+        category_interval_minutes_list = []
+        category_interval_label_list = []
+        event_interval_minutes_list = []
+        event_interval_label_list = []
+
+        for name, group in grouped:
+            max_duration_start_at_list.append(self._get_max_start_at(group))
+
+            category_val = group["category"].iloc[0] if not group.empty else ""
+            event_name_val = group["event_name"].iloc[0] if not group.empty else ""
+            degree_val = (
+                group["degree"].iloc[0]
+                if ("degree" in group.columns and not group.empty)
+                else ""
+            )
+            interval_type_val = (
+                group["interval_type"].iloc[0]
+                if ("interval_type" in group.columns and not group.empty)
+                else "degree"
+            )
+            if interval_type_val not in ["category", "degree", "ignore"]:
+                interval_type_val = "ignore"
+
+            # degree分组
+            mask_degree = (
+                (merged_df["category"] == category_val)
+                & (merged_df["event_name"] == event_name_val)
+                & (merged_df["degree"] == degree_val)
+            )
+            degree_group = merged_df[mask_degree].sort_values("start_dt")
+            if not degree_group.empty and len(degree_group) > 1:
+                degree_interval = self._calc_avg_interval(degree_group["start_dt"])
+                degree_interval_minutes_list.append(degree_interval)
+                degree_interval_label_list.append(
+                    format_time_label(degree_interval)
+                    if not np.isnan(degree_interval)
+                    else ""
+                )
+            else:
+                degree_interval_minutes_list.append(np.nan)
+                degree_interval_label_list.append("")
+
+            # category分组
+            mask_category = (merged_df["category"] == category_val) & (
+                merged_df["event_name"] == event_name_val
+            )
+            category_group = merged_df[mask_category].sort_values("start_dt")
+            if not category_group.empty and len(category_group) > 1:
+                category_interval = self._calc_avg_interval(category_group["start_dt"])
+                category_interval_minutes_list.append(category_interval)
+                category_interval_label_list.append(
+                    format_time_label(category_interval)
+                    if not np.isnan(category_interval)
+                    else ""
+                )
+            else:
+                category_interval_minutes_list.append(np.nan)
+                category_interval_label_list.append("")
+
+            # event口径
+            if interval_type_val == "degree":
+                event_interval = degree_interval_minutes_list[-1]
+                event_interval_label = degree_interval_label_list[-1]
+            elif interval_type_val == "category":
+                event_interval = category_interval_minutes_list[-1]
+                event_interval_label = category_interval_label_list[-1]
+            else:
+                event_interval = np.nan
+                event_interval_label = ""
+            event_interval_minutes_list.append(event_interval)
+            event_interval_label_list.append(event_interval_label)
+
+        summary_df["max_duration_start_at"] = max_duration_start_at_list
+        summary_df["degree_interval_minutes"] = degree_interval_minutes_list
+        summary_df["degree_interval_label"] = degree_interval_label_list
+        summary_df["category_interval_minutes"] = category_interval_minutes_list
+        summary_df["category_interval_label"] = category_interval_label_list
+        summary_df["event_interval_minutes"] = event_interval_minutes_list
+        summary_df["event_interval_label"] = event_interval_label_list
+
+        # 事件总计与排序
+        event_name_stats = (
+            summary_df.groupby("event_name")
+            .agg(
+                event_total_count=("count", "sum"),
+                event_total_duration=("total_duration", "sum"),
+            )
+            .reset_index()
+        )
+
+        # 统计天数（用 start_dt 的日期数）
+        if "start_dt" in merged_df.columns and not merged_df.empty:
+            unique_days = pd.to_datetime(merged_df["start_dt"]).dt.date.nunique()
+        else:
+            unique_days = 0
+
+        total_hours = unique_days * 24
+        total_minutes = total_hours * 60
+
+        category_stats = (
+            summary_df.groupby("category")
+            .agg(
+                category_total_count=("count", "sum"),
+                category_total_duration=("total_duration", "sum"),
+            )
+            .reset_index()
+        )
+
+        if total_minutes > 0:
+            category_stats["category_duration_percent"] = (
+                category_stats["category_total_duration"] / total_minutes * 100
+            ).round(1)
+            recorded_minutes = category_stats["category_total_duration"].sum()
+            unrecorded_minutes = total_minutes - recorded_minutes
+            unrecorded_percent = round(unrecorded_minutes / total_minutes * 100, 1)
+            category_stats = pd.concat(
+                [
+                    category_stats,
+                    pd.DataFrame(
+                        [
+                            {
+                                "category": "未记录",
+                                "category_total_count": 0,
+                                "category_total_duration": unrecorded_minutes,
+                                "category_duration_percent": unrecorded_percent,
+                            }
+                        ]
+                    ),
+                ],
+                ignore_index=True,
+            )
+        else:
+            category_stats["category_duration_percent"] = 0.0
+
+        summary_df = summary_df.merge(event_name_stats, on="event_name", how="left")
+        summary_df = summary_df.sort_values(
+            by=[
+                "event_total_count",
+                "event_total_duration",
+                "event_name",
+                "total_duration",
+                "count",
+            ],
+            ascending=[False, False, True, False, False],
+        ).reset_index(drop=True)
+
+        # 处理 note 信息
+        current_year = datetime.now().year
+        note_rows = merged_df[
+            merged_df["note"].notnull() & (merged_df["note"] != "")
+        ].copy()
+        if not note_rows.empty:
+            note_rows["note_info"] = note_rows.apply(
+                lambda r: self._format_note_info(r, current_year), axis=1
+            )
+            note_infos = note_rows["note_info"].tolist()
+        else:
+            note_infos = []
+
+        return {
+            "note_list": note_infos,
+            "event_summary": summary_df.to_dict(orient="records"),
+            "category_stats": category_stats.to_dict(orient="records"),
+        }
+
+    def _extract_interval_type(self, properties):
+        # properties为字典，interval_type为其key之一
+        if isinstance(properties, dict):
+            interval_type = properties.get("interval_type", None)
+            if interval_type in ["category", "degree", "ignore"]:
+                return interval_type
+            else:
+                return "ignore"
+        else:
+            return "ignore"
+
+    def _calc_avg_interval(self, times):
+        """计算平均间隔（分钟），times为升序datetime字符串列表"""
+        if len(times) < 2:
+            return np.nan
+        times = pd.to_datetime(times)
+        intervals = (times[1:].values - times[:-1].values) / np.timedelta64(1, "m")
+        return np.mean(intervals) if len(intervals) > 0 else np.nan
+
+    def _get_max_start_at(self, subdf):
+        """获取duration最大值对应的start_at"""
+        if subdf.empty:
+            return ""
+        idx = subdf["duration_minutes"].idxmax()
+        return subdf.loc[idx, "start_dt"] if idx in subdf.index else ""
+
+    def _format_note_info(self, row, current_year: int):
+        # 处理分类
+        category = (
+            row["category"]
+            if pd.notnull(row["category"]) and row["category"] != ""
+            else ""
+        )
+        # 处理事件名
+        event_name = (
+            row["event_name"]
+            if pd.notnull(row["event_name"]) and row["event_name"] != ""
+            else ""
+        )
+        # 处理degree
+        degree = (
+            row["degree"] if pd.notnull(row["degree"]) and row["degree"] != "" else None
+        )
+        # 处理进度
+        progress = (
+            row["progress_value"]
+            if "progress_value" in row
+            and pd.notnull(row["progress_value"])
+            and row["progress_value"] != ""
+            else None
+        )
+        # 处理备注
+        note = row["note"] if pd.notnull(row["note"]) else ""
+        # 拼接degree部分，空则不显示括号
+        if degree:
+            degree_str = f"({degree})"
+        else:
+            degree_str = ""
+
+        start_time = (
+            row["start_dt"]
+            if pd.notnull(row["start_dt"]) and row["start_dt"] != ""
+            else ""
+        )
+        if start_time.year == current_year:
+            start_time_str = start_time.strftime("%m-%d %H:%M")
+        else:
+            start_time_str = start_time.strftime("%Y-%m-%d %H:%M")
+        # 拼接头部
+        if category:
+            head = f"[{start_time_str} 耗时{row['duration_minutes']}分] [{category}] {event_name} {degree_str}"
+        else:
+            head = f"[{start_time_str} 耗时{row['duration_minutes']}分] {event_name} {degree_str}"
+        head = head.rstrip()  # 去除多余空格
+        # 拼接进度
+        progress_str = f" | 进度:{progress}" if progress else ""
+        # 拼接备注
+        note_str = f" | 备注:{note}" if note else ""
+        # 最终拼接
+        return f"{head}{progress_str}{note_str}"
+
     # endregion
 
     # region 其他小模块
@@ -776,7 +1082,9 @@ class DailySummaryBusiness(BaseProcessor):
         return operation_data
 
     # 服务状态
-    def get_services_status(self, _data_params: Dict[str, Any] = None) -> Dict[str, Any]:
+    def get_services_status(
+        self, _data_params: Dict[str, Any] = None
+    ) -> Dict[str, Any]:
         """获取服务状态"""
         scheduler_service = self.app_controller.get_service(ServiceNames.SCHEDULER)
         services_status = scheduler_service.check_services_status()
@@ -795,7 +1103,10 @@ class DailySummaryBusiness(BaseProcessor):
         # 内容是按照顺序排列的，所以天然可以分组，还是用card_registry里的方法。
 
         main_color = (
-            daily_raw_data.get("routine", {}).get("data", {}).get("daily", {}).get("main_color", {})
+            daily_raw_data.get("routine", {})
+            .get("data", {})
+            .get("daily", {})
+            .get("main_color", {})
         )
         main_color_name = main_color.get("name", "独特的颜色")
         header_template = (
@@ -1259,6 +1570,7 @@ class DailySummaryBusiness(BaseProcessor):
         image_key = routine_data.get("daily", {}).get("image_key", "")
         main_color = routine_data.get("daily", {}).get("main_color", {})
         weekly_data = routine_data.get("weekly_card", {})
+        weekly_document = routine_data.get("weekly_document", {})
 
         if image_key:
             image_element = JsonBuilder.build_image_element(
@@ -1270,6 +1582,10 @@ class DailySummaryBusiness(BaseProcessor):
                 size="80px 90px",
             )
             elements.append(image_element)
+
+        if weekly_document:
+            # 这里直接添加文档，还需要异步调用llm？这个似乎不应该是前端做的事，那就先增加文档吧。
+            pass
 
         # 构建表格结构
         if weekly_data:
