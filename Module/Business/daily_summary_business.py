@@ -639,6 +639,8 @@ class DailySummaryBusiness(BaseProcessor):
         formatted_weekly_data = {}
         weekly_document: Dict[str, Any] = {}
         if weekly_raw:
+            # 生成周文档
+            weekly_document = self.analyze_weekly_document(weekly_raw)
             # 生成卡片用时间表
             formatted_weekly_data = self.format_table_data(
                 weekly_raw.get("records", []),
@@ -646,8 +648,7 @@ class DailySummaryBusiness(BaseProcessor):
                 weekly_raw.get("event_map"),
                 weekly_raw.get("granularity_minutes", 120),
             )
-            # 生成周文档
-            weekly_document = self.analyze_weekly_document(weekly_raw)
+            weekly_document["timetable"] = formatted_weekly_data
 
         # 分析routine数据，包括日、周、月、季、年
         # 日：待办事项，提醒事项，image_key，主颜色
@@ -656,8 +657,7 @@ class DailySummaryBusiness(BaseProcessor):
 
         routine_info = {
             "daily": routine_data.get("daily", {}),
-            "weekly_card": formatted_weekly_data,
-            "weekly_document": weekly_document,
+            "weekly": weekly_document,
         }
         return routine_info
 
@@ -947,6 +947,16 @@ class DailySummaryBusiness(BaseProcessor):
             )
             .reset_index()
         )
+        event_map = weekly_raw.get("event_map", {})
+        category_color_map = {}
+        for event_info in event_map.values():
+            category_color_map[event_info.get("category", "")] = event_info.get(
+                "color"
+            ).pie_color
+
+        category_stats["color"] = category_stats["category"].map(
+            lambda x: category_color_map.get(x, "#959BEE")
+        )
 
         if total_minutes > 0:
             category_stats["category_duration_percent"] = (
@@ -965,6 +975,7 @@ class DailySummaryBusiness(BaseProcessor):
                                 "category_total_count": 0,
                                 "category_total_duration": unrecorded_minutes,
                                 "category_duration_percent": unrecorded_percent,
+                                "color": "#d0d3d6",  # 灰色
                             }
                         ]
                     ),
@@ -999,33 +1010,11 @@ class DailySummaryBusiness(BaseProcessor):
         else:
             note_infos = []
 
-        content = {
-            "index": 0,
-            "children_id": ["heading_timetable", "table_timetable"],
-            "descendants": [
-                {
-                    "block_id": "heading_timetable",
-                    "block_type": 4,
-                    "heading2": {"elements": [{"text_run": {"content": "个人时间表"}}]},
-                    "children": [],
-                },
-                {
-                    "block_id": "table_timetable",
-                    "block_type": 2,
-                    "text": {
-                        "elements": [{"text_run": {"content": "\n".join(note_infos)}}]
-                    },
-                    "children": [],
-                },
-            ],
-        }
-
         return {
             "note_list": note_infos,
             "event_summary": summary_df.to_dict(orient="records"),
             "category_stats": category_stats.to_dict(orient="records"),
             "document_title": document_title,
-            "content": content,
         }
 
     def _extract_interval_type(self, properties):
@@ -1610,8 +1599,7 @@ class DailySummaryBusiness(BaseProcessor):
         elements = []
         image_key = routine_data.get("daily", {}).get("image_key", "")
         main_color = routine_data.get("daily", {}).get("main_color", {})
-        weekly_data = routine_data.get("weekly_card", {})
-        weekly_document = routine_data.get("weekly_document", {})
+        weekly_data = routine_data.get("weekly", {})
 
         if image_key:
             image_element = JsonBuilder.build_image_element(
@@ -1624,7 +1612,35 @@ class DailySummaryBusiness(BaseProcessor):
             )
             elements.append(image_element)
 
-        if weekly_document:
+        if weekly_data:
+            # 先增加card里的内容，再把其他内容创建成文档
+            pie_raw_data = weekly_data.get("category_stats", [])
+
+            if pie_raw_data:
+                pie_data = []
+                color_mapping = {}  # 用于存储类型到颜色的映射
+                for item in pie_raw_data:
+                    type_name = item.get("category", "") or "无分类"
+                    color = item.get("color", "#959BEE")  # 默认颜色
+
+                    pie_data.append(
+                        {
+                            "type": type_name,
+                            "value": round(
+                                item.get("category_total_duration", 0) / 60, 1
+                            ),
+                        }
+                    )
+                    color_mapping[type_name] = color
+                pie_element = JsonBuilder.build_chart_element(
+                    chart_type="pie",
+                    title="上周时间统计",
+                    data=pie_data,
+                    color_mapping=color_mapping,
+                    formatter="{type}: {value}小时,{_percent_}%",
+                )
+                elements.append(pie_element)
+
             # 这里直接添加文档，还需要异步调用llm？这个似乎不应该是前端做的事，那就先增加文档吧。
             # 这里的业务逻辑结果就是往一个tokens的文件夹增加一个page，存在本地
             weekly_record = self.routine_business.load_weekly_record(user_id)
@@ -1651,7 +1667,7 @@ class DailySummaryBusiness(BaseProcessor):
             if need_update_tokens:
                 self.routine_business.save_weekly_record(user_id, weekly_record)
 
-            title = weekly_document.get("document_title", "")
+            title = weekly_data.get("document_title", "")
             # 原子化同步调用：先创建文档，再写入块（均带指数退避）。如需非阻塞，未来切换到异步客户端统一调度。
             doc_data = document_manager.create_document(
                 folder_token=business_folder_token,
@@ -1680,72 +1696,6 @@ class DailySummaryBusiness(BaseProcessor):
             else:
                 debug_utils.log_and_print("创建周报告文档失败", log_level="ERROR")
 
-        # 构建表格结构
-        if weekly_data:
-            elements.append(JsonBuilder.build_markdown_element("上周时间表"))
-            columns = []
-            columns.append(
-                JsonBuilder.build_table_column_element(
-                    name="time",
-                    display_name="时间",
-                    data_type="text",
-                    width="80px",
-                )
-            )
-            day_dict = {
-                "mon": "周一",
-                "tue": "周二",
-                "wed": "周三",
-                "thu": "周四",
-                "fri": "周五",
-                "sat": "周六",
-                "sun": "周日",
-            }
-            for day_key, day_name in day_dict.items():
-                columns.append(
-                    JsonBuilder.build_table_column_element(
-                        name=day_key,
-                        display_name=day_name,
-                        data_type="options",
-                        width="120px",
-                    )
-                )
-            table_element = JsonBuilder.build_table_element(
-                columns=columns,
-                rows=[],
-                freeze_first_column=True,
-            )
-
-            time_labels = weekly_data.get("time_labels", [])
-            days_data = weekly_data.get("days", {})
-
-            DEFAULT_SLOT_DATA = {
-                "text": "空闲",
-                "color": ColorTypes.GREY,
-                "category_label": "空闲",
-            }
-
-            for time_label in time_labels:
-                row = {"time": time_label}
-
-                for day_key in day_dict.keys():
-                    day_data = days_data.get(day_key, {})
-                    slot_data = day_data.get(time_label, DEFAULT_SLOT_DATA)
-
-                    row[day_key] = [
-                        {
-                            "text": slot_data.get(
-                                "text", DEFAULT_SLOT_DATA.get("text")
-                            ),
-                            "color": slot_data.get(
-                                "color", DEFAULT_SLOT_DATA.get("color")
-                            ).option_value,
-                        }
-                    ]
-
-                table_element["rows"].append(row)
-
-            elements.append(table_element)
         return elements
 
     def generate_weekly_document_content(
@@ -1754,8 +1704,8 @@ class DailySummaryBusiness(BaseProcessor):
         """生成周报告文档内容(也可能兼容成月报)"""
         # 以嵌套块的方式一次性组装好
         # 每个元素都包含了自己的id进children和自己的内容，进descendants
-        weekly_data = routine_data.get("weekly_card", {})
-        weekly_document = routine_data.get("weekly_document", {})
+        weekly_data = routine_data.get("weekly", {})
+        weekly_table_data = routine_data.get("weekly", {}).get("timetable", {})
 
         children = []
         descendants = []
@@ -1765,8 +1715,8 @@ class DailySummaryBusiness(BaseProcessor):
         ).cloud_manager
 
         # 安全获取数据
-        time_labels: List[str] = weekly_data.get("time_labels", [])
-        days_data: Dict[str, Any] = weekly_data.get("days", {})
+        time_labels: List[str] = weekly_table_data.get("time_labels", [])
+        days_data: Dict[str, Any] = weekly_table_data.get("days", {})
 
         # 顶层 children（两个块：标题 + 表格）
         heading_block_id = "heading_timetable"
@@ -1784,7 +1734,7 @@ class DailySummaryBusiness(BaseProcessor):
 
         note_block = document_manager.create_text_block(
             block_id=note_block_id,
-            text="\n".join(weekly_document.get("note_list", [])),
+            text="\n".join(weekly_data.get("note_list", [])),
         )
         descendants.append(note_block)
 
@@ -1938,5 +1888,78 @@ class DailySummaryBusiness(BaseProcessor):
                 "text_element_id": f"bili_video_{video_index}",
             },
         )
+
+    # endregion
+
+    # region 历史方法缓存
+    def generate_weekly_card_content(
+        self, weekly_table_data: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """生成周报告卡片内容"""
+        elements = []
+        elements.append(JsonBuilder.build_markdown_element("上周时间表"))
+        columns = []
+        columns.append(
+            JsonBuilder.build_table_column_element(
+                name="time",
+                display_name="时间",
+                data_type="text",
+                width="80px",
+            )
+        )
+        day_dict = {
+            "mon": "周一",
+            "tue": "周二",
+            "wed": "周三",
+            "thu": "周四",
+            "fri": "周五",
+            "sat": "周六",
+            "sun": "周日",
+        }
+        for day_key, day_name in day_dict.items():
+            columns.append(
+                JsonBuilder.build_table_column_element(
+                    name=day_key,
+                    display_name=day_name,
+                    data_type="options",
+                    width="120px",
+                )
+            )
+        table_element = JsonBuilder.build_table_element(
+            columns=columns,
+            rows=[],
+            freeze_first_column=True,
+        )
+
+        time_labels = weekly_table_data.get("time_labels", [])
+        days_data = weekly_table_data.get("days", {})
+
+        DEFAULT_SLOT_DATA = {
+            "text": "空闲",
+            "color": ColorTypes.GREY,
+            "category_label": "空闲",
+        }
+
+        for time_label in time_labels:
+            row = {"time": time_label}
+
+            for day_key in day_dict.keys():
+                day_data = days_data.get(day_key, {})
+                slot_data = day_data.get(time_label, DEFAULT_SLOT_DATA)
+
+                row[day_key] = [
+                    {
+                        "text": slot_data.get("text", DEFAULT_SLOT_DATA.get("text")),
+                        "color": slot_data.get(
+                            "color", DEFAULT_SLOT_DATA.get("color")
+                        ).option_value,
+                    }
+                ]
+
+            table_element["rows"].append(row)
+
+        elements.append(table_element)
+
+        return elements
 
     # endregion

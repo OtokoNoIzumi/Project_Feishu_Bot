@@ -297,6 +297,62 @@ class JsonBuilder:
             final_element["size"] = size
         return final_element
 
+    @staticmethod
+    def build_chart_element(
+        chart_type: str,
+        title: str,
+        data: List[Dict[str, Any]],
+        chart_spec: Dict[str, Any] = None,
+        color_mapping: Dict[str, str] = None,
+        formatter: str = "",
+    ) -> Dict[str, Any]:
+        """构建图表元素"""
+        final_element = {
+            "tag": "chart",
+        }
+        if chart_spec:
+            final_element["chart_spec"] = chart_spec
+        else:
+            final_element["chart_spec"] = {
+                "type": chart_type,
+            }
+            if chart_type == "pie":
+                value_field = (
+                    "value" if data and "value" in data[0].keys() else data[0].keys()[1]
+                )
+                category_field = (
+                    "type" if data and "type" in data[0].keys() else data[0].keys()[0]
+                )
+                final_element["chart_spec"]["valueField"] = value_field
+                final_element["chart_spec"]["categoryField"] = category_field
+                final_element["chart_spec"]["outerRadius"] = 0.7
+                final_element["chart_spec"]["innerRadius"] = 0.3
+                final_element["chart_spec"]["legends"] = {
+                    "visible": True,
+                    "orient": "bottom",
+                    "maxRow": 3,
+                }
+                final_element["chart_spec"]["label"] = {
+                    "visible": True,
+                }
+                if formatter:
+                    final_element["chart_spec"]["label"]["formatter"] = formatter
+
+        if title:
+            final_element["chart_spec"]["title"] = {"text": title}
+        if data:
+            final_element["chart_spec"]["data"] = {"values": data}
+            if color_mapping:
+                category_field = (
+                    "type" if data and "type" in data[0].keys() else data[0].keys()[0]
+                )
+                colors = [
+                    color_mapping.get(item.get(category_field), "#959BEE")
+                    for item in data
+                ]
+                final_element["chart_spec"]["color"] = colors
+        return final_element
+
     # endregion
 
     # region 组合结构

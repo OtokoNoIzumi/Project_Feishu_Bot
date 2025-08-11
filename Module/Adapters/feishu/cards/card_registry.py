@@ -472,6 +472,9 @@ class BaseCardManager(ABC):
     def build_form_element(self, *args, **kwargs):
         return JsonBuilder.build_form_element(*args, **kwargs)
 
+    def build_chart_element(self, *args, **kwargs):
+        return JsonBuilder.build_chart_element(*args, **kwargs)
+
     # endregion
 
 
