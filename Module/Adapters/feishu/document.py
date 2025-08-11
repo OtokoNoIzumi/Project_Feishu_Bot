@@ -13,15 +13,15 @@
 import os
 import time
 import asyncio
-from typing import Dict, Any
-from typing import Callable, Any, Optional
+from typing import Dict, Any, List, Callable, Optional
 
 from Module.Common.scripts.common import debug_utils
 from Module.Services.constants import ServiceNames
 from Module.Services.service_decorators import require_service
 
 from lark_oapi.api.drive.v1 import (
-    CreateFolderFileRequest, CreateFolderFileRequestBody,
+    CreateFolderFileRequest,
+    CreateFolderFileRequestBody,
     CreateFolderFileResponse,
     ListFileRequest,
     ListFileResponse,
@@ -35,9 +35,9 @@ from lark_oapi.api.docx.v1 import (
     CreateDocumentRequestBody,
     CreateDocumentResponse,
     CreateDocumentBlockDescendantRequest,
-    CreateDocumentBlockDescendantRequestBody,
     CreateDocumentBlockDescendantResponse,
 )
+
 
 class FeishuDocument:
     """
@@ -63,16 +63,24 @@ class FeishuDocument:
         """
         创建文件夹
         """
-        request: CreateFolderFileRequest = CreateFolderFileRequest.builder() \
-            .request_body(CreateFolderFileRequestBody.builder()
+        request: CreateFolderFileRequest = (
+            CreateFolderFileRequest.builder()
+            .request_body(
+                CreateFolderFileRequestBody.builder()
                 .name(folder_name)
                 .folder_token(folder_token)
-                .build()) \
+                .build()
+            )
             .build()
+        )
         # 发起请求
-        response: CreateFolderFileResponse = self.client.drive.v1.file.create_folder(request)
+        response: CreateFolderFileResponse = self.client.drive.v1.file.create_folder(
+            request
+        )
         if not response.success():
-            debug_utils.log_and_print(f"创建文件夹失败: {response.code} - {response.msg}", log_level="ERROR")
+            debug_utils.log_and_print(
+                f"创建文件夹失败: {response.code} - {response.msg}", log_level="ERROR"
+            )
             return {}
 
         return response.data
@@ -82,41 +90,54 @@ class FeishuDocument:
         授予用户根目录文件夹所有权限
         """
 
-        request: CreatePermissionMemberRequest = CreatePermissionMemberRequest.builder() \
-            .token(root_folder_token) \
-            .type("folder") \
-            .need_notification(False) \
-            .request_body(BaseMember.builder()
+        request: CreatePermissionMemberRequest = (
+            CreatePermissionMemberRequest.builder()
+            .token(root_folder_token)
+            .type("folder")
+            .need_notification(False)
+            .request_body(
+                BaseMember.builder()
                 .member_type("openid")
                 .member_id(user_id)
                 .perm("full_access")
                 .perm_type("container")
                 .type("user")
-                .build()) \
+                .build()
+            )
             .build()
+        )
 
         # 发起请求
-        response: CreatePermissionMemberResponse = self.client.drive.v1.permission_member.create(request)
+        response: CreatePermissionMemberResponse = (
+            self.client.drive.v1.permission_member.create(request)
+        )
         if not response.success():
-            debug_utils.log_and_print(f"授予用户根目录文件夹所有权限失败: {response.code} - {response.msg}", log_level="ERROR")
+            debug_utils.log_and_print(
+                f"授予用户根目录文件夹所有权限失败: {response.code} - {response.msg}",
+                log_level="ERROR",
+            )
             return False
 
         return True
 
-    def get_file_list(self, folder_token: str=""):
+    def get_file_list(self, folder_token: str = ""):
         """
         获取文件列表
         """
-        request: ListFileRequest = ListFileRequest.builder() \
-            .page_token(folder_token) \
-            .order_by("EditedTime") \
-            .direction("DESC") \
+        request: ListFileRequest = (
+            ListFileRequest.builder()
+            .page_token(folder_token)
+            .order_by("EditedTime")
+            .direction("DESC")
             .build()
+        )
 
         # 发起请求
         response: ListFileResponse = self.client.drive.v1.file.list(request)
         if not response.success():
-            debug_utils.log_and_print(f"获取文件列表失败: {response.code} - {response.msg}", log_level="ERROR")
+            debug_utils.log_and_print(
+                f"获取文件列表失败: {response.code} - {response.msg}", log_level="ERROR"
+            )
             return []
 
         return response.data.files
@@ -134,12 +155,16 @@ class FeishuDocument:
         Returns:
             Any: SDK 返回的 data（成功）或 {}（失败）
         """
-        request: CreateDocumentRequest = CreateDocumentRequest.builder() \
-            .request_body(CreateDocumentRequestBody.builder()
+        request: CreateDocumentRequest = (
+            CreateDocumentRequest.builder()
+            .request_body(
+                CreateDocumentRequestBody.builder()
                 .folder_token(folder_token)
                 .title(document_title)
-                .build()) \
+                .build()
+            )
             .build()
+        )
 
         def call():
             return self.client.docx.v1.document.create(request)
@@ -168,7 +193,13 @@ class FeishuDocument:
 
         return {}
 
-    def create_document_block_descendant(self, document_id: str , block_data: Dict[str, Any], block_id: str = "", document_title: str = ""):
+    def create_document_block_descendant(
+        self,
+        document_id: str,
+        block_data: Dict[str, Any],
+        block_id: str = "",
+        document_title: str = "",
+    ):
         """
         创建文档块的子嵌套块（同步调用，带指数退避重试）
 
@@ -178,12 +209,14 @@ class FeishuDocument:
             # 文档根节点可以省略block_id
             block_id = document_id
 
-        request: CreateDocumentBlockDescendantRequest = CreateDocumentBlockDescendantRequest.builder() \
-            .document_id(document_id) \
-            .block_id(block_id) \
-            .document_revision_id(-1) \
-            .request_body(block_data) \
+        request: CreateDocumentBlockDescendantRequest = (
+            CreateDocumentBlockDescendantRequest.builder()
+            .document_id(document_id)
+            .block_id(block_id)
+            .document_revision_id(-1)
+            .request_body(block_data)
             .build()
+        )
 
         def call():
             return self.client.docx.v1.document_block_descendant.create(request)
@@ -209,7 +242,140 @@ class FeishuDocument:
             )
         return {}
 
+    # endregion
 
+    # region 块内容枚举方法
+
+    def create_descendant_block_body(
+        self, index: int = 0, children: List[str] = [], descendants: List[str] = []
+    ):
+        """
+        创建块内容，用于创建块的子嵌套块
+        """
+        block_data = {
+            "index": index,
+            "children_id": children,
+            "descendants": descendants,
+        }
+        return block_data
+
+    def create_table_block(
+        self,
+        row_size: int,
+        column_size: int,
+        block_id: str = "",
+        children: List[str] = [],
+        column_width: List[int] = [],
+        header_row: bool = False,
+        header_column: bool = False,
+    ):
+        """
+        创建表格块
+        """
+        block_data = {
+            "block_id": block_id,
+            "block_type": 31,
+            "table": {
+                "property": {
+                    "row_size": row_size,
+                    "column_size": column_size,
+                    "column_width": column_width,
+                    "header_row": header_row,
+                    "header_column": header_column,
+                }
+            },
+            "children": children,
+        }
+        return block_data
+
+    def create_table_cell_block(self, block_id: str = "", children: List[str] = []):
+        """
+        创建表格单元格块
+        """
+        block_data = {
+            "block_id": block_id,
+            "block_type": 32,
+            "table_cell": {},
+            "children": children,
+        }
+        return block_data
+
+    def create_text_block(
+        self,
+        block_id: str = "",
+        text: str = "",
+        background_color: int = -1,
+        align: int = 1,
+    ):
+        """
+        创建文本块
+        """
+
+        block_data = {
+            "block_id": block_id,
+            "block_type": 2,
+            "text": {
+                "elements": [
+                    {
+                        "text_run": {
+                            "content": text,
+                        },
+                    }
+                ],
+            },
+            "children": [],
+        }
+        if background_color != -1:
+            block_data["text"]["elements"][0]["text_run"]["text_element_style"] = {
+                "background_color": background_color,
+            }
+        if align != 1:
+            block_data["text"]["style"] = {
+                "align": align,
+            }
+        return block_data
+
+    FORMATED_TEXT_BLOCK_TYPE = {
+        "heading1": 3,
+        "heading2": 4,
+        "heading3": 5,
+        "heading4": 6,
+        "heading5": 7,
+        "heading6": 8,
+        "heading7": 9,
+        "heading8": 10,
+        "heading9": 11,
+    }
+
+    def create_formated_text_block(
+        self,
+        block_id: str = "",
+        text: str = "",
+        background_color: int = -1,
+        block_type: str = "heading1",
+    ):
+        """
+        创建格式化文本块
+        """
+        block_data = {
+            "block_id": block_id,
+            "block_type": self.FORMATED_TEXT_BLOCK_TYPE[block_type],
+            block_type: {
+                "elements": [
+                    {
+                        "text_run": {
+                            "content": text,
+                        },
+                    }
+                ],
+            },
+            "children": [],
+        }
+        if background_color != -1:
+            block_data["text"]["elements"][0]["text_run"]["text_element_style"] = {
+                "background_color": background_color,
+            }
+        return block_data
 
     # endregion
 
@@ -228,8 +394,9 @@ class FeishuDocument:
 
         return None
 
-
-    def create_user_business_folder(self, root_folder_token: str, business_folder_name: str):
+    def create_user_business_folder(
+        self, root_folder_token: str, business_folder_name: str
+    ):
         """
         创建用户业务目录文件夹，并储存tokens
         """
@@ -254,7 +421,9 @@ class FeishuDocument:
         folder_info = self.create_user_root_folder(user_id)
         return folder_info.token
 
-    def get_user_business_folder_token(self, user_id: str, business_folder_name: str, root_folder_token: str = ""):
+    def get_user_business_folder_token(
+        self, user_id: str, business_folder_name: str, root_folder_token: str = ""
+    ):
         """
         获取用户业务目录文件夹token
         """
@@ -267,13 +436,14 @@ class FeishuDocument:
             if (file.name == business_folder_name) and (file.type == "folder"):
                 return file.token
 
-        folder_info = self.create_user_business_folder(root_folder_token, business_folder_name)
+        folder_info = self.create_user_business_folder(
+            root_folder_token, business_folder_name
+        )
         return folder_info.token
 
     # endregion
 
     # region 辅助方法
-
 
     # 同步退避重试为唯一实现；移除本模块的线程/Future 异步封装
 
@@ -287,7 +457,9 @@ class FeishuDocument:
         max_retries: int = 5,
         initial_backoff: int = 1,
         max_backoff: int = 16,
-        is_retryable: Optional[Callable[[Optional[Any], Optional[Exception]], bool]] = None,
+        is_retryable: Optional[
+            Callable[[Optional[Any], Optional[Exception]], bool]
+        ] = None,
         describe: str = "",
     ) -> Any:
         backoff = initial_backoff
@@ -312,12 +484,14 @@ class FeishuDocument:
                     time.sleep(backoff)
                     backoff = min(backoff * 2, max_backoff)
                     continue
-                debug_utils.log_and_print(f"{describe}异常: {str(e)}", log_level="ERROR")
+                debug_utils.log_and_print(
+                    f"{describe}异常: {str(e)}", log_level="ERROR"
+                )
                 return None
         debug_utils.log_and_print(f"{describe}多次限频重试后仍失败", log_level="ERROR")
         return None
-    # endregion
 
+    # endregion
 
     # 这是一些功能逻辑规划
     # 创建用户根目录文件夹并储存tokens，但documents模块本身不管理tokens，由用户模块来实现

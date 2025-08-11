@@ -522,7 +522,7 @@ class DailySummaryBusiness(BaseProcessor):
 
     # endregion
 
-    # region 日常分析
+    # region 日常分析-总
     def get_routine_data(self, data_params: Dict[str, Any] = None) -> Dict[str, Any]:
         """获取日常分析数据（总入口）"""
         if not data_params:
@@ -554,6 +554,10 @@ class DailySummaryBusiness(BaseProcessor):
         }
 
         return routine_data
+
+    # endregion
+
+    # region 日常分析-日
 
     def get_daily_data(self, user_id: str = None) -> Dict[str, Any]:
         """获取日分析数据"""
@@ -592,6 +596,9 @@ class DailySummaryBusiness(BaseProcessor):
             "color_palette": color_palette,
         }
 
+    # endregion
+
+    # region 日常分析-周
     def get_weekly_data(
         self, user_id: str = None, granularity_minutes: int = 120
     ) -> Dict[str, Any]:
@@ -1657,9 +1664,10 @@ class DailySummaryBusiness(BaseProcessor):
                 else None
             )
             if document_id:
+                content = self.generate_weekly_document_content(routine_data)
                 block_resp = document_manager.create_document_block_descendant(
                     document_id=document_id,
-                    block_data=weekly_document.get("content", {}),
+                    block_data=content,
                     document_title=title,
                 )
                 url = f"https://ddsz-peng13.feishu.cn/docx/{document_id}"
@@ -1739,6 +1747,165 @@ class DailySummaryBusiness(BaseProcessor):
 
             elements.append(table_element)
         return elements
+
+    def generate_weekly_document_content(
+        self, routine_data: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """生成周报告文档内容(也可能兼容成月报)"""
+        # 以嵌套块的方式一次性组装好
+        # 每个元素都包含了自己的id进children和自己的内容，进descendants
+        weekly_data = routine_data.get("weekly_card", {})
+        weekly_document = routine_data.get("weekly_document", {})
+
+        children = []
+        descendants = []
+        # 先构建表格
+        document_manager = self.app_controller.get_adapter(
+            AdapterNames.FEISHU
+        ).cloud_manager
+
+        # 安全获取数据
+        time_labels: List[str] = weekly_data.get("time_labels", [])
+        days_data: Dict[str, Any] = weekly_data.get("days", {})
+
+        # 顶层 children（两个块：标题 + 表格）
+        heading_block_id = "heading_timetable"
+        note_block_id = "note_timetable"
+        table_block_id = "table_timetable"
+        children = [heading_block_id, note_block_id, table_block_id]
+
+        # 标题块（采用 heading1）
+        heading_block = document_manager.create_formated_text_block(
+            block_id=heading_block_id,
+            text="个人时间表",
+            block_type="heading1",
+        )
+        descendants.append(heading_block)
+
+        note_block = document_manager.create_text_block(
+            block_id=note_block_id,
+            text="\n".join(weekly_document.get("note_list", [])),
+        )
+        descendants.append(note_block)
+
+        # 表头映射
+        day_label_map = {
+            "mon": "周一",
+            "tue": "周二",
+            "wed": "周三",
+            "thu": "周四",
+            "fri": "周五",
+            "sat": "周六",
+            "sun": "周日",
+        }
+        day_keys: List[str] = list(day_label_map.keys())
+
+        # 表格 children 顺序：按行 (header -> 每个时间点)，每行按列 (time -> mon..sun)
+        table_children_ids: List[str] = []
+
+        # 表头行 cell 与文本
+        header_cell_ids = ["cell_header_time"] + [
+            f"cell_header_{day}" for day in day_keys
+        ]
+        header_text_ids = ["text_header_time"] + [
+            f"text_header_{day}" for day in day_keys
+        ]
+        table_children_ids.extend(header_cell_ids)
+
+        # 添加表头 cell 与 text 块
+        # 时间列表头
+        descendants.append(
+            document_manager.create_table_cell_block(
+                block_id=header_cell_ids[0], children=[header_text_ids[0]]
+            )
+        )
+        descendants.append(
+            document_manager.create_text_block(
+                block_id=header_text_ids[0], text="时间", align=2
+            )
+        )
+        # 星期列表头
+        for idx, day in enumerate(day_keys, start=1):
+            descendants.append(
+                document_manager.create_table_cell_block(
+                    block_id=header_cell_ids[idx], children=[header_text_ids[idx]]
+                )
+            )
+            descendants.append(
+                document_manager.create_text_block(
+                    block_id=header_text_ids[idx], text=day_label_map[day], align=2
+                )
+            )
+
+        # 数据行 cell 与文本
+        for time_label in time_labels:
+            # 使用小时作为 id 片段，如 "00"、"02"、"12" 等
+            row_cell_ids = [f"cell_{time_label}"] + [
+                f"cell_{time_label}_{day}" for day in day_keys
+            ]
+            row_text_ids = [f"text_{time_label}"] + [
+                f"text_{time_label}_{day}" for day in day_keys
+            ]
+            table_children_ids.extend(row_cell_ids)
+
+            # 时间列单元格
+            descendants.append(
+                document_manager.create_table_cell_block(
+                    block_id=row_cell_ids[0], children=[row_text_ids[0]]
+                )
+            )
+            descendants.append(
+                document_manager.create_text_block(
+                    block_id=row_text_ids[0], text=time_label, align=2
+                )
+            )
+
+            # 每天列单元格
+            for col_index, day in enumerate(day_keys, start=1):
+                # 取对应槽位数据
+                slot_info: Dict[str, Any] = days_data.get(day, {}).get(time_label, {})
+                slot_text: str = slot_info.get("text", "")
+                slot_color = slot_info.get("color", None)
+                background_color_id = (
+                    slot_color.background_color_id
+                    if hasattr(slot_color, "background_color_id")
+                    else -1
+                )
+
+                descendants.append(
+                    document_manager.create_table_cell_block(
+                        block_id=row_cell_ids[col_index],
+                        children=[row_text_ids[col_index]],
+                    )
+                )
+                descendants.append(
+                    document_manager.create_text_block(
+                        block_id=row_text_ids[col_index],
+                        text=slot_text,
+                        background_color=background_color_id,
+                        align=2,
+                    )
+                )
+
+        # 表格块
+        row_size = 1 + len(time_labels)
+        column_size = 1 + len(day_keys)
+        table_block = document_manager.create_table_block(
+            row_size=row_size,
+            column_size=column_size,
+            block_id=table_block_id,
+            children=table_children_ids,
+            column_width=[70] + [110] * len(day_keys),
+            header_row=True,
+            header_column=True,
+        )
+        descendants.append(table_block)
+
+        # 组合顶层内容
+        content = document_manager.create_descendant_block_body(
+            index=0, children=children, descendants=descendants
+        )
+        return content
 
     # endregion
 
