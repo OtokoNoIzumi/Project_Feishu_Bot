@@ -147,23 +147,24 @@ def hsl_to_hex(h: float, s: float, l: float) -> str:
     return rgb_to_hex(r, g, b)
 
 
-def format_time_label(minutes: int) -> str:
+def format_time_label(minutes: int, mode: str = "auto") -> str:
     """
     格式化时间标签
 
     Args:
         minutes: 分钟数
+        mode: 格式化模式，可选 "auto"（默认，自动天/小时/分钟）, "hour"（只到小时）, "minute"（只分钟）
 
     Returns:
         str: 格式化后的时间标签
     """
-    if minutes > 1440:
-        days = int(minutes // 1440)
-        hours = round((minutes % 1440) / 60, 1)
-        return f"{days}天{hours}小时"
-    elif minutes > 60:
-        hours = int(minutes // 60)
-        minutes = int(minutes % 60)
-        return f"{hours}小时{minutes}分钟"
-    else:
+    if mode == "minute" or minutes <= 60:
         return f"{int(minutes)}分钟"
+    if mode == "hour" or (mode == "auto" and minutes <= 1440):
+        h = int(minutes // 60)
+        m = int(minutes % 60)
+        return f"{h}小时{m}分钟" if m else f"{h}小时"
+    # mode == "auto" and minutes > 1440
+    d = int(minutes // 1440)
+    h = round((minutes % 1440) / 60, 1)
+    return f"{d}天{h}小时"
