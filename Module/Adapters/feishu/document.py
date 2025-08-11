@@ -377,6 +377,18 @@ class FeishuDocument:
             }
         return block_data
 
+    def create_quote_block(self, block_id: str = "", children: List[str] = []):
+        """
+        创建引用块
+        """
+        block_data = {
+            "block_id": block_id,
+            "block_type": 34,
+            "quote_container": {},
+            "children": children,
+        }
+        return block_data
+
     # endregion
 
     # region 用户文件夹管理
