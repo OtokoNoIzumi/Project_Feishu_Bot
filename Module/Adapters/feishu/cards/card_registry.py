@@ -5,7 +5,7 @@
 """
 
 import json
-from abc import ABC, abstractmethod
+from abc import ABC
 from typing import Dict, Any, Optional, List, Callable
 from functools import wraps
 from lark_oapi.event.callback.model.p2_card_action_trigger import (
@@ -123,10 +123,6 @@ class BaseCardManager(ABC):
 
         return decorator
 
-    @abstractmethod
-    def build_card(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """构建卡片内容 - 子类必须实现"""
-
     def get_card_name_by_config_key(self, card_config_key=None):
         """获取指定配置键的卡片名称"""
         if self.single_instance:
@@ -243,10 +239,9 @@ class BaseCardManager(ABC):
                 card_id = self.sender.create_card_entity(card_content)
                 if card_id:
                     # 在这里储存cardid和core_data，存到内存里的user的里面，还有一个堆栈——基本和pending是一套逻辑。
-                    user_service = self.app_controller.get_service(
+                    self.app_controller.get_service(
                         ServiceNames.USER_BUSINESS_PERMISSION
-                    )
-                    user_service.save_new_card_business_data(
+                    ).save_new_card_business_data(
                         kwargs.get("user_id"), card_id, kwargs.get("business_data", {})
                     )
                     card_content = {"type": "card", "data": {"card_id": card_id}}
@@ -299,6 +294,14 @@ class BaseCardManager(ABC):
                 )
                 return False, None
 
+    def generate_bubble_response(
+        self, toast_message: str, toast_type: str = "success"
+    ) -> P2CardActionTriggerResponse:
+        """生成气泡响应"""
+        return P2CardActionTriggerResponse(
+            {"toast": {"type": toast_type, "content": toast_message}}
+        )
+
     def get_core_data(self, context: MessageContext_Refactor):
         """获取卡片核心数据"""
         message_id = context.message_id
@@ -340,10 +343,10 @@ class BaseCardManager(ABC):
         if sub_business_name:
             # 给了名字但在深度限制内都没找到，返回原始数据
             return business_data, False
-        else:
-            # 没给名字，返回走到的最深层
-            is_container_mode = node is not business_data
-            return node, is_container_mode
+
+        # 没给名字，返回走到的最深层
+        is_container_mode = node is not business_data
+        return node, is_container_mode
 
     def save_and_respond_with_update(
         self,
@@ -419,60 +422,79 @@ class BaseCardManager(ABC):
 
     # region json卡片方法
     def build_base_card_structure(self, *args, **kwargs):
+        """向后兼容的调用路径"""
         return JsonBuilder.build_base_card_structure(*args, **kwargs)
 
     def build_input_element(self, *args, **kwargs):
+        """向后兼容的调用路径"""
         return JsonBuilder.build_input_element(*args, **kwargs)
 
     def build_card_header(self, *args, **kwargs):
+        """向后兼容的调用路径"""
         return JsonBuilder.build_card_header(*args, **kwargs)
 
     def build_status_based_header(self, *args, **kwargs):
+        """向后兼容的调用路径"""
         return JsonBuilder.build_status_based_header(*args, **kwargs)
 
     def build_form_row(self, *args, **kwargs):
+        """向后兼容的调用路径"""
         return JsonBuilder.build_form_row(*args, **kwargs)
 
     def build_select_element(self, *args, **kwargs):
+        """向后兼容的调用路径"""
         return JsonBuilder.build_select_element(*args, **kwargs)
 
     def build_date_picker_element(self, *args, **kwargs):
+        """向后兼容的调用路径"""
         return JsonBuilder.build_date_picker_element(*args, **kwargs)
 
     def build_checker_element(self, *args, **kwargs):
+        """向后兼容的调用路径"""
         return JsonBuilder.build_checker_element(*args, **kwargs)
 
     def build_multi_select_element(self, *args, **kwargs):
+        """向后兼容的调用路径"""
         return JsonBuilder.build_multi_select_element(*args, **kwargs)
 
     def build_markdown_element(self, *args, **kwargs):
+        """向后兼容的调用路径"""
         return JsonBuilder.build_markdown_element(*args, **kwargs)
 
     def build_line_element(self, *args, **kwargs):
+        """向后兼容的调用路径"""
         return JsonBuilder.build_line_element(*args, **kwargs)
 
     def build_options(self, *args, **kwargs):
+        """向后兼容的调用路径"""
         return JsonBuilder.build_options(*args, **kwargs)
 
     def build_button_element(self, *args, **kwargs):
+        """向后兼容的调用路径"""
         return JsonBuilder.build_button_element(*args, **kwargs)
 
     def build_column_set_element(self, *args, **kwargs):
+        """向后兼容的调用路径"""
         return JsonBuilder.build_column_set_element(*args, **kwargs)
 
     def build_column_element(self, *args, **kwargs):
+        """向后兼容的调用路径"""
         return JsonBuilder.build_column_element(*args, **kwargs)
 
     def build_button_group_element(self, *args, **kwargs):
+        """向后兼容的调用路径"""
         return JsonBuilder.build_button_group_element(*args, **kwargs)
 
     def build_collapsible_panel_element(self, *args, **kwargs):
+        """向后兼容的调用路径"""
         return JsonBuilder.build_collapsible_panel_element(*args, **kwargs)
 
     def build_form_element(self, *args, **kwargs):
+        """向后兼容的调用路径"""
         return JsonBuilder.build_form_element(*args, **kwargs)
 
     def build_chart_element(self, *args, **kwargs):
+        """向后兼容的调用路径"""
         return JsonBuilder.build_chart_element(*args, **kwargs)
 
     # endregion
