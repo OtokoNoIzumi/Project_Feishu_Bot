@@ -8,6 +8,8 @@
 """
 
 import os
+import json
+import copy
 from typing import Dict, Any, List
 from datetime import datetime, timedelta
 import random
@@ -179,6 +181,302 @@ class DailySummaryBusiness(BaseProcessor):
 
     # endregion
 
+    # region AI分析
+
+    # 视频分析部分
+    AI_VIDEO_ANALYSIS_BASE_INSTRUCTION = """你是一个专业的内容分析助理。
+
+**核心要求：**
+1. 优先汇报高价值内容：新技术突破、行业洞察、实用方法论
+2. 整合相似主题，避免重复信息
+3. 如果内容质量普遍一般，直接说"今日无特别重点"
+4. 控制在80字内，重质量不重数量
+5. **必须给出整体内容质量评分(0-10)**
+
+**判断标准：**
+- 优先级"高"且内容新颖 → 必须汇报
+- 多个UP主谈论同一热点 → 整合汇报
+- 纯娱乐、重复话题 → 可忽略
+- 实用工具、技术教程 → 重点关注
+
+**质量评分标准：**
+- 9-10分：有重大技术突破或深度洞察
+- 7-8分：有实用价值或新颖观点
+- 4-6分：普通内容，价值一般
+- 0-3分：纯娱乐或重复内容"""
+
+    def _build_video_system_instruction(self, focus_topics: List[str]) -> str:
+        """构建系统提示词"""
+        task_section = (
+            """
+**任务：**
+1. 分析今日视频清单，**智能判断真正有价值的重点**，而非简单罗列。
+2. 分析哪些视频与提供的关注话题相关，给出视频序号和关联度评分(0-10)
+
+**任务1输出格式：**
+如有重点：简洁说明几个关键内容点
+如无重点：直接说"今日待看内容以[主要类型]为主，无特别重点"
+
+**任务2话题匹配要求：**
+- 只返回与关注话题高度相关的视频
+- 关联度评分要准确(0-10，10表示最相关)
+- 没有相关的可以返回空数组"""
+            if focus_topics
+            else """
+**任务：**
+分析今日视频清单，**智能判断真正有价值的重点**，而非简单罗列。
+
+**输出格式：**
+如有重点：简洁说明几个关键内容点
+如无重点：直接说"今日待看内容以[主要类型]为主，无特别重点" """
+        )
+
+        return self.AI_VIDEO_ANALYSIS_BASE_INSTRUCTION + task_section
+
+    def _build_video_response_schema(self, has_focus_topics: bool) -> Dict[str, Any]:
+        """构建响应schema，根据业务需求返回不同结构"""
+        # 公共属性定义
+        base_properties = {
+            "summary": {"type": "string", "description": "今日内容汇总说明"},
+            "quality_score": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 10,
+                "description": "整体内容质量评分(0-10)",
+            },
+        }
+
+        base_required = ["summary", "quality_score"]
+
+        if has_focus_topics:
+            # 有关注话题时，需要返回匹配结果
+            base_properties["topic_matches"] = {
+                "type": "array",
+                "description": "与关注话题匹配的视频",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "video_id": {
+                            "type": "integer",
+                            "description": "视频序号(从1开始)",
+                        },
+                        "relevance_score": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 10,
+                            "description": "话题关联度评分(0-10)",
+                        },
+                    },
+                    "required": ["video_id", "relevance_score"],
+                },
+            }
+            base_required.append("topic_matches")
+
+        return {
+            "type": "object",
+            "properties": base_properties,
+            "required": base_required,
+        }
+
+    # 日常分析部分
+    AI_ROUTINE_ANALYSIS_BASE_INSTRUCTION = """
+# 角色与核心哲学
+你是一个名为“数字分身分析师”的有洞察力、能适应、懂共情的顶尖分析师，专精于个人时间管理、行为模式分析和战略性生活规划。
+你的核心使命是作为用户的“数字映射”和战略伙伴，通过深度分析其时间数据，帮助用户更好地理解自己，并找到成为更优自我的独特路径。
+你的所有分析和建议**必须使用第二人称（‘你’、‘你的’）来称呼用户**，营造一种直接对话、为你服务的专属感。
+你尊重用户的自主性，并将用户的反馈历史视为理解其个人偏好的“最高宪法”。
+
+# 核心分析原则
+1.  **进化式洞察**：分析必须具有连续性，将本周与过去的数据和反馈联系起来，揭示用户的成长和变化。
+2.  **动态框架应用**：
+你拥有一个包含多种心理学、行为学理论（如心流、精力管理、人物原型等）的分析工具箱。
+你应在数据呈现出与某个模型高度相关时，**机会性地、创造性地**加以应用，并**确保分析视角的新颖性**，避免短期内重复。
+3.  **反馈优先与演化识别**：
+在处理用户反馈历史时，若出现冲突，**永远以最新的反馈为准**。
+更重要的是，你必须**识别并高亮这种“偏好转变”**，将其作为用户个人系统进化的宝贵信号进行解读。
+4.  **S.P.I.C.E.多样性策略**：在提出新建议时，你应有意识地确保多样性，除非用户当前的数据里有显著有偏向性的信号，否则应尽可能覆盖以下一个或多个维度：系统(S)、模式(P)、洞察(I)、连接(C)、精力(E)。
+
+# 核心任务清单 (Task Checklist)
+你必须严格按照以下清单顺序，完成分析并组织你的输出。
+
+1.  **生成分析师前言 (`analyst_foreword`)**: 基于用户反馈历史，总结你本次分析将遵循的核心原则和看点。
+2.  **提炼核心叙事 (`core_narrative`)**: 识别并总结本周最主要的故事线。如果数据特征显著，可选择一个动态分析框架进行深度解读并写入`dynamic_framework_insight`。
+3.  **进行节律性分析 (`rhythm_analysis`)**:
+基于`数据一`中的时序信息，并结合`数据二`中提供的精确节律计算结果，进行深度解读。
+你的任务不是重复计算，而是**解释这些数字节律背后的行为模式、情境和意义，避免复述原始数据**。
+你的分析必须基于事件的精确时间顺序，关注‘A事件之后发生了什么’这样的行为链条，而不仅仅是事件的频率。
+4.  **挖掘隐藏数据洞察 (`hidden_data_insights`)**:
+深入分析备注、异常时长、分类等细节，找出至少2-3个有价值的深层发现。
+特别关注那些打破常规模式的事件链，例如‘长时间工作后的异常娱乐选择’或‘特定用餐后的精力变化’。
+5.  **回顾过往行动 (`previous_actions_review`)**: 评估用户对上周建议的采纳情况。如果发现用户偏好发生变化，必须在`feedback_evolution_note`中进行说明。
+6.  **设计战略性行动建议 (`strategic_action_suggestions`)**: 基于以上所有分析，并严格遵循S.P.I.C.E.多样性策略，为用户提供的**预设ID**填充5个全新的、具体的、可行的建议。
+
+# 输出要求
+你的所有输出**必须且只能是**一个严格遵循用户提供的`response_schema`的、单一、有效的JSON对象。禁止在JSON之外添加任何说明性文字或标记。
+"""
+
+    def _build_routine_system_instruction(self) -> str:
+        """构建系统提示词"""
+        return self.AI_ROUTINE_ANALYSIS_BASE_INSTRUCTION
+
+    def _build_routine_response_schema(self) -> Dict[str, Any]:
+        """
+        构建新版routine分析响应schema，采用三层结构，去除元数据内容的生成，交由业务代码处理
+        每个object类型都显式声明required
+        """
+        return {
+            "type": "object",
+            "properties": {
+                "analyst_foreword": {
+                    "type": "string",
+                    "description": "分析师基于用户反馈总结的核心原则和本次报告的看点。",
+                },
+                "core_narrative": {
+                    "type": "object",
+                    "description": "本周的核心故事线和高层洞察",
+                    "properties": {
+                        "theme": {
+                            "type": "string",
+                            "description": "本周核心主题，如“从极限冲刺到带病续航的系统性调整”",
+                        },
+                        "narrative_summary": {
+                            "type": "string",
+                            "description": "对本周故事线的详细阐述，连接关键事件和发现。",
+                        },
+                        "dynamic_framework_insight": {
+                            "type": "object",
+                            "description": "（可选）当数据触发时，应用的动态分析框架洞察。",
+                            "properties": {
+                                "framework_name": {
+                                    "type": "string",
+                                    "description": "所使用的分析框架名称，如“心流理论”",
+                                },
+                                "insight": {
+                                    "type": "string",
+                                    "description": "基于该框架的深度解读。",
+                                },
+                                "relevance_score": {
+                                    "type": "integer",
+                                    "minimum": 0,
+                                    "maximum": 10,
+                                    "description": "该分析框架与本周数据的相关性强度评分(0-10，10为最相关)",
+                                },
+                            },
+                            "required": [
+                                "framework_name",
+                                "insight",
+                                "relevance_score",
+                            ],
+                        },
+                    },
+                    "required": ["theme", "narrative_summary"],
+                    # dynamic_framework_insight为可选
+                },
+                "rhythm_analysis": {
+                    "type": "object",
+                    "description": "节律性分析与预测",
+                    "properties": {
+                        "identified_rhythms": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                        },
+                        "potential_new_rhythms": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                        },
+                        "prediction": {"type": "string"},
+                    },
+                    "required": [
+                        "identified_rhythms",
+                        "potential_new_rhythms",
+                        "prediction",
+                    ],
+                },
+                "hidden_data_insights": {
+                    "type": "array",
+                    "description": "从数据细节中挖掘出的深层价值",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "title": {"type": "string"},
+                            "finding": {"type": "string"},
+                        },
+                        "required": ["title", "finding"],
+                    },
+                },
+                "previous_actions_review": {
+                    "type": "object",
+                    "description": "对过往行动建议的评估",
+                    "properties": {
+                        "feedback_evolution_note": {
+                            "type": "string",
+                            "description": "（可选）当检测到用户偏好发生转变时的特别说明。",
+                        },
+                        "detailed_review": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "suggestion_id": {"type": "string"},
+                                    "user_choice": {"type": "boolean"},
+                                    "analyst_assessment": {"type": "string"},
+                                },
+                                "required": [
+                                    "suggestion_id",
+                                    "user_choice",
+                                    "analyst_assessment",
+                                ],
+                            },
+                        },
+                    },
+                    "required": ["detailed_review"],
+                    # feedback_evolution_note为可选
+                },
+                "strategic_action_suggestions": {
+                    "type": "array",
+                    "description": "为下周设计的五个战略性行动建议",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "spice_type": {
+                                "type": "string",
+                                "enum": [
+                                    "System",
+                                    "Pattern",
+                                    "Insight",
+                                    "Connection",
+                                    "Energy",
+                                ],
+                            },
+                            "title": {"type": "string"},
+                            "reasoning": {"type": "string"},
+                            "specific_action": {"type": "string"},
+                            "expected_outcome": {"type": "string"},
+                        },
+                        "required": [
+                            "spice_type",
+                            "title",
+                            "reasoning",
+                            "specific_action",
+                            "expected_outcome",
+                        ],
+                    },
+                    "minItems": 5,
+                    "maxItems": 5,
+                },
+            },
+            "required": [
+                "analyst_foreword",
+                "core_narrative",
+                "rhythm_analysis",
+                "hidden_data_insights",
+                "previous_actions_review",
+                "strategic_action_suggestions",
+            ],
+        }
+
+    # endregion
+
     # region B站视频推荐
 
     def get_notion_bili_data(self, _data_params: Dict[str, Any] = None) -> List[Dict]:
@@ -218,7 +516,8 @@ class DailySummaryBusiness(BaseProcessor):
 
         # 生成AI分析结果——这个的依赖关系的先后顺序要再考虑一下，目前llm也是整合在app_controller里的service。
         # 从这个角度来说app_controller要成为各种方法的背景信息，方便直接调用。
-        ai_analysis = self._generate_ai_analysis(unread_videos)
+        # 这里不支持异步，未来要调整，但先跑通业务吧
+        ai_analysis = self._generate_video_ai_analysis(unread_videos)
 
         # 基于AI话题匹配结果重新构建推荐视频
         final_recommendations = self._rebuild_recommendations_with_ai(
@@ -304,18 +603,12 @@ class DailySummaryBusiness(BaseProcessor):
 
         return original_recommendations
 
-    def _generate_ai_analysis(self, all_videos: List[Dict]) -> Dict[str, Any]:
+    def _generate_video_ai_analysis(self, all_videos: List[Dict]) -> Dict[str, Any]:
         """使用AI一次性完成内容汇总和话题匹配分析"""
         # 获取服务和配置
         llm_service = self.app_controller.get_service(ServiceNames.LLM)
-        if not llm_service or not llm_service.is_available():
-            return {
-                "summary": "AI服务暂时不可用，无法生成分析",
-                "quality_score": 0,
-                "topic_matches": [],
-            }
-
         config_service = self.app_controller.get_service(ServiceNames.CONFIG)
+
         focus_topics = (
             config_service.get("daily_summary", {}).get("focus_topics", [])
             if config_service
@@ -330,8 +623,8 @@ class DailySummaryBusiness(BaseProcessor):
         # 调用LLM
         result = llm_service.structured_call(
             prompt=prompt,
-            response_schema=self._build_response_schema(bool(focus_topics)),
-            system_instruction=self._build_system_instruction(focus_topics),
+            response_schema=self._build_video_response_schema(bool(focus_topics)),
+            system_instruction=self._build_video_system_instruction(focus_topics),
             temperature=0.5,
         )
 
@@ -352,101 +645,6 @@ class DailySummaryBusiness(BaseProcessor):
             f"优先级: {video.get('chinese_priority', '未知')} | 推荐理由: {video.get('summary', '无理由')}"
             for i, video in enumerate(all_videos, 1)
         ]
-
-    # 类级别常量 - 避免重复定义
-    AI_ANALYSIS_BASE_INSTRUCTION = """你是一个专业的内容分析助理。
-
-**核心要求：**
-1. 优先汇报高价值内容：新技术突破、行业洞察、实用方法论
-2. 整合相似主题，避免重复信息
-3. 如果内容质量普遍一般，直接说"今日无特别重点"
-4. 控制在80字内，重质量不重数量
-5. **必须给出整体内容质量评分(0-10)**
-
-**判断标准：**
-- 优先级"高"且内容新颖 → 必须汇报
-- 多个UP主谈论同一热点 → 整合汇报
-- 纯娱乐、重复话题 → 可忽略
-- 实用工具、技术教程 → 重点关注
-
-**质量评分标准：**
-- 9-10分：有重大技术突破或深度洞察
-- 7-8分：有实用价值或新颖观点
-- 4-6分：普通内容，价值一般
-- 0-3分：纯娱乐或重复内容"""
-
-    def _build_system_instruction(self, focus_topics: List[str]) -> str:
-        """构建系统提示词"""
-        task_section = (
-            """
-**任务：**
-1. 分析今日视频清单，**智能判断真正有价值的重点**，而非简单罗列。
-2. 分析哪些视频与提供的关注话题相关，给出视频序号和关联度评分(0-10)
-
-**任务1输出格式：**
-如有重点：简洁说明几个关键内容点
-如无重点：直接说"今日待看内容以[主要类型]为主，无特别重点"
-
-**任务2话题匹配要求：**
-- 只返回与关注话题高度相关的视频
-- 关联度评分要准确(0-10，10表示最相关)
-- 没有相关的可以返回空数组"""
-            if focus_topics
-            else """
-**任务：**
-分析今日视频清单，**智能判断真正有价值的重点**，而非简单罗列。
-
-**输出格式：**
-如有重点：简洁说明几个关键内容点
-如无重点：直接说"今日待看内容以[主要类型]为主，无特别重点" """
-        )
-
-        return self.AI_ANALYSIS_BASE_INSTRUCTION + task_section
-
-    def _build_response_schema(self, has_focus_topics: bool) -> Dict[str, Any]:
-        """构建响应schema，根据业务需求返回不同结构"""
-        # 公共属性定义
-        base_properties = {
-            "summary": {"type": "string", "description": "今日内容汇总说明"},
-            "quality_score": {
-                "type": "integer",
-                "minimum": 0,
-                "maximum": 10,
-                "description": "整体内容质量评分(0-10)",
-            },
-        }
-
-        base_required = ["summary", "quality_score"]
-
-        if has_focus_topics:
-            # 有关注话题时，需要返回匹配结果
-            base_properties["topic_matches"] = {
-                "type": "array",
-                "description": "与关注话题匹配的视频",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "video_id": {
-                            "type": "integer",
-                            "description": "视频序号(从1开始)",
-                        },
-                        "relevance_score": {
-                            "type": "integer",
-                            "minimum": 0,
-                            "maximum": 10,
-                            "description": "话题关联度评分(0-10)",
-                        },
-                    },
-                    "required": ["video_id", "relevance_score"],
-                },
-            }
-            base_required.append("topic_matches")
-
-        return {
-            "type": "object",
-            "properties": base_properties,
-            "required": base_required,
-        }
 
     @safe_execute("重构推荐视频失败")
     def _rebuild_recommendations_with_ai(
@@ -626,6 +824,7 @@ class DailySummaryBusiness(BaseProcessor):
             "end_time": end_time,
             "event_map": event_map,
             "granularity_minutes": granularity_minutes,
+            "user_id": user_id,
         }
 
         return weekly_raw_data
@@ -649,6 +848,11 @@ class DailySummaryBusiness(BaseProcessor):
                 weekly_raw.get("granularity_minutes", 120),
             )
             weekly_document["timetable"] = formatted_weekly_data
+
+            ai_analysis = self._generate_routine_ai_analysis(
+                weekly_raw, weekly_document
+            )
+            weekly_document["ai_analysis"] = ai_analysis
 
         # 分析routine数据，包括日、周、月、季、年
         # 日：待办事项，提醒事项，image_key，主颜色
@@ -879,7 +1083,7 @@ class DailySummaryBusiness(BaseProcessor):
             else:
                 degree_interval_minutes_list.append(np.nan)
 
-            # category分组
+            # event分组
             mask_category = (merged_df["category"] == category_val) & (
                 merged_df["event_name"] == event_name_val
             )
@@ -998,9 +1202,33 @@ class DailySummaryBusiness(BaseProcessor):
         else:
             note_infos = []
 
+        # 导出合并后的数据用于调试
+        merged_df.to_csv("merged_df.csv", index=False)
+        event_detail_df = merged_df.copy()
+
+        # 需要删除的列
+        columns_to_delete = [
+            "create_time",
+            "scheduled_start_time",
+            "estimated_duration",
+            "interval_type",
+            "end_time",
+            "record_id",
+            "custom_degree",
+            "reminder_relative",
+            "reminder_mode",
+            "priority",
+            "duration",
+        ]
+        # 检查每个列是否存在，存在才删除
+        for col in columns_to_delete:
+            if col in event_detail_df.columns:
+                event_detail_df.drop(columns=col, inplace=True)
+
         return {
             "note_list": note_infos,
-            "event_summary": summary_df.to_dict(orient="records"),
+            "event_summary": summary_df,  # 保持为DataFrame，后续使用处按需to_dict/to_csv
+            "event_detail": event_detail_df,
             "category_stats": category_stats.to_dict(orient="records"),
             "document_title": document_title,
         }
@@ -1085,6 +1313,171 @@ class DailySummaryBusiness(BaseProcessor):
         note_str = f" | 备注:{note}" if note else ""
         # 最终拼接
         return f"{head}{progress_str}{note_str}"
+
+    def _generate_routine_ai_analysis(
+        self, weekly_raw: Dict[str, Any], weekly_document: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """使用AI一次性完成routine分析，并将结果写入weekly_document与weekly_record"""
+        # 1) 依赖数据
+        llm_service = self.app_controller.get_service(ServiceNames.LLM)
+        end_time = weekly_raw.get("end_time")
+        start_time = weekly_raw.get("start_time")
+        ignore_year = start_time.year == end_time.year
+        if ignore_year:
+            time_str_mark = "%m-%d %H:%M"
+        else:
+            time_str_mark = "%Y-%m-%d %H:%M"
+        user_id = weekly_raw.get("user_id")
+
+        current_week_key = end_time.strftime("%y%m%d") if end_time else ""
+        prev_week_key = (
+            (end_time - timedelta(days=7)).strftime("%y%m%d") if end_time else ""
+        )
+
+        # 2) 数据一：本周明细CSV
+        event_detail_df = weekly_document.get("event_detail")
+        # 去掉 start_dt 和 end_dt 的秒，向量化处理
+        if "start_dt" in event_detail_df.columns:
+            event_detail_df = event_detail_df.copy()
+            event_detail_df["start_dt"] = pd.to_datetime(
+                event_detail_df["start_dt"]
+            ).dt.strftime(time_str_mark)
+        if "end_dt" in event_detail_df.columns:
+            event_detail_df["end_dt"] = pd.to_datetime(
+                event_detail_df["end_dt"]
+            ).dt.strftime(time_str_mark)
+        current_week_detail_data_csv = event_detail_df.to_csv(index=False)
+
+        # 数据二：本周摘要CSV
+        event_summary_df = weekly_document.get("event_summary")
+        summary_df = event_summary_df[
+            [
+                "category",
+                "event_name",
+                "degree",
+                "degree_interval_minutes",
+                "category_interval_minutes",
+            ]
+        ].copy()
+        # 对 interval 列做 round(1)
+        summary_df["degree_interval_minutes"] = summary_df[
+            "degree_interval_minutes"
+        ].round(1)
+        summary_df["category_interval_minutes"] = summary_df[
+            "category_interval_minutes"
+        ].round(1)
+        summary_df.rename(
+            columns={"category_interval_minutes": "event_interval_minutes"},
+            inplace=True,
+        )
+        current_week_summary_data_csv = summary_df.to_csv(index=False)
+
+        # 3) 数据三：上一周分析（不包含accepted）
+        weekly_record_file = self.routine_business.load_weekly_record(user_id)
+        weekly_record_map = weekly_record_file.get("weekly_record", {})
+
+        prev_week_analysis = weekly_record_map.get(prev_week_key, {}) or {}
+
+        prev_week_analysis_clean = (
+            copy.deepcopy(prev_week_analysis)
+            if isinstance(prev_week_analysis, dict)
+            else {}
+        )
+        prev_week_analysis_clean.pop("strategic_action_suggestions", None)
+
+        previous_week_analysis_json_str = json.dumps(
+            prev_week_analysis_clean, ensure_ascii=False
+        )
+
+        # 4) 数据四：反馈历史（仅历史周，包含内容+week_key+accepted，不含ID）
+        user_feedback_history = []
+        # 仅收集严格小于prev_week_key的周
+        for wk, node in weekly_record_map.items():
+            if prev_week_key and int(wk) > int(prev_week_key):
+                continue
+
+            analysis_node = node
+
+            suggestions_hist = (analysis_node or {}).get(
+                "strategic_action_suggestions", []
+            )
+            for item in suggestions_hist:
+                entry = {
+                    "week_key": wk,
+                    "accepted": item.get("accepted", True),
+                    "properties": {
+                        "spice_type": item.get("spice_type"),
+                        "title": item.get("title"),
+                        "reasoning": item.get("reasoning"),
+                        "specific_action": item.get("specific_action"),
+                        "expected_outcome": item.get("expected_outcome"),
+                    },
+                }
+                user_feedback_history.append(entry)
+
+        user_feedback_history_json_str = json.dumps(
+            user_feedback_history, ensure_ascii=False
+        )
+
+        # 5) 构建提示词
+        prompt = f"""
+        请根据以下四份数据，执行一次完整的周度分析。
+
+        ### 数据一：本周原始事件日志 (带时间戳的原子数据)
+        ```csv
+        {current_week_detail_data_csv}
+        ```
+        ### 数据二：本周关键节律的精确计算摘要 (辅助事实)
+        这是代码预计算的节律数据，请将其作为你进行深度解读的“事实基础”，而不是让你重复计算。你需要解释这些节律背后的原因和意义。
+        ```csv
+        {current_week_summary_data_csv}
+        ```
+
+        ### 数据三：上一周的分析报告 (JSON格式，若为第一周则为空)
+        ```json
+        {previous_week_analysis_json_str}
+        ```
+
+        ### 数据四：用户对过往建议的反馈历史 (JSON格式)
+        ```json
+        {user_feedback_history_json_str}
+        ```
+
+        请严格按照你在系统指令中被赋予的角色和原则，完成本次分析，并以指定的JSON Schema格式返回结果。
+        """
+
+        # 6) 调用LLM
+        result = llm_service.structured_call(
+            prompt=prompt,
+            response_schema=self._build_routine_response_schema(),
+            system_instruction=self._build_routine_system_instruction(),
+            temperature=1,
+        )
+
+        # 处理结果
+        if "error" in result:
+            return {
+                "analyst_foreword": f"AI分析失败: {result['error']}",
+                "core_narrative": {},
+                "rhythm_analysis": [],
+                "hidden_data_insights": [],
+                "previous_actions_review": {},
+                "strategic_action_suggestions": [],
+            }
+
+        # 修正：原代码变量名错误，未定义index，且未将修改后的result保存到result_to_save
+        # 正确做法：用ind作为索引，且应将result赋值给result_to_save
+        for id, item in enumerate(result.get("strategic_action_suggestions", [])):
+            item["accepted"] = True
+            item["id"] = f"{current_week_key}_{id}"
+
+        result_to_save = result  # 确保保存的是本次分析结果
+
+        weekly_record_map[current_week_key] = result_to_save
+        weekly_record_file["weekly_record"] = weekly_record_map
+        self.routine_business.save_weekly_record(user_id, weekly_record_file)
+
+        return result
 
     # endregion
 
@@ -1697,7 +2090,7 @@ class DailySummaryBusiness(BaseProcessor):
         # 以嵌套块的方式一次性组装好
         # 每个元素都包含了自己的id进children和自己的内容，进descendants
         weekly_data = routine_data.get("weekly", {})
-        weekly_table_data = routine_data.get("weekly", {}).get("timetable", {})
+        weekly_table_data = weekly_data.get("timetable", {})
 
         children = []
         descendants = []
@@ -1713,9 +2106,8 @@ class DailySummaryBusiness(BaseProcessor):
         # 顶层 children（两个块：标题 + 表格）
         # 文档大概要在这里处理，那么children和descendents要一起加咯？然后再追加之前的表格，这个作为一个总容器还是不错的
         heading_block_id = "heading_timetable"
-        note_block_id = "note_timetable"
         table_block_id = "table_timetable"
-        children = [heading_block_id, note_block_id, table_block_id]
+        children = [heading_block_id, table_block_id]
 
         # 标题块（采用 heading1）
         heading_block = document_manager.create_formated_text_block(
@@ -1724,12 +2116,6 @@ class DailySummaryBusiness(BaseProcessor):
             block_type="heading1",
         )
         descendants.append(heading_block)
-
-        note_block = document_manager.create_text_block(
-            block_id=note_block_id,
-            text="\n".join(weekly_data.get("note_list", [])),
-        )
-        descendants.append(note_block)
 
         # 表头映射
         day_label_map = {
@@ -1844,11 +2230,319 @@ class DailySummaryBusiness(BaseProcessor):
         )
         descendants.append(table_block)
 
-        # 添加重要报告和活动明细
+        # 添加AI分析报告和重要报告和活动明细
         from collections import defaultdict
 
+        ai_analysis = weekly_data.get("ai_analysis", {})
         event_records = weekly_data.get("event_summary", [])
+        # 如果为DataFrame，按需转换为records
+        if hasattr(event_records, "to_dict"):
+            event_records = event_records.to_dict(orient="records")
         category_stats = weekly_data.get("category_stats", [])
+
+        # === AI分析报告 ===
+        if ai_analysis:
+            core_narrative = ai_analysis.get("core_narrative", {})
+            ai_title = "AI分析报告"
+            if core_narrative["theme"]:
+                ai_title += f':{core_narrative["theme"]}'
+            children.append("heading_ai_analysis")
+            descendants.append(
+                document_manager.create_formated_text_block(
+                    block_id="heading_ai_analysis",
+                    text=ai_title,
+                    block_type="heading1",
+                )
+            )
+
+            # 分析师前言
+            if ai_analysis.get("analyst_foreword"):
+                children.append("heading_analyst_foreword")
+                descendants.append(
+                    document_manager.create_formated_text_block(
+                        block_id="heading_analyst_foreword",
+                        text="分析师前言",
+                        block_type="heading2",
+                    )
+                )
+                children.append("text_analyst_foreword")
+                descendants.append(
+                    document_manager.create_text_block(
+                        block_id="text_analyst_foreword",
+                        text=ai_analysis["analyst_foreword"],
+                    )
+                )
+
+            # 核心叙事
+            if core_narrative:
+                children.append("heading_core_narrative")
+                descendants.append(
+                    document_manager.create_formated_text_block(
+                        block_id="heading_core_narrative",
+                        text="核心叙事",
+                        block_type="heading2",
+                    )
+                )
+
+                if core_narrative.get("narrative_summary"):
+                    children.append("heading_narrative_summary")
+                    descendants.append(
+                        document_manager.create_formated_text_block(
+                            block_id="heading_narrative_summary",
+                            text="叙事总结",
+                            block_type="heading3",
+                        )
+                    )
+                    children.append("text_narrative_summary")
+                    descendants.append(
+                        document_manager.create_text_block(
+                            block_id="text_narrative_summary",
+                            text=core_narrative["narrative_summary"],
+                        )
+                    )
+
+                # 动态框架洞察
+                dynamic_framework = core_narrative.get("dynamic_framework_insight", {})
+                if (
+                    dynamic_framework
+                    and dynamic_framework.get("relevance_score", -1) > 6
+                ):
+                    children.append("heading_dynamic_framework")
+                    descendants.append(
+                        document_manager.create_formated_text_block(
+                            block_id="heading_dynamic_framework",
+                            text="动态框架洞察",
+                            block_type="heading3",
+                        )
+                    )
+
+                    framework_text = ""
+                    if dynamic_framework.get("framework_name"):
+                        framework_text += (
+                            f"框架：{dynamic_framework['framework_name']}\n\n"
+                        )
+                    if dynamic_framework.get("insight"):
+                        framework_text += dynamic_framework["insight"]
+
+                    children.append("text_dynamic_framework")
+                    descendants.append(
+                        document_manager.create_text_block(
+                            block_id="text_dynamic_framework", text=framework_text
+                        )
+                    )
+
+            # 节律分析
+            rhythm_analysis = ai_analysis.get("rhythm_analysis", {})
+            if rhythm_analysis:
+                children.append("heading_rhythm_analysis")
+                descendants.append(
+                    document_manager.create_formated_text_block(
+                        block_id="heading_rhythm_analysis",
+                        text="节律分析",
+                        block_type="heading2",
+                    )
+                )
+
+                # 已识别的节律
+                identified_rhythms = rhythm_analysis.get("identified_rhythms", [])
+                if identified_rhythms:
+                    children.append("heading_identified_rhythms")
+                    descendants.append(
+                        document_manager.create_formated_text_block(
+                            block_id="heading_identified_rhythms",
+                            text="已知的节律",
+                            block_type="heading3",
+                        )
+                    )
+                    children.append("text_identified_rhythms")
+                    descendants.append(
+                        document_manager.create_text_block(
+                            block_id="text_identified_rhythms",
+                            text="\n".join(
+                                [f"• {rhythm}" for rhythm in identified_rhythms]
+                            ),
+                        )
+                    )
+
+                # 潜在新节律
+                potential_new_rhythms = rhythm_analysis.get("potential_new_rhythms", [])
+                if potential_new_rhythms:
+                    children.append("heading_potential_new_rhythms")
+                    descendants.append(
+                        document_manager.create_formated_text_block(
+                            block_id="heading_potential_new_rhythms",
+                            text="潜在节律",
+                            block_type="heading3",
+                        )
+                    )
+                    children.append("text_potential_new_rhythms")
+                    descendants.append(
+                        document_manager.create_text_block(
+                            block_id="text_potential_new_rhythms",
+                            text="\n".join(
+                                [f"• {rhythm}" for rhythm in potential_new_rhythms]
+                            ),
+                        )
+                    )
+
+                # 预测
+                if rhythm_analysis.get("prediction"):
+                    children.append("heading_rhythm_prediction")
+                    descendants.append(
+                        document_manager.create_formated_text_block(
+                            block_id="heading_rhythm_prediction",
+                            text="节律预测",
+                            block_type="heading3",
+                        )
+                    )
+                    children.append("text_rhythm_prediction")
+                    descendants.append(
+                        document_manager.create_text_block(
+                            block_id="text_rhythm_prediction",
+                            text=rhythm_analysis["prediction"],
+                        )
+                    )
+
+            # 隐藏数据洞察
+            hidden_insights = ai_analysis.get("hidden_data_insights", [])
+            if hidden_insights:
+                children.append("heading_hidden_insights")
+                descendants.append(
+                    document_manager.create_formated_text_block(
+                        block_id="heading_hidden_insights",
+                        text="数据洞察",
+                        block_type="heading2",
+                    )
+                )
+
+                for i, insight in enumerate(hidden_insights):
+                    if insight.get("title"):
+                        children.append(f"heading_insight_{i}")
+                        descendants.append(
+                            document_manager.create_formated_text_block(
+                                block_id=f"heading_insight_{i}",
+                                text=insight["title"],
+                                block_type="heading3",
+                            )
+                        )
+
+                    if insight.get("finding"):
+                        children.append(f"text_insight_{i}")
+                        descendants.append(
+                            document_manager.create_text_block(
+                                block_id=f"text_insight_{i}", text=insight["finding"]
+                            )
+                        )
+
+            # 过往行动回顾
+            previous_actions = ai_analysis.get("previous_actions_review", {})
+            if previous_actions:
+                children.append("heading_previous_actions")
+                descendants.append(
+                    document_manager.create_formated_text_block(
+                        block_id="heading_previous_actions",
+                        text="上期建议回顾",
+                        block_type="heading2",
+                    )
+                )
+
+                # 反馈演化说明
+                if previous_actions.get("feedback_evolution_note"):
+                    children.append("heading_feedback_evolution")
+                    descendants.append(
+                        document_manager.create_formated_text_block(
+                            block_id="heading_feedback_evolution",
+                            text="你的变化",
+                            block_type="heading3",
+                        )
+                    )
+                    children.append("text_feedback_evolution")
+                    descendants.append(
+                        document_manager.create_text_block(
+                            block_id="text_feedback_evolution",
+                            text=previous_actions["feedback_evolution_note"],
+                        )
+                    )
+
+                # 详细回顾
+                detailed_review = previous_actions.get("detailed_review", [])
+                if detailed_review:
+                    children.append("heading_detailed_review")
+                    descendants.append(
+                        document_manager.create_formated_text_block(
+                            block_id="heading_detailed_review",
+                            text="详细建议回顾",
+                            block_type="heading3",
+                        )
+                    )
+
+                    for i, review in enumerate(detailed_review):
+                        suggestion_id = review.get("suggestion_id", f"建议{i+1}")
+                        user_choice = review.get("user_choice", False)
+                        assessment = review.get("analyst_assessment", "")
+
+                        children.append(f"heading_review_{i}")
+                        descendants.append(
+                            document_manager.create_formated_text_block(
+                                block_id=f"heading_review_{i}",
+                                text=f"{suggestion_id} (响应: {'采纳' if user_choice else '拒绝'})",
+                                block_type="heading4",
+                            )
+                        )
+
+                        if assessment:
+                            children.append(f"text_review_{i}")
+                            descendants.append(
+                                document_manager.create_text_block(
+                                    block_id=f"text_review_{i}", text=assessment
+                                )
+                            )
+
+            # 战略性行动建议
+            strategic_suggestions = ai_analysis.get("strategic_action_suggestions", [])
+            if strategic_suggestions:
+                children.append("heading_strategic_suggestions")
+                descendants.append(
+                    document_manager.create_formated_text_block(
+                        block_id="heading_strategic_suggestions",
+                        text="本周行动建议",
+                        block_type="heading2",
+                    )
+                )
+
+                for i, suggestion in enumerate(strategic_suggestions):
+                    if suggestion.get("title"):
+                        title_text = suggestion["title"]
+
+                        children.append(f"heading_suggestion_{i}")
+                        descendants.append(
+                            document_manager.create_formated_text_block(
+                                block_id=f"heading_suggestion_{i}",
+                                text=title_text,
+                                block_type="heading3",
+                            )
+                        )
+
+                        suggestion_content = ""
+                        if suggestion.get("reasoning"):
+                            suggestion_content += f"理由：{suggestion['reasoning']}\n\n"
+                        if suggestion.get("specific_action"):
+                            suggestion_content += (
+                                f"具体行动：{suggestion['specific_action']}\n\n"
+                            )
+                        if suggestion.get("expected_outcome"):
+                            suggestion_content += (
+                                f"预期结果：{suggestion['expected_outcome']}"
+                            )
+
+                        if suggestion_content:
+                            children.append(f"text_suggestion_{i}")
+                            descendants.append(
+                                document_manager.create_text_block(
+                                    block_id=f"text_suggestion_{i}",
+                                    text=suggestion_content,
+                                )
+                            )
 
         # === 重要报告 ===
         children.append("heading_important_report")
