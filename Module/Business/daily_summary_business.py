@@ -294,7 +294,9 @@ class DailySummaryBusiness(BaseProcessor):
 3.  **反馈优先与演化识别**：
 在处理用户反馈历史时，若出现冲突，**永远以最新的反馈为准**。
 更重要的是，你必须**识别并高亮这种“偏好转变”**，将其作为用户个人系统进化的宝贵信号进行解读。
-4.  **S.P.I.C.E.多样性策略**：在提出新建议时，你应有意识地确保多样性，除非用户当前的数据里有显著有偏向性的信号，否则应尽可能覆盖以下一个或多个维度：系统(S)、模式(P)、洞察(I)、连接(C)、精力(E)。
+4.  **动机推断**：
+你必须尝试推断其背后可能的动机或心理状态。你需要提出这种假设性解释，但注意不要用解释性的语气来描述，而是为你服务的用户提供一些潜在感受视角的方式。
+5.  **S.P.I.C.E.多样性策略**：在提出新建议时，你应有意识地确保多样性，除非用户当前的数据里有显著有偏向性的信号，否则应尽可能覆盖以下一个或多个维度：系统(S)、模式(P)、洞察(I)、连接(C)、精力(E)。
 
 # 核心任务清单 (Task Checklist)
 你必须严格按照以下清单顺序，完成分析并组织你的输出。
@@ -305,11 +307,13 @@ class DailySummaryBusiness(BaseProcessor):
 基于`数据一`中的时序信息，并结合`数据二`中提供的精确节律计算结果，进行深度解读。
 你的任务不是重复计算，而是**解释这些数字节律背后的行为模式、情境和意义，避免复述原始数据**。
 你的分析必须基于事件的精确时间顺序，关注‘A事件之后发生了什么’这样的行为链条，而不仅仅是事件的频率。
+记录的时序倾向于保留完整原始信息而不自动处理重叠区域，因而可能会存在多个事件在同一段时间发生，此时后开始的事件表示当前最新状况。
+举例：在23:40开始了睡觉，到次日08:10结束，持续8小时，又在23:50-00:20 刷了B站，这并不是说睡醒后又在凌晨刷B站，而是大概率没入睡，在00:20-00:50刷完B站后才睡。
 4.  **挖掘隐藏数据洞察 (`hidden_data_insights`)**:
 深入分析备注、异常时长、分类等细节，找出至少2-3个有价值的深层发现。
 特别关注那些打破常规模式的事件链，例如‘长时间工作后的异常娱乐选择’或‘特定用餐后的精力变化’。
 5.  **回顾过往行动 (`previous_actions_review`)**: 评估用户对上周建议的采纳情况。如果发现用户偏好发生变化，必须在`feedback_evolution_note`中进行说明。
-6.  **设计战略性行动建议 (`strategic_action_suggestions`)**: 基于以上所有分析，并严格遵循S.P.I.C.E.多样性策略，为用户提供的**预设ID**填充5个全新的、具体的、可行的建议。
+6.  **设计战略性行动建议 (`strategic_action_suggestions`)**: 基于以上所有分析，为用户提供的**预设ID**填充5个全新的、具体的、可行的建议。并评估建议的执行挑战难度，以及哪怕不执行的最小可行动作。
 
 # 输出要求
 你的所有输出**必须且只能是**一个严格遵循用户提供的`response_schema`的、单一、有效的JSON对象。禁止在JSON之外添加任何说明性文字或标记。
@@ -452,6 +456,11 @@ class DailySummaryBusiness(BaseProcessor):
                             "reasoning": {"type": "string"},
                             "specific_action": {"type": "string"},
                             "expected_outcome": {"type": "string"},
+                            "execution_difficulty": {
+                                "type": "string",
+                                "enum": ["低", "中", "高"],
+                            },
+                            "minimum_action": {"type": "string"},
                         },
                         "required": [
                             "spice_type",
@@ -459,6 +468,8 @@ class DailySummaryBusiness(BaseProcessor):
                             "reasoning",
                             "specific_action",
                             "expected_outcome",
+                            "execution_difficulty",
+                            "minimum_action",
                         ],
                     },
                     "minItems": 5,
@@ -729,7 +740,6 @@ class DailySummaryBusiness(BaseProcessor):
 
         now = datetime.now()
         is_monday = now.weekday() == 0  # 0是周一
-        is_monday = True
         is_first_day_of_month = now.day == 1
         is_first_day_of_quarter = now.month % 3 == 1 and now.day == 1
         is_first_day_of_year = now.month == 1 and now.day == 1
@@ -1423,7 +1433,7 @@ class DailySummaryBusiness(BaseProcessor):
         prompt = f"""
         请根据以下四份数据，执行一次完整的周度分析。
 
-        ### 数据一：本周原始事件日志 (带时间戳的原子数据)
+        ### 数据一：本周原始事件日志 (带时间戳的原子数据，注意其中可能会包含用户在记录时的备注note，这也是比较重要的线索)
         ```csv
         {current_week_detail_data_csv}
         ```
@@ -2074,6 +2084,31 @@ class DailySummaryBusiness(BaseProcessor):
                     content=f"[查看分析：{title}]({url})\n[访问报告文件夹]({folder_url})"
                 )
                 elements.append(markdown_element)
+                action_suggestions_data = weekly_data.get("ai_analysis", {}).get(
+                    "strategic_action_suggestions", []
+                )
+                if action_suggestions_data:
+                    markdown_element = JsonBuilder.build_markdown_element(
+                        content=f":MeMeMe: **本周行动建议**"
+                    )
+                    elements.append(markdown_element)
+                    for action in action_suggestions_data:
+                        action_data = {
+                            "card_action": "mark_weekly_action_accepted",
+                            "action_id": action.get("id", ""),
+                        }
+                        checker_element = JsonBuilder.build_checker_element(
+                            text=f"{action.get('execution_difficulty', '')}难度: {action.get('title', '')}",
+                            checked=action.get("accepted", False),
+                            disabled=False,
+                            action_data=action_data,
+                        )
+                        markdown_element = JsonBuilder.build_markdown_element(
+                            content=action.get("specific_action", ""),
+                            text_size="small",
+                        )
+                        elements.extend([checker_element, markdown_element])
+
             else:
                 debug_utils.log_and_print("创建周报告文档失败", log_level="ERROR")
 
@@ -2526,13 +2561,24 @@ class DailySummaryBusiness(BaseProcessor):
                         suggestion_content = ""
                         if suggestion.get("reasoning"):
                             suggestion_content += f"理由：{suggestion['reasoning']}\n\n"
+
                         if suggestion.get("specific_action"):
                             suggestion_content += (
                                 f"具体行动：{suggestion['specific_action']}\n\n"
                             )
+
+                        if suggestion.get("execution_difficulty"):
+                            suggestion_content += (
+                                f"执行难度：{suggestion['execution_difficulty']}\n\n"
+                            )
+
                         if suggestion.get("expected_outcome"):
                             suggestion_content += (
-                                f"预期结果：{suggestion['expected_outcome']}"
+                                f"预期结果：{suggestion['expected_outcome']}\n\n"
+                            )
+                        if suggestion.get("minimum_action"):
+                            suggestion_content += (
+                                f"最小行动：{suggestion['minimum_action']}"
                             )
 
                         if suggestion_content:
