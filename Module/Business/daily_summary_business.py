@@ -1211,7 +1211,6 @@ class DailySummaryBusiness(BaseProcessor):
             note_infos = []
 
         # 导出合并后的数据用于调试
-        merged_df.to_csv("merged_df.csv", index=False)
         event_detail_df = merged_df.copy()
 
         # 需要删除的列
