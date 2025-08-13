@@ -4,6 +4,7 @@
 """
 
 from typing import Dict, Any, List
+from datetime import datetime
 from collections import defaultdict
 import pandas as pd
 from Module.Common.scripts.common import debug_utils
@@ -32,6 +33,7 @@ class RoutineDailyElement:
         elements = []
         image_key = routine_data.get("daily", {}).get("image_key", "")
         main_color = routine_data.get("daily", {}).get("main_color", {})
+        reminder_info = routine_data.get("daily", {}).get("reminder", [])
         weekly_data = routine_data.get("weekly", {})
 
         # 添加个性印章图片元素
@@ -43,6 +45,9 @@ class RoutineDailyElement:
             elements.extend(
                 self._build_weekly_elements(weekly_data, user_id, routine_data)
             )
+
+        if reminder_info:
+            elements.extend(self._build_reminder_elements(reminder_info))
 
         return elements
 
@@ -58,6 +63,110 @@ class RoutineDailyElement:
             scale_type="crop_center",
             size="80px 90px",
         )
+
+    def add_str_to_reminder(
+        self,
+        remind_str: str,
+        new_str: str,
+        new_line_count: int,
+        max_line_count: int = 22,
+    ) -> int:
+        """获取新行计数"""
+        if new_line_count + len(new_str) > max_line_count:
+            remind_str += "\n"
+            new_line_count = 0
+        else:
+            remind_str += " "
+        remind_str += new_str
+        new_line_count += len(new_str)
+        return remind_str, new_line_count
+
+    def _build_reminder_elements(
+        self, reminder_info: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """构建提醒元素"""
+        elements = []
+        total_time_cost = 0
+        total_reminder_items = 0
+        now = datetime.now()
+
+        dict_options = {
+            "low": "低",
+            "medium": "中",
+            "high": "高",
+            "urgent": "紧急",
+        }
+        for reminder in reminder_info:
+            event_name = reminder.get("event_name", "")
+            scheduled_start_time = reminder.get("scheduled_start_time", "")
+            priority = reminder.get("priority", "")
+            avg_duration_detail = reminder.get("avg_duration_detail", {})
+            note = reminder.get("note", "")
+            last_record_time = reminder.get("last_record_time", "")
+            remind_str = f"**{event_name}**"
+            new_line_count = len(event_name)
+
+            if priority:
+                remind_str += f" 优先级:{dict_options.get(priority, '低')}"
+                new_line_count += 5
+
+            if scheduled_start_time:
+                if scheduled_start_time.date() != now.date():
+                    if scheduled_start_time.year == now.year:
+                        remind_str += (
+                            f" 待办时间:{scheduled_start_time.strftime('%m-%d %H:%M')}"
+                        )
+                        new_line_count += 10
+                    else:
+                        remind_str += f" 待办时间:{scheduled_start_time.strftime('%Y-%m-%d %H:%M')}"
+                        new_line_count += 12
+                else:
+                    total_time_cost += avg_duration_detail.get("预估", 0)
+                    total_reminder_items += 1
+            else:
+                total_time_cost += avg_duration_detail.get("预估", 0)
+                total_reminder_items += 1
+
+            if avg_duration_detail:
+                if len(avg_duration_detail) > 1:
+                    for key, value in avg_duration_detail.items():
+                        if key != "预估":
+                            remind_str += f"\n{key}耗时:{format_time_label(value)}"
+                else:
+                    key_str = list(avg_duration_detail.keys())[0]
+                    value_str = avg_duration_detail.get(key_str, 0)
+                    if value_str:
+                        duration_str = f"{key_str}耗时:{format_time_label(value_str)}"
+                        remind_str, new_line_count = self.add_str_to_reminder(
+                            remind_str, duration_str, new_line_count
+                        )
+
+            if note:
+                note_str = f"备注:{note}"
+                remind_str, new_line_count = self.add_str_to_reminder(
+                    remind_str, note_str, new_line_count
+                )
+
+            if last_record_time:
+                diff_minutes = round((now - last_record_time).total_seconds() / 60, 1)
+                last_record_str = f"上次距今: {format_time_label(diff_minutes)}"
+                remind_str, new_line_count = self.add_str_to_reminder(
+                    remind_str, last_record_str, new_line_count
+                )
+
+            elements.append(
+                JsonBuilder.build_markdown_element(
+                    content=remind_str, text_size="small"
+                )
+            )
+
+        if total_reminder_items > 0:
+            total_reminder_str = f"👩 **今日日程提醒**\n共{total_reminder_items}项，预计耗时:{format_time_label(total_time_cost)}"
+            elements.insert(
+                0, JsonBuilder.build_markdown_element(content=total_reminder_str)
+            )
+
+        return elements
 
     def _build_weekly_elements(
         self, weekly_data: Dict[str, Any], user_id: str, routine_data: Dict[str, Any]

@@ -11,7 +11,12 @@ import copy
 import pandas as pd
 import numpy as np
 
-from Module.Services.constants import ServiceNames, AdapterNames, ColorTypes
+from Module.Services.constants import (
+    ServiceNames,
+    AdapterNames,
+    ColorTypes,
+    RoutineReminderTimeOptions,
+)
 from Module.Business.routine_record import RoutineRecord, wax_stamp_prompt
 
 
@@ -33,7 +38,6 @@ class RoutineDailyData:
 
         now = datetime.now()
         is_monday = now.weekday() == 0  # 0是周一
-        is_monday = True
         is_first_day_of_month = now.day == 1
         is_first_day_of_quarter = now.month % 3 == 1 and now.day == 1
         is_first_day_of_year = now.month == 1 and now.day == 1
@@ -62,6 +66,12 @@ class RoutineDailyData:
     ) -> Dict[str, Any]:
         """分析routine数据"""
 
+        daily_data = routine_data.get("daily", {})
+        active_records = daily_data.get("active_records", {})
+        interval_definitions = daily_data.get("interval_definitions", [])
+        if active_records or interval_definitions:
+            daily_data["reminder"] = self.analyze_daily_today_reminder(daily_data)
+
         weekly_raw = routine_data.get("weekly", {})
         formatted_weekly_data = {}
         weekly_document: Dict[str, Any] = {}
@@ -88,7 +98,7 @@ class RoutineDailyData:
         # 月：日 + 周 + 月程分析——最好维度有区别，否则就要因为月把周关闭掉，我不想有多份重复信息
 
         routine_info = {
-            "daily": routine_data.get("daily", {}),
+            "daily": daily_data,
             "weekly": weekly_document,
         }
         return routine_info
@@ -107,10 +117,23 @@ class RoutineDailyData:
             Dict[str, Any]: 日常数据
         """
         # 还需要加上一个今日提醒和今日待办，至于昨日思考，这个最后做
+        # 待办永远都是日，所以也不存在为了本周处理，就算有也是在这个模块提醒，所以这里过滤本身到也不是大事，不过也可以在分析那边做。
         now = datetime.now()
 
         end_time = datetime(now.year, now.month, now.day)
         start_time = end_time - timedelta(days=1)
+
+        active_records = self.routine_business.load_event_records(user_id).get(
+            "active_records", {}
+        )
+        definitions = self.routine_business.load_event_definitions(user_id).get(
+            "definitions", {}
+        )
+        interval_definitions = []
+        for definition in definitions.values():
+            interval_minutes = definition.get("stats", {}).get("interval_minutes", None)
+            if interval_minutes is not None:
+                interval_definitions.append(definition)
 
         main_color, color_palette = self.routine_business.calculate_color_palette(
             user_id,
@@ -139,6 +162,8 @@ class RoutineDailyData:
             "image_key": image_key,
             "main_color": main_color,
             "color_palette": color_palette,
+            "interval_definitions": interval_definitions,
+            "active_records": active_records,
         }
 
     def get_weekly_data(
@@ -176,6 +201,98 @@ class RoutineDailyData:
     # endregion
 
     # region 数据分析
+
+    def analyze_daily_today_reminder(
+        self, daily_data: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """分析今日提醒"""
+        tomorrow = datetime.now().date() + timedelta(days=1)
+        active_records = daily_data.get("active_records", {})
+        interval_definitions = daily_data.get("interval_definitions", [])
+
+        # 来自事件规律的提醒
+        reminder_info = []
+        for definition in interval_definitions:
+            interval_minutes = definition.get("stats", {}).get("interval_minutes", 0)
+            last_record_time = definition.get("last_record_time", None)
+            if last_record_time:
+                last_record_time = datetime.strptime(last_record_time, "%Y-%m-%d %H:%M")
+                next_trigger_time = last_record_time + timedelta(
+                    minutes=interval_minutes
+                )
+                compare_time = (
+                    tomorrow if interval_minutes >= 1440 else datetime.now().date()
+                )
+                compare_time = datetime.combine(compare_time, datetime.min.time())
+
+                # 要么就是interval大于1天，要么就是interval小于1天，但last_record已经隔超1天
+                # 小于1天的等以后每2小时的提醒里实现
+                if next_trigger_time <= compare_time:
+                    event_name = definition.get("name", "")
+                    duration_info = definition.get("stats", {}).get("duration", {})
+                    avg_duration_detail = duration_info.get(
+                        "avg_duration_detail", {}
+                    )  # 待增加的周记录属性
+                    duration = (
+                        definition.get("stats", {})
+                        .get("duration", {})
+                        .get("recent_values", [])
+                    )
+                    avg_duration = (
+                        round(sum(duration) / len(duration), 1) if duration else 0
+                    )
+                    avg_duration_detail["预估"] = avg_duration
+
+                    reminder_info.append(
+                        {
+                            "event_name": event_name,
+                            "avg_duration_detail": avg_duration_detail,
+                            "last_record_time": last_record_time,
+                        }
+                    )
+
+        # 来自待办的提醒
+        for record in active_records.values():
+            in_reminder = False
+            scheduled_start_time = record.get("scheduled_start_time", "")
+            if scheduled_start_time:
+                scheduled_start_time = datetime.strptime(
+                    scheduled_start_time, "%Y-%m-%d %H:%M"
+                )
+                if scheduled_start_time.date() <= tomorrow:
+                    in_reminder = True
+
+                reminder_relative = record.get("reminder_relative", [])
+                for reminder in reminder_relative:
+                    minutes = RoutineReminderTimeOptions.get_minutes(reminder)
+                    remind_time = scheduled_start_time - timedelta(minutes=minutes)
+                    if remind_time.date() <= tomorrow:
+                        in_reminder = True
+                        break
+
+                reminder_time = record.get("reminder_time", "")
+                if reminder_time:
+                    reminder_time = datetime.strptime(reminder_time, "%Y-%m-%d %H:%M")
+                    if reminder_time.date() <= tomorrow:
+                        in_reminder = True
+                        break
+
+            if in_reminder:
+                event_name = record.get("event_name", "")
+                priority = record.get("priority", "low")
+                est_duration = record.get("estimated_duration", 0)
+                avg_duration_detail = {"预估": est_duration}
+                note = record.get("note", "")
+                new_reminder_info = {
+                    "event_name": event_name,
+                    "scheduled_start_time": scheduled_start_time,
+                    "priority": priority,
+                    "avg_duration_detail": avg_duration_detail,
+                    "note": note,
+                }
+                reminder_info.append(new_reminder_info)
+
+        return reminder_info
 
     def analyze_weekly_document(self, weekly_raw: Dict[str, Any]) -> Dict[str, Any]:
         """分析周文档"""
@@ -267,7 +384,7 @@ class RoutineDailyData:
                 if ("interval_type" in group.columns and not group.empty)
                 else "degree"
             )
-            if interval_type_val not in ["category", "degree", "ignore"]:
+            if interval_type_val not in ["event", "degree", "ignore"]:
                 interval_type_val = "ignore"
 
             # degree分组
@@ -298,7 +415,7 @@ class RoutineDailyData:
             if interval_type_val == "degree":
                 event_interval = degree_interval_minutes_list[-1]
                 display_unit_list.append(f"{event_name_val}({degree_val})")
-            elif interval_type_val == "category":
+            elif interval_type_val == "event":
                 event_interval = category_interval_minutes_list[-1]
                 display_unit_list.append(event_name_val)
             else:
@@ -714,11 +831,11 @@ class RoutineDailyData:
             item["accepted"] = True
             item["id"] = f"{current_week_key}_{action_id}"
 
-        # result_to_save = result  # 确保保存的是本次分析结果
+        result_to_save = result  # 确保保存的是本次分析结果
 
-        # weekly_record_map[current_week_key] = result_to_save
-        # weekly_record_file["weekly_record"] = weekly_record_map
-        # self.routine_business.save_weekly_record(user_id, weekly_record_file)
+        weekly_record_map[current_week_key] = result_to_save
+        weekly_record_file["weekly_record"] = weekly_record_map
+        self.routine_business.save_weekly_record(user_id, weekly_record_file)
 
         return result
 

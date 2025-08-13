@@ -294,7 +294,7 @@ class RoutineRecord(BaseProcessor):
                 # 指标属性
                 "progress_type": RoutineProgressTypes.NONE.value,  # 进度类型
                 # 统计属性
-                "interval_type": "degree",  # 间隔类型，degree/category/ignore
+                "interval_type": "degree",  # 间隔类型，degree/event/ignore
             },
             "stats": {
                 "record_count": 0,
@@ -1797,7 +1797,7 @@ class RoutineRecord(BaseProcessor):
             diff_minutes = (end_time - start_time).total_seconds() / 60
             duration = record.get("duration", 0)
 
-            if (diff_minutes<=2) and (duration > diff_minutes):
+            if (diff_minutes <= 2) and (duration > diff_minutes):
                 end_time = start_time
                 start_time = start_time - timedelta(minutes=duration)
 

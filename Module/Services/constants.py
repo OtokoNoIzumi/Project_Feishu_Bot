@@ -595,6 +595,82 @@ class RoutineReminderModes(Enum):
         ]
 
 
+class RoutineReminderTimeOptions(Enum):
+    """提醒时间选项（相对时间），用于构建下拉/多选项
+
+    字段说明：
+    - value: 选项值（用于前端提交，例如 before_5min）
+    - display_name: 展示名称（例如 提前5分钟）
+    - minutes: 对应的分钟数（例如 5）
+    """
+
+    BEFORE_5MIN = {
+        "value": "before_5min",
+        "display_name": "提前5分钟",
+        "minutes": 5,
+    }
+    BEFORE_15MIN = {
+        "value": "before_15min",
+        "display_name": "提前15分钟",
+        "minutes": 15,
+    }
+    BEFORE_30MIN = {
+        "value": "before_30min",
+        "display_name": "提前30分钟",
+        "minutes": 30,
+    }
+    BEFORE_1HOUR = {
+        "value": "before_1hour",
+        "display_name": "提前1小时",
+        "minutes": 60,
+    }
+    BEFORE_1DAY = {
+        "value": "before_1day",
+        "display_name": "提前1天",
+        "minutes": 1440,
+    }
+    BEFORE_3DAY = {
+        "value": "before_3day",
+        "display_name": "提前3天",
+        "minutes": 4320,
+    }
+
+    @property
+    def value(self) -> str:
+        return self._value_["value"]
+
+    @property
+    def display_name(self) -> str:
+        return self._value_["display_name"]
+
+    @property
+    def minutes(self) -> int:
+        return self._value_["minutes"]
+
+    @classmethod
+    def build_options(cls) -> List[Dict[str, Any]]:
+        """构建选项元素 - 用于构建选择器元素的选项"""
+        return [
+            {
+                "text": {"tag": "plain_text", "content": member.display_name},
+                "value": member.value,
+            }
+            for member in cls
+        ]
+
+    @classmethod
+    def get_by_value(cls, value: str):
+        """根据value获取对应的枚举成员"""
+        return next(
+            (member for member in cls if member.value == value), cls.BEFORE_5MIN
+        )
+
+    @classmethod
+    def get_minutes(cls, value: str) -> int:
+        """根据value获取对应的分钟数"""
+        return cls.get_by_value(value).minutes
+
+
 class RoutineRecordModes:
     """记录模式"""
 

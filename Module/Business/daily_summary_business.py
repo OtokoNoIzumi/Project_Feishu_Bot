@@ -172,7 +172,9 @@ class DailySummaryBusiness(BaseProcessor):
                         # 如果有分析方法，调用子模块的分析方法
                         analyze_method = config.get("analyze_method", "")
                         if analyze_method and hasattr(backend_instance, analyze_method):
-                            config["info"] = getattr(backend_instance, analyze_method)(module_data)
+                            config["info"] = getattr(backend_instance, analyze_method)(
+                                module_data
+                            )
                 else:
                     debug_utils.log_and_print(
                         f"子模块{backend_instance.__class__.__name__}没有实现{data_method}方法",
@@ -250,28 +252,35 @@ class DailySummaryBusiness(BaseProcessor):
         bili_video_data = daily_raw_data.get("bili_video", {}).get("info", {})
         video_list = []
         if bili_video_data:
-            video_info, video_list = self.bili_element.build_bili_video_elements(bili_video_data)
+            video_info, video_list = self.bili_element.build_bili_video_elements(
+                bili_video_data
+            )
             elements.extend(video_info)
 
         # 使用系统前端模块构建运营数据元素
         operation_data = daily_raw_data.get("bili_adskip", {}).get("data", {})
         if operation_data:
-            elements.extend(self.system_element.build_operation_elements(operation_data))
+            elements.extend(
+                self.system_element.build_operation_elements(operation_data)
+            )
 
         # 使用系统前端模块构建服务状态元素
         services_status = daily_raw_data.get("services_status", {}).get("data", {})
         if services_status:
-            elements.extend(self.system_element.build_services_status_elements(services_status))
-
-        elements.append(JsonBuilder.build_line_element())
-
-        elements.extend(video_list)
+            elements.extend(
+                self.system_element.build_services_status_elements(services_status)
+            )
 
         # 使用日常分析前端模块构建日常分析元素
         routine_info = daily_raw_data.get("routine", {}).get("info", {})
         if routine_info:
             user_id = daily_raw_data.get("system_status", {}).get("user_id", "")
-            elements.extend(self.routine_element.build_routine_elements(routine_info, user_id))
+            elements.extend(
+                self.routine_element.build_routine_elements(routine_info, user_id)
+            )
+
+        elements.append(JsonBuilder.build_line_element())
+        elements.extend(video_list)
 
         return elements
 

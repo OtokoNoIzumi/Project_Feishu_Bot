@@ -17,6 +17,7 @@ from Module.Services.constants import (
     RoutineProgressTypes,
     RoutineTargetTypes,
     RoutineReminderModes,
+    RoutineReminderTimeOptions,
     ToastTypes,
     CardConfigKeys,
     CardOperationTypes,
@@ -1270,14 +1271,7 @@ class RecordCard:
 
     def _get_reminder_time_options(self) -> List[Dict]:
         """获取提醒时间选项"""
-        dict_options = {
-            "before_5min": "提前5分钟",
-            "before_15min": "提前15分钟",
-            "before_30min": "提前30分钟",
-            "before_1hour": "提前1小时",
-            "before_1day": "提前1天",
-        }
-        return self.parent.build_options(dict_options)
+        return RoutineReminderTimeOptions.build_options()
 
     def _build_submit_button(
         self, is_confirmed: bool, build_method_name: str = None
