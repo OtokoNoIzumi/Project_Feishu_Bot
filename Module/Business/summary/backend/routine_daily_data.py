@@ -33,6 +33,7 @@ class RoutineDailyData:
 
         now = datetime.now()
         is_monday = now.weekday() == 0  # 0是周一
+        is_monday = True
         is_first_day_of_month = now.day == 1
         is_first_day_of_quarter = now.month % 3 == 1 and now.day == 1
         is_first_day_of_year = now.month == 1 and now.day == 1
@@ -713,11 +714,11 @@ class RoutineDailyData:
             item["accepted"] = True
             item["id"] = f"{current_week_key}_{action_id}"
 
-        result_to_save = result  # 确保保存的是本次分析结果
+        # result_to_save = result  # 确保保存的是本次分析结果
 
-        weekly_record_map[current_week_key] = result_to_save
-        weekly_record_file["weekly_record"] = weekly_record_map
-        self.routine_business.save_weekly_record(user_id, weekly_record_file)
+        # weekly_record_map[current_week_key] = result_to_save
+        # weekly_record_file["weekly_record"] = weekly_record_map
+        # self.routine_business.save_weekly_record(user_id, weekly_record_file)
 
         return result
 

@@ -303,42 +303,8 @@ class FeishuDocument:
         }
         return block_data
 
-    def create_text_block(
-        self,
-        block_id: str = "",
-        text: str = "",
-        background_color: int = -1,
-        align: int = 1,
-    ):
-        """
-        创建文本块
-        """
-
-        block_data = {
-            "block_id": block_id,
-            "block_type": 2,
-            "text": {
-                "elements": [
-                    {
-                        "text_run": {
-                            "content": text,
-                        },
-                    }
-                ],
-            },
-            "children": [],
-        }
-        if background_color != -1:
-            block_data["text"]["elements"][0]["text_run"]["text_element_style"] = {
-                "background_color": background_color,
-            }
-        if align != 1:
-            block_data["text"]["style"] = {
-                "align": align,
-            }
-        return block_data
-
     FORMATED_TEXT_BLOCK_TYPE = {
+        "text": 2,
         "heading1": 3,
         "heading2": 4,
         "heading3": 5,
@@ -356,6 +322,7 @@ class FeishuDocument:
         text: str = "",
         background_color: int = -1,
         block_type: str = "heading1",
+        align: int = 1,
     ):
         """
         创建格式化文本块
@@ -377,6 +344,10 @@ class FeishuDocument:
         if background_color != -1:
             block_data["text"]["elements"][0]["text_run"]["text_element_style"] = {
                 "background_color": background_color,
+            }
+        if align != 1:
+            block_data["text"]["style"] = {
+                "align": align,
             }
         return block_data
 
