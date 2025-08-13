@@ -1789,20 +1789,17 @@ class RoutineRecord(BaseProcessor):
                 create_time_str, field_name="create_time"
             )
 
-            # 如果没有end_time，使用create_time作为end_time（即时事件）
-            if (not end_time_str) or (end_time_str == create_time_str):
+            if not end_time_str:
                 end_time = start_time
-                start_time = start_time - timedelta(minutes=record.get("duration", 0))
             else:
                 end_time = self.safe_parse_datetime(end_time_str, field_name="end_time")
-                # 如果duration大于时间差，视为即时事件
-                if record.get("duration", 0) > min(
-                    2, (end_time - start_time).total_seconds() / 60
-                ):
-                    end_time = start_time
-                    start_time = start_time - timedelta(
-                        minutes=record.get("duration", 0)
-                    )
+
+            diff_minutes = (end_time - start_time).total_seconds() / 60
+            duration = record.get("duration", 0)
+
+            if (diff_minutes<=2) and (duration > diff_minutes):
+                end_time = start_time
+                start_time = start_time - timedelta(minutes=duration)
 
             if start_time < end_range and end_time > start_range:
                 record["start_dt"] = start_time
