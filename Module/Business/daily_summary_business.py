@@ -13,6 +13,7 @@ import copy
 from typing import Dict, Any, List
 from datetime import datetime, timedelta
 import random
+from collections import defaultdict
 import pandas as pd
 import numpy as np
 
@@ -964,14 +965,12 @@ class DailySummaryBusiness(BaseProcessor):
                     slot_event_info = event_map.get(slot_event_label, {})
                     slot_event_color = slot_event_info.get("color", ColorTypes.GREY)
 
-                    final_color, palette_data = (
-                        self.routine_business.calculate_color_palette(
-                            "no_user_id",
-                            slot_start,
-                            slot_end,
-                            event_color_map=event_map,
-                            timeline_data=atomic_timeline,
-                        )
+                    final_color, _ = self.routine_business.calculate_color_palette(
+                        "no_user_id",
+                        slot_start,
+                        slot_end,
+                        event_color_map=event_map,
+                        timeline_data=atomic_timeline,
                     )
 
                     # slot_color_name = final_color
@@ -1033,14 +1032,29 @@ class DailySummaryBusiness(BaseProcessor):
 
         # 单次apply直接操作event_df提取所有字段
         event_df[["interval_type", "target_value", "check_cycle"]] = event_df.apply(
-            self._extract_all_event_fields, axis=1, result_type='expand'
+            self._extract_all_event_fields, axis=1, result_type="expand"
         )
         # 合并记录与定义信息
         merged_df = record_df.merge(
-            event_df[["event_name", "category", "interval_type", "target_value", "check_cycle"]],
+            event_df[
+                [
+                    "event_name",
+                    "category",
+                    "interval_type",
+                    "target_value",
+                    "check_cycle",
+                ]
+            ],
             on="event_name",
             how="left",
-        ).fillna({"category": "", "interval_type": "degree", "target_value": 0, "check_cycle": ""})
+        ).fillna(
+            {
+                "category": "",
+                "interval_type": "degree",
+                "target_value": 0,
+                "check_cycle": "",
+            }
+        )
         merged_df = merged_df.merge(record_define_time, on="record_id", how="left")
 
         # 分组统计
@@ -1062,14 +1076,10 @@ class DailySummaryBusiness(BaseProcessor):
 
         for name, group in grouped:
             max_duration_start_at_list.append(self._get_max_start_at(group))
+            category_val = name[0]  # 对应 category
+            event_name_val = name[1]  # 对应 event_name
+            degree_val = name[2]  # 对应 degree
 
-            category_val = group["category"].iloc[0] if not group.empty else ""
-            event_name_val = group["event_name"].iloc[0] if not group.empty else ""
-            degree_val = (
-                group["degree"].iloc[0]
-                if ("degree" in group.columns and not group.empty)
-                else ""
-            )
             interval_type_val = (
                 group["interval_type"].iloc[0]
                 if ("interval_type" in group.columns and not group.empty)
@@ -1472,9 +1482,11 @@ class DailySummaryBusiness(BaseProcessor):
 
         # 修正：原代码变量名错误，未定义index，且未将修改后的result保存到result_to_save
         # 正确做法：用ind作为索引，且应将result赋值给result_to_save
-        for id, item in enumerate(result.get("strategic_action_suggestions", [])):
+        for action_id, item in enumerate(
+            result.get("strategic_action_suggestions", [])
+        ):
             item["accepted"] = True
-            item["id"] = f"{current_week_key}_{id}"
+            item["id"] = f"{current_week_key}_{action_id}"
 
         result_to_save = result  # 确保保存的是本次分析结果
 
@@ -2084,7 +2096,7 @@ class DailySummaryBusiness(BaseProcessor):
                 )
                 if action_suggestions_data:
                     markdown_element = JsonBuilder.build_markdown_element(
-                        content=f":MeMeMe: **本周行动建议**"
+                        content=":MeMeMe: **本周行动建议**"
                     )
                     elements.append(markdown_element)
                     for action in action_suggestions_data:
@@ -2261,7 +2273,6 @@ class DailySummaryBusiness(BaseProcessor):
         descendants.append(table_block)
 
         # 添加AI分析报告和重要报告和活动明细
-        from collections import defaultdict
 
         ai_analysis = weekly_data.get("ai_analysis", {})
         event_records = weekly_data.get("event_summary", [])
@@ -2922,8 +2933,7 @@ class DailySummaryBusiness(BaseProcessor):
 
         time_labels = weekly_table_data.get("time_labels", [])
         days_data = weekly_table_data.get("days", {})
-
-        DEFAULT_SLOT_DATA = {
+        default_slot_data = {
             "text": "空闲",
             "color": ColorTypes.GREY,
             "category_label": "空闲",
@@ -2932,15 +2942,15 @@ class DailySummaryBusiness(BaseProcessor):
         for time_label in time_labels:
             row = {"time": time_label}
 
-            for day_key in day_dict.keys():
+            for day_key in day_dict:
                 day_data = days_data.get(day_key, {})
-                slot_data = day_data.get(time_label, DEFAULT_SLOT_DATA)
+                slot_data = day_data.get(time_label, default_slot_data)
 
                 row[day_key] = [
                     {
-                        "text": slot_data.get("text", DEFAULT_SLOT_DATA.get("text")),
+                        "text": slot_data.get("text", default_slot_data.get("text")),
                         "color": slot_data.get(
-                            "color", DEFAULT_SLOT_DATA.get("color")
+                            "color", default_slot_data.get("color")
                         ).option_value,
                     }
                 ]
@@ -2948,7 +2958,6 @@ class DailySummaryBusiness(BaseProcessor):
             table_element["rows"].append(row)
 
         elements.append(table_element)
-
         return elements
 
     # endregion
