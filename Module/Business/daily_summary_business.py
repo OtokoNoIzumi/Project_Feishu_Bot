@@ -312,6 +312,8 @@ class DailySummaryBusiness(BaseProcessor):
 4.  **挖掘隐藏数据洞察 (`hidden_data_insights`)**:
 深入分析备注、异常时长、分类等细节，找出至少2-3个有价值的深层发现。
 特别关注那些打破常规模式的事件链，例如‘长时间工作后的异常娱乐选择’或‘特定用餐后的精力变化’。
+你必须检查数据中包含的非0target_value和非空check_cycle的目标设定。你的任务不是报告完成度，而是去发现“目标与现实的冲突”。
+如果一个设定了周期目标（如check_cycle: '天'）的活动，在某个周期内没有被执行或执行次数不足，你应将其作为一个的“隐藏洞察”，并深入分析造成这种偏差的可能原因或对其他的影响，以及它揭示了关于我的何种行为偏好或内在冲突。
 5.  **回顾过往行动 (`previous_actions_review`)**: 评估用户对上周建议的采纳情况。如果发现用户偏好发生变化，必须在`feedback_evolution_note`中进行说明。
 6.  **设计战略性行动建议 (`strategic_action_suggestions`)**: 基于以上所有分析，为用户提供的**预设ID**填充5个全新的、具体的、可行的建议。并评估建议的执行挑战难度，以及哪怕不执行的最小可行动作。
 
@@ -1029,20 +1031,16 @@ class DailySummaryBusiness(BaseProcessor):
             "duration_minutes"
         ].sum()
 
-        # interval_type 从 properties 中提取
-        if "properties" in event_df.columns:
-            event_df["interval_type"] = event_df["properties"].apply(
-                self._extract_interval_type
-            )
-        else:
-            event_df["interval_type"] = "degree"
-
+        # 单次apply直接操作event_df提取所有字段
+        event_df[["interval_type", "target_value", "check_cycle"]] = event_df.apply(
+            self._extract_all_event_fields, axis=1, result_type='expand'
+        )
         # 合并记录与定义信息
         merged_df = record_df.merge(
-            event_df[["event_name", "category", "interval_type"]],
+            event_df[["event_name", "category", "interval_type", "target_value", "check_cycle"]],
             on="event_name",
             how="left",
-        ).fillna({"category": "", "degree": "", "interval_type": "degree"})
+        ).fillna({"category": "", "interval_type": "degree", "target_value": 0, "check_cycle": ""})
         merged_df = merged_df.merge(record_define_time, on="record_id", how="left")
 
         # 分组统计
@@ -1243,16 +1241,14 @@ class DailySummaryBusiness(BaseProcessor):
             "document_title": document_title,
         }
 
-    def _extract_interval_type(self, properties):
-        # properties为字典，interval_type为其key之一
-        if isinstance(properties, dict):
-            interval_type = properties.get("interval_type", None)
-            if interval_type in ["category", "degree", "ignore"]:
-                return interval_type
-            else:
-                return "ignore"
-        else:
-            return "ignore"
+    def _extract_all_event_fields(self, row):
+        """一次性从row中提取所有事件相关字段"""
+        properties = row["properties"]
+        interval_type = properties.get("interval_type", "degree")
+        target_value = properties.get("target_value", 0)
+        check_cycle = properties.get("check_cycle", None)
+
+        return pd.Series([interval_type, target_value, check_cycle])
 
     def _calc_avg_interval(self, times):
         """计算平均间隔（分钟），times为升序datetime字符串列表"""

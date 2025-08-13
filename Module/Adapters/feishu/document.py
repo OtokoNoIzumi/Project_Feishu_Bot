@@ -8,6 +8,9 @@
   2) 减少异步回调与 UI 构建的时序错位问题；
   3) 保持行为可预期，便于后续若切换到异步客户端时统一重构。
 - 若未来需要非阻塞行为，请在“调用方”层面采用异步客户端或任务队列统一调度，不要在本模块内重新引入线程。
+- 文档块创建的API文档：https://open.feishu.cn/document/docs/docs/document-block/create-2
+调试读取快内容反向查看结构  https://open.feishu.cn/api-explorer/cli_a6bf8e1105de900b
+获取文档纯文本内容，可以用来做diff算法的信息来源： https://open.feishu.cn/document/server-docs/docs/docs/docx-v1/document/raw_content
 """
 
 import os

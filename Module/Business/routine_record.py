@@ -1795,6 +1795,14 @@ class RoutineRecord(BaseProcessor):
                 start_time = start_time - timedelta(minutes=record.get("duration", 0))
             else:
                 end_time = self.safe_parse_datetime(end_time_str, field_name="end_time")
+                # 如果duration大于时间差，视为即时事件
+                if record.get("duration", 0) > min(
+                    2, (end_time - start_time).total_seconds() / 60
+                ):
+                    end_time = start_time
+                    start_time = start_time - timedelta(
+                        minutes=record.get("duration", 0)
+                    )
 
             if start_time < end_range and end_time > start_range:
                 record["start_dt"] = start_time
