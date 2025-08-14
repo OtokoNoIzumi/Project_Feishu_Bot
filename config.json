@@ -1,7 +1,11 @@
 {
-  "bot_id": "7473130113548402722",
-  "coze_bot_url": "https://api.coze.cn/v1/workflow/run",
-  "voice_id": "peach",
+  "coze": {
+    "api_base": "https://api.coze.cn/v1/workflow/run",
+    "tts_workflow_id": "7473130113548402722",
+    "voice_id": "peach",
+    "image_workflow_id": "7532385375723012138",
+    "stt_workflow_id": ""
+  },
   "log_level": "INFO",
   "debug_verbose": false,
   "GEMINI_MODEL_NAME": "gemini-2.5-flash-preview-05-20",
@@ -99,8 +103,7 @@
   "daily_summary": {
     "focus_topics": [
       "无职转生",
-      "凡人修仙传",
-      "灵笼"
+      "凡人修仙传"
     ]
   },
   "cards": {

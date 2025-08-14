@@ -13,12 +13,16 @@ import json
 import shutil
 import subprocess
 import tempfile
-import requests
 from pathlib import Path
-from typing import Optional, Tuple, Dict, Any, Union
+from typing import Optional, Tuple, Dict, Any
+import requests
 
 from Module.Common.scripts.common import debug_utils
-from ..service_decorators import service_operation_safe, external_api_safe, file_processing_safe
+from ..service_decorators import (
+    service_operation_safe,
+    external_api_safe,
+    file_processing_safe,
+)
 
 
 class AudioService:
@@ -48,31 +52,39 @@ class AudioService:
                 api_base=self.coze_api_base,
                 workflow_id=self.coze_workflow_id,
                 access_token=self.coze_access_token,
-                voice_id=self.voice_id
+                voice_id=self.voice_id,
             )
 
     def _load_config(self):
         """加载配置"""
         if self.app_controller:
             # 从配置服务获取
-            success, ffmpeg = self.app_controller.call_service('config', 'get', 'FFMPEG_PATH', '')
-            self.ffmpeg_path = ffmpeg if success else os.getenv("FFMPEG_PATH", "")
+            config_service = self.app_controller.get_service("config")
 
-            success, coze_url = self.app_controller.call_service('config', 'get', 'coze_bot_url', '')
-            self.coze_api_base = coze_url if success else os.getenv("COZE_API_BASE", "https://api.coze.cn/v1/workflow/run")
+            # FFmpeg 配置
+            self.ffmpeg_path = (
+                config_service.get("FFMPEG_PATH", "")
+                if config_service
+                else os.getenv("FFMPEG_PATH", "")
+            )
 
-            success, bot_id = self.app_controller.call_service('config', 'get', 'bot_id', '')
-            self.coze_workflow_id = bot_id if success else ''
+            # Coze 配置 - 使用新的统一配置格式
+            coze_cfg = config_service.get("coze", {}) if config_service else {}
+            self.coze_api_base = coze_cfg.get(
+                "api_base", "https://api.coze.cn/v1/workflow/run"
+            )
+            self.coze_workflow_id = coze_cfg.get("tts_workflow_id", "")
+            self.voice_id = coze_cfg.get("voice_id", "peach")
 
-            success, voice_id = self.app_controller.call_service('config', 'get', 'voice_id', 'peach')
-            self.voice_id = voice_id if success else 'peach'
-
+            # Access token 从环境变量获取
             self.coze_access_token = os.getenv("COZE_API_KEY", "")
         else:
             # 从环境变量获取
             self.ffmpeg_path = os.getenv("FFMPEG_PATH", "")
-            self.coze_api_base = os.getenv("COZE_API_BASE", "https://api.coze.cn/v1/workflow/run")
-            self.coze_workflow_id = os.getenv("BOT_ID", "")
+            self.coze_api_base = os.getenv(
+                "COZE_API_BASE", "https://api.coze.cn/v1/workflow/run"
+            )
+            self.coze_workflow_id = os.getenv("TTS_WORKFLOW_ID", "")
             self.coze_access_token = os.getenv("COZE_API_KEY", "")
             self.voice_id = "peach"
 
@@ -99,10 +111,7 @@ class AudioService:
 
     @file_processing_safe("音频格式转换失败", return_value=(None, 0))
     def convert_to_opus(
-        self,
-        input_path: str,
-        output_dir: str = None,
-        overwrite: bool = True
+        self, input_path: str, output_dir: str = None, overwrite: bool = True
     ) -> Tuple[Optional[str], int]:
         """
         音频格式转换为opus
@@ -119,7 +128,9 @@ class AudioService:
 
         # 检查输入文件
         if not input_path.exists():
-            debug_utils.log_and_print(f"输入文件不存在: {input_path}", log_level="ERROR")
+            debug_utils.log_and_print(
+                f"输入文件不存在: {input_path}", log_level="ERROR"
+            )
             return None, 0
 
         # 检查FFmpeg
@@ -132,19 +143,26 @@ class AudioService:
         output_path = Path(output_dir or input_path.parent) / f"{input_path.stem}.opus"
 
         if output_path.exists() and not overwrite:
-            debug_utils.log_and_print(f"输出文件已存在: {output_path}", log_level="WARNING")
+            debug_utils.log_and_print(
+                f"输出文件已存在: {output_path}", log_level="WARNING"
+            )
             return str(output_path), 0
 
         # 构建FFmpeg命令
         cmd = [
             ffmpeg_cmd,
-            "-i", str(input_path),
-            "-strict", "-2",
-            "-acodec", "opus",
-            "-ac", "1",
-            "-ar", "48000",
+            "-i",
+            str(input_path),
+            "-strict",
+            "-2",
+            "-acodec",
+            "opus",
+            "-ac",
+            "1",
+            "-ar",
+            "48000",
             "-y" if overwrite else "-n",
-            str(output_path)
+            str(output_path),
         ]
 
         # 执行转换
@@ -152,7 +170,7 @@ class AudioService:
             cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
-            universal_newlines=True
+            universal_newlines=True,
         ) as process:
             duration_ms = 0
 
@@ -161,14 +179,18 @@ class AudioService:
                     try:
                         time_str = line.split("Duration: ")[1].split(",")[0].strip()
                         h, m, s = time_str.split(":")
-                        duration_ms = int((int(h)*3600 + int(m)*60 + float(s)) * 1000)
+                        duration_ms = int(
+                            (int(h) * 3600 + int(m) * 60 + float(s)) * 1000
+                        )
                     except:
                         pass
 
             return_code = process.wait()
 
             if return_code != 0:
-                debug_utils.log_and_print(f"音频转换失败，返回码: {return_code}", log_level="ERROR")
+                debug_utils.log_and_print(
+                    f"音频转换失败，返回码: {return_code}", log_level="ERROR"
+                )
                 return None, 0
 
             return str(output_path), duration_ms
@@ -206,8 +228,8 @@ class AudioService:
         audio_data = self.generate_tts(text)
         if audio_data:
             return True, audio_data, ""
-        else:
-            return False, None, "TTS生成失败"
+
+        return False, None, "TTS生成失败"
 
     def create_temp_audio_file(self, audio_data: bytes, suffix: str = ".mp3") -> str:
         """
@@ -220,12 +242,13 @@ class AudioService:
         Returns:
             str: 临时文件路径
         """
-        temp_file = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
-        temp_file.write(audio_data)
-        temp_file.flush()
-        temp_file.close()
+        # 使用with语句确保资源正确释放
+        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as temp_file:
+            temp_file.write(audio_data)
+            temp_file.flush()
+            temp_file_path = temp_file.name
 
-        return temp_file.name
+        return temp_file_path
 
     @file_processing_safe("清理临时文件失败")
     def cleanup_temp_file(self, file_path: str):
@@ -248,11 +271,19 @@ class AudioService:
             "ffmpeg_available": ffmpeg_available,
             "ffmpeg_path": self.ffmpeg_path or "system",
             "tts_available": tts_available,
-            "tts_config": {
-                "api_base": self.coze_api_base,
-                "workflow_id": self.coze_workflow_id[:10] + "..." if len(self.coze_workflow_id) > 10 else self.coze_workflow_id,
-                "voice_id": self.voice_id
-            } if tts_available else None
+            "tts_config": (
+                {
+                    "api_base": self.coze_api_base,
+                    "workflow_id": (
+                        self.coze_workflow_id[:10] + "..."
+                        if len(self.coze_workflow_id) > 10
+                        else self.coze_workflow_id
+                    ),
+                    "voice_id": self.voice_id,
+                }
+                if tts_available
+                else None
+            ),
         }
 
 
@@ -263,7 +294,13 @@ class CozeTTS:
     封装Coze API的TTS功能
     """
 
-    def __init__(self, api_base: str, workflow_id: str, access_token: str, voice_id: str = "peach"):
+    def __init__(
+        self,
+        api_base: str,
+        workflow_id: str,
+        access_token: str,
+        voice_id: str = "peach",
+    ):
         """
         初始化Coze TTS服务
 
@@ -294,7 +331,7 @@ class CozeTTS:
 
         headers = {
             "Authorization": f"Bearer {self.access_token}",
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
         }
 
         payload = {
@@ -302,31 +339,33 @@ class CozeTTS:
             "parameters": {
                 "input": text,
                 "voicebranch": self.voice_id,
-                "voice_type": "zh_female_gufengshaoyu_mars_bigtts"
-            }
+                "voice_type": "zh_female_gufengshaoyu_mars_bigtts",
+            },
         }
 
         try:
             # 第一步：调用Coze API获取音频URL
-            response = requests.post(self.api_base, headers=headers, json=payload, timeout=60)
+            response = requests.post(
+                self.api_base, headers=headers, json=payload, timeout=60
+            )
             response.raise_for_status()
 
             if response.status_code != 200:
-                debug_utils.log_and_print(f"Coze API响应错误: {response.status_code}", log_level="ERROR")
+                debug_utils.log_and_print(
+                    f"Coze API响应错误: {response.status_code}", log_level="ERROR"
+                )
                 return None
 
             result = response.json()
             if result.get("code") != 0:
-                debug_utils.log_and_print(f"Coze API业务错误: {result}", log_level="ERROR")
+                debug_utils.log_and_print(
+                    f"Coze API业务错误: {result}", log_level="ERROR"
+                )
                 return None
 
             # 解析响应数据
             data = json.loads(result.get("data", "{}"))
-            url_mappings = {
-                "gaoleng": "url",
-                "speech": "link",
-                "ruomei": "url"
-            }
+            url_mappings = {"gaoleng": "url", "speech": "link", "ruomei": "url"}
 
             # 查找第一个可用的音频URL
             audio_url = None
@@ -346,7 +385,10 @@ class CozeTTS:
             return audio_response.content
 
         except requests.exceptions.RequestException as e:
-            debug_utils.log_and_print(f"Coze TTS网络请求失败: {e}，请检查access_token是否过期 {self.access_token}", log_level="ERROR")
+            debug_utils.log_and_print(
+                f"Coze TTS网络请求失败: {e}，请检查access_token是否过期 {self.access_token}",
+                log_level="ERROR",
+            )
             return None
         except json.JSONDecodeError as e:
             debug_utils.log_and_print(f"Coze TTS响应解析失败: {e}", log_level="ERROR")
