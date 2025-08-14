@@ -54,8 +54,28 @@ class ImageService:
         # 初始化二维码生成器
         self.qr_generator = QRCodeGenerator()
         # 初始化混元图片生成器
-        cookies = self.app_controller.get_service("config").get("HUNYUAN_COOKIES", "")
+        config_service = self.app_controller.get_service("config")
+        cookies = (
+            config_service.get("HUNYUAN_COOKIES", "")
+            if self.app_controller
+            else os.getenv("HUNYUAN_COOKIES", "")
+        )
         self.hunyuan_image_generator = HunyuanImageGenerator(cookies)
+
+        # 初始化 Coze 图像生成器
+        self.coze_image_generator = None
+        if self.app_controller:
+            coze_cfg = config_service.get("coze", {}) if config_service else {}
+            api_base = coze_cfg.get("api_base") or config_service.get(
+                "coze_bot_url", "https://api.coze.cn/v1/workflow/run"
+            )
+            image_wf = coze_cfg.get("image_workflow_id", "")
+            access_token = config_service.get_env("COZE_API_KEY", "")
+
+        if image_wf and access_token:
+            self.coze_image_generator = CozeImageGenerator(
+                api_base=api_base, workflow_id=image_wf, access_token=access_token
+            )
 
     @service_operation_safe("图像服务配置加载失败")
     def _load_config(self):
@@ -277,6 +297,21 @@ class ImageService:
             return []
 
         return self.generate_ai_image(prompt=prompt.strip())
+
+    def process_text_to_image_coze(self, prompt: str) -> Optional[List[str]]:
+        """
+        通过 Coze Workflow 生成图像
+        返回图片本地路径列表
+        """
+        if not prompt or not prompt.strip():
+            return []
+        if not self.coze_image_generator:
+            return []
+
+        result = self.coze_image_generator.generate_image(prompt.strip())
+        if result.get("success") and result.get("file_path"):
+            return [result.get("file_path")]
+        return []
 
     def process_text_to_image_hunyuan(self, prompt: str) -> Optional[List[str]]:
         """
@@ -681,3 +716,85 @@ class HunyuanImageGenerator:
         """
         # 以后再增加cookies失败的情况
         return self.requests_available
+
+
+class CozeImageGenerator:
+    """Coze 图像生成器：调用 Coze workflow 生成图片并保存到本地"""
+
+    def __init__(
+        self, api_base: str, workflow_id: str, access_token: str, save_dir: str = None
+    ):
+        self.api_base = api_base
+        self.workflow_id = workflow_id
+        self.access_token = access_token
+        self.save_dir = save_dir or os.path.join(os.getcwd(), "cache", "images")
+        os.makedirs(self.save_dir, exist_ok=True)
+
+        self.headers = {
+            "Authorization": f"Bearer {self.access_token}",
+            "Content-Type": "application/json",
+        }
+
+    @external_api_safe(
+        "Coze 图片生成失败",
+        return_value={"success": False, "error": "调用失败"},
+        api_name="Coze Image",
+    )
+    def generate_image(self, prompt: str) -> Dict[str, Any]:
+        import time
+
+        payload = {"workflow_id": self.workflow_id, "parameters": {"prompt": prompt}}
+        resp = requests.post(
+            self.api_base, headers=self.headers, json=payload, timeout=60
+        )
+
+        if resp.status_code != 200:
+            return {
+                "success": False,
+                "error": f"HTTP {resp.status_code}",
+                "response": resp.text,
+            }
+
+        data = resp.json()
+        if data.get("code") != 0:
+            return {
+                "success": False,
+                "error": f"biz code {data.get('code')}",
+                "response": data,
+            }
+
+        # 按照 audio 的解析方式，解析 data 字段中的 JSON 字符串
+        try:
+            inner = json.loads(data.get("data", "{}"))
+            url_raw = inner.get("data", "")
+            # 去除包裹的空格与反引号
+            image_url = url_raw.strip().strip("`").strip()
+
+            if not image_url or not image_url.startswith("http"):
+                return {"success": False, "error": "未找到有效的图片URL"}
+        except json.JSONDecodeError as e:
+            return {"success": False, "error": f"parse data error: {e}"}
+
+        # 下载图片
+        try:
+            r = requests.get(image_url, timeout=60)
+            r.raise_for_status()
+            # 根据时间戳生成文件名
+            ts = int(time.time() * 1000)
+            ext = self._guess_ext(r.headers.get("Content-Type"), default=".png")
+            file_name = f"coze_img_{ts}{ext}"
+            file_path = os.path.join(self.save_dir, file_name)
+            with open(file_path, "wb") as f:
+                f.write(r.content)
+            return {"success": True, "file_path": file_path, "url": image_url}
+        except Exception as e:
+            return {"success": False, "error": f"download error: {e}"}
+
+    def _guess_ext(self, content_type: Optional[str], default: str = ".jpg") -> str:
+        mapping = {
+            "image/jpeg": ".jpg",
+            "image/png": ".png",
+            "image/webp": ".webp",
+            "image/gif": ".gif",
+        }
+        return mapping.get(content_type, default)

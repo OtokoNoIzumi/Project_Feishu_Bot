@@ -126,7 +126,9 @@ class DailySummaryBusiness(BaseProcessor):
                 "backend_instance": self.routine_data,  # 后端数据处理实例
                 "data_method": "get_routine_data",
                 "analyze_method": "analyze_routine_data",
-                "image_method": "generate_routine_image",
+                "data_params": {
+                    "image_generator": "coze_image_generator",
+                },
             },
             "bili_video": {
                 "name": "B站视频",

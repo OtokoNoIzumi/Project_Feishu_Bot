@@ -51,6 +51,10 @@ class RoutineDailyElement:
 
         return elements
 
+    # endregion
+
+    # region 日常元素
+
     def _build_image_element(
         self, image_key: str, main_color: Dict[str, Any]
     ) -> Dict[str, Any]:
@@ -161,7 +165,10 @@ class RoutineDailyElement:
             )
 
         if total_reminder_items > 0:
-            total_reminder_str = f"👩 **今日日程提醒**\n共{total_reminder_items}项，预计耗时:{format_time_label(total_time_cost)}"
+            total_reminder_str = f"👩 **今日日程提醒**"
+            if total_reminder_items > 1:
+                total_reminder_str += f"\n共{total_reminder_items}项，预计耗时:{format_time_label(total_time_cost)}"
+
             elements.insert(
                 0, JsonBuilder.build_markdown_element(content=total_reminder_str)
             )

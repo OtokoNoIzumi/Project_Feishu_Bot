@@ -35,6 +35,7 @@ class RoutineDailyData:
         if not data_params:
             return {}
         user_id = data_params.get("user_id")
+        image_generator = data_params.get("image_generator", "hunyuan_image_generator")
 
         now = datetime.now()
         is_monday = now.weekday() == 0  # 0是周一
@@ -46,7 +47,7 @@ class RoutineDailyData:
         # 周：日 + 周日程分析，周image_key，周的日程记录表，规律分析
         # 月：日 + 周 + 月程分析——最好维度有区别，否则就要因为月把周关闭掉，我不想有多份重复信息
 
-        daily_data = self.get_daily_data(user_id)
+        daily_data = self.get_daily_data(user_id, image_generator)
 
         weekly_data = None
         if is_monday:
@@ -107,7 +108,9 @@ class RoutineDailyData:
 
     # region 数据获取
 
-    def get_daily_data(self, user_id: str = None) -> Dict[str, Any]:
+    def get_daily_data(
+        self, user_id: str = None, image_generator: str = None
+    ) -> Dict[str, Any]:
         """获取日常数据
 
         Args:
@@ -145,10 +148,22 @@ class RoutineDailyData:
         )
 
         image_service = self.app_controller.get_service(ServiceNames.IMAGE)
-        result = image_service.hunyuan_image_generator.generate_image(
-            raw_prompt,
-            size="3:4",
-        )
+        match image_generator:
+            case "coze_image_generator":
+                result = image_service.coze_image_generator.generate_image(
+                    raw_prompt,
+                )
+            case "hunyuan_image_generator":
+                result = image_service.hunyuan_image_generator.generate_image(
+                    raw_prompt,
+                    size="3:4",
+                )
+            case _:
+                result = image_service.hunyuan_image_generator.generate_image(
+                    raw_prompt,
+                    size="3:4",
+                )
+
         image_path = result.get("file_path")
         image_key = self.app_controller.get_adapter(
             AdapterNames.FEISHU
