@@ -308,7 +308,7 @@ class AudioService:
         "Groq STT转写失败", return_value=(False, ""), api_name="Groq STT"
     )
     def transcribe_audio_with_groq(
-        self, audio_bytes: bytes, filename_hint: str = "audio.ogg"
+        self, audio_bytes: bytes, prompt: str = "", filename_hint: str = "audio.ogg"
     ) -> Tuple[bool, str]:
         """
         使用 Groq API 进行音频转写
@@ -330,8 +330,9 @@ class AudioService:
             # 调用 Groq STT API
             # 比较好的做法是至少加点prompt把当前的event name加上？有没有流式回复？
             transcription = client.audio.transcriptions.create(
-                file=(filename_hint, audio_bytes),
                 model=self.groq_stt_model,
+                file=(filename_hint, audio_bytes),
+                prompt=prompt,
                 response_format="verbose_json",
             )
 

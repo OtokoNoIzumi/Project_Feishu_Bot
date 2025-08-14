@@ -14,6 +14,7 @@ from .base_processor import (
     require_service,
     safe_execute,
 )
+from Module.Business.routine_record import RoutineRecord
 from Module.Services.constants import (
     ResponseTypes,
     ProcessResultConstKeys,
@@ -356,8 +357,6 @@ class MediaProcessor(BaseProcessor):
         if not file_bytes:
             return ProcessResult.error_result("获取音频文件失败")
 
-        file_name = "audio.ogg"
-
         # 获取音频服务
         audio_service = self.app_controller.get_service(ServiceNames.AUDIO)
 
@@ -366,8 +365,24 @@ class MediaProcessor(BaseProcessor):
         diff_time_before_stt = round(
             (before_stt - context.timestamp).total_seconds(), 1
         )
+        user_id = context.user_id
+        routine_business = RoutineRecord(self.app_controller)
+        event_data = routine_business.load_event_definitions(user_id)
+        event_name = event_data.get("definitions", {}).keys()
+        if event_name:
+            prompt = (
+                "如果识别结果与以下事件名称发音相似，"
+                f"请直接返回事件名称：\n{'、'.join(event_name)}。\n"
+            )
+            # prompt = (
+            #     f"如果发音与以下事件名称清单一致，请直接返回事件名称，否则正常识别。 事件名称清单：{','.join(event_name)}。"
+            # )
+        else:
+            prompt = ""
+
         success, transcription_text = audio_service.transcribe_audio_with_groq(
-            file_bytes, file_name
+            file_bytes,
+            prompt,
         )
         after_stt = datetime.now()
         diff_time_after_stt = round((after_stt - before_stt).total_seconds(), 1)
