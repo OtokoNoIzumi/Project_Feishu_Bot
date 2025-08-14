@@ -5,8 +5,21 @@
 """
 
 import os
-from .base_processor import BaseProcessor, MessageContext, ProcessResult, require_service, safe_execute
-from Module.Services.constants import ResponseTypes, ProcessResultConstKeys, ProcessResultNextAction, ServiceNames
+from datetime import datetime
+
+from .base_processor import (
+    BaseProcessor,
+    MessageContext,
+    ProcessResult,
+    require_service,
+    safe_execute,
+)
+from Module.Services.constants import (
+    ResponseTypes,
+    ProcessResultConstKeys,
+    ProcessResultNextAction,
+    ServiceNames,
+)
 
 
 class MediaProcessor(BaseProcessor):
@@ -16,23 +29,30 @@ class MediaProcessor(BaseProcessor):
     处理各种媒体相关的功能
     """
 
-    @require_service('audio', "音频服务未启动")
+    @require_service("audio", "音频服务未启动")
     @safe_execute("配音指令处理失败")
-    def handle_tts_command(self, context: MessageContext, user_msg: str) -> ProcessResult:
+    def handle_tts_command(
+        self, context: MessageContext, user_msg: str
+    ) -> ProcessResult:
         """处理TTS配音指令"""
         # 提取配音文本
         tts_text = user_msg.split("配音", 1)[1].strip()
         if not tts_text:
-            return ProcessResult.error_result("配音文本不能为空，请使用格式：配音 文本内容")
+            return ProcessResult.error_result(
+                "配音文本不能为空，请使用格式：配音 文本内容"
+            )
 
         # 先发送处理中提示
-        return ProcessResult.success_result(ResponseTypes.TEXT, {
-            "text": "正在生成配音，请稍候...",
-            ProcessResultConstKeys.NEXT_ACTION: ProcessResultNextAction.PROCESS_TTS,
-            "tts_text": tts_text
-        })
+        return ProcessResult.success_result(
+            ResponseTypes.TEXT,
+            {
+                "text": "正在生成配音，请稍候...",
+                ProcessResultConstKeys.NEXT_ACTION: ProcessResultNextAction.PROCESS_TTS,
+                "tts_text": tts_text,
+            },
+        )
 
-    @require_service('audio', "音频服务未启动")
+    @require_service("audio", "音频服务未启动")
     @safe_execute("TTS异步处理失败")
     def process_tts_async(self, tts_text: str) -> ProcessResult:
         """
@@ -54,14 +74,19 @@ class MediaProcessor(BaseProcessor):
             return ProcessResult.error_result(f"TTS生成失败: {error_msg}")
 
         # 返回音频数据，由适配器处理上传
-        return ProcessResult.success_result(ResponseTypes.AUDIO, {
-            "audio_data": audio_data,
-            "text": tts_text[:50] + ("..." if len(tts_text) > 50 else "")
-        })
+        return ProcessResult.success_result(
+            ResponseTypes.AUDIO,
+            {
+                "audio_data": audio_data,
+                "text": tts_text[:50] + ("..." if len(tts_text) > 50 else ""),
+            },
+        )
 
-    @require_service('image', "图像生成服务未启动或不可用", check_available=True)
+    @require_service("image", "图像生成服务未启动或不可用", check_available=True)
     @safe_execute("图像生成指令处理失败")
-    def handle_image_generation_command(self, context: MessageContext, user_msg: str) -> ProcessResult:
+    def handle_image_generation_command(
+        self, context: MessageContext, user_msg: str
+    ) -> ProcessResult:
         """处理图像生成指令"""
         # 提取生图文本
         if "生图" in user_msg:
@@ -72,16 +97,21 @@ class MediaProcessor(BaseProcessor):
             prompt = ""
 
         if not prompt:
-            return ProcessResult.error_result("图像生成文本不能为空，请使用格式：生图 描述内容 或 AI画图 描述内容")
+            return ProcessResult.error_result(
+                "图像生成文本不能为空，请使用格式：生图 描述内容 或 AI画图 描述内容"
+            )
 
         # 先发送处理中提示
-        return ProcessResult.success_result(ResponseTypes.TEXT, {
-            "text": "正在生成图片，请稍候...",
-            ProcessResultConstKeys.NEXT_ACTION: ProcessResultNextAction.PROCESS_IMAGE_GENERATION,
-            "generation_prompt": prompt
-        })
+        return ProcessResult.success_result(
+            ResponseTypes.TEXT,
+            {
+                "text": "正在生成图片，请稍候...",
+                ProcessResultConstKeys.NEXT_ACTION: ProcessResultNextAction.PROCESS_IMAGE_GENERATION,
+                "generation_prompt": prompt,
+            },
+        )
 
-    @require_service('image', "图像生成服务未启动或不可用", check_available=True)
+    @require_service("image", "图像生成服务未启动或不可用", check_available=True)
     @safe_execute("图像生成异步处理失败")
     def process_image_generation_async(self, prompt: str) -> ProcessResult:
         """
@@ -113,33 +143,42 @@ class MediaProcessor(BaseProcessor):
                 error_msg += "\n备用方案：混元图片生成成功！"
 
         # 返回图像路径列表，由适配器处理上传
-        return ProcessResult.success_result(ResponseTypes.IMAGE_LIST, {
-            "image_paths": image_paths,
-            "prompt": prompt[:50] + ("..." if len(prompt) > 50 else ""),
-            "error_msg": error_msg
-        })
+        return ProcessResult.success_result(
+            ResponseTypes.IMAGE_LIST,
+            {
+                "image_paths": image_paths,
+                "prompt": prompt[:50] + ("..." if len(prompt) > 50 else ""),
+                "error_msg": error_msg,
+            },
+        )
 
-    @require_service('image', "图像处理服务未启动或不可用")
+    @require_service("image", "图像处理服务未启动或不可用")
     @safe_execute("图像消息处理失败")
     def handle_image_message(self, context: MessageContext) -> ProcessResult:
         """处理图片消息 - 图像风格转换"""
         # 检查图像服务是否可用（包含特殊的首次初始化逻辑）
-        first_init = 'image' in self.app_controller.initialized_services # 根据启动特征，避免首次启动时双倍初始化
+        first_init = (
+            "image" in self.app_controller.initialized_services
+        )  # 根据启动特征，避免首次启动时双倍初始化
         image_service = self.app_controller.get_service(ServiceNames.IMAGE)
         if not image_service.is_available(need_reinit=first_init):
             return ProcessResult.error_result("图像处理服务未启动或不可用")
 
         # 先发送处理中提示
-        return ProcessResult.success_result(ResponseTypes.TEXT, {
-            "text": "正在转换图片风格，请稍候...",
-            ProcessResultConstKeys.NEXT_ACTION: ProcessResultNextAction.PROCESS_IMAGE_CONVERSION,
-            "image_data": context.content  # 图像数据将由适配器传递
-        })
+        return ProcessResult.success_result(
+            ResponseTypes.TEXT,
+            {
+                "text": "正在转换图片风格，请稍候...",
+                ProcessResultConstKeys.NEXT_ACTION: ProcessResultNextAction.PROCESS_IMAGE_CONVERSION,
+                "image_data": context.content,  # 图像数据将由适配器传递
+            },
+        )
 
-    @require_service('image', "图像转换服务未启动或不可用", check_available=True)
+    @require_service("image", "图像转换服务未启动或不可用", check_available=True)
     @safe_execute("图像转换异步处理失败")
-    def process_image_conversion_async(self, image_base64: str, mime_type: str,
-                                     file_name: str, file_size: int) -> ProcessResult:
+    def process_image_conversion_async(
+        self, image_base64: str, mime_type: str, file_name: str, file_size: int
+    ) -> ProcessResult:
         """
         异步处理图像风格转换
 
@@ -166,10 +205,10 @@ class MediaProcessor(BaseProcessor):
             return ProcessResult.error_result("图片处理失败了，请尝试使用其他图片")
 
         # 返回处理后的图像路径列表
-        return ProcessResult.success_result(ResponseTypes.IMAGE_LIST, {
-            "image_paths": image_paths,
-            "original_file": file_name
-        })
+        return ProcessResult.success_result(
+            ResponseTypes.IMAGE_LIST,
+            {"image_paths": image_paths, "original_file": file_name},
+        )
 
     def sample_rich_text(self, context: MessageContext) -> ProcessResult:
         """处理富文本指令"""
@@ -190,30 +229,77 @@ class MediaProcessor(BaseProcessor):
                     "title": "富文本示例",
                     "content": [
                         [
-                            {"tag": "text", "text": "第一行:", "style": ["bold", "underline"]},
-                            {"tag": "a", "href": "https://open.feishu.cn", "text": "飞书开放平台", "style": ["italic"]},
-                            {"tag": "at", "user_id": "all", "style": ["lineThrough"]}
+                            {
+                                "tag": "text",
+                                "text": "第一行:",
+                                "style": ["bold", "underline"],
+                            },
+                            {
+                                "tag": "a",
+                                "href": "https://open.feishu.cn",
+                                "text": "飞书开放平台",
+                                "style": ["italic"],
+                            },
+                            {"tag": "at", "user_id": "all", "style": ["lineThrough"]},
                         ],
                         [{"tag": "text", "text": "🔍 飞书URL解析规律发现："}],
-                        [{"tag": "text", "text": "✅ B站视频BV号会自动解析为卡片: https://www.bilibili.com/video/BV1eG411C755"}],
-                        [{"tag": "text", "text": "❌ 个人网站保持文本格式: https://otokonoizumi.github.io/"}],
-                        [{"tag": "text", "text": "❌ B站番剧链接也仅显示文本: https://www.bilibili.com/bangumi/play/ss28747"}],
-                        [{"tag": "text", "text": "💡 规律：多链接时需悬停查看预览，单链接时直接显示卡片。普通文本类型的消息规律一致。"}],
-                        [{"tag": "emotion", "emoji_type": "BLUSH"}, {"tag": "emotion", "emoji_type": "FINGERHEART"}],
+                        [
+                            {
+                                "tag": "text",
+                                "text": "✅ B站视频BV号会自动解析为卡片: https://www.bilibili.com/video/BV1eG411C755",
+                            }
+                        ],
+                        [
+                            {
+                                "tag": "text",
+                                "text": "❌ 个人网站保持文本格式: https://otokonoizumi.github.io/",
+                            }
+                        ],
+                        [
+                            {
+                                "tag": "text",
+                                "text": "❌ B站番剧链接也仅显示文本: https://www.bilibili.com/bangumi/play/ss28747",
+                            }
+                        ],
+                        [
+                            {
+                                "tag": "text",
+                                "text": "💡 规律：多链接时需悬停查看预览，单链接时直接显示卡片。普通文本类型的消息规律一致。",
+                            }
+                        ],
+                        [
+                            {"tag": "emotion", "emoji_type": "BLUSH"},
+                            {"tag": "emotion", "emoji_type": "FINGERHEART"},
+                        ],
                         [{"tag": "hr"}],
                         [{"tag": "text", "text": "代码示例:"}],
-                        [{"tag": "code_block", "language": "PYTHON", "text": "print('Hello World')"}],
+                        [
+                            {
+                                "tag": "code_block",
+                                "language": "PYTHON",
+                                "text": "print('Hello World')",
+                            }
+                        ],
                         [{"tag": "hr"}],
-                        [{"tag": "md", "text": "**Markdown内容**\n- 列表项1\n- 列表项2\n```python\nprint('代码块')\n```"}]
-                    ]
+                        [
+                            {
+                                "tag": "md",
+                                "text": "**Markdown内容**\n- 列表项1\n- 列表项2\n```python\nprint('代码块')\n```",
+                            }
+                        ],
+                    ],
                 }
             }
 
-            return ProcessResult.success_result(ResponseTypes.RICH_TEXT, {
-                "rich_text_content": rich_text_content,
-                "sample_image_data": image_data,
-                "sample_image_name": os.path.basename(sample_pic_path)
-            }, parent_id=context.message_id)
+            return ProcessResult.success_result(
+                ResponseTypes.RICH_TEXT,
+                {
+                    "rich_text_content": rich_text_content,
+                    "sample_image_data": image_data,
+                    "sample_image_name": os.path.basename(sample_pic_path),
+                },
+                parent_id=context.message_id,
+            )
 
         except Exception as e:
             return ProcessResult.error_result(f"富文本指令处理失败: {str(e)}")
@@ -231,16 +317,69 @@ class MediaProcessor(BaseProcessor):
             with open(sample_pic_path, "rb") as f:
                 image_data = f.read()
 
-            return ProcessResult.success_result(ResponseTypes.IMAGE, {
-                "image_data": image_data,
-                "image_name": os.path.basename(sample_pic_path)
-            }, parent_id=context.message_id)
+            return ProcessResult.success_result(
+                ResponseTypes.IMAGE,
+                {
+                    "image_data": image_data,
+                    "image_name": os.path.basename(sample_pic_path),
+                },
+                parent_id=context.message_id,
+            )
 
         except Exception as e:
             return ProcessResult.error_result(f"图片指令处理失败: {str(e)}")
 
+    @require_service("audio", "音频服务未启动")
+    @safe_execute("音频消息处理失败")
     def handle_audio_message(self, context: MessageContext) -> ProcessResult:
         """处理音频消息"""
-        return ProcessResult.success_result(ResponseTypes.TEXT, {
-            "text": "收到音频消息，音频处理功能将在后续版本实现"
-        })
+
+        # 从 context 中获取音频文件信息
+        audio_content = context.content
+
+        if "file_key" not in audio_content:
+            return ProcessResult.error_result("音频消息格式错误，缺少file_key")
+
+        file_key = audio_content["file_key"]
+        message_id = context.message_id
+
+        # 获取飞书适配器的 sender
+        feishu_adapter = self.app_controller.get_adapter("feishu")
+        if not feishu_adapter:
+            return ProcessResult.error_result("飞书适配器未找到")
+
+        sender = feishu_adapter.sender
+
+        # 获取音频文件二进制数据
+        file_bytes = sender.get_file_resource(message_id, file_key)
+
+        if not file_bytes:
+            return ProcessResult.error_result("获取音频文件失败")
+
+        file_name = "audio.ogg"
+
+        # 获取音频服务
+        audio_service = self.app_controller.get_service(ServiceNames.AUDIO)
+
+        # 使用 Groq STT 进行转写
+        before_stt = datetime.now()
+        diff_time_before_stt = round(
+            (before_stt - context.timestamp).total_seconds(), 1
+        )
+        success, transcription_text = audio_service.transcribe_audio_with_groq(
+            file_bytes, file_name
+        )
+        after_stt = datetime.now()
+        diff_time_after_stt = round((after_stt - before_stt).total_seconds(), 1)
+
+        if success:
+            return ProcessResult.success_result(
+                ResponseTypes.TEXT,
+                {
+                    "text": f"耗时:流程{diff_time_before_stt}秒, 转写{diff_time_after_stt}秒\n{transcription_text}"
+                },
+            )
+        else:
+            return ProcessResult.success_result(
+                ResponseTypes.TEXT, {"text": f"音频转写失败: {transcription_text}"}
+            )

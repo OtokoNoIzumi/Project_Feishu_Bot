@@ -16,6 +16,7 @@ import tempfile
 from pathlib import Path
 from typing import Optional, Tuple, Dict, Any
 import requests
+from groq import Groq
 
 from Module.Common.scripts.common import debug_utils
 from ..service_decorators import (
@@ -78,6 +79,10 @@ class AudioService:
 
             # Access token 从环境变量获取
             self.coze_access_token = os.getenv("COZE_API_KEY", "")
+
+            # Groq 配置
+            self.groq_api_key = os.getenv("GROQ_API_KEY", "")
+            self.groq_stt_model = os.getenv("GROQ_STT_MODEL", "whisper-large-v3-turbo")
         else:
             # 从环境变量获取
             self.ffmpeg_path = os.getenv("FFMPEG_PATH", "")
@@ -87,6 +92,10 @@ class AudioService:
             self.coze_workflow_id = os.getenv("TTS_WORKFLOW_ID", "")
             self.coze_access_token = os.getenv("COZE_API_KEY", "")
             self.voice_id = "peach"
+
+            # Groq 配置
+            self.groq_api_key = os.getenv("GROQ_API_KEY", "")
+            self.groq_stt_model = os.getenv("GROQ_STT_MODEL", "whisper-large-v3-turbo")
 
     @external_api_safe("TTS语音生成失败", return_value=None, api_name="Coze TTS")
     def generate_tts(self, text: str) -> Optional[bytes]:
@@ -271,6 +280,7 @@ class AudioService:
             "ffmpeg_available": ffmpeg_available,
             "ffmpeg_path": self.ffmpeg_path or "system",
             "tts_available": tts_available,
+            "stt_available": bool(self.groq_api_key),
             "tts_config": (
                 {
                     "api_base": self.coze_api_base,
@@ -284,7 +294,52 @@ class AudioService:
                 if tts_available
                 else None
             ),
+            "stt_config": (
+                {
+                    "groq_stt_model": self.groq_stt_model,
+                    "groq_api_key": "已配置" if self.groq_api_key else "未配置",
+                }
+                if bool(self.groq_api_key)
+                else None
+            ),
         }
+
+    @external_api_safe(
+        "Groq STT转写失败", return_value=(False, ""), api_name="Groq STT"
+    )
+    def transcribe_audio_with_groq(
+        self, audio_bytes: bytes, filename_hint: str = "audio.ogg"
+    ) -> Tuple[bool, str]:
+        """
+        使用 Groq API 进行音频转写
+
+        Args:
+            audio_bytes: 音频二进制数据
+            filename_hint: 文件名提示，用于 API 调用
+
+        Returns:
+            Tuple[bool, str]: (成功标志, 转写文本或错误信息)
+        """
+        if not self.groq_api_key:
+            debug_utils.log_and_print("Groq API Key 未配置", log_level="ERROR")
+            return False, "Groq API Key 未配置"
+
+        try:
+            client = Groq(api_key=self.groq_api_key)
+
+            # 调用 Groq STT API
+            # 比较好的做法是至少加点prompt把当前的event name加上？有没有流式回复？
+            transcription = client.audio.transcriptions.create(
+                file=(filename_hint, audio_bytes),
+                model=self.groq_stt_model,
+                response_format="verbose_json",
+            )
+
+            return True, transcription.text
+
+        except Exception as e:
+            debug_utils.log_and_print(f"Groq STT 调用失败: {e}", log_level="ERROR")
+            return False, f"转写失败: {str(e)}"
 
 
 class CozeTTS:

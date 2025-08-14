@@ -18,52 +18,72 @@ import time
 import asyncio
 from lark_oapi.api.contact.v3 import GetUserRequest
 from lark_oapi.api.im.v1 import (
-    CreateMessageRequest, CreateMessageRequestBody,
-    ReplyMessageRequest, ReplyMessageRequestBody,
-    CreateFileRequest, CreateFileRequestBody,
+    CreateMessageRequest,
+    CreateMessageRequestBody,
+    ReplyMessageRequest,
+    ReplyMessageRequestBody,
+    CreateFileRequest,
+    CreateFileRequestBody,
     GetMessageResourceRequest,
-    CreateImageRequest, CreateImageRequestBody,
-    PatchMessageRequest, PatchMessageRequestBody
+    CreateImageRequest,
+    CreateImageRequestBody,
+    PatchMessageRequest,
+    PatchMessageRequestBody,
 )
 from lark_oapi.api.cardkit.v1 import (
-    CreateCardRequest, CreateCardRequestBody,
+    CreateCardRequest,
+    CreateCardRequestBody,
     CreateCardResponse,
-    CreateCardElementRequest, CreateCardElementRequestBody,
+    CreateCardElementRequest,
+    CreateCardElementRequestBody,
     CreateCardElementResponse,
-    DeleteCardElementRequest, DeleteCardElementRequestBody,
+    DeleteCardElementRequest,
+    DeleteCardElementRequestBody,
     DeleteCardElementResponse,
-    UpdateCardRequest, UpdateCardRequestBody,
+    UpdateCardRequest,
+    UpdateCardRequestBody,
     UpdateCardResponse,
-    Card
+    Card,
 )
 from Module.Common.scripts.common import debug_utils
 from Module.Business.processors import ProcessResult, MessageContext_Refactor
-from ..decorators import (
-    feishu_sdk_safe, file_operation_safe
-)
+from ..decorators import feishu_sdk_safe, file_operation_safe
 from Module.Services.constants import (
-    ServiceNames, ReplyModes, ChatTypes, ReceiverIdTypes,
-    Messages, ResponseTypes
+    ServiceNames,
+    ReplyModes,
+    ChatTypes,
+    ReceiverIdTypes,
+    Messages,
+    ResponseTypes,
 )
 from Module.Services.service_decorators import require_service
+
 
 class AsyncTaskManager:
     def __init__(self):
         self.loop = asyncio.get_event_loop()
 
-    async def delay_execute(self, func: Callable, delay_seconds: float, *args, **kwargs) -> Any:
+    async def delay_execute(
+        self, func: Callable, delay_seconds: float, *args, **kwargs
+    ) -> Any:
         """延迟执行指定的函数"""
         try:
             await asyncio.sleep(delay_seconds)
-            result = await asyncio.to_thread(func, *args, **kwargs)  # 在线程中执行同步函数
+            result = await asyncio.to_thread(
+                func, *args, **kwargs
+            )  # 在线程中执行同步函数
             return result
         except Exception as e:
             debug_utils.log_and_print(f"异步任务执行失败: {str(e)}", log_level="ERROR")
             return None
 
-    def schedule_task(self, func: Callable, delay_seconds: float, *args, **kwargs) -> asyncio.Future:
+    def schedule_task(
+        self, func: Callable, delay_seconds: float, *args, **kwargs
+    ) -> asyncio.Future:
         """调度异步任务并返回 Future 对象"""
-        return asyncio.ensure_future(self.delay_execute(func, delay_seconds, *args, **kwargs))
+        return asyncio.ensure_future(
+            self.delay_execute(func, delay_seconds, *args, **kwargs)
+        )
 
 
 class MessageSender:
@@ -94,32 +114,45 @@ class MessageSender:
         """
         # 先从缓存获取
         if self.app_controller:
-            success, cached_name = self.app_controller.call_service(ServiceNames.CACHE, 'get_user_name', f"user:{open_id}")
+            success, cached_name = self.app_controller.call_service(
+                ServiceNames.CACHE, "get_user_name", f"user:{open_id}"
+            )
             if success and cached_name:
                 return cached_name
 
-        request = GetUserRequest.builder().user_id_type(ReceiverIdTypes.OPEN_ID).user_id(open_id).build()
+        request = (
+            GetUserRequest.builder()
+            .user_id_type(ReceiverIdTypes.OPEN_ID)
+            .user_id(open_id)
+            .build()
+        )
         response = self.client.contact.v3.user.get(request)
         if response.success() and response.data and response.data.user:
             user = response.data.user
             # 优先级：nickname > display_name > name > open_id
             name = (
-                getattr(user, 'nickname', None)
-                or getattr(user, 'display_name', None)
-                or getattr(user, 'name', None)
+                getattr(user, "nickname", None)
+                or getattr(user, "display_name", None)
+                or getattr(user, "name", None)
                 or f"用户_{open_id[:8]}"
             )
             # 缓存用户名
             if self.app_controller:
-                self.app_controller.call_service(ServiceNames.CACHE, 'update_user', f"user:{open_id}", name)
-                self.app_controller.call_service(ServiceNames.CACHE, 'save_user_cache')
+                self.app_controller.call_service(
+                    ServiceNames.CACHE, "update_user", f"user:{open_id}", name
+                )
+                self.app_controller.call_service(ServiceNames.CACHE, "save_user_cache")
             return name
 
-        debug_utils.log_and_print(f"获取用户名失败: {response.code} - {response.msg}", log_level="WARNING")
+        debug_utils.log_and_print(
+            f"获取用户名失败: {response.code} - {response.msg}", log_level="WARNING"
+        )
         return f"用户_{open_id[:8]}"
 
     @feishu_sdk_safe("发送飞书回复失败", return_value=False)
-    def send_feishu_reply(self, original_data, result: ProcessResult, force_reply_mode: str = None) -> bool:
+    def send_feishu_reply(
+        self, original_data, result: ProcessResult, force_reply_mode: str = None
+    ) -> bool:
         """
         发送飞书回复消息
 
@@ -142,30 +175,47 @@ class MessageSender:
         # 决定消息模式
         reply_mode = self._determine_reply_mode(original_data, result, force_reply_mode)
 
-
         try:
             match reply_mode:
                 case ReplyModes.NEW:
                     # 提取基础信息
                     user_id = original_data.event.sender.sender_id.open_id
                     # 模式1: 新消息
-                    return self._send_create_message(user_id, content_json, result.response_type, ReceiverIdTypes.OPEN_ID)[0]
+                    return self._send_create_message(
+                        user_id,
+                        content_json,
+                        result.response_type,
+                        ReceiverIdTypes.OPEN_ID,
+                    )[0]
 
                 case ReplyModes.REPLY | ReplyModes.THREAD:
                     # 模式2&3: 回复消息 (含新话题)
                     # message_id = original_data.event.message.message_id
                     message_id = result.parent_id
-                    return self._send_reply_message(message_id, content_json, result.response_type, reply_mode == ReplyModes.THREAD)[0]
+                    return self._send_reply_message(
+                        message_id,
+                        content_json,
+                        result.response_type,
+                        reply_mode == ReplyModes.THREAD,
+                    )[0]
 
                 case _:
-                    debug_utils.log_and_print(f"❌ 未知的回复模式: {reply_mode}", log_level="ERROR")
+                    debug_utils.log_and_print(
+                        f"❌ 未知的回复模式: {reply_mode}", log_level="ERROR"
+                    )
                     return False
 
         except Exception as e:
             debug_utils.log_and_print(f"❌ 发送消息失败: {e}", log_level="ERROR")
             return False
 
-    def _determine_reply_mode(self, original_data, result: ProcessResult, force_mode: str = None, new_message_context: MessageContext_Refactor = None) -> str:
+    def _determine_reply_mode(
+        self,
+        original_data,
+        result: ProcessResult,
+        force_mode: str = None,
+        new_message_context: MessageContext_Refactor = None,
+    ) -> str:
         """
         决定回复模式
 
@@ -186,7 +236,10 @@ class MessageSender:
             else:
                 return "new"
 
-        debug_utils.log_and_print(f"❌ 开始用旧的飞书逻辑: {original_data.event.message.chat_type}", log_level="ERROR")
+        debug_utils.log_and_print(
+            f"❌ 开始用旧的飞书逻辑: {original_data.event.message.chat_type}",
+            log_level="ERROR",
+        )
 
         # 根据parent_id判断
         if result.parent_id:
@@ -196,49 +249,72 @@ class MessageSender:
         chat_type = original_data.event.message.chat_type
         return ReplyModes.REPLY if chat_type == ChatTypes.GROUP else ReplyModes.NEW
 
-    def _send_create_message(self, receive_id: str, content: str, msg_type: str, receive_id_type: str = ReceiverIdTypes.OPEN_ID) -> Tuple[bool, Optional[str]]:
+    def _send_create_message(
+        self,
+        receive_id: str,
+        content: str,
+        msg_type: str,
+        receive_id_type: str = ReceiverIdTypes.OPEN_ID,
+    ) -> Tuple[bool, Optional[str]]:
         """发送新消息（支持用户ID和聊天ID）
 
         Returns:
             Tuple[bool, Optional[str]]: (是否成功, 消息ID)
         """
-        request = CreateMessageRequest.builder().receive_id_type(receive_id_type).request_body(
-            CreateMessageRequestBody.builder()
-            .receive_id(receive_id)
-            .msg_type(msg_type)
-            .content(content)
+        request = (
+            CreateMessageRequest.builder()
+            .receive_id_type(receive_id_type)
+            .request_body(
+                CreateMessageRequestBody.builder()
+                .receive_id(receive_id)
+                .msg_type(msg_type)
+                .content(content)
+                .build()
+            )
             .build()
-        ).build()
+        )
 
         response = self.client.im.v1.message.create(request)
         if not response.success():
-            debug_utils.log_and_print(f"{Messages.NEW_MESSAGE_SEND_FAILED}: {response.code} - {response.msg}", log_level="ERROR")
+            debug_utils.log_and_print(
+                f"{Messages.NEW_MESSAGE_SEND_FAILED}: {response.code} - {response.msg}",
+                log_level="ERROR",
+            )
             return False, None
 
         # 获取消息ID
         message_id = response.data.message_id if response.data else None
         return True, message_id
 
-    def _send_reply_message(self, message_id: str, content: str, msg_type: str, reply_in_thread: bool = False) -> Tuple[bool, Optional[str]]:
+    def _send_reply_message(
+        self,
+        message_id: str,
+        content: str,
+        msg_type: str,
+        reply_in_thread: bool = False,
+    ) -> Tuple[bool, Optional[str]]:
         """发送回复消息
 
         Returns:
             Tuple[bool, Optional[str]]: (是否成功, 回复消息ID)
         """
-        builder = ReplyMessageRequestBody.builder() \
-            .msg_type(msg_type) \
-            .content(content)
+        builder = ReplyMessageRequestBody.builder().msg_type(msg_type).content(content)
 
         if reply_in_thread:
             builder = builder.reply_in_thread(True)
 
-        request = ReplyMessageRequest.builder() \
-            .message_id(message_id) \
-            .request_body(builder.build()) \
+        request = (
+            ReplyMessageRequest.builder()
+            .message_id(message_id)
+            .request_body(builder.build())
             .build()
+        )
         response = self.client.im.v1.message.reply(request)
         if not response.success():
-            debug_utils.log_and_print(f"❌ 回复消息发送失败: {response.code} - {response.msg}", log_level="ERROR")
+            debug_utils.log_and_print(
+                f"❌ 回复消息发送失败: {response.code} - {response.msg}",
+                log_level="ERROR",
+            )
             return False, None
 
         # 获取回复消息ID
@@ -255,7 +331,9 @@ class MessageSender:
         content_json = json.dumps(result.response_content)
 
         # 复用_send_create_message方法，避免代码重复
-        return self._send_create_message(user_id, content_json, result.response_type, "open_id")
+        return self._send_create_message(
+            user_id, content_json, result.response_type, "open_id"
+        )
 
     @feishu_sdk_safe("发送交互式卡片失败", return_value=(False, None))
     def send_interactive_card(
@@ -264,7 +342,7 @@ class MessageSender:
         user_id: str = None,
         card_content: Dict[str, Any] = None,
         reply_mode: str = "new",
-        message_id: str = None
+        message_id: str = None,
     ) -> Tuple[bool, Optional[str]]:
         """
         统一的交互式卡片发送方法
@@ -289,7 +367,9 @@ class MessageSender:
             card_content, reply_mode, chat_id, user_id, message_id
         )
         if not validation_result["valid"]:
-            debug_utils.log_and_print(f"❌ {validation_result['error']}", log_level="ERROR")
+            debug_utils.log_and_print(
+                f"❌ {validation_result['error']}", log_level="ERROR"
+            )
             return False, None
 
         # 将卡片内容转换为JSON字符串
@@ -303,7 +383,7 @@ class MessageSender:
                     message_id=message_id,
                     content=content_json,
                     msg_type="interactive",
-                    reply_in_thread=(reply_mode == "thread")
+                    reply_in_thread=(reply_mode == "thread"),
                 )
 
             case "new":
@@ -311,7 +391,9 @@ class MessageSender:
                 return self._send_new_interactive_card(chat_id, user_id, content_json)
 
             case _:
-                debug_utils.log_and_print(f"❌ 不支持的发送模式: {reply_mode}", log_level="ERROR")
+                debug_utils.log_and_print(
+                    f"❌ 不支持的发送模式: {reply_mode}", log_level="ERROR"
+                )
                 return False, None
 
     def _validate_card_send_params(
@@ -336,7 +418,9 @@ class MessageSender:
         return {"valid": True}
 
     @feishu_sdk_safe("发送新交互式卡片失败", return_value=(False, None))
-    def _send_new_interactive_card(self, chat_id: str, user_id: str, content_json: str) -> Tuple[bool, Optional[str]]:
+    def _send_new_interactive_card(
+        self, chat_id: str, user_id: str, content_json: str
+    ) -> Tuple[bool, Optional[str]]:
         """发送新的交互式卡片消息
 
         Returns:
@@ -347,7 +431,9 @@ class MessageSender:
         receive_id_type = "chat_id" if chat_id else "open_id"
 
         # 复用_send_create_message方法，避免代码重复
-        success, message_id = self._send_create_message(receive_id, content_json, "interactive", receive_id_type)
+        success, message_id = self._send_create_message(
+            receive_id, content_json, "interactive", receive_id_type
+        )
 
         return success, message_id
 
@@ -363,23 +449,29 @@ class MessageSender:
         image_content = json.loads(message.content)
 
         if "image_key" not in image_content:
-            debug_utils.log_and_print("图片消息格式错误，缺少image_key", log_level="ERROR")
+            debug_utils.log_and_print(
+                "图片消息格式错误，缺少image_key", log_level="ERROR"
+            )
             return None
 
         image_key = image_content["image_key"]
         message_id = message.message_id
 
         # 获取图片资源
-        request = GetMessageResourceRequest.builder() \
-            .message_id(message_id) \
-            .file_key(image_key) \
-            .type("image") \
+        request = (
+            GetMessageResourceRequest.builder()
+            .message_id(message_id)
+            .file_key(image_key)
+            .type("image")
             .build()
+        )
 
         response = self.client.im.v1.message_resource.get(request)
 
         if not response.success():
-            debug_utils.log_and_print(f"获取图片资源失败: {response.code} - {response.msg}", log_level="ERROR")
+            debug_utils.log_and_print(
+                f"获取图片资源失败: {response.code} - {response.msg}", log_level="ERROR"
+            )
             return None
 
         # 读取图片数据
@@ -394,10 +486,54 @@ class MessageSender:
         file_size = len(file_content)
 
         # 转换为base64
-        image_base64 = base64.b64encode(file_content).decode('utf-8')
+        image_base64 = base64.b64encode(file_content).decode("utf-8")
 
-        debug_utils.log_and_print(f"成功获取图片资源: {file_name}, 大小: {file_size} bytes", log_level="INFO")
+        debug_utils.log_and_print(
+            f"成功获取图片资源: {file_name}, 大小: {file_size} bytes", log_level="INFO"
+        )
         return image_base64, mime_type, file_name, file_size
+
+    @feishu_sdk_safe("获取文件资源失败", return_value=(None, None, None))
+    def get_file_resource(
+        self, message_id: str, file_key: str
+    ) -> Tuple[Optional[bytes], Optional[str], Optional[str]]:
+        """
+        获取文件资源
+
+        Args:
+            message_id: 消息ID
+            file_key: 文件key
+
+        Returns:
+            Tuple[Optional[bytes], Optional[str], Optional[str]]: (文件二进制数据, 文件名, 内容类型)
+        """
+        # 获取文件资源
+        request = (
+            GetMessageResourceRequest.builder()
+            .message_id(message_id)
+            .file_key(file_key)
+            .type("file")
+            .build()
+        )
+
+        response = self.client.im.v1.message_resource.get(request)
+
+        if not response.success():
+            debug_utils.log_and_print(
+                f"获取文件资源失败: {response.code} - {response.msg}", log_level="ERROR"
+            )
+            return None, None, None
+
+        # 读取文件数据
+        file_content = response.file.read()
+        if not file_content:
+            debug_utils.log_and_print("文件数据为空", log_level="ERROR")
+            return None
+
+        debug_utils.log_and_print(
+            f"成功获取文件资源, 大小: {len(file_content)} bytes", log_level="INFO"
+        )
+        return file_content
 
     @file_operation_safe("批量上传图片失败", return_value=False)
     def upload_and_send_images(self, original_data, image_paths: List[str]) -> bool:
@@ -411,12 +547,18 @@ class MessageSender:
             # 上传单张图片
             image_key = self.upload_and_get_image_key(image_path)
             if image_key:
-                image_result = ProcessResult.success_result("image", {"image_key": image_key}, parent_id=original_data.event.message.message_id)
+                image_result = ProcessResult.success_result(
+                    "image",
+                    {"image_key": image_key},
+                    parent_id=original_data.event.message.message_id,
+                )
                 self.send_feishu_reply(original_data, image_result)
                 success_count += 1
 
         if success_count > 0:
-            debug_utils.log_and_print(f"成功发送 {success_count}/{len(image_paths)} 张图片", log_level="INFO")
+            debug_utils.log_and_print(
+                f"成功发送 {success_count}/{len(image_paths)} 张图片", log_level="INFO"
+            )
             return True
 
         debug_utils.log_and_print("没有成功发送任何图片", log_level="ERROR")
@@ -436,9 +578,16 @@ class MessageSender:
                 )
                 .build()
             )
-            if upload_response.success() and upload_response.data and upload_response.data.image_key:
+            if (
+                upload_response.success()
+                and upload_response.data
+                and upload_response.data.image_key
+            ):
                 return upload_response.data.image_key
-            debug_utils.log_and_print(f"图片上传失败: {upload_response.code} - {upload_response.msg}, image_path: {image_path}", log_level="ERROR")
+            debug_utils.log_and_print(
+                f"图片上传失败: {upload_response.code} - {upload_response.msg}, image_path: {image_path}",
+                log_level="ERROR",
+            )
             return ""
 
     @file_operation_safe("音频上传处理失败", return_value=False)
@@ -474,7 +623,11 @@ class MessageSender:
             if file_key:
                 # 发送音频消息
                 content_json = json.dumps({"file_key": file_key})
-                result = ProcessResult.success_result("audio", json.loads(content_json), parent_id=original_data.event.message.message_id)
+                result = ProcessResult.success_result(
+                    "audio",
+                    json.loads(content_json),
+                    parent_id=original_data.event.message.message_id,
+                )
                 return self.send_feishu_reply(original_data, result)
 
             debug_utils.log_and_print("音频上传到飞书失败", log_level="ERROR")
@@ -502,15 +655,20 @@ class MessageSender:
                     .duration(str(int(duration_ms)))
                     .file(audio_file)
                     .build()
-                ).build()
+                )
+                .build()
             )
 
-            if upload_response.success() and upload_response.data and upload_response.data.file_key:
+            if (
+                upload_response.success()
+                and upload_response.data
+                and upload_response.data.file_key
+            ):
                 return upload_response.data.file_key
 
             debug_utils.log_and_print(
                 f"音频上传失败: {upload_response.code} - {upload_response.msg}",
-                log_level="ERROR"
+                log_level="ERROR",
             )
             return None
 
@@ -525,7 +683,9 @@ class MessageSender:
             if not rich_text_content:
                 debug_utils.log_and_print("富文本内容为空", log_level="ERROR")
                 return False
-            result = ProcessResult.success_result("post", rich_text_content, parent_id=result.parent_id)
+            result = ProcessResult.success_result(
+                "post", rich_text_content, parent_id=result.parent_id
+            )
             return self.send_feishu_reply(original_data, result)
 
         # 上传图片
@@ -541,7 +701,11 @@ class MessageSender:
             .build()
         )
 
-        if not (upload_response.success() and upload_response.data and upload_response.data.image_key):
+        if not (
+            upload_response.success()
+            and upload_response.data
+            and upload_response.data.image_key
+        ):
             debug_utils.log_and_print("富文本图片上传失败", log_level="ERROR")
             return False
 
@@ -554,14 +718,20 @@ class MessageSender:
         image_key = upload_response.data.image_key
 
         # 在第二行插入图片（在链接行后面）
-        rich_text_content["zh_cn"]["content"].insert(1, [{"tag": "img", "image_key": image_key}])
+        rich_text_content["zh_cn"]["content"].insert(
+            1, [{"tag": "img", "image_key": image_key}]
+        )
 
         # 使用统一的发送方法
-        result = ProcessResult.success_result("post", rich_text_content, parent_id=result.parent_id)
+        result = ProcessResult.success_result(
+            "post", rich_text_content, parent_id=result.parent_id
+        )
         return self.send_feishu_reply(original_data, result)
 
     @file_operation_safe("示例图片上传发送失败", return_value=False)
-    def upload_and_send_single_image_data(self, original_data, image_data: bytes) -> bool:
+    def upload_and_send_single_image_data(
+        self, original_data, image_data: bytes
+    ) -> bool:
         """上传并发送单张图片数据"""
         image_stream = BytesIO(image_data)
         upload_response = self.client.im.v1.image.create(
@@ -575,10 +745,12 @@ class MessageSender:
             .build()
         )
 
-        if (upload_response.success() and
-            upload_response.data and
-            upload_response.data.image_key):
-            if not hasattr(original_data.event, 'message'):
+        if (
+            upload_response.success()
+            and upload_response.data
+            and upload_response.data.image_key
+        ):
+            if not hasattr(original_data.event, "message"):
                 parent_id = original_data.event.context.open_message_id
             else:
                 parent_id = original_data.event.message.message_id
@@ -586,23 +758,31 @@ class MessageSender:
             image_result = ProcessResult.success_result(
                 "image",
                 {"image_key": upload_response.data.image_key},
-                parent_id=parent_id
+                parent_id=parent_id,
             )
             return self.send_feishu_reply(original_data, image_result)
 
-        debug_utils.log_and_print(f"示例图片上传失败: {upload_response.code} - {upload_response.msg}", log_level="ERROR")
+        debug_utils.log_and_print(
+            f"示例图片上传失败: {upload_response.code} - {upload_response.msg}",
+            log_level="ERROR",
+        )
         return False
 
     @feishu_sdk_safe("更新交互式卡片失败", return_value=False)
-    def update_interactive_card(self, message_id: str, card_content: Dict[str, Any]) -> bool:
+    def update_interactive_card(
+        self, message_id: str, card_content: Dict[str, Any]
+    ) -> bool:
         """更新交互式卡片内容"""
         content_json = json.dumps(card_content, ensure_ascii=False)
 
-        request = PatchMessageRequest.builder().message_id(message_id).request_body(
-            PatchMessageRequestBody.builder()
-            .content(content_json)
+        request = (
+            PatchMessageRequest.builder()
+            .message_id(message_id)
+            .request_body(
+                PatchMessageRequestBody.builder().content(content_json).build()
+            )
             .build()
-        ).build()
+        )
 
         response = self.client.im.v1.message.patch(request)
 
@@ -610,7 +790,10 @@ class MessageSender:
             # 移除成功日志，减少噪音
             return True
 
-        debug_utils.log_and_print(f"❌ 交互式卡片更新失败: {response.code} - {response.msg}", log_level="ERROR")
+        debug_utils.log_and_print(
+            f"❌ 交互式卡片更新失败: {response.code} - {response.msg}",
+            log_level="ERROR",
+        )
         return False
 
     @file_operation_safe("使用新context发送图片失败", return_value=False)
@@ -637,22 +820,32 @@ class MessageSender:
             .build()
         )
 
-        if (upload_response.success() and
-            upload_response.data and
-            upload_response.data.image_key):
+        if (
+            upload_response.success()
+            and upload_response.data
+            and upload_response.data.image_key
+        ):
 
             # 使用context中的message_id作为parent_id
             return self._send_reply_message(
                 message_id=context.parent_message_id,
                 content=json.dumps({"image_key": upload_response.data.image_key}),
-                msg_type="image"
+                msg_type="image",
             )[0]
 
-        debug_utils.log_and_print(f"图片上传失败: {upload_response.code} - {upload_response.msg}", log_level="ERROR")
+        debug_utils.log_and_print(
+            f"图片上传失败: {upload_response.code} - {upload_response.msg}",
+            log_level="ERROR",
+        )
         return False
 
     @feishu_sdk_safe("发送飞书回复失败", return_value=False)
-    def send_feishu_reply_with_context(self, context: MessageContext_Refactor, result: ProcessResult, force_reply_mode: str = None) -> bool:
+    def send_feishu_reply_with_context(
+        self,
+        context: MessageContext_Refactor,
+        result: ProcessResult,
+        force_reply_mode: str = None,
+    ) -> bool:
         """
         发送飞书回复消息
 
@@ -681,23 +874,31 @@ class MessageSender:
                 user_id = context.user_id
                 # 模式1: 新消息
                 return self._send_create_message(
-                    receive_id=user_id, content=content_json,
-                    msg_type=msg_type, receive_id_type=ReceiverIdTypes.OPEN_ID
+                    receive_id=user_id,
+                    content=content_json,
+                    msg_type=msg_type,
+                    receive_id_type=ReceiverIdTypes.OPEN_ID,
                 )[0]
 
             case ReplyModes.REPLY | ReplyModes.THREAD:
                 # 模式2&3: 回复消息 (含新话题)
                 message_id = context.parent_message_id
                 return self._send_reply_message(
-                    message_id=message_id, content=content_json,
-                    msg_type=msg_type, reply_in_thread=reply_mode == ReplyModes.THREAD
+                    message_id=message_id,
+                    content=content_json,
+                    msg_type=msg_type,
+                    reply_in_thread=reply_mode == ReplyModes.THREAD,
                 )[0]
 
             case _:
-                debug_utils.log_and_print(f"❌ 未知的回复模式: {reply_mode}", log_level="ERROR")
+                debug_utils.log_and_print(
+                    f"❌ 未知的回复模式: {reply_mode}", log_level="ERROR"
+                )
                 return False
 
-    def _format_content_json(self, result: ProcessResult) -> Tuple[Dict[str, Any], bool]:
+    def _format_content_json(
+        self, result: ProcessResult
+    ) -> Tuple[Dict[str, Any], bool]:
         """
         格式化响应内容为飞书格式
         """
@@ -705,14 +906,20 @@ class MessageSender:
         msg_type = result.reply_message_type
         match result_type:
             case ResponseTypes.ASYNC_ACTION:
-                should_reply = result.should_reply if result.message_before_async else False
+                should_reply = (
+                    result.should_reply if result.message_before_async else False
+                )
                 return {"text": result.message_before_async}, should_reply
             case _:
                 return result.response_content, result.should_reply
 
-
     @feishu_sdk_safe("发送飞书回复失败", return_value=False)
-    def send_feishu_message_reply(self, context: MessageContext_Refactor, message_str: str, force_reply_mode: str = None) -> bool:
+    def send_feishu_message_reply(
+        self,
+        context: MessageContext_Refactor,
+        message_str: str,
+        force_reply_mode: str = None,
+    ) -> bool:
         """
         发送飞书回复消息
 
@@ -744,23 +951,31 @@ class MessageSender:
                 user_id = context.user_id
                 # 模式1: 新消息
                 return self._send_create_message(
-                    receive_id=user_id, content=content_json,
-                    msg_type=msg_type, receive_id_type=ReceiverIdTypes.OPEN_ID
+                    receive_id=user_id,
+                    content=content_json,
+                    msg_type=msg_type,
+                    receive_id_type=ReceiverIdTypes.OPEN_ID,
                 )[0]
 
             case ReplyModes.REPLY | ReplyModes.THREAD:
                 # 模式2&3: 回复消息 (含新话题)
                 message_id = context.parent_message_id
                 return self._send_reply_message(
-                    message_id=message_id, content=content_json,
-                    msg_type=msg_type, reply_in_thread=reply_mode == ReplyModes.THREAD
+                    message_id=message_id,
+                    content=content_json,
+                    msg_type=msg_type,
+                    reply_in_thread=reply_mode == ReplyModes.THREAD,
                 )[0]
 
             case _:
-                debug_utils.log_and_print(f"❌ 未知的回复模式: {reply_mode}", log_level="ERROR")
+                debug_utils.log_and_print(
+                    f"❌ 未知的回复模式: {reply_mode}", log_level="ERROR"
+                )
                 return False
 
-    @require_service(ServiceNames.CACHE, "缓存服务不可用，无法过滤重复消息", return_value=False)
+    @require_service(
+        ServiceNames.CACHE, "缓存服务不可用，无法过滤重复消息", return_value=False
+    )
     def filter_duplicate_message(self, context: MessageContext_Refactor) -> bool:
         """
         过滤重复消息
@@ -772,11 +987,15 @@ class MessageSender:
         if is_duplicate:
             time_diff = time.time() - event_timestamp
             time_diff_str = f"时间差: {time_diff:.2f}秒"
-            text = context.content.text[:50] if hasattr(context.content, 'text') else context.content
+            text = (
+                context.content.text[:50]
+                if hasattr(context.content, "text")
+                else context.content
+            )
             debug_utils.log_and_print(
                 f"📋 重复事件已由过滤器跳过 [{context.message_type}] "
                 f"[{text}] {time_diff_str}",
-                log_level="INFO"
+                log_level="INFO",
             )
             return True
 
@@ -784,7 +1003,9 @@ class MessageSender:
         self._record_event(context)
         return False
 
-    @require_service(ServiceNames.CACHE, "缓存服务不可用，无法记录事件", return_value=False)
+    @require_service(
+        ServiceNames.CACHE, "缓存服务不可用，无法记录事件", return_value=False
+    )
     def _record_event(self, context: MessageContext_Refactor):
         """记录新事件"""
         cache_service = self.app_controller.get_service(ServiceNames.CACHE)
@@ -800,38 +1021,58 @@ class MessageSender:
         """创建卡片实体"""
         content_type = card_content.get("type")
         content_json = json.dumps(card_content.get("data"), ensure_ascii=False)
-        request: CreateCardRequest = CreateCardRequest.builder() \
-            .request_body(CreateCardRequestBody.builder()
+        request: CreateCardRequest = (
+            CreateCardRequest.builder()
+            .request_body(
+                CreateCardRequestBody.builder()
                 .type(content_type)
                 .data(content_json)
-                .build()) \
+                .build()
+            )
             .build()
+        )
         response: CreateCardResponse = self.client.cardkit.v1.card.create(request)
 
         if response.success() and response.data and response.data.card_id:
             return response.data.card_id
 
-        debug_utils.log_and_print(f"❌ 创建卡片实体失败: {response.code} - {response.msg}", log_level="ERROR")
+        debug_utils.log_and_print(
+            f"❌ 创建卡片实体失败: {response.code} - {response.msg}", log_level="ERROR"
+        )
         return None
 
-    def add_card_element(self,
-        card_id: str, element_id: str, element: Dict[str, Any], sequence: int, add_position: str = 'insert_after',
-        delay_seconds: float = None, message_id: str = None):
+    def add_card_element(
+        self,
+        card_id: str,
+        element_id: str,
+        element: Dict[str, Any],
+        sequence: int,
+        add_position: str = "insert_after",
+        delay_seconds: float = None,
+        message_id: str = None,
+    ):
         """添加卡片元素"""
+
         # 考虑到有一个批量修改，一次请求，应该比这些原子请求方便，只不过需要稍微再封装一点点
         # 先用一个try来管理element的问题吧——批量操作似乎一个报错就不行，到也是问题，似乎也不用try，失败日志是我自己加的。
         def _add_card_element_impl():
             element_json = json.dumps(element, ensure_ascii=False)
-            request: CreateCardElementRequest = CreateCardElementRequest.builder() \
-                .card_id(card_id) \
-                .request_body(CreateCardElementRequestBody.builder()
+            request: CreateCardElementRequest = (
+                CreateCardElementRequest.builder()
+                .card_id(card_id)
+                .request_body(
+                    CreateCardElementRequestBody.builder()
                     .type(add_position)
                     .target_element_id(element_id)
                     .sequence(sequence)
                     .elements(element_json)
-                    .build()) \
+                    .build()
+                )
                 .build()
-            response: CreateCardElementResponse = self.client.cardkit.v1.card_element.create(request)
+            )
+            response: CreateCardElementResponse = (
+                self.client.cardkit.v1.card_element.create(request)
+            )
             if response.success():
                 cache_service = self.app_controller.get_service(ServiceNames.CACHE)
                 cache_service.update_message_id_card_id_mapping(message_id, card_id)
@@ -839,62 +1080,98 @@ class MessageSender:
                 # 要保存card_id和element_id的映射，不然取不到。
                 return True
 
-            debug_utils.log_and_print(f"❌ 添加卡片元素失败: {response.code} - {response.msg}", log_level="ERROR")
+            debug_utils.log_and_print(
+                f"❌ 添加卡片元素失败: {response.code} - {response.msg}",
+                log_level="ERROR",
+            )
             return False
 
         if delay_seconds:
-            return self.async_task_manager.schedule_task(_add_card_element_impl, delay_seconds)
+            return self.async_task_manager.schedule_task(
+                _add_card_element_impl, delay_seconds
+            )
         else:
             return _add_card_element_impl()
 
-    def delete_card_element(self, card_id: str, element_id: str, sequence: int, delay_seconds: float = None, message_id: str = None):
+    def delete_card_element(
+        self,
+        card_id: str,
+        element_id: str,
+        sequence: int,
+        delay_seconds: float = None,
+        message_id: str = None,
+    ):
         """删除卡片元素"""
+
         def _delete_card_element_impl():
-            request: DeleteCardElementRequest = DeleteCardElementRequest.builder() \
-                .card_id(card_id) \
-                .element_id(element_id) \
-                .request_body(DeleteCardElementRequestBody.builder()
-                    .sequence(sequence)
-                    .build()) \
+            request: DeleteCardElementRequest = (
+                DeleteCardElementRequest.builder()
+                .card_id(card_id)
+                .element_id(element_id)
+                .request_body(
+                    DeleteCardElementRequestBody.builder().sequence(sequence).build()
+                )
                 .build()
-            response: DeleteCardElementResponse = self.client.cardkit.v1.card_element.delete(request)
+            )
+            response: DeleteCardElementResponse = (
+                self.client.cardkit.v1.card_element.delete(request)
+            )
             if response.success():
                 cache_service = self.app_controller.get_service(ServiceNames.CACHE)
                 cache_service.update_message_id_card_id_mapping(message_id, card_id)
                 cache_service.save_message_id_card_id_mapping()
                 return True
-            debug_utils.log_and_print(f"❌ 删除卡片元素失败: {response.code} - {response.msg}", log_level="ERROR")
+            debug_utils.log_and_print(
+                f"❌ 删除卡片元素失败: {response.code} - {response.msg}",
+                log_level="ERROR",
+            )
             return False
 
         if delay_seconds:
-            return self.async_task_manager.schedule_task(_delete_card_element_impl, delay_seconds)
+            return self.async_task_manager.schedule_task(
+                _delete_card_element_impl, delay_seconds
+            )
         else:
             return _delete_card_element_impl()
 
-    def update_card_content(self, card_id: str, card_content: Dict[str, Any], sequence: int, delay_seconds: float = None, message_id: str = None):
+    def update_card_content(
+        self,
+        card_id: str,
+        card_content: Dict[str, Any],
+        sequence: int,
+        delay_seconds: float = None,
+        message_id: str = None,
+    ):
         """更新卡片内容"""
+
         def _update_card_content_impl():
             content_json = json.dumps(card_content, ensure_ascii=False)
-            request: UpdateCardRequest = UpdateCardRequest.builder() \
-                .card_id(card_id) \
-                .request_body(UpdateCardRequestBody.builder() \
-                    .card(Card.builder() \
-                        .type("card_json") \
-                        .data(content_json) \
-                        .build()) \
-                    .sequence(sequence) \
-                    .build()) \
+            request: UpdateCardRequest = (
+                UpdateCardRequest.builder()
+                .card_id(card_id)
+                .request_body(
+                    UpdateCardRequestBody.builder()
+                    .card(Card.builder().type("card_json").data(content_json).build())
+                    .sequence(sequence)
+                    .build()
+                )
                 .build()
+            )
             response: UpdateCardResponse = self.client.cardkit.v1.card.update(request)
             if response.success():
                 cache_service = self.app_controller.get_service(ServiceNames.CACHE)
                 cache_service.update_message_id_card_id_mapping(message_id, card_id)
                 cache_service.save_message_id_card_id_mapping()
                 return True
-            debug_utils.log_and_print(f"❌ 更新卡片内容失败: {response.code} - {response.msg}", log_level="ERROR")
+            debug_utils.log_and_print(
+                f"❌ 更新卡片内容失败: {response.code} - {response.msg}",
+                log_level="ERROR",
+            )
             return False
 
         if delay_seconds:
-            return self.async_task_manager.schedule_task(_update_card_content_impl, delay_seconds)
+            return self.async_task_manager.schedule_task(
+                _update_card_content_impl, delay_seconds
+            )
         else:
             return _update_card_content_impl()
