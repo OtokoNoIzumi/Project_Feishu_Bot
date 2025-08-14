@@ -13,6 +13,7 @@ import os
 import json
 import copy
 import math
+import glob
 from typing import Dict, Any, Optional, Tuple, List
 from datetime import datetime, timedelta
 from collections import OrderedDict
@@ -250,6 +251,24 @@ class RoutineRecord(BaseProcessor):
         user_folder = self._get_user_data_path(user_id)
         return os.path.join(user_folder, "weekly_record.json")
 
+    def _get_backup_directory(self, user_id: str) -> str:
+        """
+        获取用户备份目录路径
+
+        Args:
+            user_id: 用户ID
+
+        Returns:
+            str: 备份目录路径
+        """
+        user_folder = self._get_user_data_path(user_id)
+        backup_folder = os.path.join(user_folder, "backup")
+
+        # 确保备份文件夹存在
+        os.makedirs(backup_folder, exist_ok=True)
+
+        return backup_folder
+
     # endregion
 
     # region 定义和数据结构
@@ -412,6 +431,14 @@ class RoutineRecord(BaseProcessor):
         """
         file_path = self._get_event_definitions_file_path(user_id)
 
+        # 检查是否需要备份
+        backup_time = data.get("backup_time", "")
+        if self.need_backup(backup_time):
+            self.backup_record_file(user_id, "event_definitions", data)
+
+            # 更新备份时间
+            data["backup_time"] = self._get_formatted_time()
+
         try:
             with open(file_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
@@ -434,6 +461,14 @@ class RoutineRecord(BaseProcessor):
         """
         file_path = self._get_event_records_file_path(user_id)
 
+        # 检查是否需要备份
+        backup_time = data.get("backup_time", "")
+        if self.need_backup(backup_time):
+            self.backup_record_file(user_id, "event_records", data)
+
+            # 更新备份时间
+            data["backup_time"] = self._get_formatted_time()
+
         try:
             with open(file_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
@@ -448,6 +483,13 @@ class RoutineRecord(BaseProcessor):
         保存用户周报记录
         """
         file_path = self.get_weekly_record_file_path(user_id)
+
+        # 使用新的备份策略
+        backup_time = data.get("backup_time", "")
+        if self.need_backup(backup_time):
+            self.backup_record_file(user_id, "weekly_record", data)
+            # 更新备份时间
+            data["backup_time"] = self._get_formatted_time()
 
         try:
             with open(file_path, "w", encoding="utf-8") as f:
@@ -1643,6 +1685,80 @@ class RoutineRecord(BaseProcessor):
             str: 格式化时间 "2025-07-10 09:07"
         """
         return datetime.now().strftime("%Y-%m-%d %H:%M")
+
+    def need_backup(self, backup_time_str: str, threshold_days: int = 1) -> bool:
+        """
+        检查是否需要备份
+
+        Args:
+            backup_time_str: 上次备份时间字符串 (格式: %Y-%m-%d %H:%M)
+            threshold_days: 备份阈值天数，默认1天
+
+        Returns:
+            bool: 是否需要备份
+        """
+        if not backup_time_str:
+            return True
+
+        last_backup_time = self.safe_parse_datetime(backup_time_str, "backup_time")
+        return last_backup_time < datetime.now() - timedelta(days=threshold_days)
+
+    def backup_record_file(self, user_id: str, file_type: str, data: Dict[str, Any]):
+        """
+        通用备份记录文件的方法
+
+        Args:
+            user_id: 用户ID
+            file_type: 文件类型 ("event_definitions", "event_records", "weekly_record")
+            data: 要备份的数据
+        """
+        backup_dir = self._get_backup_directory(user_id)
+
+        # 生成带日期的备份文件名
+        current_time = datetime.now()
+        date_str = current_time.strftime("%Y%m%d_%H%M%S")
+        backup_filename = f"{file_type}_{date_str}.json"
+        backup_path = os.path.join(backup_dir, backup_filename)
+
+        # 保存备份文件
+        with open(backup_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+
+        # 清理旧备份，只保留最新的2份
+        self._cleanup_old_backups(backup_dir, file_type, max_count=2)
+
+        debug_utils.log_and_print(
+            f"成功备份 {file_type} 文件: {backup_filename}", log_level="INFO"
+        )
+
+    def _cleanup_old_backups(
+        self, backup_dir: str, file_type: str, max_count: int = 2
+    ) -> None:
+        """
+        清理旧备份文件，只保留最新的指定数量的备份
+
+        Args:
+            backup_dir: 备份目录
+            file_type: 文件类型
+            max_count: 最大保留数量
+        """
+        # 查找该类型的所有备份文件
+        pattern = f"{file_type}_*.json"
+        backup_files = glob.glob(os.path.join(backup_dir, pattern))
+
+        if len(backup_files) <= max_count:
+            return
+
+        # 按文件修改时间排序，最新的在前
+        backup_files.sort(key=lambda x: os.path.getmtime(x), reverse=True)
+
+        # 删除超出数量限制的文件
+        files_to_delete = backup_files[max_count:]
+        for file_path in files_to_delete:
+            os.remove(file_path)
+            debug_utils.log_and_print(
+                f"删除旧备份文件: {os.path.basename(file_path)}", log_level="INFO"
+            )
 
     def _analyze_cycle_status(
         self, last_refresh_date: str, check_cycle: str
