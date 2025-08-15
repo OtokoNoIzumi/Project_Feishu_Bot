@@ -1750,7 +1750,7 @@ class RoutineRecord(BaseProcessor):
             return
 
         # 按文件修改时间排序，最新的在前
-        backup_files.sort(key=lambda x: os.path.getmtime(x), reverse=True)
+        backup_files.sort(key=os.path.getmtime, reverse=True)
 
         # 删除超出数量限制的文件
         files_to_delete = backup_files[max_count:]
@@ -1792,6 +1792,8 @@ class RoutineRecord(BaseProcessor):
         # 统一计算周期差异
         cycle_gap = 0
         need_refresh = False
+        current_year = now.year
+        last_year = last_refresh.year
 
         match check_cycle:
             case RoutineCheckCycle.DAILY.value:
@@ -1801,8 +1803,6 @@ class RoutineRecord(BaseProcessor):
             case RoutineCheckCycle.WEEKLY.value:
                 last_week = last_refresh.isocalendar()[1]
                 current_week = now.isocalendar()[1]
-                last_year = last_refresh.year
-                current_year = now.year
 
                 if current_year == last_year:
                     cycle_gap = max(0, current_week - last_week)
