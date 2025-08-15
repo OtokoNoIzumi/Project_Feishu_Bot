@@ -126,7 +126,10 @@ class QuickSelectCard:
         # 判断business_data的sub_business_data是否为dict且其下没有sub_business_data字段（即只有1层）
         show_quick_buttons = True
         sub_business_data = business_data.get("sub_business_data")
-        if isinstance(sub_business_data, dict) and sub_business_data.get("sub_business_data") is not None:
+        if (
+            isinstance(sub_business_data, dict)
+            and sub_business_data.get("sub_business_data") is not None
+        ):
             show_quick_buttons = False
 
         # 快捷添加按钮组 - 使用压缩布局
@@ -193,47 +196,6 @@ class QuickSelectCard:
                 elements.append(
                     self.parent.build_button_group_element(buttons=new_buttons)
                 )
-
-        # # 添加计算按钮组
-        # elements.append(self.parent.build_markdown_element("**颜色计算**"))
-
-        # calculate_buttons = []
-
-        # # 计算昨天按钮
-        # yesterday_action_data = {
-        #     "card_action": "calculate_yesterday_color",
-        #     "card_config_key": CardConfigKeys.ROUTINE_QUICK_SELECT,
-        #     "container_build_method": build_method_name,
-        # }
-        # calculate_buttons.append(
-        #     self.parent.build_button_element(
-        #         text="🎨 计算昨天",
-        #         action_data=yesterday_action_data,
-        #         type="default",
-        #         size="small",
-        #         disabled=components_disabled,
-        #     )
-        # )
-
-        # # 计算今天按钮
-        # today_action_data = {
-        #     "card_action": "calculate_today_color",
-        #     "card_config_key": CardConfigKeys.ROUTINE_QUICK_SELECT,
-        #     "container_build_method": build_method_name,
-        # }
-        # calculate_buttons.append(
-        #     self.parent.build_button_element(
-        #         text="🎨 计算今天",
-        #         action_data=today_action_data,
-        #         type="default",
-        #         size="small",
-        #         disabled=components_disabled,
-        #     )
-        # )
-
-        # elements.append(
-        #     self.parent.build_button_group_element(buttons=calculate_buttons)
-        # )
 
         # 集成模式：根据工作流程状态显示不同内容
         sub_business_build_method = business_data.get("sub_business_build_method", "")
@@ -526,7 +488,9 @@ class QuickSelectCard:
 
         routine_business = self.parent.message_router.routine_record
         new_query_node_data = routine_business.build_query_business_data(user_id)
-        new_query_node_data["filter_limit"] = 5 # 这里还是5，晚点实现成展开之后只保留1个选中的
+        new_query_node_data["filter_limit"] = (
+            5  # 这里还是5，晚点实现成展开之后只保留1个选中的
+        )
 
         business_data["workflow_state"] = (
             "quick_record"  # 集成模式状态，这个姑且先保留吧，稍微冗余一点点

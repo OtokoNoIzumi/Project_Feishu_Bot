@@ -705,6 +705,16 @@ class RoutineRecord(BaseProcessor):
         definitions_data = self.load_event_definitions(user_id)
         event_definition = definitions_data["definitions"].get(event_name, {})
 
+        # 如果没有直接匹配，尝试首字母匹配
+        matched_event_name = event_name
+        if not event_definition:
+            for def_name, def_data in definitions_data["definitions"].items():
+                def_initials = def_data.get("pinyin_initials", [])
+                if event_name in def_initials:
+                    event_definition = def_data
+                    matched_event_name = def_name
+                    break
+
         record_mode = record_mode or (
             RoutineRecordModes.ADD if event_definition else RoutineRecordModes.REGIST
         )
@@ -713,7 +723,7 @@ class RoutineRecord(BaseProcessor):
         business_data = {
             "record_mode": record_mode,
             "user_id": user_id,
-            "event_name": event_name,
+            "event_name": matched_event_name,
         }
 
         if record_mode == RoutineRecordModes.EDIT and current_record_data:
@@ -722,7 +732,7 @@ class RoutineRecord(BaseProcessor):
             last_record_time = new_record_data.get("create_time", None)
         else:
             new_record_data = {
-                "event_name": event_name,
+                "event_name": matched_event_name,
                 "create_time": self._get_formatted_time(),
             }
             last_record_time = event_definition.get(
@@ -767,7 +777,9 @@ class RoutineRecord(BaseProcessor):
                         )
                     business_data["last_record_data"] = last_record_data
 
-                avg_duration = self._calculate_average_duration(user_id, event_name)
+                avg_duration = self._calculate_average_duration(
+                    user_id, matched_event_name
+                )
                 if avg_duration > 0:
                     computed_data["avg_duration"] = avg_duration
 
@@ -782,7 +794,7 @@ class RoutineRecord(BaseProcessor):
                         )
                     case RoutineTargetTypes.TIME.value:
                         target_progress_value = self._calculate_total_duration(
-                            user_id, event_name
+                            user_id, matched_event_name
                         )
                     case _:
                         target_progress_value = 0
