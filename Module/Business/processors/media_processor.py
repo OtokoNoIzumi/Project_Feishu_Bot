@@ -6,6 +6,7 @@
 
 import os
 from datetime import datetime
+import time
 
 from .base_processor import (
     BaseProcessor,
@@ -360,8 +361,9 @@ class MediaProcessor(BaseProcessor):
         # 获取音频服务
         audio_service = self.app_controller.get_service(ServiceNames.AUDIO)
 
-        # 使用 Groq STT 进行转写
+        # 记录开始时间
         before_stt = datetime.now()
+        # 哪怕是一开始的时间戳也有before>context的异常情况，这个先不深究了，把代码清理一下move to next
         diff_time_before_stt = round(
             (before_stt - context.timestamp).total_seconds(), 1
         )
@@ -374,27 +376,75 @@ class MediaProcessor(BaseProcessor):
                 "如果识别结果与以下事件名称发音相似，"
                 f"请直接返回事件名称：\n{'、'.join(event_name)}。\n"
             )
-            # prompt = (
-            #     f"如果发音与以下事件名称清单一致，请直接返回事件名称，否则正常识别。 事件名称清单：{','.join(event_name)}。"
-            # )
         else:
             prompt = ""
 
-        success, transcription_text = audio_service.transcribe_audio_with_groq(
+        # 使用 Groq STT 进行转写
+        groq_start_time = time.time()
+        groq_success, groq_text = audio_service.transcribe_audio_with_groq(
             file_bytes,
             prompt,
         )
+        groq_end_time = time.time()
+        groq_duration = groq_end_time - groq_start_time
+
+        # 使用 Deepgram STT 进行转写
+        deepgram_start_time = time.time()
+        deepgram_success, deepgram_text = audio_service.transcribe_audio_with_deepgram(
+            file_bytes, "audio.ogg"
+        )
+        deepgram_end_time = time.time()
+        deepgram_duration = deepgram_end_time - deepgram_start_time
+
         after_stt = datetime.now()
         diff_time_after_stt = round((after_stt - before_stt).total_seconds(), 1)
 
-        if success:
-            return ProcessResult.success_result(
-                ResponseTypes.TEXT,
-                {
-                    "text": f"耗时:流程{diff_time_before_stt}秒, 转写{diff_time_after_stt}秒\n{transcription_text}"
-                },
-            )
+        # 找出最快的服务
+        durations = []
+
+        # 构建对比结果
+        # 引入拼音匹配之后这里的输出日志就也要调整了，不匹配的情况才保存和输出log_and_print
+        result_text = "🎵 音频转写对比结果:\n\n"
+
+        result_text += f"📊 **Groq STT** (耗时: {groq_duration:.2f}s):\n"
+        safe_filename = ""
+        if groq_success:
+            result_text += f"✅ {groq_text}\n\n"
+            durations.append(("Groq", groq_duration))
+            safe_filename = "".join(
+                c for c in groq_text if c.isalnum() or c in (" ", "-", "_")
+            ).rstrip()[:50]
         else:
-            return ProcessResult.success_result(
-                ResponseTypes.TEXT, {"text": f"音频转写失败: {transcription_text}"}
-            )
+            result_text += f"❌ 失败: {groq_text}\n\n"
+
+        result_text += f"📊 **Deepgram STT** (耗时: {deepgram_duration:.2f}s):\n"
+        if deepgram_success:
+            result_text += f"✅ {deepgram_text}\n\n"
+            durations.append(("Deepgram", deepgram_duration))
+            if not safe_filename:
+                safe_filename = "".join(
+                    c for c in deepgram_text if c.isalnum() or c in (" ", "-", "_")
+                ).rstrip()[:50]
+        else:
+            result_text += f"❌ 失败: {deepgram_text}\n\n"
+
+        fastest_service = min(durations, key=lambda x: x[1])[0]
+
+        if safe_filename:
+            audio_file_path = f"cache/voice_{safe_filename}.ogg"
+            try:
+                with open(audio_file_path, "wb") as f:
+                    f.write(file_bytes)
+                print(f"原始音频已保存: {audio_file_path}")
+            except Exception as save_error:
+                print(f"保存音频文件失败: {save_error}")
+
+        result_text += f"🏆 **最快服务**: {fastest_service} ({min(d[1] for d in durations):.2f}s)\n"
+        result_text += (
+            f"📈 **总耗时**: 流程{diff_time_before_stt}秒, 转写{diff_time_after_stt}秒"
+        )
+
+        return ProcessResult.success_result(
+            ResponseTypes.TEXT,
+            {"text": result_text},
+        )

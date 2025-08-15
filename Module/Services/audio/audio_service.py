@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Optional, Tuple, Dict, Any
 import requests
 from groq import Groq
+from deepgram import DeepgramClient, PrerecordedOptions, FileSource
 
 from Module.Common.scripts.common import debug_utils
 from ..service_decorators import (
@@ -83,6 +84,15 @@ class AudioService:
             # Groq 配置
             self.groq_api_key = os.getenv("GROQ_API_KEY", "")
             self.groq_stt_model = os.getenv("GROQ_STT_MODEL", "whisper-large-v3-turbo")
+
+            # Deepgram 配置
+            self.deepgram_api_key = os.getenv("DEEPGRAM_API_KEY", "")
+            self.deepgram_model = os.getenv("DEEPGRAM_MODEL", "nova-2")
+
+            # 讯飞 配置
+            self.xunfei_app_id = os.getenv("XUNFEI_APP_ID", "")
+            self.xunfei_api_secret = os.getenv("XUNFEI_API_SECRET", "")
+            self.xunfei_api_key = os.getenv("XUNFEI_API_KEY", "")
         else:
             # 从环境变量获取
             self.ffmpeg_path = os.getenv("FFMPEG_PATH", "")
@@ -96,6 +106,10 @@ class AudioService:
             # Groq 配置
             self.groq_api_key = os.getenv("GROQ_API_KEY", "")
             self.groq_stt_model = os.getenv("GROQ_STT_MODEL", "whisper-large-v3-turbo")
+
+            # Deepgram 配置
+            self.deepgram_api_key = os.getenv("DEEPGRAM_API_KEY", "")
+            self.deepgram_model = os.getenv("DEEPGRAM_MODEL", "nova-2")
 
     @external_api_safe("TTS语音生成失败", return_value=None, api_name="Coze TTS")
     def generate_tts(self, text: str) -> Optional[bytes]:
@@ -294,14 +308,26 @@ class AudioService:
                 if tts_available
                 else None
             ),
-            "stt_config": (
-                {
-                    "groq_stt_model": self.groq_stt_model,
-                    "groq_api_key": "已配置" if self.groq_api_key else "未配置",
-                }
-                if bool(self.groq_api_key)
-                else None
-            ),
+            "stt_config": {
+                "groq": (
+                    {
+                        "groq_stt_model": self.groq_stt_model,
+                        "groq_api_key": "已配置" if self.groq_api_key else "未配置",
+                    }
+                    if bool(self.groq_api_key)
+                    else None
+                ),
+                "deepgram": (
+                    {
+                        "deepgram_model": self.deepgram_model,
+                        "deepgram_api_key": (
+                            "已配置" if self.deepgram_api_key else "未配置"
+                        ),
+                    }
+                    if bool(self.deepgram_api_key)
+                    else None
+                ),
+            },
         }
 
     @external_api_safe(
@@ -325,6 +351,7 @@ class AudioService:
             return False, "Groq API Key 未配置"
 
         try:
+            # 创建 Groq 客户端
             client = Groq(api_key=self.groq_api_key)
 
             # 调用 Groq STT API
@@ -340,6 +367,60 @@ class AudioService:
 
         except Exception as e:
             debug_utils.log_and_print(f"Groq STT 调用失败: {e}", log_level="ERROR")
+            return False, f"转写失败: {str(e)}"
+
+    @external_api_safe(
+        "Deepgram STT转写失败", return_value=(False, ""), api_name="Deepgram STT"
+    )
+    def transcribe_audio_with_deepgram(
+        self, audio_bytes: bytes, filename_hint: str = "audio.ogg"
+    ) -> Tuple[bool, str]:
+        """
+        使用 Deepgram API 进行音频转写
+
+        Args:
+            audio_bytes: 音频二进制数据
+            filename_hint: 文件名提示，用于 API 调用
+
+        Returns:
+            Tuple[bool, str]: (成功标志, 转写文本或错误信息)
+        """
+        if not self.deepgram_api_key:
+            debug_utils.log_and_print("Deepgram API Key 未配置", log_level="ERROR")
+            return False, "Deepgram API Key 未配置"
+
+        try:
+            # 创建 Deepgram 客户端
+            deepgram = DeepgramClient(api_key=self.deepgram_api_key)
+
+            # 准备音频数据
+            payload: FileSource = {
+                "buffer": audio_bytes,
+            }
+
+            # 配置转写选项
+            options = PrerecordedOptions(
+                model=self.deepgram_model,
+                smart_format=True,
+                language="zh-CN",  # 指定中文
+            )
+
+            # 调用转写 API
+            response = deepgram.listen.rest.v("1").transcribe_file(payload, options)
+
+            # 提取转写文本
+            if response.results and response.results.channels:
+                channel = response.results.channels[0]
+                if channel.alternatives:
+                    transcript = channel.alternatives[0].transcript
+                    if transcript:
+                        return True, transcript
+
+            debug_utils.log_and_print("Deepgram STT 返回空文本", log_level="WARNING")
+            return False, "转写结果为空"
+
+        except Exception as e:
+            debug_utils.log_and_print(f"Deepgram STT 调用失败: {e}", log_level="ERROR")
             return False, f"转写失败: {str(e)}"
 
 
