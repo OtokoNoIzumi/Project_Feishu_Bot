@@ -503,7 +503,9 @@ class RoutineRecord(BaseProcessor):
 
     # region record_id相关
 
-    def _get_next_record_id(self, user_id: str, event_name: str) -> Tuple[str, int]:
+    def _get_next_record_id(
+        self, user_id: str, event_name: str, future_event: bool = False
+    ) -> Tuple[str, int]:
         """
         生成下一个记录ID，基于事件定义中的record_count统计
         高效且可靠的ID生成方法
@@ -511,6 +513,7 @@ class RoutineRecord(BaseProcessor):
         Args:
             user_id: 用户ID
             event_name: 事件名称
+            future_event: 是否为未来事项
 
         Returns:
             str: 记录ID，格式为 event_name_00001
@@ -518,7 +521,7 @@ class RoutineRecord(BaseProcessor):
         definitions_data = self.load_event_definitions(user_id)
         definitions = definitions_data.get("definitions", {})
 
-        if event_name in definitions:
+        if event_name in definitions and not future_event:
             # 事件定义存在，使用record_count生成ID
             current_count = (
                 definitions[event_name].get("stats", {}).get("record_count", 0)
@@ -534,7 +537,7 @@ class RoutineRecord(BaseProcessor):
             return self._generate_id_with_scan_and_fix(user_id, event_name)
 
         # 事件定义不存在，扫描现有记录生成ID，要注意Future的特殊影响。
-        return self._generate_id_with_scan(user_id, event_name)
+        return self._generate_id_with_scan(user_id, event_name, future_event)
 
     def _verify_id_uniqueness(self, user_id: str, candidate_id: str) -> bool:
         """
@@ -559,13 +562,16 @@ class RoutineRecord(BaseProcessor):
 
         return True
 
-    def _generate_id_with_scan(self, user_id: str, event_name: str) -> Tuple[str, int]:
+    def _generate_id_with_scan(
+        self, user_id: str, event_name: str, future_event: bool = False
+    ) -> Tuple[str, int]:
         """
         通过扫描现有记录生成ID（用于事件定义不存在的情况）
 
         Args:
             user_id: 用户ID
             event_name: 事件名称
+            future_event: 是否为未来事项
 
         Returns:
             str: 记录ID
@@ -573,25 +579,27 @@ class RoutineRecord(BaseProcessor):
         records_data = self.load_event_records(user_id)
         existing_ids = set()
 
-        # 收集同名事件的所有ID
+        # 以ID前缀归一化收集：Future 用固定前缀，其余用事件名
+        prefix = "Future" if future_event else event_name
+
         for record_dict in [
             records_data.get("records", {}),
             records_data.get("active_records", {}),
         ]:
-            for record_id, record in record_dict.items():
-                if record.get("event_name") == event_name:
+            for record_id in record_dict.keys():
+                if record_id.startswith(f"{prefix}_"):
                     existing_ids.add(record_id)
 
         # 找到下一个可用序号
         next_num = 1
         while True:
-            candidate_id = f"{event_name}_{next_num:05d}"
+            candidate_id = f"{prefix}_{next_num:05d}"
             if candidate_id not in existing_ids:
                 return candidate_id, next_num
             next_num += 1
 
             if next_num > 99999:
-                raise ValueError(f"无法为事件 '{event_name}' 生成唯一ID")
+                raise ValueError(f"无法为事件 '{prefix}' 生成唯一ID")
 
     def _generate_id_with_scan_and_fix(
         self, user_id: str, event_name: str
@@ -942,7 +950,11 @@ class RoutineRecord(BaseProcessor):
         # 添加唯一id
         record_id = record_data.get("record_id", "")
         if not record_id:
-            record_id, record_count = self._get_next_record_id(user_id, event_name)
+            record_id, record_count = self._get_next_record_id(
+                user_id,
+                event_name,
+                future_event=event_type == RoutineTypes.FUTURE.value,
+            )
         else:
             record_count = -1
 
