@@ -22,6 +22,7 @@ from Module.Services.constants import (
     ProcessResultNextAction,
     ServiceNames,
 )
+from Module.Common.scripts.common.translation import extract_phonetics
 
 
 class MediaProcessor(BaseProcessor):
@@ -379,6 +380,55 @@ class MediaProcessor(BaseProcessor):
         else:
             prompt = ""
 
+        # ========= 拼音匹配准备 =========
+        MATCH_TYPES = {
+            "EXACT": "全文匹配",
+            "PINYIN": "全拼匹配",
+            "UNMATCHED": "无法匹配",
+            "NORMAL_TEXT": "正常识别",
+        }
+
+        definitions = event_data.get("definitions", {})
+
+        # 拼音触发阈值：所有事件名的最大长度 + 2
+        max_event_len = max((len(name) for name in definitions.keys()), default=0)
+        pinyin_threshold = max_event_len + 2
+
+        def _classify_stt(raw_text: str):
+            """精确匹配STT结果"""
+            if not raw_text or not raw_text.strip():
+                return MATCH_TYPES["UNMATCHED"], None
+
+            text = raw_text.strip()
+
+            # 全文匹配
+            for event_name in definitions.keys():
+                if text == event_name:
+                    return MATCH_TYPES["EXACT"], event_name
+
+            # 长文本直接返回正常识别
+            if len(text) > pinyin_threshold:
+                return MATCH_TYPES["NORMAL_TEXT"], None
+
+            # 拼音匹配（仅对短文本）
+            stt_phonetics = extract_phonetics(text)
+            stt_full_list = stt_phonetics.get("pinyin_full_list", [])
+            stt_initials = stt_phonetics.get("pinyin_initials", [])
+
+            for event_name, event_def in definitions.items():
+                event_full_list = event_def.get("pinyin_full_list", [])
+
+                # 精确拼音匹配
+                if stt_full_list and event_full_list:
+                    if any(
+                        stt_pinyin in event_full_list for stt_pinyin in stt_full_list
+                    ):
+                        return MATCH_TYPES["PINYIN"], event_name
+
+            return MATCH_TYPES["UNMATCHED"], None
+
+        # ========= 准备结束 =========
+
         # 使用 Groq STT 进行转写
         groq_start_time = time.time()
         groq_success, groq_text = audio_service.transcribe_audio_with_groq(
@@ -408,8 +458,21 @@ class MediaProcessor(BaseProcessor):
 
         result_text += f"📊 **Groq STT** (耗时: {groq_duration:.2f}s):\n"
         safe_filename = ""
+        groq_type = MATCH_TYPES["UNMATCHED"]
+        groq_match = None
         if groq_success:
-            result_text += f"✅ {groq_text}\n\n"
+            result_text += f"✅ {groq_text}\n"
+            groq_type, groq_match = _classify_stt(groq_text)
+            match groq_type:
+                case "全文匹配":
+                    result_text += f"🔎 匹配类型: {groq_type} → 事件: {groq_match}\n\n"
+                case "全拼匹配":
+                    result_text += f"🔎 匹配类型: {groq_type} → 事件: {groq_match}\n"
+                    result_text += f"📝 说明：STT识别为『{groq_text}』，根据拼音匹配到事件『{groq_match}』\n\n"
+                case "正常识别":
+                    result_text += f"🔎 匹配类型: {groq_type}\n\n"
+                case _:
+                    result_text += f"🔎 匹配类型: {groq_type}\n\n"
             durations.append(("Groq", groq_duration))
             safe_filename = "".join(
                 c for c in groq_text if c.isalnum() or c in (" ", "-", "_")
@@ -418,8 +481,21 @@ class MediaProcessor(BaseProcessor):
             result_text += f"❌ 失败: {groq_text}\n\n"
 
         result_text += f"📊 **Deepgram STT** (耗时: {deepgram_duration:.2f}s):\n"
+        deep_type = MATCH_TYPES["UNMATCHED"]
+        deep_match = None
         if deepgram_success:
-            result_text += f"✅ {deepgram_text}\n\n"
+            result_text += f"✅ {deepgram_text}\n"
+            deep_type, deep_match = _classify_stt(deepgram_text)
+            match deep_type:
+                case "全文匹配":
+                    result_text += f"🔎 匹配类型: {deep_type} → 事件: {deep_match}\n\n"
+                case "全拼匹配":
+                    result_text += f"🔎 匹配类型: {deep_type} → 事件: {deep_match}\n"
+                    result_text += f"📝 说明：STT识别为『{deepgram_text}』，根据拼音匹配到事件『{deep_match}』\n\n"
+                case "正常识别":
+                    result_text += f"🔎 匹配类型: {deep_type}\n\n"
+                case _:
+                    result_text += f"🔎 匹配类型: {deep_type}\n\n"
             durations.append(("Deepgram", deepgram_duration))
             if not safe_filename:
                 safe_filename = "".join(
@@ -428,9 +504,17 @@ class MediaProcessor(BaseProcessor):
         else:
             result_text += f"❌ 失败: {deepgram_text}\n\n"
 
-        fastest_service = min(durations, key=lambda x: x[1])[0]
+        fastest_service = min(durations, key=lambda x: x[1])[0] if durations else "-"
 
-        if safe_filename:
+        # 保存音频：只有两个STT都全文匹配时才不保存
+        all_full_match = (
+            groq_success
+            and deepgram_success
+            and groq_type == MATCH_TYPES["EXACT"]
+            and deep_type == MATCH_TYPES["EXACT"]
+        )
+
+        if safe_filename and not all_full_match:
             audio_file_path = f"cache/voice_{safe_filename}.ogg"
             try:
                 with open(audio_file_path, "wb") as f:
@@ -439,7 +523,8 @@ class MediaProcessor(BaseProcessor):
             except Exception as save_error:
                 print(f"保存音频文件失败: {save_error}")
 
-        result_text += f"🏆 **最快服务**: {fastest_service} ({min(d[1] for d in durations):.2f}s)\n"
+        if fastest_service != "-":
+            result_text += f"🏆 **最快服务**: {fastest_service} ({min(d[1] for d in durations):.2f}s)\n"
         result_text += (
             f"📈 **总耗时**: 流程{diff_time_before_stt}秒, 转写{diff_time_after_stt}秒"
         )

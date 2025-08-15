@@ -20,6 +20,7 @@ from collections import OrderedDict
 
 
 from Module.Common.scripts.common import debug_utils
+from Module.Common.scripts.common.translation import extract_phonetics
 from Module.Business.shared_process import (
     hex_to_hsl,
     safe_parse_number,
@@ -287,6 +288,7 @@ class RoutineRecord(BaseProcessor):
         """
         # 其实还需要套用一些默认的不同类型的属性，等做到了再说
         current_time = self._get_formatted_time()
+        phonetics = extract_phonetics(event_name)
         return {
             "name": event_name,
             "type": event_type,
@@ -329,6 +331,8 @@ class RoutineRecord(BaseProcessor):
                 "last_record_id": None,
                 "interval_minutes": None,
             },
+            "pinyin_initials": phonetics.get("pinyin_initials", []),
+            "pinyin_full_list": phonetics.get("pinyin_full_list", []),
             "created_time": current_time,
             "last_record_time": None,
             "last_updated": current_time,
