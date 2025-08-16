@@ -335,7 +335,7 @@ class MediaProcessor(BaseProcessor):
     @require_service("audio", "音频服务未启动")
     @safe_execute("音频消息处理失败")
     def handle_audio_message(self, context: MessageContext) -> ProcessResult:
-        """处理音频消息"""
+        """处理音频消息 - 立即返回处理提示，触发异步STT处理"""
 
         # 从 context 中获取音频文件信息
         audio_content = context.content
@@ -343,21 +343,29 @@ class MediaProcessor(BaseProcessor):
         if "file_key" not in audio_content:
             return ProcessResult.error_result("音频消息格式错误，缺少file_key")
 
-        file_key = audio_content["file_key"]
-        message_id = context.message_id
+        # 立即返回处理提示，触发异步处理
+        return ProcessResult.async_result(
+            ProcessResultNextAction.PROCESS_AUDIO_STT,
+            "正在识别语音指令，请稍候",
+            reply_message_type="card",  # 设置回复消息类型，为后续卡片切换预留
+        )
 
-        # 获取飞书适配器的 sender
-        feishu_adapter = self.app_controller.get_adapter("feishu")
-        if not feishu_adapter:
-            return ProcessResult.error_result("飞书适配器未找到")
+    @require_service("audio", "音频服务未启动")
+    @safe_execute("音频STT异步处理失败")
+    def process_audio_stt_async(
+        self, file_bytes: bytes, user_id: str, timestamp: datetime
+    ) -> ProcessResult:
+        """
+        异步处理音频STT转写
 
-        sender = feishu_adapter.sender
+        Args:
+            file_bytes: 文件字节流
+            user_id: 用户ID
+            timestamp: 消息时间戳
 
-        # 获取音频文件二进制数据
-        file_bytes = sender.get_file_resource(message_id, file_key)
-
-        if not file_bytes:
-            return ProcessResult.error_result("获取音频文件失败")
+        Returns:
+            ProcessResult: 处理结果
+        """
 
         # 获取音频服务
         audio_service = self.app_controller.get_service(ServiceNames.AUDIO)
@@ -365,10 +373,7 @@ class MediaProcessor(BaseProcessor):
         # 记录开始时间
         before_stt = datetime.now()
         # 哪怕是一开始的时间戳也有before>context的异常情况，这个先不深究了，把代码清理一下move to next
-        diff_time_before_stt = round(
-            (before_stt - context.timestamp).total_seconds(), 1
-        )
-        user_id = context.user_id
+        diff_time_before_stt = round((before_stt - timestamp).total_seconds(), 1)
         routine_business = RoutineRecord(self.app_controller)
         event_data = routine_business.load_event_definitions(user_id)
         event_name = event_data.get("definitions", {}).keys()
@@ -413,7 +418,6 @@ class MediaProcessor(BaseProcessor):
             # 拼音匹配（仅对短文本）
             stt_phonetics = extract_phonetics(text)
             stt_full_list = stt_phonetics.get("pinyin_full_list", [])
-            stt_initials = stt_phonetics.get("pinyin_initials", [])
 
             for event_name, event_def in definitions.items():
                 event_full_list = event_def.get("pinyin_full_list", [])

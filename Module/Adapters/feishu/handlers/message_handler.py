@@ -13,15 +13,28 @@ from typing import Optional, Any
 
 from Module.Common.scripts.common import debug_utils
 from Module.Business.processors import (
-    MessageContext, ProcessResult,
-    MessageContext_Refactor, TextContent, FileContent, RouteResult
+    MessageContext,
+    ProcessResult,
+    MessageContext_Refactor,
+    TextContent,
+    FileContent,
+    RouteResult,
 )
 from ..decorators import (
-    feishu_event_handler_safe, message_conversion_safe, async_operation_safe
+    feishu_event_handler_safe,
+    message_conversion_safe,
+    async_operation_safe,
 )
 from ..utils import extract_timestamp, noop_debug, ROUTE_KNOWLEDGE_MAPPING
 from Module.Services.constants import (
-    ServiceNames, UITypes, ResponseTypes, Messages, CardOperationTypes, ProcessResultConstKeys, ProcessResultNextAction, AdapterNames
+    ServiceNames,
+    UITypes,
+    ResponseTypes,
+    Messages,
+    CardOperationTypes,
+    ProcessResultConstKeys,
+    ProcessResultNextAction,
+    AdapterNames,
 )
 
 
@@ -43,11 +56,11 @@ class MessageHandler:
 
         # 获取应用控制器以访问服务
         self.app_controller = app_controller
-        self.debug_p2im_object = debug_functions.get('debug_p2im_object', noop_debug)
-        self.debug_parent_id_analysis = debug_functions.get('debug_parent_id_analysis', noop_debug)
+        self.debug_p2im_object = debug_functions.get("debug_p2im_object", noop_debug)
+        self.debug_parent_id_analysis = debug_functions.get(
+            "debug_parent_id_analysis", noop_debug
+        )
         self.card_handler = None  # 将由adapter注入
-
-
 
     def set_card_handler(self, card_handler):
         """注入CardHandler实例"""
@@ -101,7 +114,9 @@ class MessageHandler:
         if result.should_reply:
             self.sender.send_feishu_reply(data, result)
 
-    def handle_route_result_dynamic(self, route_result: RouteResult, context_refactor: MessageContext_Refactor):
+    def handle_route_result_dynamic(
+        self, route_result: RouteResult, context_refactor: MessageContext_Refactor
+    ):
         """
         动态处理RouteResult - 基于路由知识映射进行分发
         实现业务层与适配器层的分离：业务层只提供标识，适配器层管理前端知识
@@ -113,15 +128,23 @@ class MessageHandler:
         try:
             # 先发送前置消息（如果有）
             if route_result.message_before_async:
-                self.sender.send_feishu_message_reply(context_refactor, route_result.message_before_async)
+                self.sender.send_feishu_message_reply(
+                    context_refactor, route_result.message_before_async
+                )
 
             # 从路由知识映射获取前端处理方式
             route_knowledge = ROUTE_KNOWLEDGE_MAPPING.get(route_result.route_type)
 
             if not route_knowledge:
-                debug_utils.log_and_print(f"未知的路由类型: {route_result.route_type}", log_level="ERROR")
-                error_result = ProcessResult.error_result(f"未知的路由类型: {route_result.route_type}")
-                self.sender.send_feishu_reply_with_context(context_refactor, error_result)
+                debug_utils.log_and_print(
+                    f"未知的路由类型: {route_result.route_type}", log_level="ERROR"
+                )
+                error_result = ProcessResult.error_result(
+                    f"未知的路由类型: {route_result.route_type}"
+                )
+                self.sender.send_feishu_reply_with_context(
+                    context_refactor, error_result
+                )
                 return
 
             # 获取处理器对象 - 支持三个handler的配置
@@ -133,33 +156,45 @@ class MessageHandler:
             }
             handler = handler_mapping.get(handler_name)
             if not handler:
-                debug_utils.log_and_print(f"未找到处理器: {handler_name}", log_level="ERROR")
-                error_result = ProcessResult.error_result(f"未找到处理器: {handler_name}")
-                self.sender.send_feishu_reply_with_context(context_refactor, error_result)
+                debug_utils.log_and_print(
+                    f"未找到处理器: {handler_name}", log_level="ERROR"
+                )
+                error_result = ProcessResult.error_result(
+                    f"未找到处理器: {handler_name}"
+                )
+                self.sender.send_feishu_reply_with_context(
+                    context_refactor, error_result
+                )
                 return
 
             # 获取处理方法
             method_name = route_knowledge["method"]
             method = getattr(handler, method_name, None)
             if not method:
-                debug_utils.log_and_print(f"未找到方法: {handler_name}.{method_name}", log_level="ERROR")
-                error_result = ProcessResult.error_result(f"未找到方法: {handler_name}.{method_name}")
-                self.sender.send_feishu_reply_with_context(context_refactor, error_result)
+                debug_utils.log_and_print(
+                    f"未找到方法: {handler_name}.{method_name}", log_level="ERROR"
+                )
+                error_result = ProcessResult.error_result(
+                    f"未找到方法: {handler_name}.{method_name}"
+                )
+                self.sender.send_feishu_reply_with_context(
+                    context_refactor, error_result
+                )
                 return
 
             # 结构化参数解析：分离不同来源的参数
             call_params = route_knowledge.get("call_params", {})  # 前端知识参数
-            system_params = {                                     # 系统必须参数
+            system_params = {  # 系统必须参数
                 "result": route_result,
-                "context_refactor": context_refactor
+                "context_refactor": context_refactor,
             }
-            business_params = route_result.route_params           # 业务参数
+            business_params = route_result.route_params  # 业务参数
 
             # 构造最终调用参数：优先级 系统 > 前端知识 > 业务
             kwargs = {
-                **call_params,      # 前端知识参数（低优先级）
+                **call_params,  # 前端知识参数（低优先级）
                 **business_params,  # 业务参数（中优先级）
-                **system_params     # 系统参数（高优先级）
+                **system_params,  # 系统参数（高优先级）
             }
             # Notion解析失败的时候这里也会报错 【待增加兼容
             # 执行调用
@@ -167,6 +202,7 @@ class MessageHandler:
                 # 异步执行
                 def process_in_background():
                     method(**kwargs)
+
                 self._execute_async(process_in_background)
             else:
                 # 同步执行
@@ -178,18 +214,38 @@ class MessageHandler:
             error_result = ProcessResult.error_result(f"路由分发处理异常: {str(e)}")
             self.sender.send_feishu_reply_with_context(context_refactor, error_result)
 
-    def _handle_async_actions(self, data, result: ProcessResult, context_refactor: MessageContext_Refactor) -> bool:
+    def _handle_async_actions(
+        self, data, result: ProcessResult, context_refactor: MessageContext_Refactor
+    ) -> bool:
         """处理异步操作，返回True表示已处理"""
 
         # 异步操作映射表，直接映射到处理逻辑——后续要换成配置
         action_handlers = {
-            ProcessResultNextAction.PROCESS_TTS: lambda: self._handle_tts_async(data, result.response_content.get("tts_text", "")),
-            ProcessResultNextAction.PROCESS_IMAGE_GENERATION: lambda: self._handle_image_generation_async(data, result.response_content.get("generation_prompt", "")),
-            ProcessResultNextAction.PROCESS_IMAGE_CONVERSION: lambda: self._handle_image_conversion_async(data)
+            ProcessResultNextAction.PROCESS_TTS: lambda: self._handle_tts_async(
+                data, result.response_content.get("tts_text", "")
+            ),
+            ProcessResultNextAction.PROCESS_IMAGE_GENERATION: lambda: self._handle_image_generation_async(
+                data, result.response_content.get("generation_prompt", "")
+            ),
+            ProcessResultNextAction.PROCESS_IMAGE_CONVERSION: lambda: self._handle_image_conversion_async(
+                data
+            ),
+            ProcessResultNextAction.PROCESS_AUDIO_STT: lambda: self._handle_audio_stt_async(
+                context_refactor
+            ),
         }
 
         if result.response_type == ResponseTypes.ASYNC_ACTION:
-            self.sender.send_feishu_reply_with_context(context_refactor, result)
+            # 根据reply_message_type决定发送方式，为后续卡片切换预留
+            reply_type = getattr(result, "reply_message_type", None)
+            if reply_type == "text":
+                # 文本消息回复（当前默认方式）
+                self.sender.send_feishu_reply_with_context(context_refactor, result)
+            else:
+                # 预留其他回复类型（如卡片）的处理分支
+                self.sender.send_feishu_message_reply(
+                    context_refactor, result.message_before_async
+                )
 
             async_action = action_handlers.get(result.async_action)
             if async_action:
@@ -213,6 +269,7 @@ class MessageHandler:
     @async_operation_safe("TTS异步处理失败")
     def _handle_tts_async(self, original_data, tts_text: str):
         """异步处理TTS任务"""
+
         def process_in_background():
             # 调用业务处理器的异步TTS方法
             result = self.message_router.media.process_tts_async(tts_text)
@@ -235,9 +292,12 @@ class MessageHandler:
     @async_operation_safe("图像生成异步处理失败")
     def _handle_image_generation_async(self, original_data, prompt: str):
         """异步处理图像生成任务"""
+
         def process_in_background():
             # 先发送处理中提示
-            processing_result = ProcessResult.success_result(ResponseTypes.TEXT, {"text": Messages.IMAGE_GENERATING})
+            processing_result = ProcessResult.success_result(
+                ResponseTypes.TEXT, {"text": Messages.IMAGE_GENERATING}
+            )
             self.sender.send_feishu_reply(original_data, processing_result)
 
             # 调用业务处理器的异步图像生成方法
@@ -261,9 +321,12 @@ class MessageHandler:
     @async_operation_safe("图像转换异步处理失败")
     def _handle_image_conversion_async(self, original_data):
         """异步处理图像转换任务"""
+
         def process_in_background():
             # 先发送处理中提示
-            processing_result = ProcessResult.success_result("text", {"text": "正在转换图片风格，请稍候..."})
+            processing_result = ProcessResult.success_result(
+                "text", {"text": "正在转换图片风格，请稍候..."}
+            )
             self.sender.send_feishu_reply(original_data, processing_result)
 
             # 获取图像资源
@@ -295,7 +358,46 @@ class MessageHandler:
 
         self._execute_async(process_in_background)
 
-    def _handle_special_response_types(self, data, result, context, context_refactor) -> bool:
+    @async_operation_safe("音频STT异步处理失败")
+    def _handle_audio_stt_async(self, context: MessageContext_Refactor):
+        """异步处理音频STT任务"""
+
+        def process_in_background():
+            # 先发送处理中提示
+            # 从response_content中获取音频相关信息
+            file_key = context.content.file_key
+            message_id = context.message_id
+            user_id = context.user_id
+            timestamp = context.timestamp
+            file_bytes = self.sender.get_file_resource(message_id, file_key)
+
+            if not all([file_bytes, user_id, timestamp]):
+                error_result = ProcessResult.error_result("音频处理参数不完整")
+                self.sender.send_feishu_reply(original_data, error_result)
+                return
+
+            # 调用业务处理器的异步音频STT方法
+            result = self.message_router.media.process_audio_stt_async(
+                file_bytes, user_id, timestamp
+            )
+            print("test-result", result)
+
+            if result.success and result.response_type == "text":
+                # 发送STT结果
+                self.sender.send_feishu_message_reply(
+                    context, result.response_content.get("text", "未获取到结果消息")
+                )
+            else:
+                # STT处理失败，发送错误信息
+                self.sender.send_feishu_message_reply(
+                    context, result.response_content.get("text", "未获取到结果消息")
+                )
+
+        self._execute_async(process_in_background)
+
+    def _handle_special_response_types(
+        self, data, result, context, context_refactor
+    ) -> bool:
         """处理特殊回复类型，返回True表示已处理"""
         if not result.success:
             return False
@@ -321,16 +423,18 @@ class MessageHandler:
                 chat_id = data.event.message.chat_id
                 message_id = data.event.message.message_id
                 operation_data = result.response_content
-                operation_id = operation_data.get('operation_id', '')
+                operation_id = operation_data.get("operation_id", "")
 
                 if self.card_handler:
                     # 发送管理员卡片
-                    success, sent_message_id = self.card_handler._handle_admin_card_operation(
-                        result_content=operation_data,
-                        card_operation_type=CardOperationTypes.SEND,
-                        chat_id=chat_id,
-                        message_id=message_id,
-                        user_id=user_id
+                    success, sent_message_id = (
+                        self.card_handler._handle_admin_card_operation(
+                            result_content=operation_data,
+                            card_operation_type=CardOperationTypes.SEND,
+                            chat_id=chat_id,
+                            message_id=message_id,
+                            user_id=user_id,
+                        )
                     )
                 else:
                     success, sent_message_id = False, None
@@ -340,19 +444,32 @@ class MessageHandler:
                     # 绑定操作ID和卡片消息ID
                     # 调用pending_cache_service绑定UI消息
                     if self.app_controller:
-                        pending_cache_service = self.app_controller.get_service(ServiceNames.PENDING_CACHE)
+                        pending_cache_service = self.app_controller.get_service(
+                            ServiceNames.PENDING_CACHE
+                        )
                         if pending_cache_service:
-                            bind_success = pending_cache_service.bind_ui_message(operation_id, sent_message_id, UITypes.INTERACTIVE_CARD)
+                            bind_success = pending_cache_service.bind_ui_message(
+                                operation_id, sent_message_id, UITypes.INTERACTIVE_CARD
+                            )
                             if not bind_success:
-                                debug_utils.log_and_print(f"❌ UI消息绑定失败: operation_id={operation_id}", log_level="ERROR")
+                                debug_utils.log_and_print(
+                                    f"❌ UI消息绑定失败: operation_id={operation_id}",
+                                    log_level="ERROR",
+                                )
                         else:
-                            debug_utils.log_and_print("❌ pending_cache_service不可用", log_level="ERROR")
+                            debug_utils.log_and_print(
+                                "❌ pending_cache_service不可用", log_level="ERROR"
+                            )
                     else:
-                        debug_utils.log_and_print("❌ app_controller不可用", log_level="ERROR")
+                        debug_utils.log_and_print(
+                            "❌ app_controller不可用", log_level="ERROR"
+                        )
 
                 if not success:
                     error_result = ProcessResult.error_result("管理员卡片发送失败")
-                    self.sender.send_feishu_reply(data, error_result, force_reply_mode="reply")
+                    self.sender.send_feishu_reply(
+                        data, error_result, force_reply_mode="reply"
+                    )
                 return True
 
             case ResponseTypes.DESIGN_PLAN_CARD:
@@ -362,7 +479,7 @@ class MessageHandler:
                         card_config_key="design_plan",
                         card_action="send_confirm_card",
                         result=result,
-                        context_refactor=context_refactor
+                        context_refactor=context_refactor,
                     )
                     return True
 
@@ -391,24 +508,26 @@ class MessageHandler:
         content = self._extract_message_content(data.event.message)
         content_refactor = self._extract_message_content_refactor(data.event.message)
         message_id = data.event.message.message_id
-        parent_message_id = data.event.message.parent_id if hasattr(data.event.message, 'parent_id') and data.event.message.parent_id else None
+        parent_message_id = (
+            data.event.message.parent_id
+            if hasattr(data.event.message, "parent_id") and data.event.message.parent_id
+            else None
+        )
 
         New_MessageContext = MessageContext_Refactor(
             adapter_name=AdapterNames.FEISHU,
             timestamp=message_timestamp,
             event_id=event_id,
-
             user_id=user_id,
             user_name=user_name,
             message_id=message_id,
             parent_message_id=parent_message_id,
-
             message_type=message_type,
             content=content_refactor,
             metadata={
-                'chat_id': data.event.message.chat_id,
-                'chat_type': data.event.message.chat_type
-            }
+                "chat_id": data.event.message.chat_id,
+                "chat_type": data.event.message.chat_type,
+            },
         )
 
         legacy_context = MessageContext(
@@ -422,9 +541,9 @@ class MessageHandler:
             message_id=message_id,
             parent_message_id=parent_message_id,
             metadata={
-                'chat_id': data.event.message.chat_id,
-                'chat_type': data.event.message.chat_type
-            }
+                "chat_id": data.event.message.chat_id,
+                "chat_type": data.event.message.chat_type,
+            },
         )
 
         return legacy_context, New_MessageContext
@@ -439,7 +558,6 @@ class MessageHandler:
             case _:
                 return message.content
 
-
     def _extract_message_content_refactor(self, message) -> Any:
         """提取飞书消息内容"""
         match message.message_type:
@@ -451,6 +569,3 @@ class MessageHandler:
                 return FileContent(file_key=json.loads(message.content)["file_key"])
             case _:
                 return message.content
-
-
-

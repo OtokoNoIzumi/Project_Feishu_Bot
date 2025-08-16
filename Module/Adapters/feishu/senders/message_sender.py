@@ -494,9 +494,7 @@ class MessageSender:
         return image_base64, mime_type, file_name, file_size
 
     @feishu_sdk_safe("获取文件资源失败", return_value=(None, None, None))
-    def get_file_resource(
-        self, message_id: str, file_key: str
-    ) -> Tuple[Optional[bytes], Optional[str], Optional[str]]:
+    def get_file_resource(self, message_id: str, file_key: str) -> Optional[bytes]:
         """
         获取文件资源
 
@@ -505,7 +503,7 @@ class MessageSender:
             file_key: 文件key
 
         Returns:
-            Tuple[Optional[bytes], Optional[str], Optional[str]]: (文件二进制数据, 文件名, 内容类型)
+            Optional[bytes]: 文件二进制数据，获取失败时返回None
         """
         # 获取文件资源
         request = (
