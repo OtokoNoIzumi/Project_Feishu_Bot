@@ -1272,7 +1272,9 @@ class MessageSender:
         )
         return False
 
-    def finish_stream_card(self, card_id: str, sequence: int) -> bool:
+    def finish_stream_card(
+        self, card_id: str, sequence: int, summary: str = ""
+    ) -> bool:
         """
         完成流式卡片（关闭streaming_mode）
 
@@ -1283,4 +1285,6 @@ class MessageSender:
             是否设置成功
         """
         settings_json = {"config": {"streaming_mode": False}}
+        if summary:
+            settings_json["config"]["summary"] = {"content": summary}
         return self.set_card_settings(card_id, settings_json, sequence)

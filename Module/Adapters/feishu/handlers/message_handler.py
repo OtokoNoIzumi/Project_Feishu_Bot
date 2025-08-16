@@ -452,7 +452,7 @@ class MessageHandler:
                     sequence + 1,
                 )
                 # 完成流式卡片，关闭streaming_mode
-                self.sender.finish_stream_card(card_id, sequence + 2)
+                self.sender.finish_stream_card(card_id, sequence + 2, "贴心智能助手")
                 self.cache_service.update_message_id_card_id_mapping(
                     message_id, card_id, "audio_stt_result"
                 )

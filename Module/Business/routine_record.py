@@ -1729,7 +1729,9 @@ class RoutineRecord(BaseProcessor):
             return True
 
         last_backup_time = self.safe_parse_datetime(backup_time_str, "backup_time")
-        return last_backup_time < datetime.now() - timedelta(days=threshold_days)
+        now = datetime.now()
+        # 只要跨天（自然日）就备份，每天第一次才备份
+        return last_backup_time.date() != now.date()
 
     def backup_record_file(self, user_id: str, file_type: str, data: Dict[str, Any]):
         """
