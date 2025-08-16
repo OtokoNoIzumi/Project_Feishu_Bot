@@ -372,15 +372,13 @@ class MessageHandler:
             file_bytes = self.sender.get_file_resource(message_id, file_key)
 
             if not all([file_bytes, user_id, timestamp]):
-                error_result = ProcessResult.error_result("音频处理参数不完整")
-                self.sender.send_feishu_reply(original_data, error_result)
+                self.sender.send_feishu_message_reply(context, "音频处理参数不完整")
                 return
 
             # 调用业务处理器的异步音频STT方法
             result = self.message_router.media.process_audio_stt_async(
                 file_bytes, user_id, timestamp
             )
-            print("test-result", result)
 
             if result.success and result.response_type == "text":
                 # 发送STT结果

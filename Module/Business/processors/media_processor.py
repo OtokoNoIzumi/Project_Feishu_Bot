@@ -371,9 +371,7 @@ class MediaProcessor(BaseProcessor):
         audio_service = self.app_controller.get_service(ServiceNames.AUDIO)
 
         # 记录开始时间
-        before_stt = datetime.now()
         # 哪怕是一开始的时间戳也有before>context的异常情况，这个先不深究了，把代码清理一下move to next
-        diff_time_before_stt = round((before_stt - timestamp).total_seconds(), 1)
         routine_business = RoutineRecord(self.app_controller)
         event_data = routine_business.load_event_definitions(user_id)
         event_name = event_data.get("definitions", {}).keys()
@@ -433,92 +431,107 @@ class MediaProcessor(BaseProcessor):
 
         # ========= 准备结束 =========
 
-        # 使用 Groq STT 进行转写
-        groq_start_time = time.time()
-        groq_success, groq_text = audio_service.transcribe_audio_with_groq(
-            file_bytes,
-            prompt,
-        )
-        groq_end_time = time.time()
-        groq_duration = groq_end_time - groq_start_time
+        # STT 服务配置：按优先级排序（先 deepgram，后 groq）
+        stt_services = [
+            {
+                "name": "Deepgram",
+                "method": audio_service.transcribe_audio_with_deepgram,
+                "args": (file_bytes, "audio.ogg"),
+                "kwargs": {},
+                "start_time": None,
+                "end_time": None,
+                "duration": None,
+                "success": False,
+                "text": "",
+                "match_type": MATCH_TYPES["UNMATCHED"],
+                "matched_event": None,
+            },
+            {
+                "name": "Groq",
+                "method": audio_service.transcribe_audio_with_groq,
+                "args": (file_bytes,),
+                "kwargs": {"prompt": prompt, "filename_hint": "audio.ogg"},
+                "start_time": None,
+                "end_time": None,
+                "duration": None,
+                "success": False,
+                "text": "",
+                "match_type": MATCH_TYPES["UNMATCHED"],
+                "matched_event": None,
+            }
+        ]
 
-        # 使用 Deepgram STT 进行转写
-        deepgram_start_time = time.time()
-        deepgram_success, deepgram_text = audio_service.transcribe_audio_with_deepgram(
-            file_bytes, "audio.ogg"
-        )
-        deepgram_end_time = time.time()
-        deepgram_duration = deepgram_end_time - deepgram_start_time
+        # 循环调用 STT 服务，直到找到匹配结果或所有服务都尝试完
+        final_result = None
+        for service_config in stt_services:
+            # 记录开始时间
+            service_config["start_time"] = time.time()
 
-        after_stt = datetime.now()
-        diff_time_after_stt = round((after_stt - before_stt).total_seconds(), 1)
+            # 调用 STT 服务
+            service_config["success"], service_config["text"] = service_config["method"](
+                *service_config["args"], **service_config["kwargs"]
+            )
 
-        # 找出最快的服务
-        durations = []
+            # 记录结束时间和耗时
+            service_config["end_time"] = time.time()
+            service_config["duration"] = service_config["end_time"] - service_config["start_time"]
 
-        # 构建对比结果
-        # 引入拼音匹配之后这里的输出日志就也要调整了，不匹配的情况才保存和输出log_and_print
-        result_text = "🎵 音频转写对比结果:\n\n"
+            if service_config["success"]:
+                # 分析匹配结果
+                service_config["match_type"], service_config["matched_event"] = _classify_stt(
+                    service_config["text"]
+                )
 
-        result_text += f"📊 **Groq STT** (耗时: {groq_duration:.2f}s):\n"
-        safe_filename = ""
-        groq_type = MATCH_TYPES["UNMATCHED"]
-        groq_match = None
-        if groq_success:
-            result_text += f"✅ {groq_text}\n"
-            groq_type, groq_match = _classify_stt(groq_text)
-            match groq_type:
+                # 如果找到匹配结果，直接使用，不再尝试下一个服务
+                if service_config["match_type"] in [MATCH_TYPES["EXACT"], MATCH_TYPES["PINYIN"]]:
+                    final_result = service_config
+                    break
+            else:
+                # 如果服务调用失败，继续尝试下一个
+                continue
+
+        # 如果没有找到匹配结果，使用最后一个成功的服务结果
+        if not final_result:
+            for service_config in reversed(stt_services):
+                if service_config["success"]:
+                    final_result = service_config
+                    break
+
+
+        # 构建结果文本
+        result_text = "🎵 语音识别结果:\n\n"
+
+        if final_result:
+            service_name = final_result["name"]
+            result_text += f"📊 by {service_name} (耗时: {final_result['duration']:.2f}s):\n"
+            result_text += f"✅ {final_result['text']}\n"
+
+            match final_result["match_type"]:
                 case "全文匹配":
-                    result_text += f"🔎 匹配类型: {groq_type} → 事件: {groq_match}\n\n"
+                    result_text += f"🔎 匹配类型: {final_result['match_type']} → 事件: {final_result['matched_event']}\n\n"
                 case "全拼匹配":
-                    result_text += f"🔎 匹配类型: {groq_type} → 事件: {groq_match}\n"
-                    result_text += f"📝 说明：STT识别为『{groq_text}』，根据拼音匹配到事件『{groq_match}』\n\n"
+                    result_text += f"🔎 匹配类型: {final_result['match_type']} → 事件: {final_result['matched_event']}\n"
+                    result_text += f"📝 说明：STT识别为『{final_result['text']}』，根据拼音匹配到事件『{final_result['matched_event']}』\n\n"
                 case "正常识别":
-                    result_text += f"🔎 匹配类型: {groq_type}\n\n"
+                    result_text += f"🔎 匹配类型: {final_result['match_type']}\n\n"
                 case _:
-                    result_text += f"🔎 匹配类型: {groq_type}\n\n"
-            durations.append(("Groq", groq_duration))
+                    result_text += f"🔎 匹配类型: {final_result['match_type']}\n\n"
+
+            # 生成安全文件名
             safe_filename = "".join(
-                c for c in groq_text if c.isalnum() or c in (" ", "-", "_")
+                c for c in final_result["text"] if c.isalnum() or c in (" ", "-", "_")
             ).rstrip()[:50]
         else:
-            result_text += f"❌ 失败: {groq_text}\n\n"
+            result_text += "❌ 所有 STT 服务都失败了\n\n"
+            safe_filename = ""
 
-        result_text += f"📊 **Deepgram STT** (耗时: {deepgram_duration:.2f}s):\n"
-        deep_type = MATCH_TYPES["UNMATCHED"]
-        deep_match = None
-        if deepgram_success:
-            result_text += f"✅ {deepgram_text}\n"
-            deep_type, deep_match = _classify_stt(deepgram_text)
-            match deep_type:
-                case "全文匹配":
-                    result_text += f"🔎 匹配类型: {deep_type} → 事件: {deep_match}\n\n"
-                case "全拼匹配":
-                    result_text += f"🔎 匹配类型: {deep_type} → 事件: {deep_match}\n"
-                    result_text += f"📝 说明：STT识别为『{deepgram_text}』，根据拼音匹配到事件『{deep_match}』\n\n"
-                case "正常识别":
-                    result_text += f"🔎 匹配类型: {deep_type}\n\n"
-                case _:
-                    result_text += f"🔎 匹配类型: {deep_type}\n\n"
-            durations.append(("Deepgram", deepgram_duration))
-            if not safe_filename:
-                safe_filename = "".join(
-                    c for c in deepgram_text if c.isalnum() or c in (" ", "-", "_")
-                ).rstrip()[:50]
-        else:
-            result_text += f"❌ 失败: {deepgram_text}\n\n"
-
-        fastest_service = min(durations, key=lambda x: x[1])[0] if durations else "-"
-
-        # 保存音频：只有两个STT都全文匹配时才不保存
-        all_full_match = (
-            groq_success
-            and deepgram_success
-            and groq_type == MATCH_TYPES["EXACT"]
-            and deep_type == MATCH_TYPES["EXACT"]
+        # 保存音频：只有在没有全文匹配时才保存
+        should_save_audio = (
+            not final_result
+            or final_result["match_type"] != MATCH_TYPES["EXACT"]
         )
 
-        if safe_filename and not all_full_match:
+        if safe_filename and should_save_audio:
             audio_file_path = f"cache/voice_{safe_filename}.ogg"
             try:
                 with open(audio_file_path, "wb") as f:
@@ -527,11 +540,6 @@ class MediaProcessor(BaseProcessor):
             except Exception as save_error:
                 print(f"保存音频文件失败: {save_error}")
 
-        if fastest_service != "-":
-            result_text += f"🏆 **最快服务**: {fastest_service} ({min(d[1] for d in durations):.2f}s)\n"
-        result_text += (
-            f"📈 **总耗时**: 流程{diff_time_before_stt}秒, 转写{diff_time_after_stt}秒"
-        )
 
         return ProcessResult.success_result(
             ResponseTypes.TEXT,
