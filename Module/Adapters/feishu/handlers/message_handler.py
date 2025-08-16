@@ -26,6 +26,7 @@ from ..decorators import (
     async_operation_safe,
 )
 from ..utils import extract_timestamp, noop_debug, ROUTE_KNOWLEDGE_MAPPING
+from Module.Adapters.feishu.cards.json_builder import JsonBuilder
 from Module.Services.constants import (
     ServiceNames,
     UITypes,
@@ -61,6 +62,10 @@ class MessageHandler:
             "debug_parent_id_analysis", noop_debug
         )
         self.card_handler = None  # 将由adapter注入
+        self.cache_service = self.app_controller.get_service(ServiceNames.CACHE)
+        self.user_service = self.app_controller.get_service(
+            ServiceNames.USER_BUSINESS_PERMISSION
+        )
 
     def set_card_handler(self, card_handler):
         """注入CardHandler实例"""
@@ -238,14 +243,54 @@ class MessageHandler:
         if result.response_type == ResponseTypes.ASYNC_ACTION:
             # 根据reply_message_type决定发送方式，为后续卡片切换预留
             reply_type = getattr(result, "reply_message_type", None)
-            if reply_type == "text":
-                # 文本消息回复（当前默认方式）
-                self.sender.send_feishu_reply_with_context(context_refactor, result)
-            else:
-                # 预留其他回复类型（如卡片）的处理分支
-                self.sender.send_feishu_message_reply(
-                    context_refactor, result.message_before_async
-                )
+            match reply_type:
+                case "text":
+                    self.sender.send_feishu_reply_with_context(context_refactor, result)
+                case "card":
+                    # 在这里先跑通再找地方
+                    card_header = JsonBuilder.build_card_header(
+                        title="智能语音识别",
+                    )
+                    card_body_elements = [
+                        JsonBuilder.build_markdown_element(
+                            content=result.message_before_async,
+                            text_size="normal",
+                            element_id="audio_stt_result",
+                        )
+                    ]
+                    business_data = {
+                        "markdown_element_id": "audio_stt_result",
+                    }
+                    card_data = JsonBuilder.build_stream_card_structure(
+                        card_body_elements, card_header
+                    )
+
+                    card_content = {"type": "card_json", "data": card_data}
+                    card_id = self.sender.create_card_entity(card_content)
+                    if card_id:
+                        result.response_content = {
+                            "type": "card",
+                            "data": {"card_id": card_id},
+                        }
+                        result.response_type = ResponseTypes.INTERACTIVE
+
+                        self.user_service.save_new_card_business_data(
+                            context_refactor.user_id, card_id, business_data
+                        )
+
+                    success, message_id = self.sender.send_direct_message(
+                        context_refactor.user_id, result
+                    )
+
+                    # 修复：使用用户原始音频消息ID建立映射关系，而不是新创建的卡片消息ID，虽然好像有点反直觉且绕，但信息本身是充分的
+                    # 这样在后续的_handle_audio_stt_async中就能正确获取到卡片信息
+                    self.cache_service.update_message_id_card_id_mapping(
+                        context_refactor.message_id, card_id, "audio_stt_result"
+                    )
+                    self.cache_service.save_message_id_card_id_mapping()
+
+                case _:
+                    self.sender.send_feishu_reply_with_context(context_refactor, result)
 
             async_action = action_handlers.get(result.async_action)
             if async_action:
@@ -379,12 +424,40 @@ class MessageHandler:
             result = self.message_router.media.process_audio_stt_async(
                 file_bytes, user_id, timestamp
             )
+            card_info = self.cache_service.get_card_info(message_id)
+
+            card_id = card_info.get("card_id", "")
+            sequence = card_info.get("sequence", "")
+            business_data = self.user_service.get_card_business_data(user_id, card_id)
 
             if result.success and result.response_type == "text":
                 # 发送STT结果
-                self.sender.send_feishu_message_reply(
-                    context, result.response_content.get("text", "未获取到结果消息")
+
+                blank_element = JsonBuilder.build_markdown_element(
+                    "", element_id=business_data.get("markdown_element_id", "")
                 )
+                blamk_element_json = json.dumps(blank_element, ensure_ascii=False)
+                # 更新卡片元素，先清空，再更新，实现打字机效果
+                self.sender.update_card_element(
+                    card_id,
+                    business_data.get("markdown_element_id", ""),
+                    blamk_element_json,
+                    sequence,
+                )
+
+                self.sender.stream_update_card_content(
+                    card_id,
+                    business_data.get("markdown_element_id", ""),
+                    result.response_content.get("text", "未获取到结果消息"),
+                    sequence + 1,
+                )
+                # 完成流式卡片，关闭streaming_mode
+                self.sender.finish_stream_card(card_id, sequence + 2)
+                self.cache_service.update_message_id_card_id_mapping(
+                    message_id, card_id, "audio_stt_result"
+                )
+                self.cache_service.save_message_id_card_id_mapping()
+
             else:
                 # STT处理失败，发送错误信息
                 self.sender.send_feishu_message_reply(

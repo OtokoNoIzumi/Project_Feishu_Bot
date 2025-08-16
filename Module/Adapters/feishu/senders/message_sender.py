@@ -44,6 +44,15 @@ from lark_oapi.api.cardkit.v1 import (
     UpdateCardRequestBody,
     UpdateCardResponse,
     Card,
+    ContentCardElementRequest,
+    ContentCardElementRequestBody,
+    ContentCardElementResponse,
+    SettingsCardRequest,
+    SettingsCardRequestBody,
+    SettingsCardResponse,
+    UpdateCardElementRequest,
+    UpdateCardElementRequestBody,
+    UpdateCardElementResponse,
 )
 from Module.Common.scripts.common import debug_utils
 from Module.Business.processors import ProcessResult, MessageContext_Refactor
@@ -1173,3 +1182,105 @@ class MessageSender:
             )
         else:
             return _update_card_content_impl()
+
+    def update_card_element(
+        self, card_id: str, element_id: str, content: str, sequence: int
+    ):
+        """更新卡片元素"""
+        request: UpdateCardElementRequest = (
+            UpdateCardElementRequest.builder()
+            .card_id(card_id)
+            .element_id(element_id)
+            .request_body(
+                UpdateCardElementRequestBody.builder()
+                .element(content)
+                .sequence(sequence)
+                .build()
+            )
+            .build()
+        )
+        response: UpdateCardElementResponse = (
+            self.client.cardkit.v1.card_element.update(request)
+        )
+        if response.success():
+            return True
+
+        debug_utils.log_and_print(
+            f"❌ 更新卡片元素失败: {response.code} - {response.msg}",
+            log_level="ERROR",
+        )
+        return False
+
+    def stream_update_card_content(
+        self, card_id: str, element_id: str, content: str, sequence: int
+    ):
+        """流式更新卡片内容"""
+        request: ContentCardElementRequest = (
+            ContentCardElementRequest.builder()
+            .card_id(card_id)
+            .element_id(element_id)
+            .request_body(
+                ContentCardElementRequestBody.builder()
+                .content(content)
+                .sequence(sequence)
+                .build()
+            )
+            .build()
+        )
+
+        response: ContentCardElementResponse = (
+            self.client.cardkit.v1.card_element.content(request)
+        )
+        if response.success():
+            return True
+
+        debug_utils.log_and_print(
+            f"❌ 流式更新卡片内容失败: {response.code} - {response.msg}",
+            log_level="ERROR",
+        )
+        return False
+
+    def set_card_settings(self, card_id: str, settings: dict, sequence: int) -> bool:
+        """
+        设置卡片参数
+
+        Args:
+            card_id: 卡片ID
+            settings: 需要设置的参数（dict）
+            sequence: 序列号
+        Returns:
+            是否设置成功
+        """
+        settings_str = json.dumps(settings, ensure_ascii=False)
+        request: SettingsCardRequest = (
+            SettingsCardRequest.builder()
+            .card_id(card_id)
+            .request_body(
+                SettingsCardRequestBody.builder()
+                .settings(settings_str)
+                .sequence(sequence)
+                .build()
+            )
+            .build()
+        )
+        response: SettingsCardResponse = self.client.cardkit.v1.card.settings(request)
+        if response.success():
+            return True
+        debug_utils.log_and_print(
+            f"❌ 设置卡片参数失败: {response.code} - {response.msg}",
+            log_level="ERROR",
+        )
+        return False
+
+    def finish_stream_card(self, card_id: str, sequence: int) -> bool:
+        """
+        完成流式卡片（关闭streaming_mode）
+
+        Args:
+            card_id: 卡片ID
+            sequence: 序列号
+        Returns:
+            是否设置成功
+        """
+        settings_json = {"config": {"streaming_mode": False}}
+        return self.set_card_settings(card_id, settings_json, sequence)

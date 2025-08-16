@@ -29,6 +29,39 @@ class JsonBuilder:
             "header": header,
         }
 
+    # region 卡片结构
+    @staticmethod
+    def build_stream_card_structure(
+        elements: List[Dict[str, Any]],
+        header: Dict[str, Any],
+        padding: str = "12px",
+        summary: str = "",
+        print_frequency_ms: int = 70,
+        print_step: int = 1,
+        print_strategy: str = "fast",
+    ) -> Dict[str, Any]:
+        """
+        构建流式卡片结构，参考飞书官方流式卡片示例
+        """
+        return {
+            "schema": "2.0",
+            "header": header,
+            "config": {
+                "streaming_mode": True,
+                "summary": {"content": summary},
+                "streaming_config": {
+                    "print_frequency_ms": {
+                        "default": print_frequency_ms,
+                    },
+                    "print_step": {
+                        "default": print_step,
+                    },
+                    "print_strategy": print_strategy,
+                },
+            },
+            "body": {"direction": "vertical", "padding": padding, "elements": elements},
+        }
+
     @staticmethod
     def build_card_header(
         title: str,
