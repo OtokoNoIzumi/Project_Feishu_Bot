@@ -21,8 +21,10 @@ from Module.Services.constants import (
     ProcessResultConstKeys,
     ProcessResultNextAction,
     ServiceNames,
+    RouteTypes,
 )
 from Module.Common.scripts.common.translation import extract_phonetics
+from Module.Business.processors import RouteResult
 
 
 class MediaProcessor(BaseProcessor):
@@ -458,7 +460,7 @@ class MediaProcessor(BaseProcessor):
                 "text": "",
                 "match_type": MATCH_TYPES["UNMATCHED"],
                 "matched_event": None,
-            }
+            },
         ]
 
         # 循环调用 STT 服务，直到找到匹配结果或所有服务都尝试完
@@ -468,22 +470,27 @@ class MediaProcessor(BaseProcessor):
             service_config["start_time"] = time.time()
 
             # 调用 STT 服务
-            service_config["success"], service_config["text"] = service_config["method"](
-                *service_config["args"], **service_config["kwargs"]
-            )
+            service_config["success"], service_config["text"] = service_config[
+                "method"
+            ](*service_config["args"], **service_config["kwargs"])
 
             # 记录结束时间和耗时
             service_config["end_time"] = time.time()
-            service_config["duration"] = service_config["end_time"] - service_config["start_time"]
+            service_config["duration"] = (
+                service_config["end_time"] - service_config["start_time"]
+            )
 
             if service_config["success"]:
                 # 分析匹配结果
-                service_config["match_type"], service_config["matched_event"] = _classify_stt(
-                    service_config["text"]
+                service_config["match_type"], service_config["matched_event"] = (
+                    _classify_stt(service_config["text"])
                 )
 
                 # 如果找到匹配结果，直接使用，不再尝试下一个服务
-                if service_config["match_type"] in [MATCH_TYPES["EXACT"], MATCH_TYPES["PINYIN"]]:
+                if service_config["match_type"] in [
+                    MATCH_TYPES["EXACT"],
+                    MATCH_TYPES["PINYIN"],
+                ]:
                     final_result = service_config
                     break
             else:
@@ -497,21 +504,43 @@ class MediaProcessor(BaseProcessor):
                     final_result = service_config
                     break
 
-
         # 构建结果文本
         result_text = "🎵 语音识别结果:\n\n"
 
         if final_result:
             service_name = final_result["name"]
-            result_text += f"📊 by {service_name} (耗时: {final_result['duration']:.2f}s):\n"
+            result_text += (
+                f"📊 by {service_name} (耗时: {final_result['duration']:.2f}s):\n"
+            )
             result_text += f"✅ {final_result['text']}\n"
 
             match final_result["match_type"]:
                 case "全文匹配":
                     result_text += f"🔎 匹配类型: {final_result['match_type']} → 事件: {final_result['matched_event']}\n\n"
+                    business_data = routine_business.build_record_business_data(
+                        user_id, final_result["matched_event"]
+                    )
+
+                    route_result = RouteResult.create_route_result(
+                        route_type=RouteTypes.ROUTINE_RECORD_CARD,
+                        route_params={
+                            "business_data": business_data,
+                        },
+                    )
+                    return route_result
                 case "全拼匹配":
                     result_text += f"🔎 匹配类型: {final_result['match_type']} → 事件: {final_result['matched_event']}\n"
                     result_text += f"📝 说明：STT识别为『{final_result['text']}』，根据拼音匹配到事件『{final_result['matched_event']}』\n\n"
+                    business_data = routine_business.build_record_business_data(
+                        user_id, final_result["matched_event"]
+                    )
+                    route_result = RouteResult.create_route_result(
+                        route_type=RouteTypes.ROUTINE_RECORD_CARD,
+                        route_params={
+                            "business_data": business_data,
+                        },
+                    )
+                    return route_result
                 case "正常识别":
                     result_text += f"🔎 匹配类型: {final_result['match_type']}\n\n"
                 case _:
@@ -527,8 +556,7 @@ class MediaProcessor(BaseProcessor):
 
         # 保存音频：只有在没有全文匹配时才保存
         should_save_audio = (
-            not final_result
-            or final_result["match_type"] != MATCH_TYPES["EXACT"]
+            not final_result or final_result["match_type"] != MATCH_TYPES["EXACT"]
         )
 
         if safe_filename and should_save_audio:
@@ -539,7 +567,6 @@ class MediaProcessor(BaseProcessor):
                 print(f"原始音频已保存: {audio_file_path}")
             except Exception as save_error:
                 print(f"保存音频文件失败: {save_error}")
-
 
         return ProcessResult.success_result(
             ResponseTypes.TEXT,

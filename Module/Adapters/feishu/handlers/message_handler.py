@@ -36,6 +36,7 @@ from Module.Services.constants import (
     ProcessResultConstKeys,
     ProcessResultNextAction,
     AdapterNames,
+    CardConfigKeys,
 )
 
 
@@ -422,6 +423,8 @@ class MessageHandler:
                 return
 
             # 调用业务处理器的异步音频STT方法
+            # 没必要用processresult这个结构？——主要是发送的部分，但外面应该还好。
+
             result = self.message_router.media.process_audio_stt_async(
                 file_bytes, user_id, timestamp
             )
@@ -429,6 +432,27 @@ class MessageHandler:
 
             card_id = card_info.get("card_id", "")
             sequence = card_info.get("sequence", "")
+            # 音频的router在这里就直接开始处理识别好的参数构建在下面了。
+            # 对于不是router的就沿用现在的打字机，但可以考虑做一个配音玩——这个应该是数字分身的环节。
+            if isinstance(result, RouteResult):
+                # 也不能直接用诶。。。这其实是发送新卡片，其实是我要把卡片元素编辑进去omg。
+                # 如果我手动先省略掉跳转，直接编辑结果呢。
+                # 看起来是需要新增一个router卡片，然后把业务作为子节点嵌入进去，然后build router重新更新。
+                card_manager = self.card_handler.card_registry.get_manager(
+                    CardConfigKeys.ROUTINE_RECORD
+                ).record_card
+                card_data = card_manager.build_record_card(
+                    result.route_params.get("business_data", {})
+                )
+                self.sender.update_card_content(
+                    card_id, card_data, sequence, message_id=message_id
+                )
+                self.cache_service.update_message_id_card_id_mapping(
+                    message_id, card_id, "audio_stt_result"
+                )
+                self.cache_service.save_message_id_card_id_mapping()
+                return
+
             business_data = self.user_service.get_card_business_data(user_id, card_id)
 
             if result.success and result.response_type == "text":

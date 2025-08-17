@@ -462,7 +462,7 @@ class QuickSelectCard:
             card_id,
             business_data,
             new_card_dsl,
-            f"正在记录 【{event_name}】",
+            f"正在记录 【{new_record_data.get('event_name', '')}】",
             ToastTypes.SUCCESS,
         )
 
