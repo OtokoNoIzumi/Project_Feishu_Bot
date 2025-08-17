@@ -79,6 +79,10 @@ class RecordCard:
                 title = "添加记录" + (f"：{event_name}" if event_name else "")
                 subtitle = "请确认记录信息"
                 icon = "edit_outlined"
+            case RoutineRecordModes.EDIT:
+                title = "完成记录" + (f"：{event_name}" if event_name else "")
+                subtitle = "请确认记录信息"
+                icon = "edit_outlined"
 
         return self.parent.build_card_header(
             title, subtitle, ColorTypes.BLUE.value, icon

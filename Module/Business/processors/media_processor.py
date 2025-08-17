@@ -22,6 +22,7 @@ from Module.Services.constants import (
     ProcessResultNextAction,
     ServiceNames,
     RouteTypes,
+    RoutineRecordModes,
 )
 from Module.Common.scripts.common.translation import extract_phonetics
 from Module.Business.processors import RouteResult
@@ -515,25 +516,32 @@ class MediaProcessor(BaseProcessor):
             result_text += f"✅ {final_result['text']}\n"
 
             match final_result["match_type"]:
-                case "全文匹配":
+                case "全文匹配" | "全拼匹配":
                     result_text += f"🔎 匹配类型: {final_result['match_type']} → 事件: {final_result['matched_event']}\n\n"
-                    business_data = routine_business.build_record_business_data(
-                        user_id, final_result["matched_event"]
-                    )
+                    if final_result["match_type"] == "全拼匹配":
+                        result_text += f"📝 说明：STT识别为『{final_result['text']}』，根据拼音匹配到事件『{final_result['matched_event']}』\n\n"
 
-                    route_result = RouteResult.create_route_result(
-                        route_type=RouteTypes.ROUTINE_RECORD_CARD,
-                        route_params={
-                            "business_data": business_data,
-                        },
-                    )
-                    return route_result
-                case "全拼匹配":
-                    result_text += f"🔎 匹配类型: {final_result['match_type']} → 事件: {final_result['matched_event']}\n"
-                    result_text += f"📝 说明：STT识别为『{final_result['text']}』，根据拼音匹配到事件『{final_result['matched_event']}』\n\n"
-                    business_data = routine_business.build_record_business_data(
-                        user_id, final_result["matched_event"]
-                    )
+                    record_data = routine_business.load_event_records(user_id)
+                    active_records = record_data.get("active_records", {})
+                    active_record_data = {}
+                    for record in active_records.values():
+                        if record.get("event_name") == final_result["matched_event"]:
+                            active_record_data = record
+                            break
+
+                    if active_record_data:
+                        business_data = routine_business.build_record_business_data(
+                            user_id,
+                            final_result["matched_event"],
+                            record_mode=RoutineRecordModes.EDIT,
+                            current_record_data=active_record_data,
+                        )
+
+                    else:
+                        business_data = routine_business.build_record_business_data(
+                            user_id, final_result["matched_event"]
+                        )
+
                     route_result = RouteResult.create_route_result(
                         route_type=RouteTypes.ROUTINE_RECORD_CARD,
                         route_params={

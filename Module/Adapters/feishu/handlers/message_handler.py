@@ -269,7 +269,7 @@ class MessageHandler:
                     card_content = {"type": "card_json", "data": card_data}
                     card_id = self.sender.create_card_entity(card_content)
                     if card_id:
-                        result.response_content = {
+                        card_content = {
                             "type": "card",
                             "data": {"card_id": card_id},
                         }
@@ -279,14 +279,20 @@ class MessageHandler:
                             context_refactor.user_id, card_id, business_data
                         )
 
-                    success, message_id = self.sender.send_direct_message(
-                        context_refactor.user_id, result
+                    send_params = {
+                        "card_content": card_content,
+                        "reply_mode": "reply",
+                        "user_id": context_refactor.user_id,
+                        "message_id": context_refactor.message_id,
+                    }
+                    success, message_id = self.sender.send_interactive_card(
+                        **send_params
                     )
 
-                    # 修复：使用用户原始音频消息ID建立映射关系，而不是新创建的卡片消息ID，虽然好像有点反直觉且绕，但信息本身是充分的
+                    context_refactor.metadata["message_id"] = message_id
                     # 这样在后续的_handle_audio_stt_async中就能正确获取到卡片信息
                     self.cache_service.update_message_id_card_id_mapping(
-                        context_refactor.message_id, card_id, "audio_stt_result"
+                        message_id, card_id, "audio_stt_result"
                     )
                     self.cache_service.save_message_id_card_id_mapping()
 
@@ -428,7 +434,9 @@ class MessageHandler:
             result = self.message_router.media.process_audio_stt_async(
                 file_bytes, user_id, timestamp
             )
-            card_info = self.cache_service.get_card_info(message_id)
+
+            card_message_id = context.metadata["message_id"]
+            card_info = self.cache_service.get_card_info(card_message_id)
 
             card_id = card_info.get("card_id", "")
             sequence = card_info.get("sequence", "")
@@ -444,11 +452,16 @@ class MessageHandler:
                 card_data = card_manager.build_record_card(
                     result.route_params.get("business_data", {})
                 )
+
+                self.user_service.save_new_card_business_data(
+                    user_id, card_id, result.route_params.get("business_data", {})
+                )
+
                 self.sender.update_card_content(
-                    card_id, card_data, sequence, message_id=message_id
+                    card_id, card_data, sequence, message_id=card_message_id
                 )
                 self.cache_service.update_message_id_card_id_mapping(
-                    message_id, card_id, "audio_stt_result"
+                    card_message_id, card_id, "audio_stt_result"
                 )
                 self.cache_service.save_message_id_card_id_mapping()
                 return
@@ -479,7 +492,7 @@ class MessageHandler:
                 # 完成流式卡片，关闭streaming_mode
                 self.sender.finish_stream_card(card_id, sequence + 2, "贴心智能助手")
                 self.cache_service.update_message_id_card_id_mapping(
-                    message_id, card_id, "audio_stt_result"
+                    card_message_id, card_id, "audio_stt_result"
                 )
                 self.cache_service.save_message_id_card_id_mapping()
 
