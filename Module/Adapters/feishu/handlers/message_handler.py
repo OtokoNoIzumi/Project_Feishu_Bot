@@ -410,6 +410,7 @@ class MessageHandler:
         def process_in_background():
             # 先发送处理中提示
             # 从response_content中获取音频相关信息
+            # 语音的交互逻辑和点击毕竟有区别，可能要自动识别已经开启的任务并进入编辑模式？
             file_key = context.content.file_key
             message_id = context.message_id
             user_id = context.user_id
