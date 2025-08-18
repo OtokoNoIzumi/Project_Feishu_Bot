@@ -48,7 +48,7 @@ class IntentProcessor:
         )
         return config
 
-    # ==================== 第一阶段：意图识别 ====================
+    # region 一阶段功能识别
 
     def _build_stage1_prompt(self, user_input: str) -> str:
         """构建第一阶段意图识别提示词"""
@@ -188,7 +188,9 @@ class IntentProcessor:
 
         return "其他", other_confidence
 
-    # ==================== 第二阶段：参数提取 ====================
+    # endregion
+
+    # region 二阶段参数提取
 
     def _build_stage2_prompt(
         self, user_input: str, determined_intent: str
@@ -260,7 +262,9 @@ class IntentProcessor:
             # 返回错误结果
             return {"error": str(e), "parameters": {"original_input": user_input}}
 
-    # ==================== 完整处理流程 ====================
+    # endregion
+
+    # region router调用入口
 
     def process_input(
         self, user_input: str, confidence_threshold: int = None
@@ -314,6 +318,22 @@ class IntentProcessor:
 
         return final_result
 
+    # endregion
+
+    # region STT调用入口
+
+    def process_stt_input(self, user_input: str) -> Dict[str, Any]:
+        """处理STT输入"""
+        return self.process_input(user_input)
+
+    def role_router(self, user_input: str) -> Dict[str, Any]:
+        """角色路由"""
+        return self.process_input(user_input)
+
+    # endregion
+
+    # region 辅助功能
+
     def get_supported_intents(self) -> Dict[str, str]:
         """获取支持的意图列表"""
         return {name: config["description"] for name, config in self.intents.items()}
@@ -336,3 +356,5 @@ class IntentProcessor:
             ),
             "config_loaded": bool(self.intents),
         }
+
+    # endregion

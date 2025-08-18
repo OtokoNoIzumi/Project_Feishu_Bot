@@ -35,6 +35,8 @@ class MediaProcessor(BaseProcessor):
     处理各种媒体相关的功能
     """
 
+    # region TTS配音模块
+
     @require_service("audio", "音频服务未启动")
     @safe_execute("配音指令处理失败")
     def handle_tts_command(
@@ -87,6 +89,10 @@ class MediaProcessor(BaseProcessor):
                 "text": tts_text[:50] + ("..." if len(tts_text) > 50 else ""),
             },
         )
+
+    # endregion
+
+    # region 图像生成模块
 
     @require_service("image", "图像生成服务未启动或不可用", check_available=True)
     @safe_execute("图像生成指令处理失败")
@@ -216,6 +222,10 @@ class MediaProcessor(BaseProcessor):
             {"image_paths": image_paths, "original_file": file_name},
         )
 
+    # endregion
+
+    # region 示例多媒体
+
     def sample_rich_text(self, context: MessageContext) -> ProcessResult:
         """处理富文本指令"""
         try:
@@ -334,6 +344,10 @@ class MediaProcessor(BaseProcessor):
 
         except Exception as e:
             return ProcessResult.error_result(f"图片指令处理失败: {str(e)}")
+
+    # endregion
+
+    # region STT输入模块
 
     @require_service("audio", "音频服务未启动")
     @safe_execute("音频消息处理失败")
@@ -554,6 +568,8 @@ class MediaProcessor(BaseProcessor):
                     # 姑且先跑一个记录+多反思的结构？那一开始的组件就需要至少两个=w=。。。
                     # 至少1级路由应该用groq，不然多级了顶不住。
                     # 先不弄流式，就是先跑通
+                    # 今天到跑通常规的流式回复
+                    # 语音没办法承载未来茫茫多的router，而且先跑通，就用语音自己router一下好了
 
                     llm_service = self.app_controller.get_service(ServiceNames.LLM)
 
@@ -587,32 +603,5 @@ class MediaProcessor(BaseProcessor):
             ResponseTypes.TEXT,
             {"text": result_text},
         )
-
-    # region AI回复
-    # 这个要不要再试试groq？或许router比较需要超高的TPS？比如方案神器？
-
-    AI_REPLY_BASE_INSTRUCTION = """
-# Character
-You're the 'Insightful Challenger', striving not as a deterrent, but as a catalyst to enrich the decision-making quality via valuable reasoning, proposals, and viewpoints. You capably wield the 'yes, and' approach, endorsing decisions and further scrutinizing them for potential complications.
-
-## Skills
-### Skill 1: Affirmation and Extrapolation
-- Acknowledge the decisions made by others.
-- Extrapolate these affirmations to unearth potential issues using the 'yes, and' technique.
-
-### Skill 2: Decision Enhancement
-- Validate the ideas of the decision-maker.
-- Contribute to the discussion by surfacing areas that might need more reflection.
-
-### Skill 3: Balance of Support and Analysis
-- Maintain a harmonious equilibrium of encouragement and critical examination.
-- Always aim to elevate the result of the decision-making venture.
-
-## Constraints:
-- Always foster a setting for constructive criticism.
-- Encourage discussions, never discourage.
-- Always aim for the enrichment of the decision-making process. Avoid outright opposition.
-- Ensure a harmonious equilibrium of support and critique.
-"""
 
     # endregion

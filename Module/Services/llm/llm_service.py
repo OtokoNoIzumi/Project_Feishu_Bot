@@ -19,6 +19,8 @@ class LLMService:
     LLM服务 - 封装Gemini API调用和意图处理
     """
 
+    # region 初始化
+
     def __init__(self, app_controller=None):
         """
         初始化LLM服务
@@ -157,6 +159,11 @@ class LLMService:
         """检查LLM服务是否可用"""
         return self.client is not None and self.intent_processor is not None
 
+    # endregion
+
+    # region 模块调用
+
+    # 高级意图处理
     def process_input_advanced(
         self, user_input: str, confidence_threshold: int = None
     ) -> Dict[str, Any]:
@@ -180,6 +187,16 @@ class LLMService:
         if self.intent_processor:
             return self.intent_processor.get_supported_intents()
         return {}
+
+    # STT意图处理
+
+    def process_stt_input(self, user_input: str) -> Dict[str, Any]:
+        """处理STT输入"""
+        return self.intent_processor.process_stt_input(user_input)
+
+    # endregion
+
+    # region llm调用方法
 
     def simple_chat(self, prompt: str, max_tokens: int = 1500) -> str:
         """
@@ -275,47 +292,6 @@ class LLMService:
             )
             return {"error": f"结构化调用失败: {e}"}
 
-    def router_structured_call(
-        self,
-        prompt: str,
-        response_schema: Dict[str, Any],
-        system_instruction: str = None,
-        temperature: float = 0.95,
-    ) -> Dict[str, Any]:
-        """
-        路由专用的结构化调用，优先使用Groq，回退到Gemini
-
-        Args:
-            prompt: 用户提示词
-            response_schema: JSON响应schema
-            system_instruction: 系统提示词
-            temperature: 温度参数
-
-        Returns:
-            Dict[str, Any]: 结构化响应结果
-        """
-        # 优先尝试Groq
-        if self.groq_client:
-            try:
-                debug_utils.log_and_print(
-                    "🚀 使用Groq进行router_structured_call", log_level="DEBUG"
-                )
-                return self._call_groq_structured(
-                    prompt, response_schema, system_instruction, temperature
-                )
-            except Exception as e:
-                debug_utils.log_and_print(
-                    f"⚠️ Groq调用失败，回退到Gemini: {e}", log_level="WARNING"
-                )
-
-        # 回退到Gemini
-        debug_utils.log_and_print(
-            "🔄 回退到Gemini进行router_structured_call", log_level="DEBUG"
-        )
-        return self.structured_call(
-            prompt, response_schema, system_instruction, temperature
-        )
-
     def _call_groq_structured(
         self,
         prompt: str,
@@ -368,6 +344,51 @@ class LLMService:
             debug_utils.log_and_print(f"❌ Groq API调用失败: {e}", log_level="ERROR")
             raise Exception(f"Groq API调用失败: {e}")
 
+    def router_structured_call(
+        self,
+        prompt: str,
+        response_schema: Dict[str, Any],
+        system_instruction: str = None,
+        temperature: float = 0.95,
+    ) -> Dict[str, Any]:
+        """
+        路由专用的结构化调用，优先使用Groq，回退到Gemini
+
+        Args:
+            prompt: 用户提示词
+            response_schema: JSON响应schema
+            system_instruction: 系统提示词
+            temperature: 温度参数
+
+        Returns:
+            Dict[str, Any]: 结构化响应结果
+        """
+        # 优先尝试Groq
+        if self.groq_client:
+            try:
+                debug_utils.log_and_print(
+                    "🚀 使用Groq进行router_structured_call", log_level="DEBUG"
+                )
+                return self._call_groq_structured(
+                    prompt, response_schema, system_instruction, temperature
+                )
+            except Exception as e:
+                debug_utils.log_and_print(
+                    f"⚠️ Groq调用失败，回退到Gemini: {e}", log_level="WARNING"
+                )
+
+        # 回退到Gemini
+        debug_utils.log_and_print(
+            "🔄 回退到Gemini进行router_structured_call", log_level="DEBUG"
+        )
+        return self.structured_call(
+            prompt, response_schema, system_instruction, temperature
+        )
+
+    # endregion
+
+    # region 辅助功能
+
     def get_status(self) -> Dict[str, Any]:
         """获取LLM服务状态"""
         status = {
@@ -396,3 +417,5 @@ class LLMService:
             )
 
         return status
+
+    # endregion
