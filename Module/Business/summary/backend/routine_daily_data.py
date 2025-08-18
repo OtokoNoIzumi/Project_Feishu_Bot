@@ -199,6 +199,7 @@ class RoutineDailyData:
         filtered_records = self.routine_business.preprocess_and_filter_records(
             records, start_time, end_time
         )
+
         event_map = self.routine_business.cal_event_map(user_id)
 
         weekly_raw_data = {
@@ -340,8 +341,13 @@ class RoutineDailyData:
             weekly_raw.get("records", []),
             start_time,
             end_time,
+            add_unrecorded_block=True,
         )
         atomic_df = pd.DataFrame(atomic_timeline)
+        unrecorded_df = atomic_df[atomic_df["unrecorded"] == True].copy()
+        atomic_df = atomic_df[atomic_df["unrecorded"].isna()].copy()
+        del atomic_df["unrecorded"]
+
         record_define_time = atomic_df.groupby("record_id", as_index=False)[
             "duration_minutes"
         ].sum()
@@ -560,6 +566,7 @@ class RoutineDailyData:
             "event_detail": event_detail_df,
             "category_stats": category_stats.to_dict(orient="records"),
             "document_title": document_title,
+            "unrecorded_df": unrecorded_df,
         }
 
     # endregion
@@ -791,32 +798,48 @@ class RoutineDailyData:
         )
 
         # 5) 构建提示词
-        prompt = f"""
-        请根据以下四份数据，执行一次完整的周度分析。
-        特别注意，过往建议的反馈采纳历史包含了所有的状况，用来让你指定新的行动建议，但回顾上周行动（previous_actions_review）只需要对上一周{prev_week_key}的进行回顾。
+        prompt = f"""请根据以下数据，执行一次完整的周度分析。
+特别注意，过往建议的反馈采纳历史包含了所有的状况，用来让你指定新的行动建议，但回顾上周行动（previous_actions_review）只需要对上一周{prev_week_key}的进行回顾。
 
-        ### 数据一：本周原始事件日志 (带时间戳的原子数据，注意其中可能会包含用户在记录时的备注note，这也是比较重要的线索)
-        ```csv
-        {current_week_detail_data_csv}
-        ```
-        ### 数据二：本周关键节律的精确计算摘要 (辅助事实)
-        这是代码预计算的节律数据，请将其作为你进行深度解读的“事实基础”，而不是让你重复计算。你需要解释这些节律背后的原因和意义。
-        ```csv
-        {current_week_summary_data_csv}
-        ```
+### 数据一：本周原始事件日志 (带时间戳的原子数据，{prev_week_key}为周一；注意其中可能会包含用户在记录时的备注note，这也是比较重要的线索)
+```csv
+{current_week_detail_data_csv}
+```
+### 数据二：本周关键节律的精确计算摘要 (辅助事实)
+这是代码预计算的节律数据，请将其作为你进行深度解读的“事实基础”，而不是让你重复计算。你需要解释这些节律背后的原因和意义。
+```csv
+{current_week_summary_data_csv}
+```
 
-        ### 数据三：上一周的分析报告 (JSON格式，若为第一周则为空)
-        ```json
-        {previous_week_analysis_json_str}
-        ```
+### 数据三：上一周的分析报告 (JSON格式，若为第一周则为空)
+```json
+{previous_week_analysis_json_str}
+```
 
-        ### 数据四：过往每周建议和用户的采纳情况 (JSON格式)
-        ```json
-        {user_feedback_history_json_str}
-        ```
+### 数据四：过往每周建议和用户的采纳情况 (JSON格式)
+```json
+{user_feedback_history_json_str}
+```
+"""
 
-        请严格按照你在系统指令中被赋予的角色和原则，完成本次分析，并以指定的JSON Schema格式返回结果。
-        """
+        unrecorded_df = weekly_document.get("unrecorded_df", []).to_dict(
+            orient="records"
+        )
+
+        unrecorded_str = ""
+        for record in unrecorded_df:
+            duration = record["duration_minutes"]
+            if duration < 5:
+                continue
+            start = str(record["start_time"])[:16]
+            before = record["source_event"]["before"]
+            after = record["source_event"]["after"]
+            unrecorded_str += f"\n{start} {before} -> {after} 持续{duration}分钟"
+
+        if unrecorded_str:
+            prompt += f"\n### 数据五：未记录明细\n```{unrecorded_str}\n```"
+
+        prompt += "\n请严格按照你在系统指令中被赋予的角色和原则，完成本次分析，并以指定的JSON Schema格式返回结果。"
 
         # 6) 调用LLM
         result = llm_service.structured_call(
@@ -859,6 +882,9 @@ class RoutineDailyData:
 
                 weekly_record_map[current_week_key] = result_to_save
                 weekly_record_file["weekly_record"] = weekly_record_map
+                weekly_record_file["last_updated"] = datetime.now().strftime(
+                    "%Y-%m-%d %H:%M"
+                )
                 self.routine_business.save_weekly_record(user_id, weekly_record_file)
             case _:
                 pass
@@ -899,8 +925,9 @@ class RoutineDailyData:
 4.  **挖掘隐藏数据洞察 (`hidden_data_insights`)**:
 深入分析备注、异常时长、分类等细节，找出至少2-3个有价值的深层发现。
 特别关注那些打破常规模式的事件链，例如‘长时间工作后的异常娱乐选择’或‘特定用餐后的精力变化’。
-你必须检查数据中包含的非0target_value和非空check_cycle的目标设定。你的任务不是报告完成度，而是去发现“目标与现实的冲突”。
-如果一个设定了周期目标（如check_cycle: '天'）的活动，在某个周期内没有被执行或执行次数不足，你应将其作为一个的“隐藏洞察”，并深入分析造成这种偏差的可能原因或对其他的影响，以及它揭示了关于我的何种行为偏好或内在冲突。
+你必须检查数据中包含的非0值的target_value和非空check_cycle的目标设定。你的任务不是报告完成度，而是去发现“目标与现实的冲突”。
+如果一个设定了周期目标（如check_cycle: '天'）的活动，在某个周期内没有被执行或执行次数不足，亦或者执行次数远超目标，你应将其作为一个的“隐藏洞察”，并深入分析造成这种偏差的可能原因或对其他的影响，以及它揭示了关于我的何种行为偏好或内在冲突。
+如果提供的数据中包括明确的未记录的时间段，这部分信息是并不是用户故意不记录，而是系统根据用户的记录时间表自动生成的，分析其中可能的规律，背后的原因和可能的解决方案，如果有所发现，请写入到报告里。
 5.  **回顾上周行动 (`previous_actions_review`)**: 评估用户对上周建议的采纳与执行情况。如果发现用户偏好发生变化，必须在`feedback_evolution_note`中进行说明。
 6.  **设计战略性行动建议 (`strategic_action_suggestions`)**: 基于以上所有分析，尤其是用户对过往每周行动建议的采纳情况，为用户提供5个全新的、具体的、可行的建议。并评估建议的执行挑战难度，以及哪怕不执行的最小可行动作。
 

@@ -1957,7 +1957,9 @@ class RoutineRecord(BaseProcessor):
         record_list.sort(key=lambda x: x["start_dt"])
         return record_list
 
-    def generate_atomic_timeline(self, sorted_records, start_range, end_range):
+    def generate_atomic_timeline(
+        self, sorted_records, start_range, end_range, add_unrecorded_block=False
+    ):
         """
         生成一个由不重叠的"原子时间块"构成的有序列表。
         每个块都包含其归属的原始事件信息。
@@ -1978,6 +1980,7 @@ class RoutineRecord(BaseProcessor):
         atomic_timeline = []
 
         # 2. 遍历由时间点切割出的每个微小时间段
+        unrecorded_id = 0
         for i in range(len(sorted_points) - 1):
             segment_start, segment_end = sorted_points[i], sorted_points[i + 1]
 
@@ -1986,12 +1989,19 @@ class RoutineRecord(BaseProcessor):
 
             # 3. 找出覆盖这个时间段的、开始时间最晚的事件 ("顶层事件")
             top_event = None
-            for record in sorted_records:
+            before_record = {}
+            after_record = {}
+            for record_index, record in enumerate(sorted_records):
                 if (
                     record["start_dt"] <= segment_start
                     and record["end_dt"] >= segment_end
                 ):
                     top_event = record  # 因为已排序，最后一个匹配的就是最顶层的
+
+                if record["start_dt"] <= segment_start:
+                    before_record = record
+                if (record["end_dt"] >= segment_end) and not after_record:
+                    after_record = record
 
             # 4. 如果找到归属事件，则创建原子块
             if top_event:
@@ -2002,6 +2012,22 @@ class RoutineRecord(BaseProcessor):
                     / 60.0,
                     "record_id": top_event.get("record_id", ""),
                     "source_event": top_event,  # 关键！保留完整的原始事件引用
+                }
+                atomic_timeline.append(atomic_block)
+            elif add_unrecorded_block:
+                # 未记录的时间段
+                unrecorded_id += 1
+                atomic_block = {
+                    "start_time": segment_start,
+                    "end_time": segment_end,
+                    "duration_minutes": (segment_end - segment_start).total_seconds()
+                    / 60.0,
+                    "record_id": f"未记录_{unrecorded_id}",
+                    "source_event": {
+                        "before": before_record.get("event_name", ""),
+                        "after": after_record.get("event_name", ""),
+                    },
+                    "unrecorded": True,
                 }
                 atomic_timeline.append(atomic_block)
 

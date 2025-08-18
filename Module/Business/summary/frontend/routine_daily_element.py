@@ -1113,6 +1113,7 @@ class RoutineDailyElement:
         """构建活动数据分类明细部分"""
         event_records = weekly_data.get("event_summary", [])
         category_stats = weekly_data.get("category_stats", [])
+        unrecorded_df = weekly_data.get("unrecorded_df", []).to_dict(orient="records")
 
         # 如果为DataFrame，按需转换为records
         if hasattr(event_records, "to_dict"):
@@ -1325,6 +1326,25 @@ class RoutineDailyElement:
                             block_id=quote_block_id, children=degree_children
                         )
                     )
+
+        if unrecorded_df:
+            unrecorded_str = "未记录明细（仅显示大于3分钟的）"
+            for record in unrecorded_df:
+                duration = record["duration_minutes"]
+                if duration < 3:
+                    continue
+                start = str(record["start_time"])[:16]
+                before = record["source_event"]["before"]
+                after = record["source_event"]["after"]
+                unrecorded_str += f"\n{start} {before} -> {after} {format_time_label(duration, 'hour')}"
+            children.append("unrecorded_detail")
+            descendants.append(
+                document_manager.create_formated_text_block(
+                    block_id="unrecorded_detail",
+                    text=unrecorded_str,
+                    block_type="text",
+                )
+            )
 
     # endregion
 
