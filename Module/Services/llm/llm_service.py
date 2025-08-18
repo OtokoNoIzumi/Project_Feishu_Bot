@@ -231,6 +231,33 @@ class LLMService:
             )
             return f"文本生成失败: {e}"
 
+    def get_stream_completion(
+        self, prompt: str, system_instruction: str = None, max_tokens: int = 1500
+    ):
+        """
+        获取流式完成
+        """
+        if not self.client:
+            return "LLM客户端不可用"
+
+        generate_config = {
+            "thinking_config": types.ThinkingConfig(
+                thinking_budget=-1,
+            ),
+            "temperature": 0.7,
+            "max_output_tokens": max_tokens,
+        }
+        if system_instruction:
+            generate_config["system_instruction"] = system_instruction
+
+        stream_completion = self.client.models.generate_content_stream(
+            model=self.model_name,
+            contents=[{"role": "user", "parts": [{"text": prompt}]}],
+            config=generate_config,
+        )
+
+        return stream_completion
+
     def structured_call(
         self,
         prompt: str,
@@ -331,7 +358,6 @@ class LLMService:
 
             # 解析JSON响应
             result = json.loads(response.choices[0].message.content)
-            debug_utils.log_and_print("✅ Groq API调用成功", log_level="DEBUG")
             return result
 
         except json.JSONDecodeError as e:
@@ -366,9 +392,6 @@ class LLMService:
         # 优先尝试Groq
         if self.groq_client:
             try:
-                debug_utils.log_and_print(
-                    "🚀 使用Groq进行router_structured_call", log_level="DEBUG"
-                )
                 return self._call_groq_structured(
                     prompt, response_schema, system_instruction, temperature
                 )

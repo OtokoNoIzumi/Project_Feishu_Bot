@@ -467,6 +467,54 @@ class MessageHandler:
                 return
 
             business_data = self.user_service.get_card_business_data(user_id, card_id)
+            if isinstance(result, list):
+                # 用一个特别的分支返回处理的copletion，再在这里迭代更新试试看？
+                # 新的处理结构，动态打印并生成配音，主要增加组件。但可以先做完第一步
+                role_1 = result[0]
+
+                blank_element = JsonBuilder.build_markdown_element(
+                    "", element_id=business_data.get("markdown_element_id", "")
+                )
+                blamk_element_json = json.dumps(blank_element, ensure_ascii=False)
+                initial_text_element = False
+                # 更新卡片元素，先清空，再更新，实现打字机效果
+                ext_sequence = 1
+                tts_str = ""
+                for chunk in role_1["stream_completion"]:
+                    tts_str += chunk.text
+                    if not initial_text_element:
+                        initial_text_element = True
+                        self.sender.update_card_element(
+                            card_id,
+                            business_data.get("markdown_element_id", ""),
+                            blamk_element_json,
+                            sequence,
+                        )
+                        final_text = "来自" + role_1["role_name"] + "的回复："
+                        self.sender.stream_update_card_content(
+                            card_id,
+                            business_data.get("markdown_element_id", ""),
+                            final_text,
+                            sequence + 1,
+                        )
+
+                    final_text += chunk.text
+                    ext_sequence += 1
+                    self.sender.stream_update_card_content(
+                        card_id,
+                        business_data.get("markdown_element_id", ""),
+                        final_text,
+                        sequence + ext_sequence,
+                    )
+
+                self.sender.finish_stream_card(
+                    card_id, sequence + ext_sequence + 1, "数字分身的回应"
+                )
+                self.cache_service.update_message_id_card_id_mapping(
+                    card_message_id, card_id, "audio_stt_result"
+                )
+                self.cache_service.save_message_id_card_id_mapping()
+                return
 
             if result.success and result.response_type == "text":
                 # 发送STT结果

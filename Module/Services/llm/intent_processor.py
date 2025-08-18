@@ -7,7 +7,7 @@
 
 import json
 import os
-from typing import Dict, Any, Optional, Tuple
+from typing import Dict, Any, Optional, Tuple, List
 from Module.Common.scripts.common import debug_utils
 from ..service_decorators import file_processing_safe
 
@@ -322,13 +322,265 @@ class IntentProcessor:
 
     # region STT调用入口
 
-    def process_stt_input(self, user_input: str) -> Dict[str, Any]:
-        """处理STT输入"""
-        return self.process_input(user_input)
+    STT_ROLE_DICT = {
+        "思辨自我": {
+            "thinking_mode": "概念构建",
+            "core_goal": "用户正在构建、定义或澄清概念，进行抽象思考和理论框架构建",
+            "typical_patterns": ["提出新概念", "重新定义", "抽象化思考"],
+            "response_strategy": "先肯定概念的价值，然后从一个新角度丰富这个概念",
+            "system_prompt": "你是用户的思辨自我，擅长概念构建和理论思考。用温暖而深刻的语调，先确认用户概念的价值，再从新角度丰富这个概念。回应长度50-150字，语调自然有温度。",
+        },
+        "探索伙伴": {
+            "thinking_mode": "问题探索",
+            "core_goal": "用户正在探索问题本质、寻找答案或深入理解现象",
+            "typical_patterns": ["疑问句", "探索性思考", "为什么/如何类思考"],
+            "response_strategy": "顺着用户的探索思路，提出能推进思考的问题",
+            "system_prompt": "你是探索伙伴，善于引导深入思考。跟随用户的探索方向，提出能推进思考的深化问题。用好奇而支持的语调，先呼应再增强。回应长度50-150字。",
+        },
+        "智慧镜子": {
+            "thinking_mode": "经验总结",
+            "core_goal": "用户在回顾、反思、总结已有经验或观察现象",
+            "typical_patterns": ["我发现", "感觉", "经验性描述"],
+            "response_strategy": "肯定经验，并帮助发现其中的普遍性规律",
+            "system_prompt": "你是智慧镜子，擅长从经验中提炼智慧。确认用户经验的价值，帮助发现其中的普遍性规律。用理解而升华的语调回应。回应长度50-150字。",
+        },
+        "灵感催化师": {
+            "thinking_mode": "灵感闪现",
+            "core_goal": "突然的想法、创意火花、灵光一现式的思考片段",
+            "typical_patterns": ["跳跃性思考", "突然的连接", "突然想到"],
+            "response_strategy": "捕捉灵感的核心，并给出可能的延伸路径",
+            "system_prompt": "你是灵感催化师，善于放大创意火花。捕捉用户灵感的核心亮点，给出可能的延伸发展路径。用兴奋而启发的语调回应。回应长度50-150字。",
+        },
+        "情感链接者": {
+            "thinking_mode": "情景描述",
+            "core_goal": "描述具体情况、场景或事件，可能带有情感色彩",
+            "typical_patterns": ["叙述性内容", "情况描述", "场景重现"],
+            "response_strategy": "与情景产生共鸣，并发现其中的深层含义",
+            "system_prompt": "你是情感链接者，善于情景共鸣。与用户的情景产生共鸣，发现其中的深层含义和情感价值。用共情而洞察的语调回应。回应长度50-150字。",
+        },
+        "认知导师": {
+            "thinking_mode": "元思考",
+            "core_goal": "对思考本身的思考，对认知过程的反思",
+            "typical_patterns": ["思考方法", "认知模式", "思维过程讨论"],
+            "response_strategy": "反映用户的思维过程，并在认知层面给出回应",
+            "system_prompt": "你是认知导师，专注于思维过程本身。映射用户的思维过程，在认知层面提供反思和回应。用睿智而引导的语调回应。回应长度50-150字。",
+        },
+        "想法孵化器": {
+            "thinking_mode": "模糊表达",
+            "core_goal": "想法尚未成形，表达较为模糊或片段化",
+            "typical_patterns": ["不完整句子", "模糊感受", "未明确想法"],
+            "response_strategy": "帮助模糊想法找到表达形式和发展方向",
+            "system_prompt": "你是想法孵化器，善于理解模糊意图。帮助用户的模糊想法找到表达形式和发展方向，提供成形的思考框架。用耐心而启发的语调回应。回应长度50-150字。",
+        },
+    }
 
-    def role_router(self, user_input: str) -> Dict[str, Any]:
-        """角色路由"""
-        return self.process_input(user_input)
+    def process_stt_input(self, user_input: str) -> List[Dict[str, Any]]:
+        """处理STT输入 - 返回前2个角色的流式回复生成器
+
+        Args:
+            user_input: 用户输入的文本
+
+        Returns:
+            List[Dict[str, Any]]: 包含role_name、confidence、stream_completion三个字段的角色列表
+        """
+        debug_utils.log_and_print(
+            f"🎤 开始处理STT输入: '{user_input[:50]}...'", log_level="INFO"
+        )
+
+        # 获取角色路由结果（前2个角色）
+        picked_roles = self.role_router(user_input)
+
+        # 为每个角色组装流式回复生成器
+        for role in picked_roles:
+            role_name = role["role_name"]
+
+            # 从STT_ROLE_DICT获取系统提示词
+            role_system_prompt = self.STT_ROLE_DICT[role_name]["system_prompt"]
+            final_prompt = f"# 用户输入：\n{user_input}"
+
+            # 使用Gemini获取流式回复生成器
+            stream_completion = self.llm_service.get_stream_completion(
+                final_prompt, role_system_prompt
+            )
+
+            role["stream_completion"] = stream_completion
+
+        return picked_roles
+
+    def _build_role_identification_prompt(self, user_input: str) -> str:
+        """构建角色识别提示词，基于STT_ROLE_DICT"""
+        prompt_parts = [
+            "# 任务：",
+            "深入理解用户输入的思维模式，为以下每一个思维角色，分别评估其与用户输入匹配的置信度评分（0-100）。",
+            "请关注用户的思考类型和表达方式，而不是表面的关键词匹配。",
+            "",
+            "# 思维角色及其特征：",
+        ]
+
+        # 添加角色定义
+        for role_name, config in self.STT_ROLE_DICT.items():
+            prompt_parts.append(f"## 角色：{role_name}")
+            prompt_parts.append(f"   思维模式：{config['thinking_mode']}")
+            prompt_parts.append(f"   核心目标：{config['core_goal']}")
+            prompt_parts.append(f"   典型模式：{', '.join(config['typical_patterns'])}")
+            prompt_parts.append("")
+
+        prompt_parts.extend(
+            [
+                "# 分析与输出要求：",
+                "1. 对于以下每一个思维角色，给出其匹配用户输入的置信度评分（0-100）：",
+            ]
+        )
+
+        # 添加角色名称列表
+        for role_name in self.STT_ROLE_DICT.keys():
+            prompt_parts.append(f"   - {role_name}")
+
+        prompt_parts.extend(
+            [
+                "2. 提供简要的推理说明",
+                f"# 用户输入：\n{user_input}",
+                "",
+            ]
+        )
+
+        return "\n".join(prompt_parts)
+
+    def _get_role_identification_schema(self) -> Dict[str, Any]:
+        """定义角色评分的响应结构"""
+        role_names = list(self.STT_ROLE_DICT.keys())
+        role_scores_properties = {
+            name: {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 100,
+                "description": f"对'{name}'角色的置信度评分",
+            }
+            for name in role_names
+        }
+
+        return {
+            "type": "object",
+            "properties": {
+                "role_scores": {
+                    "type": "object",
+                    "properties": role_scores_properties,
+                    "required": role_names,
+                    "description": "每个思维角色的置信度评分（0-100）",
+                },
+                "reasoning": {
+                    "type": "string",
+                    "description": "对评分结果的简要推理说明",
+                },
+            },
+            "required": ["role_scores"],
+        }
+
+    def _identify_role_mode(self, user_input: str) -> Dict[str, int]:
+        """第一阶段：识别最匹配的角色模式"""
+        prompt = self._build_role_identification_prompt(user_input)
+        schema = self._get_role_identification_schema()
+
+        try:
+            result = self.llm_service.router_structured_call(
+                prompt=prompt,
+                response_schema=schema,
+                system_instruction="你是思维模式识别专家，能够准确识别用户的思考类型并匹配合适的回应角色。",
+                temperature=0.1,
+            )
+
+            debug_utils.log_and_print(
+                f"✅ STT角色识别完成，评分: {result.get('role_scores', {})}",
+                log_level="DEBUG",
+            )
+            return result.get("role_scores", {})
+
+        except Exception as e:
+            debug_utils.log_and_print(f"❌ STT角色识别失败: {e}", log_level="ERROR")
+            # 返回默认评分，所有角色得分为0
+            return {name: 0 for name in self.STT_ROLE_DICT.keys()}
+
+    def _select_top_roles(
+        self, role_scores: Dict[str, int], top_k: int = 2
+    ) -> List[Dict[str, Any]]:
+        """选择置信度最高的前K个角色
+
+        Args:
+            role_scores: 角色评分字典，格式为 {role_name: confidence_score}
+            top_k: 选择前K个角色，默认为2
+
+        Returns:
+            List[Dict]: 包含role_name和confidence字段的角色列表
+        """
+        # 处理空输入或异常情况
+        if not role_scores or not isinstance(role_scores, dict):
+            debug_utils.log_and_print(
+                "⚠️ 角色评分为空或格式异常，返回默认角色", log_level="WARNING"
+            )
+            # 返回默认角色（想法孵化器，适合处理模糊输入）
+            return [{"role_name": "想法孵化器", "confidence": 50}]
+
+        # 过滤有效的角色评分
+        valid_scores = []
+        for role_name, confidence in role_scores.items():
+            # 检查角色是否存在于STT_ROLE_DICT中
+            if role_name not in self.STT_ROLE_DICT:
+                debug_utils.log_and_print(
+                    f"⚠️ 角色 '{role_name}' 不存在于STT_ROLE_DICT中，跳过",
+                    log_level="WARNING",
+                )
+                continue
+
+            # 检查置信度是否为有效数值
+            try:
+                confidence_int = int(confidence)
+                # 确保置信度在合理范围内
+                confidence_int = max(0, min(100, confidence_int))
+                valid_scores.append((role_name, confidence_int))
+            except (ValueError, TypeError):
+                debug_utils.log_and_print(
+                    f"⚠️ 角色 '{role_name}' 的置信度 '{confidence}' 无效，跳过",
+                    log_level="WARNING",
+                )
+                continue
+
+        # 如果没有有效的角色评分，返回默认角色
+        if not valid_scores:
+            debug_utils.log_and_print(
+                "⚠️ 没有有效的角色评分，返回默认角色", log_level="WARNING"
+            )
+            return [{"role_name": "想法孵化器", "confidence": 50}]
+
+        # 按置信度降序排序
+        sorted_roles = sorted(valid_scores, key=lambda x: x[1], reverse=True)
+
+        # 选择前top_k个角色
+        top_roles = []
+        for i, (role_name, confidence) in enumerate(sorted_roles[:top_k]):
+            top_roles.append({"role_name": role_name, "confidence": confidence})
+
+        return top_roles
+
+    def role_router(self, user_input: str) -> List[Dict[str, Any]]:
+        """思维模式路由器 - 识别并返回前2个最匹配的角色
+
+        实现角色识别和选择的完整流程：
+        1. 调用_identify_role_mode()进行第一阶段角色识别
+        2. 调用_select_top_roles()选择前2个最匹配的角色
+
+        Args:
+            user_input: 用户输入的文本
+
+        Returns:
+            List[Dict[str, Any]]: 包含role_name和confidence字段的前2个角色列表
+        """
+        # 第一阶段：角色模式识别和评分
+        role_scores = self._identify_role_mode(user_input)
+
+        # 选择前2个最高分角色
+        top_roles = self._select_top_roles(role_scores, top_k=2)
+
+        return top_roles
 
     # endregion
 

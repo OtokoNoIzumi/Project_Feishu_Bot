@@ -570,10 +570,11 @@ class MediaProcessor(BaseProcessor):
                     # 先不弄流式，就是先跑通
                     # 今天到跑通常规的流式回复
                     # 语音没办法承载未来茫茫多的router，而且先跑通，就用语音自己router一下好了
-
-                    llm_service = self.app_controller.get_service(ServiceNames.LLM)
-
                     result_text += f"🔎 匹配类型: {final_result['match_type']}\n\n"
+                    llm_service = self.app_controller.get_service(ServiceNames.LLM)
+                    picked_role = llm_service.process_stt_input(final_result["text"])
+                    return picked_role
+
                 case _:
                     result_text += f"🔎 匹配类型: {final_result['match_type']}\n\n"
 
