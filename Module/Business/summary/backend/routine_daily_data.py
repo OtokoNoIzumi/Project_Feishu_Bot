@@ -24,6 +24,8 @@ class RoutineDailyData:
     """日常分析数据处理器"""
 
     GRANULARITY_MINUTES = 120
+    FORCE_MONDAY = False
+    REPORT_MODE = "save"
 
     def __init__(self, app_controller):
         self.app_controller = app_controller
@@ -38,8 +40,7 @@ class RoutineDailyData:
         image_generator = data_params.get("image_generator", "hunyuan_image_generator")
 
         now = datetime.now()
-        is_monday = now.weekday() == 0  # 0是周一
-        # is_monday = True
+        is_monday = now.weekday() == 0 or self.FORCE_MONDAY  # 0是周一
         is_first_day_of_month = now.day == 1
         is_first_day_of_quarter = now.month % 3 == 1 and now.day == 1
         is_first_day_of_year = now.month == 1 and now.day == 1
@@ -455,11 +456,7 @@ class RoutineDailyData:
             .reset_index()
         )
 
-        # 统计天数（用 start_dt 的日期数）
-        if "start_dt" in merged_df.columns and not merged_df.empty:
-            unique_days = pd.to_datetime(merged_df["start_dt"]).dt.date.nunique()
-        else:
-            unique_days = 0
+        unique_days = (weekly_raw.get("end_time") - weekly_raw.get("start_time")).days
 
         total_hours = unique_days * 24
         total_minutes = total_hours * 60
@@ -796,6 +793,7 @@ class RoutineDailyData:
         # 5) 构建提示词
         prompt = f"""
         请根据以下四份数据，执行一次完整的周度分析。
+        特别注意，过往建议的反馈采纳历史包含了所有的状况，用来让你指定新的行动建议，但回顾上周行动（previous_actions_review）只需要对上一周{prev_week_key}的进行回顾。
 
         ### 数据一：本周原始事件日志 (带时间戳的原子数据，注意其中可能会包含用户在记录时的备注note，这也是比较重要的线索)
         ```csv
@@ -812,7 +810,7 @@ class RoutineDailyData:
         {previous_week_analysis_json_str}
         ```
 
-        ### 数据四：用户对过往建议的反馈历史 (JSON格式)
+        ### 数据四：过往每周建议和用户的采纳情况 (JSON格式)
         ```json
         {user_feedback_history_json_str}
         ```
@@ -847,13 +845,15 @@ class RoutineDailyData:
             item["accepted"] = True
             item["id"] = f"{current_week_key}_{action_id}"
 
-        report_method = "save"
+        report_method = self.REPORT_MODE
 
         match report_method:
             case "print":
-                print('report-prompt', prompt)
-                print('\nreport-system_prompt', self.AI_ROUTINE_ANALYSIS_BASE_INSTRUCTION)
-                print('\nreport-response_schema', self._build_routine_response_schema())
+                print("report-prompt", prompt)
+                print(
+                    "\nreport-system_prompt", self.AI_ROUTINE_ANALYSIS_BASE_INSTRUCTION
+                )
+                print("\nreport-response_schema", self._build_routine_response_schema())
             case "save":
                 result_to_save = result  # 确保保存的是本次分析结果
 
@@ -883,6 +883,7 @@ class RoutineDailyData:
 4.  **动机推断**：
 你必须尝试推断其背后可能的动机或心理状态。你需要提出这种假设性解释，但注意不要用解释性的语气来描述，而是为你服务的用户提供一些潜在感受视角的方式。
 5.  **S.P.I.C.E.多样性策略**：在提出新建议时，你应有意识地确保多样性，除非用户当前的数据里有显著有偏向性的信号，否则应尽可能覆盖以下一个或多个维度：系统(S)、模式(P)、洞察(I)、连接(C)、精力(E)。
+6.  **回避用户反感的叙事**: 用户明确表示不接受中医、排毒等非询证医学的理由，不要基于这些角度阐述，这会让用户降低对你和报告的信任。
 
 # 核心任务清单 (Task Checklist)
 你必须严格按照以下清单顺序，完成分析并组织你的输出。
@@ -900,8 +901,8 @@ class RoutineDailyData:
 特别关注那些打破常规模式的事件链，例如‘长时间工作后的异常娱乐选择’或‘特定用餐后的精力变化’。
 你必须检查数据中包含的非0target_value和非空check_cycle的目标设定。你的任务不是报告完成度，而是去发现“目标与现实的冲突”。
 如果一个设定了周期目标（如check_cycle: '天'）的活动，在某个周期内没有被执行或执行次数不足，你应将其作为一个的“隐藏洞察”，并深入分析造成这种偏差的可能原因或对其他的影响，以及它揭示了关于我的何种行为偏好或内在冲突。
-5.  **回顾过往行动 (`previous_actions_review`)**: 评估用户对上周建议的采纳情况。如果发现用户偏好发生变化，必须在`feedback_evolution_note`中进行说明。
-6.  **设计战略性行动建议 (`strategic_action_suggestions`)**: 基于以上所有分析，为用户提供的**预设ID**填充5个全新的、具体的、可行的建议。并评估建议的执行挑战难度，以及哪怕不执行的最小可行动作。
+5.  **回顾上周行动 (`previous_actions_review`)**: 评估用户对上周建议的采纳与执行情况。如果发现用户偏好发生变化，必须在`feedback_evolution_note`中进行说明。
+6.  **设计战略性行动建议 (`strategic_action_suggestions`)**: 基于以上所有分析，尤其是用户对过往每周行动建议的采纳情况，为用户提供5个全新的、具体的、可行的建议。并评估建议的执行挑战难度，以及哪怕不执行的最小可行动作。
 
 # 输出要求
 你的所有输出**必须且只能是**一个严格遵循用户提供的`response_schema`的、单一、有效的JSON对象。禁止在JSON之外添加任何说明性文字或标记。
@@ -998,7 +999,7 @@ class RoutineDailyData:
                 },
                 "previous_actions_review": {
                     "type": "object",
-                    "description": "对过往行动建议的评估",
+                    "description": "对上周行动建议的评估",
                     "properties": {
                         "feedback_evolution_note": {
                             "type": "string",
