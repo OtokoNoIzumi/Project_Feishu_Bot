@@ -120,6 +120,7 @@ class JsonBuilder:
         name: str = "",
         element_id: str = "",
         required: bool = False,
+        input_type: str = "text",
     ) -> Dict[str, Any]:
         """构建输入框元素"""
         final_element = {
@@ -129,11 +130,14 @@ class JsonBuilder:
             "default_value": str(initial_value),
             "disabled": disabled,
             "name": name or element_id,
+            "input_type": input_type,
             "behaviors": [{"type": "callback", "value": action_data}],
         }
         if required:
             # 仅表单里可用用，表单外赋值会报错。
             final_element["required"] = True
+        if input_type == "multiline_text":
+            final_element["auto_resize"] = True
         return final_element
 
     @staticmethod

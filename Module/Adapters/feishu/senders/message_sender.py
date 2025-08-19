@@ -1058,7 +1058,7 @@ class MessageSender:
         element_id: str,
         element: Dict[str, Any],
         sequence: int,
-        add_position: str = "insert_after",
+        add_position: str = "insert_after",  # 还有insert_before 和 append
         delay_seconds: float = None,
         message_id: str = None,
         ignore_update_mapping: bool = False,

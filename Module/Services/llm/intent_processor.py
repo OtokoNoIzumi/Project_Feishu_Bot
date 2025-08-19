@@ -336,24 +336,45 @@ class IntentProcessor:
         )
 
         # 获取角色路由结果（前2个角色）
-        picked_roles = self.role_router(user_input)
+        router_result = self.role_router(user_input, auto_correct=True)
+        picked_roles = router_result["role_scores"]
+        final_text = router_result["final_text"]
 
         # 为每个角色组装流式回复生成器
         for role in picked_roles:
             role_name = role["role_name"]
 
-            # 从STT_ROLE_DICT获取系统提示词
-            role_system_prompt = self.STT_ROLE_DICT[role_name]["system_prompt"]
-            final_prompt = f"# 用户输入：\n{user_input}"
-
-            # 使用Gemini获取流式回复生成器
+            # 关键升级：构建一个包含所有相关信息的上下文提示词
+            contextual_prompt, role_system_prompt = (
+                self._build_response_generation_context(
+                    role_name, final_text, role.get("reasoning", "")
+                )
+            )
+            # 使用新的上下文提示词和系统指令获取流式回复
             stream_completion = self.llm_service.get_stream_completion(
-                final_prompt, role_system_prompt
+                contextual_prompt, role_system_prompt
             )
 
             role["stream_completion"] = stream_completion
 
-        return picked_roles
+        return router_result
+
+    def _build_response_generation_context(
+        self, role_name: str, user_input: str, reasoning: str
+    ):
+        """构建用于生成回复的、包含完整上下文的提示词"""
+
+        role_config = self.STT_ROLE_DICT[role_name]
+        role_system_prompt = role_config["system_prompt"]
+
+        # 将所有设定信息组装成一个清晰的任务指令
+        contextual_prompt = f"""# 你的回应策略
+{role_config['response_strategy']}
+
+# 用户的笔记原文
+{user_input}
+    """
+        return contextual_prompt.strip(), role_system_prompt
 
     STT_ROLE_DICT = {
         "思辨自我": {
@@ -407,11 +428,21 @@ class IntentProcessor:
         },
     }
 
-    def _build_role_identification_prompt(self, user_input: str) -> str:
+    def _build_role_identification_prompt(
+        self, user_input: str, auto_correct: bool = True
+    ) -> str:
         """构建角色识别提示词，基于STT_ROLE_DICT"""
+        extra_text = "你正在处理一段来自stt识别的用户语音输入，其中可能包含stt模型引入的错别字。仅修正明显的语音识别错误和错别字，保持原意不变。不要进行润色、重写或内容修改。"
+        tasks = [
+            "深入理解用户输入的思维模式，为以下每一个思维角色，分别评估其与用户输入匹配的置信度评分（0-100）。"
+        ]
+        if auto_correct:
+            tasks.insert(0, extra_text)
+            tasks = [f"{i+1}. {task}" for i, task in enumerate(tasks)]
+
         prompt_parts = [
             "# 任务：",
-            "深入理解用户输入的思维模式，为以下每一个思维角色，分别评估其与用户输入匹配的置信度评分（0-100）。",
+            *tasks,
             "请关注用户的思考类型和表达方式，而不是表面的关键词匹配。",
             "",
             "# 思维角色及其特征：",
@@ -446,7 +477,9 @@ class IntentProcessor:
 
         return "\n".join(prompt_parts)
 
-    def _get_role_identification_schema(self) -> Dict[str, Any]:
+    def _get_role_identification_schema(
+        self, auto_correct: bool = True
+    ) -> Dict[str, Any]:
         """定义角色评分的响应结构"""
         role_names = list(self.STT_ROLE_DICT.keys())
         role_scores_properties = {
@@ -458,8 +491,7 @@ class IntentProcessor:
             }
             for name in role_names
         }
-
-        return {
+        final_schema = {
             "type": "object",
             "properties": {
                 "role_scores": {
@@ -475,25 +507,35 @@ class IntentProcessor:
             },
             "required": ["role_scores"],
         }
+        if auto_correct:
+            final_schema["properties"]["corrected_text"] = {
+                "type": "string",
+                "description": "修正后的文本",
+            }
+            final_schema["required"] = ["corrected_text", "role_scores"]
 
-    def _identify_role_mode(self, user_input: str) -> Dict[str, int]:
+        return final_schema
+
+    def _identify_role_mode(
+        self, user_input: str, auto_correct: bool = True
+    ) -> Dict[str, int]:
         """第一阶段：识别最匹配的角色模式"""
-        prompt = self._build_role_identification_prompt(user_input)
-        schema = self._get_role_identification_schema()
+        prompt = self._build_role_identification_prompt(user_input, auto_correct)
+        schema = self._get_role_identification_schema(auto_correct)
 
         try:
             result = self.llm_service.router_structured_call(
                 prompt=prompt,
                 response_schema=schema,
                 system_instruction="你是思维模式识别专家，能够准确识别用户的思考类型并匹配合适的回应角色。",
-                temperature=0.1,
+                temperature=0.3,
             )
 
             debug_utils.log_and_print(
                 f"✅ STT角色识别完成，评分: {result.get('role_scores', {})}",
                 log_level="DEBUG",
             )
-            return result.get("role_scores", {})
+            return result
 
         except Exception as e:
             debug_utils.log_and_print(f"❌ STT角色识别失败: {e}", log_level="ERROR")
@@ -561,7 +603,9 @@ class IntentProcessor:
 
         return top_roles
 
-    def role_router(self, user_input: str) -> List[Dict[str, Any]]:
+    def role_router(
+        self, user_input: str, auto_correct: bool = True
+    ) -> List[Dict[str, Any]]:
         """思维模式路由器 - 识别并返回前2个最匹配的角色
 
         实现角色识别和选择的完整流程：
@@ -575,12 +619,21 @@ class IntentProcessor:
             List[Dict[str, Any]]: 包含role_name和confidence字段的前2个角色列表
         """
         # 第一阶段：角色模式识别和评分
-        role_scores = self._identify_role_mode(user_input)
+        role_scores = self._identify_role_mode(user_input, auto_correct)
 
         # 选择前2个最高分角色
-        top_roles = self._select_top_roles(role_scores, top_k=2)
+        top_roles = self._select_top_roles(role_scores.get("role_scores", {}), top_k=2)
 
-        return top_roles
+        final_result = {
+            "final_text": (
+                role_scores.get("corrected_text", user_input)
+                if auto_correct
+                else user_input
+            ),
+            "role_scores": top_roles,
+        }
+
+        return final_result
 
     # endregion
 

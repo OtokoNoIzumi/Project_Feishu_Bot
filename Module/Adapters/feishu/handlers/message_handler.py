@@ -9,7 +9,8 @@
 
 import json
 import threading
-from typing import Optional, Any
+from typing import Optional, Any, Dict
+import time
 
 from Module.Common.scripts.common import debug_utils
 from Module.Business.processors import (
@@ -467,10 +468,45 @@ class MessageHandler:
                 return
 
             business_data = self.user_service.get_card_business_data(user_id, card_id)
-            if isinstance(result, list):
+            if isinstance(result, Dict):
                 # 用一个特别的分支返回处理的copletion，再在这里迭代更新试试看？
                 # 新的处理结构，动态打印并生成配音，主要增加组件。但可以先做完第一步
-                role_1 = result[0]
+                # 在输出打字机效果之前，先把识别到的结果和标签插入组件更新出来。
+                start_time = time.time()
+                print("test-time", start_time)
+                final_text = result["final_text"]
+                user_input_markdown_element = JsonBuilder.build_markdown_element(
+                    "**语音识别结果**"
+                )
+
+                # 这里的action_data意味着重新执行一次tts后续的步骤？也看情况，还是分个按钮好了。编辑之后有差异才显示。
+                user_input_element = JsonBuilder.build_input_element(
+                    "请输入你的想法",
+                    final_text,
+                    False,
+                    {},
+                    element_id="user_input",
+                    input_type="multiline_text",
+                )
+                user_input_line_element = JsonBuilder.build_line_element()
+
+                new_elements = [
+                    user_input_markdown_element,
+                    user_input_line_element,
+                    user_input_element,
+                ]
+
+                self.sender.add_card_element(
+                    card_id,
+                    business_data.get("markdown_element_id", ""),
+                    new_elements,
+                    sequence,
+                    add_position="insert_before",
+                    message_id=card_message_id,
+                    ignore_update_mapping=True,
+                )
+
+                role_1 = result["role_scores"][0]
 
                 blank_element = JsonBuilder.build_markdown_element(
                     "", element_id=business_data.get("markdown_element_id", "")
@@ -478,24 +514,26 @@ class MessageHandler:
                 blamk_element_json = json.dumps(blank_element, ensure_ascii=False)
                 initial_text_element = False
                 # 更新卡片元素，先清空，再更新，实现打字机效果
-                ext_sequence = 1
+                ext_sequence = 0
                 tts_str = ""
                 for chunk in role_1["stream_completion"]:
                     tts_str += chunk.text
                     if not initial_text_element:
                         initial_text_element = True
+                        ext_sequence += 1
                         self.sender.update_card_element(
                             card_id,
                             business_data.get("markdown_element_id", ""),
                             blamk_element_json,
-                            sequence,
+                            sequence + ext_sequence,
                         )
+                        ext_sequence += 1
                         final_text = "来自" + role_1["role_name"] + "的回复："
                         self.sender.stream_update_card_content(
                             card_id,
                             business_data.get("markdown_element_id", ""),
                             final_text,
-                            sequence + 1,
+                            sequence + ext_sequence,
                         )
 
                     final_text += chunk.text
@@ -554,8 +592,11 @@ class MessageHandler:
                                 ignore_update_mapping=True,
                             )
 
+                end_time = time.time()
+                print("test-diff_completion_time", end_time - start_time)
+                ext_sequence += 1
                 self.sender.finish_stream_card(
-                    card_id, sequence + ext_sequence + 1, "数字分身的回应"
+                    card_id, sequence + ext_sequence, "数字分身的回应"
                 )
                 self.cache_service.update_message_id_card_id_mapping(
                     card_message_id, card_id, "audio_stt_result"
