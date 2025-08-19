@@ -1,9 +1,11 @@
 {
   "coze": {
     "api_base": "https://api.coze.cn/v1/workflow/run",
-    "tts_workflow_id": "7473130113548402722",
+    "tts_workflow_id": "7540125143995252763",
     "voice_id": "peach",
     "image_workflow_id": "7532385375723012138",
+    "cn_voice_id": "7468518846874402867",
+    "small_voice_id": "7481299960424562742",
     "stt_workflow_id": ""
   },
   "log_level": "INFO",

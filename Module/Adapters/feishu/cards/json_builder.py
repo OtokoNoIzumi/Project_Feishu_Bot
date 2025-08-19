@@ -386,6 +386,27 @@ class JsonBuilder:
                 final_element["chart_spec"]["color"] = colors
         return final_element
 
+    @staticmethod
+    def build_audio_element(
+        file_key: str,
+        element_id: str = "",
+        audio_id: str = "",
+        style: str = "normal",  # 还可以用speak
+    ) -> Dict[str, Any]:
+        """构建音频元素"""
+        final_element = {
+            "tag": "audio",
+            "file_key": file_key,
+        }
+        if element_id:
+            final_element["element_id"] = element_id
+        if audio_id:
+            final_element["audio_id"] = audio_id
+        if style:
+            final_element["style"] = style
+
+        return final_element
+
     # endregion
 
     # region 组合结构

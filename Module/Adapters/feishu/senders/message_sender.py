@@ -598,7 +598,9 @@ class MessageSender:
             return ""
 
     @file_operation_safe("音频上传处理失败", return_value=False)
-    def upload_and_send_audio(self, original_data, audio_data: bytes) -> bool:
+    def upload_and_send_audio(
+        self, original_data, audio_data: bytes, return_mode="reply"
+    ) -> bool:
         """上传音频并发送消息"""
         temp_mp3_path = None
         temp_opus_path = None
@@ -627,7 +629,7 @@ class MessageSender:
             # 上传到飞书
             file_key = self._upload_opus_to_feishu(temp_opus_path, duration_ms)
 
-            if file_key:
+            if file_key and return_mode == "reply":
                 # 发送音频消息
                 content_json = json.dumps({"file_key": file_key})
                 result = ProcessResult.success_result(
@@ -636,6 +638,8 @@ class MessageSender:
                     parent_id=original_data.event.message.message_id,
                 )
                 return self.send_feishu_reply(original_data, result)
+            elif file_key and return_mode == "file":
+                return {"file_key": file_key, "duration_ms": duration_ms}
 
             debug_utils.log_and_print("音频上传到飞书失败", log_level="ERROR")
             return False
@@ -1057,6 +1061,7 @@ class MessageSender:
         add_position: str = "insert_after",
         delay_seconds: float = None,
         message_id: str = None,
+        ignore_update_mapping: bool = False,
     ):
         """添加卡片元素"""
 
@@ -1080,11 +1085,13 @@ class MessageSender:
             response: CreateCardElementResponse = (
                 self.client.cardkit.v1.card_element.create(request)
             )
-            if response.success():
+            if response.success() and not ignore_update_mapping:
                 cache_service = self.app_controller.get_service(ServiceNames.CACHE)
                 cache_service.update_message_id_card_id_mapping(message_id, card_id)
                 cache_service.save_message_id_card_id_mapping()
                 # 要保存card_id和element_id的映射，不然取不到。
+                return True
+            elif response.success() and ignore_update_mapping:
                 return True
 
             debug_utils.log_and_print(

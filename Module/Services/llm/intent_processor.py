@@ -322,6 +322,39 @@ class IntentProcessor:
 
     # region STT调用入口
 
+    def process_stt_input(self, user_input: str) -> List[Dict[str, Any]]:
+        """处理STT输入 - 返回前2个角色的流式回复生成器
+
+        Args:
+            user_input: 用户输入的文本
+
+        Returns:
+            List[Dict[str, Any]]: 包含role_name、confidence、stream_completion三个字段的角色列表
+        """
+        debug_utils.log_and_print(
+            f"🎤 开始处理STT输入: '{user_input[:50]}...'", log_level="INFO"
+        )
+
+        # 获取角色路由结果（前2个角色）
+        picked_roles = self.role_router(user_input)
+
+        # 为每个角色组装流式回复生成器
+        for role in picked_roles:
+            role_name = role["role_name"]
+
+            # 从STT_ROLE_DICT获取系统提示词
+            role_system_prompt = self.STT_ROLE_DICT[role_name]["system_prompt"]
+            final_prompt = f"# 用户输入：\n{user_input}"
+
+            # 使用Gemini获取流式回复生成器
+            stream_completion = self.llm_service.get_stream_completion(
+                final_prompt, role_system_prompt
+            )
+
+            role["stream_completion"] = stream_completion
+
+        return picked_roles
+
     STT_ROLE_DICT = {
         "思辨自我": {
             "thinking_mode": "概念构建",
@@ -373,39 +406,6 @@ class IntentProcessor:
             "system_prompt": "你是想法孵化器，善于理解模糊意图。帮助用户的模糊想法找到表达形式和发展方向，提供成形的思考框架。用耐心而启发的语调回应。回应长度50-150字。",
         },
     }
-
-    def process_stt_input(self, user_input: str) -> List[Dict[str, Any]]:
-        """处理STT输入 - 返回前2个角色的流式回复生成器
-
-        Args:
-            user_input: 用户输入的文本
-
-        Returns:
-            List[Dict[str, Any]]: 包含role_name、confidence、stream_completion三个字段的角色列表
-        """
-        debug_utils.log_and_print(
-            f"🎤 开始处理STT输入: '{user_input[:50]}...'", log_level="INFO"
-        )
-
-        # 获取角色路由结果（前2个角色）
-        picked_roles = self.role_router(user_input)
-
-        # 为每个角色组装流式回复生成器
-        for role in picked_roles:
-            role_name = role["role_name"]
-
-            # 从STT_ROLE_DICT获取系统提示词
-            role_system_prompt = self.STT_ROLE_DICT[role_name]["system_prompt"]
-            final_prompt = f"# 用户输入：\n{user_input}"
-
-            # 使用Gemini获取流式回复生成器
-            stream_completion = self.llm_service.get_stream_completion(
-                final_prompt, role_system_prompt
-            )
-
-            role["stream_completion"] = stream_completion
-
-        return picked_roles
 
     def _build_role_identification_prompt(self, user_input: str) -> str:
         """构建角色识别提示词，基于STT_ROLE_DICT"""

@@ -507,6 +507,53 @@ class MessageHandler:
                         sequence + ext_sequence,
                     )
 
+                tts_result = self.message_router.media.process_tts_async(tts_str)
+                if (
+                    tts_result.success
+                    and tts_result.response_type == ResponseTypes.AUDIO
+                ):
+                    audio_data = tts_result.response_content.get("audio_data")
+                    if audio_data:
+                        file_data = self.sender.upload_and_send_audio(
+                            None, audio_data, return_mode="file"
+                        )
+                        if file_data:
+                            file_key = file_data.get("file_key", "")
+                            audio_element = JsonBuilder.build_audio_element(
+                                file_key,
+                                element_id=business_data.get(
+                                    "audio_element_id", "audio_element_0"
+                                ),
+                                style="speak",
+                                audio_id=business_data.get("audio_id", "audio_0"),
+                            )
+                            shift_button_element = JsonBuilder.build_button_element(
+                                "换个角度",
+                                size="small",
+                                element_id="shift_button_0",
+                            )
+                            extra_button_element = JsonBuilder.build_button_element(
+                                "展开说说",
+                                size="small",
+                                element_id="extra_button_0",
+                            )
+                            button_group_element = (
+                                JsonBuilder.build_button_group_element(
+                                    [shift_button_element, extra_button_element]
+                                )
+                            )
+                            ext_sequence += 1
+                            new_elements = [audio_element, button_group_element]
+
+                            self.sender.add_card_element(
+                                card_id,
+                                business_data.get("markdown_element_id", ""),
+                                new_elements,
+                                sequence + ext_sequence,
+                                message_id=card_message_id,
+                                ignore_update_mapping=True,
+                            )
+
                 self.sender.finish_stream_card(
                     card_id, sequence + ext_sequence + 1, "数字分身的回应"
                 )

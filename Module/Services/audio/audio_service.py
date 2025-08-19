@@ -55,6 +55,8 @@ class AudioService:
                 workflow_id=self.coze_workflow_id,
                 access_token=self.coze_access_token,
                 voice_id=self.voice_id,
+                cn_voice_id=self.cn_voice_id,
+                small_voice_id=self.small_voice_id,
             )
 
     def _load_config(self):
@@ -77,6 +79,8 @@ class AudioService:
             )
             self.coze_workflow_id = coze_cfg.get("tts_workflow_id", "")
             self.voice_id = coze_cfg.get("voice_id", "peach")
+            self.cn_voice_id = coze_cfg.get("cn_voice_id", "7468512265134768179")
+            self.small_voice_id = coze_cfg.get("small_voice_id", "7481299960424562742")
 
             # Access token 从环境变量获取
             self.coze_access_token = os.getenv("COZE_API_KEY", "")
@@ -102,6 +106,8 @@ class AudioService:
             self.coze_workflow_id = os.getenv("TTS_WORKFLOW_ID", "")
             self.coze_access_token = os.getenv("COZE_API_KEY", "")
             self.voice_id = "peach"
+            self.cn_voice_id = "7468512265134768179"
+            self.small_voice_id = "7481299960424562742"
 
             # Groq 配置
             self.groq_api_key = os.getenv("GROQ_API_KEY", "")
@@ -437,6 +443,8 @@ class CozeTTS:
         workflow_id: str,
         access_token: str,
         voice_id: str = "peach",
+        cn_voice_id: str = "7468512265134768179",
+        small_voice_id: str = "7481299960424562742",
     ):
         """
         初始化Coze TTS服务
@@ -451,6 +459,8 @@ class CozeTTS:
         self.workflow_id = workflow_id
         self.access_token = access_token
         self.voice_id = voice_id
+        self.cn_voice_id = cn_voice_id
+        self.small_voice_id = small_voice_id
 
     def generate(self, text: str) -> Optional[bytes]:
         """
@@ -470,12 +480,13 @@ class CozeTTS:
             "Authorization": f"Bearer {self.access_token}",
             "Content-Type": "application/json",
         }
+        final_voice_id = self.small_voice_id or self.cn_voice_id or self.voice_id
 
         payload = {
             "workflow_id": self.workflow_id,
             "parameters": {
                 "input": text,
-                "voicebranch": self.voice_id,
+                "voicebranch": final_voice_id,
                 "voice_type": "zh_female_gufengshaoyu_mars_bigtts",
             },
         }
