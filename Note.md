@@ -77,6 +77,13 @@ https://microsoft.github.io/monaco-editor/
 https://github.com/yayxs/ai-coding?tab=readme-ov-file
 https://metaso.cn/search/8642237008977645568
 
+如果有必要，也可以用正则之类的简单方法提取和识别@和#的逻辑来作为补充词汇？
+
+
+数字分身重要不是思维模型，是分身，也就是不同的身份的我。
+也就是说这个本身也是需要定义的？这样一开始使用就需要几个通用模板，然后随着用多了慢慢替换。
+思维模型是另一套逻辑，详细展开的时候用
+
 ————————
 
 

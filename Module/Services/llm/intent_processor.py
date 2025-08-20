@@ -342,12 +342,10 @@ class IntentProcessor:
 
         # 为每个角色组装流式回复生成器
         for role in picked_roles:
-            role_name = role["role_name"]
-
             # 关键升级：构建一个包含所有相关信息的上下文提示词
             contextual_prompt, role_system_prompt = (
                 self._build_response_generation_context(
-                    role_name, final_text, role.get("reasoning", "")
+                    role, final_text, source_mode="stt"
                 )
             )
             # 使用新的上下文提示词和系统指令获取流式回复
@@ -360,20 +358,27 @@ class IntentProcessor:
         return router_result
 
     def _build_response_generation_context(
-        self, role_name: str, user_input: str, reasoning: str
+        self, role: str, user_input: str, source_mode: str = "stt"
     ):
         """构建用于生成回复的、包含完整上下文的提示词"""
-
+        # 这里还需要增加rag的结果。
+        role_name = role["role_name"]
         role_config = self.STT_ROLE_DICT[role_name]
         role_system_prompt = role_config["system_prompt"]
+
+        match source_mode:
+            case "stt":
+                user_prompt = f"# 用户的语音输入识别结果，请注意这里可能存在stt模型引入的同音或近似发音的错别字。\n{user_input}"
+            case "text":
+                user_prompt = f"# 用户的笔记原文\n{user_input}"
+            case _:
+                user_prompt = f"# 用户的笔记原文\n{user_input}"
 
         # 将所有设定信息组装成一个清晰的任务指令
         contextual_prompt = f"""# 你的回应策略
 {role_config['response_strategy']}
 
-# 用户的笔记原文
-{user_input}
-    """
+{user_prompt}"""
         return contextual_prompt.strip(), role_system_prompt
 
     STT_ROLE_DICT = {
@@ -428,13 +433,30 @@ class IntentProcessor:
         },
     }
 
+    # 用户关心的领域定义
+    USER_DOMAIN_DICT = {
+        "AI数字分身": {
+            "description": "开发利用AI储存与调用个人数据，主要精力投入的创业项目",
+            "keywords": ["AI", "数字分身", "创业", "数据", "个人数据", "项目"],
+        },
+        "身体柔韧性": {
+            "description": "主要是一字马，腘绳肌等目前做不到的目标，需要积累和尝试训练方案，和心灵等其他方面没有任何关系",
+            "keywords": ["一字马", "腘绳肌", "训练", "拉伸", "运动", "康复"],
+        },
+        "炉石": {
+            "description": "炉石传说的游玩体会和思考",
+            "keywords": [""],
+        },
+    }
+
     def _build_role_identification_prompt(
         self, user_input: str, auto_correct: bool = True
     ) -> str:
         """构建角色识别提示词，基于STT_ROLE_DICT"""
         extra_text = "你正在处理一段来自stt识别的用户语音输入，其中可能包含stt模型引入的错别字。仅修正明显的语音识别错误和错别字，保持原意不变。不要进行润色、重写或内容修改。"
         tasks = [
-            "深入理解用户输入的思维模式，为以下每一个思维角色，分别评估其与用户输入匹配的置信度评分（0-100）。"
+            "深入理解用户输入的思维模式，为以下每一个思维角色，分别评估其与用户输入匹配的置信度评分（0-100）。",
+            "同时评估用户输入与以下关心领域的关联程度，给出权重评分（0-100）。",
         ]
         if auto_correct:
             tasks.insert(0, extra_text)
@@ -456,6 +478,14 @@ class IntentProcessor:
             prompt_parts.append(f"   典型模式：{', '.join(config['typical_patterns'])}")
             prompt_parts.append("")
 
+        # 添加用户关心领域定义
+        prompt_parts.append("# 用户关心的领域：")
+        for domain_name, config in self.USER_DOMAIN_DICT.items():
+            prompt_parts.append(f"## 领域：{domain_name}")
+            prompt_parts.append(f"   简介：{config['description']}")
+            prompt_parts.append(f"   额外关联线索：{', '.join(config['keywords'])}")
+            prompt_parts.append("")
+
         prompt_parts.extend(
             [
                 "# 分析与输出要求：",
@@ -469,7 +499,17 @@ class IntentProcessor:
 
         prompt_parts.extend(
             [
-                "2. 提供简要的推理说明",
+                "2. 对于以下每一个关心领域，给出其与用户输入的权重评分（0-100）：",
+            ]
+        )
+
+        # 添加领域名称列表
+        for domain_name in self.USER_DOMAIN_DICT.keys():
+            prompt_parts.append(f"   - {domain_name}")
+
+        prompt_parts.extend(
+            [
+                "3. 提供简要的推理说明",
                 f"# 用户输入：\n{user_input}",
                 "",
             ]
@@ -480,8 +520,10 @@ class IntentProcessor:
     def _get_role_identification_schema(
         self, auto_correct: bool = True
     ) -> Dict[str, Any]:
-        """定义角色评分的响应结构"""
+        """定义角色评分和领域权重的响应结构"""
         role_names = list(self.STT_ROLE_DICT.keys())
+        domain_names = list(self.USER_DOMAIN_DICT.keys())
+
         role_scores_properties = {
             name: {
                 "type": "integer",
@@ -491,6 +533,17 @@ class IntentProcessor:
             }
             for name in role_names
         }
+
+        domain_weights_properties = {
+            name: {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 100,
+                "description": f"对'{name}'领域的权重评分",
+            }
+            for name in domain_names
+        }
+
         final_schema = {
             "type": "object",
             "properties": {
@@ -500,19 +553,29 @@ class IntentProcessor:
                     "required": role_names,
                     "description": "每个思维角色的置信度评分（0-100）",
                 },
+                "domain_weights": {
+                    "type": "object",
+                    "properties": domain_weights_properties,
+                    "required": domain_names,
+                    "description": "每个关心领域的权重评分（0-100）",
+                },
                 "reasoning": {
                     "type": "string",
                     "description": "对评分结果的简要推理说明",
                 },
             },
-            "required": ["role_scores"],
+            "required": ["role_scores", "domain_weights"],
         }
         if auto_correct:
             final_schema["properties"]["corrected_text"] = {
                 "type": "string",
                 "description": "修正后的文本",
             }
-            final_schema["required"] = ["corrected_text", "role_scores"]
+            final_schema["required"] = [
+                "corrected_text",
+                "role_scores",
+                "domain_weights",
+            ]
 
         return final_schema
 
@@ -531,16 +594,26 @@ class IntentProcessor:
                 temperature=0.3,
             )
 
+            log_info = f"✅ STT角色识别完成，角色评分: {result.get('role_scores', {})}, 领域权重: {result.get('domain_weights', {})}"
+            if (
+                result.get("corrected_text")
+                and result.get("corrected_text") != user_input
+            ):
+                log_info += f"，修正后的文本: {result.get('corrected_text')}"
             debug_utils.log_and_print(
-                f"✅ STT角色识别完成，评分: {result.get('role_scores', {})}",
+                log_info,
                 log_level="DEBUG",
             )
+
             return result
 
         except Exception as e:
             debug_utils.log_and_print(f"❌ STT角色识别失败: {e}", log_level="ERROR")
-            # 返回默认评分，所有角色得分为0
-            return {name: 0 for name in self.STT_ROLE_DICT.keys()}
+            # 返回默认评分，所有角色得分为0，所有领域权重为0
+            return {
+                "role_scores": {name: 0 for name in self.STT_ROLE_DICT.keys()},
+                "domain_weights": {name: 0 for name in self.USER_DOMAIN_DICT.keys()},
+            }
 
     def _select_top_roles(
         self, role_scores: Dict[str, int], top_k: int = 2
@@ -631,6 +704,7 @@ class IntentProcessor:
                 else user_input
             ),
             "role_scores": top_roles,
+            "domain_weights": role_scores.get("domain_weights", {}),
         }
 
         return final_result

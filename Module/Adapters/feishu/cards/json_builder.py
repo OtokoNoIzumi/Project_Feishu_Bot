@@ -396,6 +396,8 @@ class JsonBuilder:
         element_id: str = "",
         audio_id: str = "",
         style: str = "normal",  # 还可以用speak
+        show_time=True,
+        time_display="both",
     ) -> Dict[str, Any]:
         """构建音频元素"""
         final_element = {
@@ -408,6 +410,10 @@ class JsonBuilder:
             final_element["audio_id"] = audio_id
         if style:
             final_element["style"] = style
+        if show_time:
+            final_element["show_time"] = show_time
+            if time_display:
+                final_element["time_display"] = time_display
 
         return final_element
 

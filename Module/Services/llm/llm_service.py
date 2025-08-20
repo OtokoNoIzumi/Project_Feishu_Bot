@@ -240,15 +240,16 @@ class LLMService:
         if not self.client:
             return "LLM客户端不可用"
 
-        generate_config = {
-            "thinking_config": types.ThinkingConfig(
-                thinking_budget=-1,
-            ),
-            "temperature": 0.7,
-            "max_output_tokens": max_tokens,
-        }
+        generate_config = types.GenerateContentConfig(
+            safety_settings=get_safety_settings()
+        )
+        generate_config.thinking_config = types.ThinkingConfig(
+            thinking_budget=-1,
+        )
+        generate_config.temperature = 0.95
+        generate_config.max_output_tokens = max_tokens
         if system_instruction:
-            generate_config["system_instruction"] = system_instruction
+            generate_config.system_instruction = system_instruction
 
         stream_completion = self.client.models.generate_content_stream(
             model=self.model_name,
@@ -442,3 +443,18 @@ class LLMService:
         return status
 
     # endregion
+
+
+def get_safety_settings():
+    """获取安全设置"""
+    return [
+        types.SafetySetting(category="HARM_CATEGORY_HATE_SPEECH", threshold="OFF"),
+        types.SafetySetting(
+            category="HARM_CATEGORY_DANGEROUS_CONTENT", threshold="OFF"
+        ),
+        types.SafetySetting(category="HARM_CATEGORY_HARASSMENT", threshold="OFF"),
+        types.SafetySetting(
+            category="HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold="OFF"
+        ),
+        types.SafetySetting(category="HARM_CATEGORY_CIVIC_INTEGRITY", threshold="OFF"),
+    ]

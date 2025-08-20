@@ -473,7 +473,6 @@ class MessageHandler:
                 # 新的处理结构，动态打印并生成配音，主要增加组件。但可以先做完第一步
                 # 在输出打字机效果之前，先把识别到的结果和标签插入组件更新出来。
                 start_time = time.time()
-                print("test-time", start_time)
                 final_text = result["final_text"]
                 user_input_markdown_element = JsonBuilder.build_markdown_element(
                     "**语音识别结果**"
@@ -488,12 +487,53 @@ class MessageHandler:
                     element_id="user_input",
                     input_type="multiline_text",
                 )
+                topic_info = result["domain_weights"]
+                topic_match_thredhold = 50
+                best_match_topic = max(topic_info, key=topic_info.get)
+                if topic_info[best_match_topic] > topic_match_thredhold:
+                    print("test-topic_info", topic_info, best_match_topic)
+                else:
+                    print("test-topic_info", topic_info)
+                    best_match_topic = ""
+
+                options_dict = {option: option for option in topic_info}
+                options = JsonBuilder.build_options(options_dict)
+
+                # 后来这里是要做一个多选和反选的逻辑的
+                topic_domain_select_element = JsonBuilder.build_select_element(
+                    "修改所属领域",
+                    options,
+                    best_match_topic,
+                    False,
+                    {},
+                    element_id="topic_domain_select",
+                )
+                topic_row = JsonBuilder.build_form_row(
+                    "相关领域",
+                    topic_domain_select_element,
+                    element_id="topic_row",
+                )
+
                 user_input_line_element = JsonBuilder.build_line_element()
+
+                modify_button_element = JsonBuilder.build_button_element(
+                    "润色",
+                    element_id="input_button_0",
+                )
+                save_button_element = JsonBuilder.build_button_element(
+                    "保存",
+                    element_id="input_button_1",
+                )
+                input_button_group_element = JsonBuilder.build_button_group_element(
+                    [modify_button_element, save_button_element]
+                )
 
                 new_elements = [
                     user_input_markdown_element,
-                    user_input_line_element,
                     user_input_element,
+                    topic_row,
+                    input_button_group_element,
+                    user_input_line_element,
                 ]
 
                 self.sender.add_card_element(
@@ -593,7 +633,7 @@ class MessageHandler:
                             )
 
                 end_time = time.time()
-                print("test-diff_completion_time", end_time - start_time)
+                print(f"test-diff_completion_time: {round(end_time - start_time, 1)}s")
                 ext_sequence += 1
                 self.sender.finish_stream_card(
                     card_id, sequence + ext_sequence, "数字分身的回应"
