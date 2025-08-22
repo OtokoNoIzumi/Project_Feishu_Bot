@@ -44,6 +44,7 @@ from Module.Services.constants import (
 class MessageHandler:
     """飞书消息处理器"""
 
+    # region 初始化
     def __init__(self, app_controller, message_router, sender, debug_functions=None):
         """
         初始化消息处理器
@@ -78,6 +79,10 @@ class MessageHandler:
         thread = threading.Thread(target=func)
         thread.daemon = True
         thread.start()
+
+    # endregion
+
+    # region 消息处理入口
 
     @feishu_event_handler_safe("处理飞书消息失败")
     def handle_feishu_message(self, data) -> None:
@@ -120,6 +125,10 @@ class MessageHandler:
         # 普通回复
         if result.should_reply:
             self.sender.send_feishu_reply(data, result)
+
+    # endregion
+
+    # region 结果处理-路由
 
     def handle_route_result_dynamic(
         self, route_result: RouteResult, context_refactor: MessageContext_Refactor
@@ -221,6 +230,10 @@ class MessageHandler:
             error_result = ProcessResult.error_result(f"路由分发处理异常: {str(e)}")
             self.sender.send_feishu_reply_with_context(context_refactor, error_result)
 
+    # endregion
+
+    # region 结果处理-异步
+
     def _handle_async_actions(
         self, data, result: ProcessResult, context_refactor: MessageContext_Refactor
     ) -> bool:
@@ -319,6 +332,10 @@ class MessageHandler:
 
         return False
 
+    # endregion
+
+    # region 具体业务
+
     @async_operation_safe("TTS异步处理失败")
     def _handle_tts_async(self, original_data, tts_text: str):
         """异步处理TTS任务"""
@@ -411,6 +428,10 @@ class MessageHandler:
 
         self._execute_async(process_in_background)
 
+    # endregion
+
+    # region 新业务-STT
+
     @async_operation_safe("音频STT异步处理失败")
     def _handle_audio_stt_async(self, context: MessageContext_Refactor):
         """异步处理音频STT任务"""
@@ -467,11 +488,12 @@ class MessageHandler:
                 self.cache_service.save_message_id_card_id_mapping()
                 return
 
+            # 这里既然没传输markdown_id以外的信息，就说明其实这里是需要重新组装business_data用于修改和储存
             business_data = self.user_service.get_card_business_data(user_id, card_id)
             if isinstance(result, Dict):
                 # 用一个特别的分支返回处理的copletion，再在这里迭代更新试试看？
-                # 新的处理结构，动态打印并生成配音，主要增加组件。但可以先做完第一步
-                # 在输出打字机效果之前，先把识别到的结果和标签插入组件更新出来。
+                # 有business_data作为数据容器，就不用action data里塞一堆了
+
                 start_time = time.time()
                 final_text = result["final_text"]
                 user_input_markdown_element = JsonBuilder.build_markdown_element(
@@ -546,7 +568,7 @@ class MessageHandler:
                     ignore_update_mapping=True,
                 )
 
-                role_1 = result["role_scores"][0]
+                role_1 = result["top_combinations"][0]
 
                 blank_element = JsonBuilder.build_markdown_element(
                     "", element_id=business_data.get("markdown_element_id", "")
@@ -568,7 +590,7 @@ class MessageHandler:
                             sequence + ext_sequence,
                         )
                         ext_sequence += 1
-                        final_text = "来自" + role_1["role_name"] + "的回复："
+                        final_text = "来自" + role_1["identity"] + "身份的回复："
                         self.sender.stream_update_card_content(
                             card_id,
                             business_data.get("markdown_element_id", ""),
@@ -680,6 +702,10 @@ class MessageHandler:
 
         self._execute_async(process_in_background)
 
+    # endregion
+
+    # region 特殊格式结果回复
+
     def _handle_special_response_types(
         self, data, result, context, context_refactor
     ) -> bool:
@@ -773,6 +799,10 @@ class MessageHandler:
             case _:
                 return False
 
+    # endregion
+
+    # region 辅助函数消息转换
+
     @message_conversion_safe("消息转换失败")
     def _convert_message_to_context(self, data) -> Optional[MessageContext]:
         """将飞书消息转换为标准消息上下文"""
@@ -854,3 +884,5 @@ class MessageHandler:
                 return FileContent(file_key=json.loads(message.content)["file_key"])
             case _:
                 return message.content
+
+    # endregion

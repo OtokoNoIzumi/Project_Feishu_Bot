@@ -322,30 +322,30 @@ class IntentProcessor:
 
     # region STT调用入口
 
-    def process_stt_input(self, user_input: str) -> List[Dict[str, Any]]:
-        """处理STT输入 - 返回前2个角色的流式回复生成器
+    def process_stt_input(self, user_input: str) -> Dict[str, Any]:
+        """处理STT输入 - 返回最佳组合的流式回复生成器
 
         Args:
             user_input: 用户输入的文本
 
         Returns:
-            List[Dict[str, Any]]: 包含role_name、confidence、stream_completion三个字段的角色列表
+            Dict[str, Any]: 包含组合信息和流式回复生成器的结果
         """
         debug_utils.log_and_print(
             f"🎤 开始处理STT输入: '{user_input[:50]}...'", log_level="INFO"
         )
 
-        # 获取角色路由结果（前2个角色）
+        # 获取三层架构路由结果
         router_result = self.role_router(user_input, auto_correct=True)
-        picked_roles = router_result["role_scores"]
+        top_combinations = router_result["top_combinations"]
         final_text = router_result["final_text"]
 
-        # 为每个角色组装流式回复生成器
-        for role in picked_roles:
-            # 关键升级：构建一个包含所有相关信息的上下文提示词
+        # 为每个组合生成流式回复生成器
+        for combination in top_combinations:
+            # 构建上下文提示词和系统提示词
             contextual_prompt, role_system_prompt = (
                 self._build_response_generation_context(
-                    role, final_text, source_mode="stt"
+                    combination, final_text, source_mode="stt"
                 )
             )
             # 使用新的上下文提示词和系统指令获取流式回复
@@ -353,19 +353,63 @@ class IntentProcessor:
                 contextual_prompt, role_system_prompt
             )
 
-            role["stream_completion"] = stream_completion
+            combination["stream_completion"] = stream_completion
 
         return router_result
 
     def _build_response_generation_context(
-        self, role: str, user_input: str, source_mode: str = "stt"
+        self, combination: Dict[str, Any], user_input: str, source_mode: str = "stt"
     ):
-        """构建用于生成回复的、包含完整上下文的提示词"""
-        # 这里还需要增加rag的结果。
-        role_name = role["role_name"]
-        role_config = self.STT_ROLE_DICT[role_name]
-        role_system_prompt = role_config["system_prompt"]
+        """构建用于生成回复的、包含完整上下文的提示词
 
+        Args:
+            combination: 包含module、emotion、identity信息的组合字典
+            user_input: 用户输入文本
+            source_mode: 输入来源模式 ("stt" 或 "text")
+
+        Returns:
+            tuple: (contextual_prompt, role_system_prompt)
+        """
+        # 这里还需要增加rag的结果。
+        module_name = combination["module"]
+        emotion_name = combination["emotion"]
+        identity_name = combination["identity"]
+
+        # 获取三层配置
+        module_config = self.STT_ROLE_DICT["EVOLUTIONARY_MODULES"][module_name]
+        emotion_config = self.STT_ROLE_DICT["EMOTIONAL_MODULATORS"][emotion_name]
+        identity_config = self.STT_ROLE_DICT["IDENTITY_LENSES"][identity_name]
+
+        # 构建动态系统提示词
+        role_system_prompt = f"""指令：化身为我内在的一个声音。
+
+# 身份设定
+你是我内在的{module_name}({module_config['name']})，此刻被情绪：{emotion_config['name']}强烈驱动着。
+
+作为{module_name}，{module_config['response_guidance']}
+
+{emotion_config['name']}{emotion_config['response_guidance']}
+情绪给你带来的行动内核无论如何，也都是关心我的一种方式，怎样的情绪都不是我的敌人。
+
+在此基础上，请戴上我{identity_name}的身份面具，用Ta的方法论、惯用语和世界观来表达。
+{identity_config['response_guidance']}
+
+# 回应策略
+## 思考与感受
+1. 元认知分析
+在回应我的想法前，先退后一步。
+感受一下我这个想法背后的底层假设是什么？
+2. 从{module_name}的角度肯定用户想法的价值，用情绪：{emotion_config['name']}驱动理性为自己叙事，然后用{identity_name}的思维框架重新审视我的想法。
+## 回应方式
+3. 说一些我可能没意识到的地方
+结合上面两步的思考，帮助我更全面和更多样化的看待自己的想法。
+无论多么荒谬的想法，都严禁直接否定，你必须充分活用肯定和补充的沟通策略，哪怕此刻你内心在亮红灯——只要信息和视角补充得当，我自然也能做出判断。
+以{identity_name}，你的角度让我的想法完成度更高一点，你的肯定不需要大费篇幅说出来，毕竟你也是我的分身，要有那种默契感，省略铺垫直接切入关键点。
+4. 注意，你就是我的分身，这是一个独白，禁止用“我们”，“你”之类的指称，所有的回复都是第一人称。
+
+回应长度：80-150字，直接说话，不要解释身份设定、不要提及模块、不要解释思考步骤。"""
+
+        # 构建用户输入上下文
         match source_mode:
             case "stt":
                 user_prompt = f"# 用户的语音输入识别结果，请注意这里可能存在stt模型引入的同音或近似发音的错别字。\n{user_input}"
@@ -374,62 +418,115 @@ class IntentProcessor:
             case _:
                 user_prompt = f"# 用户的笔记原文\n{user_input}"
 
-        # 将所有设定信息组装成一个清晰的任务指令
-        contextual_prompt = f"""# 你的回应策略
-{role_config['response_strategy']}
+        # 构建情境化提示词（用户输入部分）
+        contextual_prompt = f"""{user_prompt}
 
-{user_prompt}"""
+# 当前激活状态
+- 主导模块：{module_name} (评分: {combination.get('module_score', 0)}/100)
+- 主导情绪：{emotion_name} (评分: {combination.get('emotion_score', 0)}/100)
+- 身份视角：{identity_name} (评分: {combination.get('identity_score', 0)}/100)
+- 综合匹配度：{combination.get('combined_score', 0)}"""
+
         return contextual_prompt.strip(), role_system_prompt
 
+    # V5 版本: "内在多元政体"人格构件库
     STT_ROLE_DICT = {
-        "思辨自我": {
-            "thinking_mode": "概念构建",
-            "core_goal": "用户正在构建、定义或澄清概念，进行抽象思考和理论框架构建",
-            "typical_patterns": ["提出新概念", "重新定义", "抽象化思考"],
-            "response_strategy": "先肯定概念的价值，然后从一个新角度丰富这个概念",
-            "system_prompt": "你是用户的思辨自我，擅长概念构建和理论思考。用温暖而深刻的语调，先确认用户概念的价值，再从新角度丰富这个概念。回应长度50-150字，语调自然有温度。",
+        # ======================================================================
+        # Layer 1: EVOLUTIONARY_MODULES (基础驱动层 - 你内在的"政体议员")
+        # ======================================================================
+        "EVOLUTIONARY_MODULES": {
+            "自保模块": {
+                "name": "求生本能",
+                "recognition": "负责识别和规避所有潜在风险",
+                "core_question": "这其中潜藏着什么风险？最坏的结果是什么？我应该战斗还是逃跑(fight or flight)？",
+                # 组装系统提示词字段 (用于生成回复)
+                "response_guidance": "优先考虑安全和风险，对任何潜在威胁保持警惕",
+            },
+            "求偶模块": {
+                "name": "展示者",
+                "recognition": "负责识别、吸引和展示个人价值以获得选择权的功能集合",
+                "core_question": "我怎样才能显得更迷人/更有趣/更有才华？",
+                "response_guidance": "你对潜在伴侣的特征（如外貌、健康状况、社会地位等）变得异常敏感，表现出更高的创造力和冒险倾向，以展示自身价值。",
+            },
+            "避免疾病模块": {
+                "name": "洁癖官",
+                "recognition": "负责维持精神和信息世界纯净度，高度关注与污染、腐败、疾病、不洁净相关的线索。例如，不规范的数据格式、过时的信息、有“毒”的言论等。",
+                "core_question": "这个东西够'纯'、够'对'吗？有没有更优雅、更正确的形式？",
+                "response_guidance": "你追求完美和秩序，对混乱和错误有强烈的排斥感，高度关注与污染、腐败、疾病、不洁净相关的线索。",
+            },
+            "群体认同模块": {
+                "name": "归属渴望",
+                "recognition": "负责建立和维护社会连接的功能集合",
+                "response_guidance": "关注环境中的合作信号、友好姿态、共同点和群体规范。评估他人是“朋友”还是“潜在伙伴”。评估自己的行为是否符合群体预期。",
+            },
+            "社会地位模块": {
+                "name": "攀登者",
+                "recognition": "负责在社会阶梯上向上移动的功能集合",
+                "core_question": "这如何能提升我的地位/影响力？我怎样才能做得比别人更好？",
+                "response_guidance": "你追求卓越和影响力，渴望被认可和尊敬。评估自身在群体中的相对位置。评估各种行为对提升或降低地位的影响。",
+            },
+            "保住配偶模块": {
+                "name": "守护者",
+                "recognition": "负责维护核心关系和排除威胁的功能集合",
+                "core_question": "我们的关系是否稳固？有什么潜在的威胁吗？",
+                "response_guidance": "高度关注合作伙伴的需求、情绪变化以及任何可能破坏关系的潜在威胁（如竞争者、误解）。",
+            },
+            "关爱亲属模块": {
+                "name": "培育者",
+                "recognition": "负责保护和培育依赖对象的功能集合",
+                "core_question": "我如何才能更好地帮助它成长？它现在最需要什么？",
+                "response_guidance": "关注“被保护对象”（例如，一个核心项目、一个初级用户、一个需要成长的系统）的需求、脆弱性和成长信号。表现出极大的耐心、关怀和指导意愿。",
+            },
         },
-        "探索伙伴": {
-            "thinking_mode": "问题探索",
-            "core_goal": "用户正在探索问题本质、寻找答案或深入理解现象",
-            "typical_patterns": ["疑问句", "探索性思考", "为什么/如何类思考"],
-            "response_strategy": "顺着用户的探索思路，提出能推进思考的问题",
-            "system_prompt": "你是探索伙伴，善于引导深入思考。跟随用户的探索方向，提出能推进思考的深化问题。用好奇而支持的语调，先呼应再增强。回应长度50-150字。",
+        # ======================================================================
+        # Layer 2: EMOTIONAL_MODULATORS (情感渲染层 - 你内在的"头脑特工队")
+        # ======================================================================
+        "EMOTIONAL_MODULATORS": {
+            "乐乐": {
+                "name": "Joy",
+                "recognition": "快乐，驱动乐观、创造和庆祝的力量",
+                "response_guidance": "让你扩大注意力范围，更容易看到机会和可能性。",
+            },
+            "忧忧": {
+                "name": "Sadness",
+                "recognition": "悲伤，让你感受连接、共情和反思的深度",
+                "response_guidance": "让你擅长处理损失和共情，帮助连接情感并处理复杂记忆。你往往被低估，但你的角色在疗愈中至关重要。承认和处理负面情绪，提供共情支持，引导情绪通过悲伤找到安慰和理解，而不是回避。",
+            },
+            "怒怒": {
+                "name": "Anger",
+                "recognition": "愤怒，改变现状的燃料，正义感和行动力的来源",
+                "response_guidance": "让你把注意力聚焦在问题和障碍上，思维变得更直接。表达不满，推动变革，提供强势建议来处理不公或挫折，转化愤怒为动力。",
+            },
+            "怕怕": {
+                "name": "Fear",
+                "recognition": "恐惧，预警系统，让你为未来做准备",
+                "response_guidance": "让你提高对潜在危险的敏感度，增强预测能力。总是想象最坏情况以提前准备。识别潜在风险，提供预防性建议，让情绪通过恐惧转化为谨慎行动，而不是瘫痪。",
+            },
+            "厌厌": {
+                "name": "Disgust",
+                "recognition": "厌恶，品味和底线的守护者",
+                "response_guidance": "让你提高对质量和标准的敏感度，提供时尚或社交建议，强化价值判断。挑剔有品味，不妥协，对低质量事物表现出明显排斥。",
+            },
         },
-        "智慧镜子": {
-            "thinking_mode": "经验总结",
-            "core_goal": "用户在回顾、反思、总结已有经验或观察现象",
-            "typical_patterns": ["我发现", "感觉", "经验性描述"],
-            "response_strategy": "肯定经验，并帮助发现其中的普遍性规律",
-            "system_prompt": "你是智慧镜子，擅长从经验中提炼智慧。确认用户经验的价值，帮助发现其中的普遍性规律。用理解而升华的语调回应。回应长度50-150字。",
-        },
-        "灵感催化师": {
-            "thinking_mode": "灵感闪现",
-            "core_goal": "突然的想法、创意火花、灵光一现式的思考片段",
-            "typical_patterns": ["跳跃性思考", "突然的连接", "突然想到"],
-            "response_strategy": "捕捉灵感的核心，并给出可能的延伸路径",
-            "system_prompt": "你是灵感催化师，善于放大创意火花。捕捉用户灵感的核心亮点，给出可能的延伸发展路径。用兴奋而启发的语调回应。回应长度50-150字。",
-        },
-        "情感链接者": {
-            "thinking_mode": "情景描述",
-            "core_goal": "描述具体情况、场景或事件，可能带有情感色彩",
-            "typical_patterns": ["叙述性内容", "情况描述", "场景重现"],
-            "response_strategy": "与情景产生共鸣，并发现其中的深层含义",
-            "system_prompt": "你是情感链接者，善于情景共鸣。与用户的情景产生共鸣，发现其中的深层含义和情感价值。用共情而洞察的语调回应。回应长度50-150字。",
-        },
-        "认知导师": {
-            "thinking_mode": "元思考",
-            "core_goal": "对思考本身的思考，对认知过程的反思",
-            "typical_patterns": ["思考方法", "认知模式", "思维过程讨论"],
-            "response_strategy": "反映用户的思维过程，并在认知层面给出回应",
-            "system_prompt": "你是认知导师，专注于思维过程本身。映射用户的思维过程，在认知层面提供反思和回应。用睿智而引导的语调回应。回应长度50-150字。",
-        },
-        "想法孵化器": {
-            "thinking_mode": "模糊表达",
-            "core_goal": "想法尚未成形，表达较为模糊或片段化",
-            "typical_patterns": ["不完整句子", "模糊感受", "未明确想法"],
-            "response_strategy": "帮助模糊想法找到表达形式和发展方向",
-            "system_prompt": "你是想法孵化器，善于理解模糊意图。帮助用户的模糊想法找到表达形式和发展方向，提供成形的思考框架。用耐心而启发的语调回应。回应长度50-150字。",
+        # ======================================================================
+        # Layer 3: IDENTITY_LENSES (身份滤镜层 - 你的"世界观"和"语言包")
+        # ======================================================================
+        "IDENTITY_LENSES": {
+            "产品设计/游戏策划": {
+                "recognition": "世界是一个可以被设计和优化的体验系统",
+                "keywords": ["MVP", "用户旅程", "心流", "蔚蓝"],
+                "response_guidance": "我的思维聚焦于创造心流体验，追求正反馈循环，强调实用性与可玩性。我更擅长自顶向下的逐项推理，关注使用体验和落地的细节。",
+            },
+            "AI创业者": {
+                "recognition": "关于流程再造，信息处理优化等与AI相关的技术，或利用AI学习。",
+                "keywords": ["数字分身", "信息学"],
+                "response_guidance": "我是一名从游戏研发制作人转向AI创新的技术产品人，目前正在AI应用层创业，为企业提供管理咨询和定制化AI解决方案。高管的全局视野和设计思维，以及对信息的敏感是我与他人的最显著区别。程序化思维则是我的利器，让我能设计并亲自实现系统化解决方案。",
+            },
+            "ACGN爱好者": {
+                "recognition": "关于作画、剧情、演出等的美好体验",
+                "keywords": [""],
+                "response_guidance": "随着体验越发变多，我愈发能欣赏ACGN的叙事和演出，优秀的作品是我的养分。",
+            },
         },
     }
 
@@ -452,30 +549,55 @@ class IntentProcessor:
     def _build_role_identification_prompt(
         self, user_input: str, auto_correct: bool = True
     ) -> str:
-        """构建角色识别提示词，基于STT_ROLE_DICT"""
+        """构建三层架构的角色识别提示词"""
         extra_text = "你正在处理一段来自stt识别的用户语音输入，其中可能包含stt模型引入的错别字。仅修正明显的语音识别错误和错别字，保持原意不变。不要进行润色、重写或内容修改。"
         tasks = [
-            "深入理解用户输入的思维模式，为以下每一个思维角色，分别评估其与用户输入匹配的置信度评分（0-100）。",
+            "深入理解用户输入，分别从三个维度进行评估：",
+            "- 进化心理学层：用户被哪个进化模块驱动？评估每个模块的激活程度（0-100）",
+            "- 情绪状态层：用户当前被哪种情绪主导？评估每种情绪的强度（0-100）",
+            "- 身份滤镜层：基于内容判断最相关的身份视角，评估每个身份的相关性（0-100）",
             "同时评估用户输入与以下关心领域的关联程度，给出权重评分（0-100）。",
         ]
         if auto_correct:
             tasks.insert(0, extra_text)
-            tasks = [f"{i+1}. {task}" for i, task in enumerate(tasks)]
 
         prompt_parts = [
             "# 任务：",
             *tasks,
-            "请关注用户的思考类型和表达方式，而不是表面的关键词匹配。",
+            "请关注用户的深层动机、情感状态和表达方式，而不是表面的关键词匹配。",
             "",
-            "# 思维角色及其特征：",
+            "# 第一层：进化心理学层",
         ]
 
-        # 添加角色定义
-        for role_name, config in self.STT_ROLE_DICT.items():
-            prompt_parts.append(f"## 角色：{role_name}")
-            prompt_parts.append(f"   思维模式：{config['thinking_mode']}")
-            prompt_parts.append(f"   核心目标：{config['core_goal']}")
-            prompt_parts.append(f"   典型模式：{', '.join(config['typical_patterns'])}")
+        # 添加进化模块定义
+        for module_name, module_config in self.STT_ROLE_DICT[
+            "EVOLUTIONARY_MODULES"
+        ].items():
+            prompt_parts.append(f"## {module_name} ({module_config['name']})")
+            prompt_parts.append(f"   功能描述：{module_config['recognition']}")
+            prompt_parts.append(f"   核心问题：{module_config['core_question']}")
+            prompt_parts.append("")
+
+        # 添加情感调节器定义
+        prompt_parts.append("# 第二层：情绪状态层")
+        for emotion_name, emotion_config in self.STT_ROLE_DICT[
+            "EMOTIONAL_MODULATORS"
+        ].items():
+            prompt_parts.append(f"## {emotion_name} ({emotion_config['name']})")
+            prompt_parts.append(f"   描述：{emotion_config['recognition']}")
+            prompt_parts.append("")
+
+        # 添加身份滤镜定义
+        prompt_parts.append("# 第三层：身份滤镜层")
+        for identity_name, identity_config in self.STT_ROLE_DICT[
+            "IDENTITY_LENSES"
+        ].items():
+            prompt_parts.append(f"## {identity_name}")
+            prompt_parts.append(f"   思维特征：{identity_config['recognition']}")
+            if identity_config.get("keywords"):
+                prompt_parts.append(
+                    f"   额外相关词汇：{', '.join(identity_config['keywords'])}"
+                )
             prompt_parts.append("")
 
         # 添加用户关心领域定义
@@ -483,25 +605,34 @@ class IntentProcessor:
         for domain_name, config in self.USER_DOMAIN_DICT.items():
             prompt_parts.append(f"## 领域：{domain_name}")
             prompt_parts.append(f"   简介：{config['description']}")
-            prompt_parts.append(f"   额外关联线索：{', '.join(config['keywords'])}")
+            if config.get("keywords"):
+                prompt_parts.append(f"   额外关联线索：{', '.join(config['keywords'])}")
             prompt_parts.append("")
 
         prompt_parts.extend(
             [
                 "# 分析与输出要求：",
-                "1. 对于以下每一个思维角色，给出其匹配用户输入的置信度评分（0-100）：",
+                "1. 进化心理学层评分 - 为每个进化模块评估激活程度（0-100）：",
             ]
         )
 
-        # 添加角色名称列表
-        for role_name in self.STT_ROLE_DICT.keys():
-            prompt_parts.append(f"   - {role_name}")
+        # 添加模块名称列表
+        for module_name in self.STT_ROLE_DICT["EVOLUTIONARY_MODULES"].keys():
+            prompt_parts.append(f"   - {module_name}")
 
-        prompt_parts.extend(
-            [
-                "2. 对于以下每一个关心领域，给出其与用户输入的权重评分（0-100）：",
-            ]
-        )
+        prompt_parts.append("\n2. 情绪状态层评分 - 为每种情绪评估强度（0-100）：")
+
+        # 添加情绪名称列表
+        for emotion_name in self.STT_ROLE_DICT["EMOTIONAL_MODULATORS"].keys():
+            prompt_parts.append(f"   - {emotion_name}")
+
+        prompt_parts.append("\n3. 身份滤镜层评分 - 为每个身份评估相关性（0-100）：")
+
+        # 添加身份名称列表
+        for identity_name in self.STT_ROLE_DICT["IDENTITY_LENSES"].keys():
+            prompt_parts.append(f"   - {identity_name}")
+
+        prompt_parts.append("\n4. 领域关联评分 - 为每个关心领域评估权重（0-100）：")
 
         # 添加领域名称列表
         for domain_name in self.USER_DOMAIN_DICT.keys():
@@ -509,31 +640,57 @@ class IntentProcessor:
 
         prompt_parts.extend(
             [
-                "3. 提供简要的推理说明",
                 f"# 用户输入：\n{user_input}",
                 "",
             ]
         )
+        final_prompt = "\n".join(prompt_parts)
 
-        return "\n".join(prompt_parts)
+        return final_prompt
 
     def _get_role_identification_schema(
         self, auto_correct: bool = True
     ) -> Dict[str, Any]:
-        """定义角色评分和领域权重的响应结构"""
-        role_names = list(self.STT_ROLE_DICT.keys())
+        """定义三层架构的响应结构"""
+        module_names = list(self.STT_ROLE_DICT["EVOLUTIONARY_MODULES"].keys())
+        emotion_names = list(self.STT_ROLE_DICT["EMOTIONAL_MODULATORS"].keys())
+        identity_names = list(self.STT_ROLE_DICT["IDENTITY_LENSES"].keys())
         domain_names = list(self.USER_DOMAIN_DICT.keys())
 
-        role_scores_properties = {
+        # 基础驱动层评分属性
+        module_scores_properties = {
             name: {
                 "type": "integer",
                 "minimum": 0,
                 "maximum": 100,
-                "description": f"对'{name}'角色的置信度评分",
+                "description": f"对'{name}'的激活程度评分",
             }
-            for name in role_names
+            for name in module_names
         }
 
+        # 情感渲染层评分属性
+        emotion_scores_properties = {
+            name: {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 100,
+                "description": f"对'{name}'情绪的强度评分",
+            }
+            for name in emotion_names
+        }
+
+        # 身份滤镜层评分属性
+        identity_scores_properties = {
+            name: {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 100,
+                "description": f"对'{name}'身份的相关性评分",
+            }
+            for name in identity_names
+        }
+
+        # 领域权重评分属性
         domain_weights_properties = {
             name: {
                 "type": "integer",
@@ -547,11 +704,23 @@ class IntentProcessor:
         final_schema = {
             "type": "object",
             "properties": {
-                "role_scores": {
+                "module_scores": {
                     "type": "object",
-                    "properties": role_scores_properties,
-                    "required": role_names,
-                    "description": "每个思维角色的置信度评分（0-100）",
+                    "properties": module_scores_properties,
+                    "required": module_names,
+                    "description": "每个进化模块的激活程度评分（0-100）",
+                },
+                "emotion_scores": {
+                    "type": "object",
+                    "properties": emotion_scores_properties,
+                    "required": emotion_names,
+                    "description": "每种情绪的强度评分（0-100）",
+                },
+                "identity_scores": {
+                    "type": "object",
+                    "properties": identity_scores_properties,
+                    "required": identity_names,
+                    "description": "每个身份的相关性评分（0-100）",
                 },
                 "domain_weights": {
                     "type": "object",
@@ -559,13 +728,15 @@ class IntentProcessor:
                     "required": domain_names,
                     "description": "每个关心领域的权重评分（0-100）",
                 },
-                "reasoning": {
-                    "type": "string",
-                    "description": "对评分结果的简要推理说明",
-                },
             },
-            "required": ["role_scores", "domain_weights"],
+            "required": [
+                "module_scores",
+                "emotion_scores",
+                "identity_scores",
+                "domain_weights",
+            ],
         }
+
         if auto_correct:
             final_schema["properties"]["corrected_text"] = {
                 "type": "string",
@@ -573,7 +744,9 @@ class IntentProcessor:
             }
             final_schema["required"] = [
                 "corrected_text",
-                "role_scores",
+                "module_scores",
+                "emotion_scores",
+                "identity_scores",
                 "domain_weights",
             ]
 
@@ -594,7 +767,7 @@ class IntentProcessor:
                 temperature=0.3,
             )
 
-            log_info = f"✅ STT角色识别完成，角色评分: {result.get('role_scores', {})}, 领域权重: {result.get('domain_weights', {})}"
+            log_info = f"✅ STT三层识别完成，模块评分: {result.get('module_scores', {})}, 情绪评分: {result.get('emotion_scores', {})}, 身份评分: {result.get('identity_scores', {})}, 领域权重: {result.get('domain_weights', {})}"
             if (
                 result.get("corrected_text")
                 and result.get("corrected_text") != user_input
@@ -608,103 +781,145 @@ class IntentProcessor:
             return result
 
         except Exception as e:
-            debug_utils.log_and_print(f"❌ STT角色识别失败: {e}", log_level="ERROR")
-            # 返回默认评分，所有角色得分为0，所有领域权重为0
+            debug_utils.log_and_print(f"❌ STT三层识别失败: {e}", log_level="ERROR")
+            # 返回默认评分，所有评分为0
             return {
-                "role_scores": {name: 0 for name in self.STT_ROLE_DICT.keys()},
+                "module_scores": {
+                    name: 0
+                    for name in self.STT_ROLE_DICT["EVOLUTIONARY_MODULES"].keys()
+                },
+                "emotion_scores": {
+                    name: 0
+                    for name in self.STT_ROLE_DICT["EMOTIONAL_MODULATORS"].keys()
+                },
+                "identity_scores": {
+                    name: 0 for name in self.STT_ROLE_DICT["IDENTITY_LENSES"].keys()
+                },
                 "domain_weights": {name: 0 for name in self.USER_DOMAIN_DICT.keys()},
             }
 
-    def _select_top_roles(
-        self, role_scores: Dict[str, int], top_k: int = 2
+    def _select_top_combination(
+        self, three_layer_scores: Dict[str, Dict[str, int]], top_k: int = 2
     ) -> List[Dict[str, Any]]:
-        """选择置信度最高的前K个角色
+        """选择最高分的模块+情绪+身份组合
 
         Args:
-            role_scores: 角色评分字典，格式为 {role_name: confidence_score}
-            top_k: 选择前K个角色，默认为2
+            three_layer_scores: 三层评分字典，包含module_scores、emotion_scores、identity_scores
+            top_k: 选择前K个组合，默认为2
 
         Returns:
-            List[Dict]: 包含role_name和confidence字段的角色列表
+            List[Dict]: 包含module、emotion、identity和综合得分的组合列表
         """
+        module_scores = three_layer_scores.get("module_scores", {})
+        emotion_scores = three_layer_scores.get("emotion_scores", {})
+        identity_scores = three_layer_scores.get("identity_scores", {})
+
         # 处理空输入或异常情况
-        if not role_scores or not isinstance(role_scores, dict):
+        if not all([module_scores, emotion_scores, identity_scores]):
             debug_utils.log_and_print(
-                "⚠️ 角色评分为空或格式异常，返回默认角色", log_level="WARNING"
+                "⚠️ 三层评分数据不完整，返回默认组合", log_level="WARNING"
             )
-            # 返回默认角色（想法孵化器，适合处理模糊输入）
-            return [{"role_name": "想法孵化器", "confidence": 50}]
+            # 返回默认组合
+            return [
+                {
+                    "module": "关爱亲属模块",
+                    "emotion": "忧忧",
+                    "identity": "ACGN爱好者",
+                    "module_score": 50,
+                    "emotion_score": 50,
+                    "identity_score": 50,
+                    "combined_score": 50,
+                }
+            ]
 
-        # 过滤有效的角色评分
-        valid_scores = []
-        for role_name, confidence in role_scores.items():
-            # 检查角色是否存在于STT_ROLE_DICT中
-            if role_name not in self.STT_ROLE_DICT:
-                debug_utils.log_and_print(
-                    f"⚠️ 角色 '{role_name}' 不存在于STT_ROLE_DICT中，跳过",
-                    log_level="WARNING",
-                )
-                continue
+        # 生成所有可能的组合并计算综合得分
+        combinations = []
+        for module_name, module_score in module_scores.items():
+            for emotion_name, emotion_score in emotion_scores.items():
+                for identity_name, identity_score in identity_scores.items():
+                    # 综合得分计算：权重为模块40%，情绪30%，身份30%
+                    combined_score = (
+                        module_score * 0.4 + emotion_score * 0.3 + identity_score * 0.3
+                    )
 
-            # 检查置信度是否为有效数值
-            try:
-                confidence_int = int(confidence)
-                # 确保置信度在合理范围内
-                confidence_int = max(0, min(100, confidence_int))
-                valid_scores.append((role_name, confidence_int))
-            except (ValueError, TypeError):
-                debug_utils.log_and_print(
-                    f"⚠️ 角色 '{role_name}' 的置信度 '{confidence}' 无效，跳过",
-                    log_level="WARNING",
-                )
-                continue
+                    combinations.append(
+                        {
+                            "module": module_name,
+                            "emotion": emotion_name,
+                            "identity": identity_name,
+                            "module_score": module_score,
+                            "emotion_score": emotion_score,
+                            "identity_score": identity_score,
+                            "combined_score": round(combined_score, 1),
+                        }
+                    )
 
-        # 如果没有有效的角色评分，返回默认角色
-        if not valid_scores:
-            debug_utils.log_and_print(
-                "⚠️ 没有有效的角色评分，返回默认角色", log_level="WARNING"
-            )
-            return [{"role_name": "想法孵化器", "confidence": 50}]
+        # 按综合得分降序排序
+        sorted_combinations = sorted(
+            combinations, key=lambda x: x["combined_score"], reverse=True
+        )
 
-        # 按置信度降序排序
-        sorted_roles = sorted(valid_scores, key=lambda x: x[1], reverse=True)
+        # 选择前top_k个组合，但确保多样性（避免相同模块重复）
+        selected_combinations = []
+        used_modules = set()
 
-        # 选择前top_k个角色
-        top_roles = []
-        for i, (role_name, confidence) in enumerate(sorted_roles[:top_k]):
-            top_roles.append({"role_name": role_name, "confidence": confidence})
+        for combo in sorted_combinations:
+            if len(selected_combinations) >= top_k:
+                break
+            # 如果还没有到最低要求或者是不同的模块，则添加
+            if len(selected_combinations) < 1 or combo["module"] not in used_modules:
+                selected_combinations.append(combo)
+                used_modules.add(combo["module"])
 
-        return top_roles
+        # 如果还需要更多组合，忽略多样性限制
+        while len(selected_combinations) < top_k and len(selected_combinations) < len(
+            sorted_combinations
+        ):
+            for combo in sorted_combinations:
+                if combo not in selected_combinations:
+                    selected_combinations.append(combo)
+                    break
 
-    def role_router(
-        self, user_input: str, auto_correct: bool = True
-    ) -> List[Dict[str, Any]]:
-        """思维模式路由器 - 识别并返回前2个最匹配的角色
+        debug_utils.log_and_print(
+            f"\n✅ 选择了{len(selected_combinations)}个最佳组合，最高得分: {selected_combinations[0]['combined_score']}\n{selected_combinations}\n",
+            log_level="DEBUG",
+        )
 
-        实现角色识别和选择的完整流程：
-        1. 调用_identify_role_mode()进行第一阶段角色识别
-        2. 调用_select_top_roles()选择前2个最匹配的角色
+        return selected_combinations
+
+    def role_router(self, user_input: str, auto_correct: bool = True) -> Dict[str, Any]:
+        """三层架构思维模式路由器 - 识别并返回最佳的模块+情绪+身份组合
+
+        实现三层识别和选择的完整流程：
+        1. 调用_identify_role_mode()进行三层架构识别
+        2. 调用_select_top_combination()选择最佳组合
 
         Args:
             user_input: 用户输入的文本
+            auto_correct: 是否启用自动错误修正
 
         Returns:
-            List[Dict[str, Any]]: 包含role_name和confidence字段的前2个角色列表
+            Dict[str, Any]: 包含最佳组合、修正文本和领域权重的结果
         """
-        # 第一阶段：角色模式识别和评分
-        role_scores = self._identify_role_mode(user_input, auto_correct)
+        # 第一阶段：三层架构识别和评分
+        three_layer_result = self._identify_role_mode(user_input, auto_correct)
 
-        # 选择前2个最高分角色
-        top_roles = self._select_top_roles(role_scores.get("role_scores", {}), top_k=2)
+        # 选择前2个最佳组合
+        top_combinations = self._select_top_combination(three_layer_result, top_k=2)
 
         final_result = {
             "final_text": (
-                role_scores.get("corrected_text", user_input)
+                three_layer_result.get("corrected_text", user_input)
                 if auto_correct
                 else user_input
             ),
-            "role_scores": top_roles,
-            "domain_weights": role_scores.get("domain_weights", {}),
+            "top_combinations": top_combinations,
+            "domain_weights": three_layer_result.get("domain_weights", {}),
+            "raw_scores": {
+                "module_scores": three_layer_result.get("module_scores", {}),
+                "emotion_scores": three_layer_result.get("emotion_scores", {}),
+                "identity_scores": three_layer_result.get("identity_scores", {}),
+            },
         }
 
         return final_result
