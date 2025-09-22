@@ -16,7 +16,6 @@ from Module.Common.scripts.common import debug_utils
 from .shared_utils import SharedUtils
 from .query_results_card import QueryResultsCard
 from .quick_select_card import QuickSelectCard
-from .record_card_old import RecordCard_Old
 from .record_card import RecordCard
 
 
@@ -66,7 +65,6 @@ class RoutineCardManager(BaseCardManager):
         self.shared_utils = SharedUtils(self)
         self.query_results_card = QueryResultsCard(self)
         self.quick_select_card = QuickSelectCard(self)
-        self.record_card_old = RecordCard_Old(self)
         self.record_card = RecordCard(self)
 
     def build_card(
@@ -184,23 +182,6 @@ class RoutineCardManager(BaseCardManager):
             card_config_key=CardConfigKeys.ROUTINE_QUERY,
         )
 
-    # def build_quick_record_confirm_card(
-    #     self, result, context: MessageContext_Refactor, business_data: Dict[str, Any]
-    # ):
-    #     """构建快速记录确认卡片 - 代理到子模块"""
-    #     card_data = self.record_card_old.build_quick_record_confirm_card(business_data)
-    #     card_content = {"type": "card_json", "data": card_data}
-
-    #     return self.handle_card_operation_common(
-    #         card_content=card_content,
-    #         card_operation_type=CardOperationTypes.SEND,
-    #         update_toast_type="success",
-    #         user_id=context.user_id,
-    #         message_id=context.message_id,
-    #         business_data=business_data,
-    #         card_config_key=CardConfigKeys.ROUTINE_RECORD_OLD,
-    #     )
-
     def build_record_card(
         self, result, context: MessageContext_Refactor, business_data: Dict[str, Any]
     ):
@@ -232,12 +213,6 @@ class RoutineCardManager(BaseCardManager):
         """构建查询结果卡片 - 代理到子模块"""
         return self.query_results_card.build_query_results_card(business_data)
 
-    def update_record_confirm_card(
-        self, business_data: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """构建快速记录确认卡片 - 代理到子模块"""
-        return self.record_card_old.build_quick_record_confirm_card(business_data)
-
     def update_record_card(self, business_data: Dict[str, Any]) -> Dict[str, Any]:
         """构建直接记录确认卡片 - 代理到子模块"""
         return self.record_card.build_record_card(business_data)
@@ -248,12 +223,6 @@ class RoutineCardManager(BaseCardManager):
     ) -> List[Dict[str, Any]]:
         """构建直接记录元素（别名方法，兼容现有调用） - 代理到子模块"""
         return self.record_card.build_record_elements(business_data)
-
-    def build_quick_record_elements(
-        self, business_data: Dict[str, Any]
-    ) -> List[Dict[str, Any]]:
-        """构建快速记录元素 - 代理到子模块"""
-        return self.record_card_old.build_quick_record_elements(business_data)
 
     def build_query_elements(
         self, business_data: Dict[str, Any]
@@ -320,14 +289,5 @@ class RoutineCardManager(BaseCardManager):
     def confirm_record(self, context: MessageContext_Refactor):
         """确认记录"""
         return self.record_card.confirm_record(context)
-
-    # ----- record_card_old 的回调事件代理 -----
-    def confirm_record_old(self, context: MessageContext_Refactor):
-        """确认记录-旧"""
-        return self.record_card_old.confirm_record_old(context)
-
-    def cancel_record_old(self, context: MessageContext_Refactor):
-        """取消记录-旧"""
-        return self.record_card_old.cancel_record_old(context)
 
     # endregion

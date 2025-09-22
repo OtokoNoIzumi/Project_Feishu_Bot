@@ -1622,6 +1622,7 @@ class RoutineRecord(BaseProcessor):
             event_definition,
             cycle_info,
             target_type,
+            record_mode,
             record_id,
         )
 
@@ -1639,6 +1640,7 @@ class RoutineRecord(BaseProcessor):
         event_definition: Dict[str, Any],
         cycle_info: Dict[str, Any],
         target_type: str,
+        record_mode: str,
         record_id: str,
     ) -> None:
         """统一更新统计信息"""
@@ -1647,8 +1649,10 @@ class RoutineRecord(BaseProcessor):
             self._update_duration_stats(stats, duration)
 
         if cycle_info:
-            increment = duration if target_type == RoutineTargetTypes.TIME.value else 1
-            stats["cycle_count"] = cycle_info.get("cycle_count", 0) + increment
+            print(f"record_mode: {record_mode}")
+            if record_mode == RoutineRecordModes.EDIT:
+                increment = duration if target_type == RoutineTargetTypes.TIME.value else 1
+                stats["cycle_count"] = cycle_info.get("cycle_count", 0) + increment
             stats["last_cycle_count"] = cycle_info.get("last_cycle_count", 0)
             stats["last_refresh_date"] = cycle_info.get("last_refresh_date", "")
 
