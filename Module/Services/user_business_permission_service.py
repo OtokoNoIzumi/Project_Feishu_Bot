@@ -7,6 +7,7 @@
 3. 按用户ID和业务名称进行权限检查
 """
 
+import os
 from typing import Dict, Any
 from collections import OrderedDict
 from Module.Common.scripts.common import debug_utils
@@ -26,7 +27,8 @@ class UserBusinessPermissionService:
         """初始化用户业务权限服务"""
         # 硬编码权限配置（用户ID在最外层，便于用户视角管理）
         self.app_controller = app_controller
-        self.admin_id = self.app_controller.get_service(ServiceNames.CONFIG).get(EnvVars.ADMIN_ID)
+        self.config_service = self.app_controller.get_service(ServiceNames.CONFIG)
+        self.admin_id = self.config_service.get(EnvVars.ADMIN_ID)
         self.max_card_cache_size = 2
         self._user_permissions = {
             # 不同的app_id对应不同的openid，这里develop的是08158e2f511912a18063fc6072ce42da，release的是ou_bb1ec32fbd4660b4d7ca36b3640f6fde
@@ -48,6 +50,19 @@ class UserBusinessPermissionService:
             }
         }
 
+    def get_user_data_path(self, user_id: str) -> str:
+        """
+        获取用户数据路径
+        """
+        storage_path = self.config_service.get("routine_record.storage_path", "user_data/")
+        if not os.path.isabs(storage_path):
+            project_root = self.config_service.project_root_path
+            storage_path = os.path.join(project_root, storage_path)
+        user_folder = os.path.join(storage_path, user_id)
+        os.makedirs(user_folder, exist_ok=True)
+        return user_folder
+
+    # region 业务权限检查
     @service_operation_safe("检查业务权限失败", return_value=False)
     def check_business_permission(self, user_id: str, business_name: str) -> bool:
         """
@@ -132,6 +147,9 @@ class UserBusinessPermissionService:
                 enabled_users.append(user_id)
 
         return enabled_users
+    # endregion
+
+    # region 卡片数据缓存
 
     def save_new_card_business_data(self, user_id: str, card_id: str, business_data: Dict[str, Any]):
         """
@@ -171,3 +189,5 @@ class UserBusinessPermissionService:
         """
         card_cache = self._user_permissions[user_id].get("card_cache", {})
         card_cache.pop(card_id, None)
+
+    # endregion

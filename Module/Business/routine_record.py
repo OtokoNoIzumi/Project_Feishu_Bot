@@ -197,21 +197,7 @@ class RoutineRecord(BaseProcessor):
         if self.developer_mode_path:
             return f"{self.developer_mode_path}/user_data/{user_id}"
 
-        storage_path = self.config_service.get(
-            "routine_record.storage_path", "user_data/"
-        )
-
-        # 如果不是绝对路径，基于项目根路径解析
-        if not os.path.isabs(storage_path):
-            project_root = self.config_service.project_root_path
-            storage_path = os.path.join(project_root, storage_path)
-
-        user_folder = os.path.join(storage_path, user_id)
-
-        # 确保用户文件夹存在
-        os.makedirs(user_folder, exist_ok=True)
-
-        return user_folder
+        return self.user_permission_service.get_user_data_path(user_id)
 
     def _get_event_definitions_file_path(self, user_id: str) -> str:
         """
@@ -708,12 +694,26 @@ class RoutineRecord(BaseProcessor):
         # 如果没有直接匹配，尝试首字母匹配
         matched_event_name = event_name
         if not event_definition:
+            exact_match = False
+            contains_candidates = []
+
             for def_name, def_data in definitions_data["definitions"].items():
                 def_initials = def_data.get("pinyin_initials", [])
+
+                # 精确匹配：最高优先级
                 if event_name in def_initials:
                     event_definition = def_data
                     matched_event_name = def_name
+                    exact_match = True
                     break
+
+                # 收集包含匹配候选
+                if len(event_name) > 1 and any(event_name in initial for initial in def_initials):
+                    contains_candidates.append((def_name, def_data))
+
+            # 处理包含匹配：仅当无精确匹配且唯一候选时
+            if not exact_match and len(contains_candidates) == 1:
+                matched_event_name, event_definition = contains_candidates[0]
 
         record_mode = record_mode or (
             RoutineRecordModes.ADD if event_definition else RoutineRecordModes.REGIST
