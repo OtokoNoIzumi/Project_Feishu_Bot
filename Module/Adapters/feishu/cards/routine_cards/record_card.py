@@ -221,15 +221,25 @@ class RecordCard:
             info_content += time_info
 
         # 显示分类（如果有）
+        pinyin_initials = event_definition.get("pinyin_initials", [])
+        if pinyin_initials:
+            extra_info = f" 快捷访问:"
+            key_str = pinyin_initials[0]
+        else:
+            extra_info = ""
+            key_str = ""
         category = event_definition.get("category", "")
         if category:
             # 获取分类颜色
             categories_data = data_source.get("categories", [])
             category_color = self.parent.get_category_color(category, categories_data)
 
+
             info_content += (
-                f"**分类：** <text_tag color='{category_color}'>{category}</text_tag>\n"
+                f"**分类：** <text_tag color='{category_color}'>{category}</text_tag>{extra_info}<font color='{category_color}'>{key_str}</font>\n"
             )
+        else:
+            info_content += extra_info+key_str
 
         if info_content:
             elements.append(

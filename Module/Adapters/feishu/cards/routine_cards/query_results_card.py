@@ -224,7 +224,7 @@ class QueryResultsCard:
 
         if not elements:
             elements.append(
-                self.parent.build_markdown_element(content="**📝 没有符合条件的记录**")
+                self.parent.build_markdown_element(content="**📝 没有符合条件的事项类型**")
             )
         return elements
 

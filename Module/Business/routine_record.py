@@ -259,8 +259,48 @@ class RoutineRecord(BaseProcessor):
     # endregion
 
     # region 定义和数据结构
+    def _resolve_duplicate_initials(
+        self, user_id: str, original_initials: List[str]
+    ) -> List[str]:
+        """
+        解决首字母重复问题，自动添加数字后缀
+
+        Args:
+            user_id: 用户ID
+            original_initials: 原始首字母列表
+
+        Returns:
+            List[str]: 处理后的首字母列表
+        """
+        definitions_data = self.load_event_definitions(user_id)
+        existing_initials = set()
+
+        # 收集所有已存在的首字母
+        for def_data in definitions_data["definitions"].values():
+            existing_initials.update(def_data.get("pinyin_initials", []))
+
+        resolved_initials = []
+
+        for initial in original_initials:
+            if initial not in existing_initials:
+                # 没有重复，直接使用
+                resolved_initials.append(initial)
+            else:
+                # 有重复，添加数字后缀
+                counter = 2
+                new_initial = f"{initial}{counter}"
+
+                while new_initial in existing_initials:
+                    counter += 1
+                    new_initial = f"{initial}{counter}"
+
+                resolved_initials.append(new_initial)
+                existing_initials.add(new_initial)  # 更新已存在集合，避免同一次创建中的重复
+
+        return resolved_initials
+
     def _create_event_definition(
-        self, event_name: str, event_type: str = RoutineTypes.INSTANT.value
+        self, event_name: str, event_type: str = RoutineTypes.INSTANT.value, user_id: str = None
     ) -> Dict[str, Any]:
         """
         创建事件定义
@@ -268,6 +308,7 @@ class RoutineRecord(BaseProcessor):
         Args:
             event_name: 事件名称
             event_type: 事件类型
+            user_id: 用户ID，用于检查首字母重复
 
         Returns:
             Dict[str, Any]: 事件定义
@@ -275,6 +316,14 @@ class RoutineRecord(BaseProcessor):
         # 其实还需要套用一些默认的不同类型的属性，等做到了再说
         current_time = self._get_formatted_time()
         phonetics = extract_phonetics(event_name)
+
+        # 处理首字母重复问题
+        original_initials = phonetics.get("pinyin_initials", [])
+        if user_id and original_initials:
+            resolved_initials = self._resolve_duplicate_initials(user_id, original_initials)
+        else:
+            resolved_initials = original_initials
+
         return {
             "name": event_name,
             "type": event_type,
@@ -317,7 +366,7 @@ class RoutineRecord(BaseProcessor):
                 "last_record_id": None,
                 "interval_minutes": None,
             },
-            "pinyin_initials": phonetics.get("pinyin_initials", []),
+            "pinyin_initials": resolved_initials,
             "pinyin_full_list": phonetics.get("pinyin_full_list", []),
             "created_time": current_time,
             "last_record_time": None,
@@ -1536,7 +1585,7 @@ class RoutineRecord(BaseProcessor):
                 existing_def_stats["record_count"] = record_count
         else:
             new_definition = self._create_event_definition(
-                event_name, event_definition.get("type", RoutineTypes.INSTANT.value)
+                event_name, event_definition.get("type", RoutineTypes.INSTANT.value), user_id
             )
             self._populate_definition_from_business_data(
                 new_definition, dup_business_data, current_time, record_count
