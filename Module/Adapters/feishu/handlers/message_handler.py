@@ -12,6 +12,8 @@ import threading
 from typing import Optional, Any, Dict
 import time
 
+from google.genai.types import FinishReason
+
 from Module.Common.scripts.common import debug_utils
 from Module.Business.processors import (
     MessageContext,
@@ -43,6 +45,8 @@ from Module.Services.constants import (
 
 class MessageHandler:
     """飞书消息处理器"""
+
+    THOUGHT_ANIMATION = ["正在思考", "正在思考.", "正在思考..", "正在思考..."]
 
     # region 初始化
     def __init__(self, app_controller, message_router, sender, debug_functions=None):
@@ -492,6 +496,8 @@ class MessageHandler:
             business_data = self.user_service.get_card_business_data(user_id, card_id)
             if isinstance(result, Dict):
                 # 用一个特别的分支返回处理的copletion，再在这里迭代更新试试看？
+                # result就是business_data？
+                print('test-result', result)
                 # 有business_data作为数据容器，就不用action data里塞一堆了
 
                 start_time = time.time()
@@ -575,37 +581,63 @@ class MessageHandler:
                 )
                 blamk_element_json = json.dumps(blank_element, ensure_ascii=False)
                 initial_text_element = False
+                thought_animation_index = 0
                 # 更新卡片元素，先清空，再更新，实现打字机效果
                 ext_sequence = 0
+                thought_text = ""
                 tts_str = ""
+                modified = False
+                last_chunk = None
                 for chunk in role_1["stream_completion"]:
-                    tts_str += chunk.text
-                    if not initial_text_element:
-                        initial_text_element = True
-                        ext_sequence += 1
-                        self.sender.update_card_element(
-                            card_id,
-                            business_data.get("markdown_element_id", ""),
-                            blamk_element_json,
-                            sequence + ext_sequence,
-                        )
-                        ext_sequence += 1
-                        final_text = "来自" + role_1["identity"] + "身份的回复："
-                        self.sender.stream_update_card_content(
-                            card_id,
-                            business_data.get("markdown_element_id", ""),
-                            final_text,
-                            sequence + ext_sequence,
-                        )
+                    last_chunk = chunk
+                    if not chunk:
+                        continue
+                    for part in chunk.candidates[0].content.parts:
+                        if not part.text:
+                            continue
+                        elif part.thought:
+                            thought_animation_index = (thought_animation_index + 1) % len(self.THOUGHT_ANIMATION)
+                            thought_element = JsonBuilder.build_markdown_element(
+                                self.THOUGHT_ANIMATION[thought_animation_index], element_id=business_data.get("markdown_element_id", "")
+                            )
+                            thought_element_json = json.dumps(thought_element, ensure_ascii=False)
+                            ext_sequence += 1
+                            self.sender.update_card_element(
+                                card_id,
+                                business_data.get("markdown_element_id", ""),
+                                thought_element_json,
+                                sequence + ext_sequence,
+                            )
+                            thought_text += part.text
+                        else:
+                            tts_str += part.text
+                            if not initial_text_element:
+                                initial_text_element = True
+                                ext_sequence += 1
+                                self.sender.update_card_element(
+                                    card_id,
+                                    business_data.get("markdown_element_id", ""),
+                                    blamk_element_json,
+                                    sequence + ext_sequence,
+                                )
+                                ext_sequence += 1
+                                final_text = "来自" + role_1["identity"] + "身份的回复："
+                                self.sender.stream_update_card_content(
+                                    card_id,
+                                    business_data.get("markdown_element_id", ""),
+                                    final_text,
+                                    sequence + ext_sequence,
+                                )
 
-                    final_text += chunk.text
-                    ext_sequence += 1
-                    self.sender.stream_update_card_content(
-                        card_id,
-                        business_data.get("markdown_element_id", ""),
-                        final_text,
-                        sequence + ext_sequence,
-                    )
+                            final_text += part.text
+                            ext_sequence += 1
+                            self.sender.stream_update_card_content(
+                                card_id,
+                                business_data.get("markdown_element_id", ""),
+                                final_text,
+                                sequence + ext_sequence,
+                            )
+                            modified = True
 
                 tts_result = self.message_router.media.process_tts_async(tts_str)
                 if (
@@ -655,6 +687,13 @@ class MessageHandler:
                             )
 
                 end_time = time.time()
+                # if not modified:
+                if last_chunk.candidates[0].finish_reason != FinishReason.STOP:
+                    print("test-last_chunk", modified, last_chunk)
+                print('test-thought_text\n', thought_text)
+                if last_chunk is None:
+                    print("启用第二套方案")
+                    print("test- role1 detail", role_1["stream_completion"].__dict__())
                 print(f"test-diff_completion_time: {round(end_time - start_time, 1)}s")
                 ext_sequence += 1
                 self.sender.finish_stream_card(

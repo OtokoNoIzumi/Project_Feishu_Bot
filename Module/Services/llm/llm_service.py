@@ -51,7 +51,8 @@ class LLMService:
 
     def _init_config(self):
         """初始化配置（简洁版）"""
-        default_model = "gemini-2.5-flash-preview-05-20"
+        default_model = "gemini-2.5-flash"
+        # default_model = "gemini-2.5-pro"
         default_groq_model = "openai/gpt-oss-120b"
         try:
             config_service = None
@@ -142,7 +143,9 @@ class LLMService:
         """初始化意图处理器"""
         try:
             if self.client and self.model_name:
-                self.intent_processor = IntentProcessor(llm_service=self)
+                self.intent_processor = IntentProcessor(
+                    llm_service=self, app_controller=self.app_controller
+                )
                 debug_utils.log_and_print("✅ 意图处理器初始化成功", log_level="DEBUG")
             else:
                 debug_utils.log_and_print(
@@ -218,7 +221,7 @@ class LLMService:
                 contents=[{"role": "user", "parts": [{"text": prompt}]}],
                 config={
                     "thinking_config": types.ThinkingConfig(
-                        thinking_budget=-1,
+                        thinking_budget=0,  # -1表示动态思考，简单聊天或许没必要思考
                     ),
                     "temperature": 0.7,
                     "max_output_tokens": max_tokens,
@@ -244,7 +247,8 @@ class LLMService:
             safety_settings=get_safety_settings()
         )
         generate_config.thinking_config = types.ThinkingConfig(
-            thinking_budget=-1,
+            thinking_budget=800,
+            include_thoughts=True,
         )
         generate_config.temperature = 0.95
         generate_config.max_output_tokens = max_tokens

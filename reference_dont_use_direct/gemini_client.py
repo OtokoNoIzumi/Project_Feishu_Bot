@@ -136,7 +136,7 @@ def get_default_model_name():
     返回:
     - 默认模型名称字符串
     """
-    return "gemini-2.5-flash-preview-05-20"
+    return "gemini-2.5-flash"
     # return "gemini-2.0-flash"
 
 

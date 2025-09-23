@@ -9,6 +9,7 @@ import json
 import os
 from typing import Dict, Any, Optional, Tuple, List
 from Module.Common.scripts.common import debug_utils
+from Module.Services.constants import ServiceNames
 from ..service_decorators import file_processing_safe
 
 
@@ -17,7 +18,7 @@ class IntentProcessor:
     意图处理器 - 实现两阶段LLM处理流程
     """
 
-    def __init__(self, llm_service, config_path: str = None):
+    def __init__(self, llm_service, app_controller, config_path: str = None):
         """
         初始化意图处理器
 
@@ -26,7 +27,11 @@ class IntentProcessor:
             config_path: 意图配置文件路径
         """
         self.llm_service = llm_service
+        self.app_controller = app_controller
 
+        self.user_permission_service = self.app_controller.get_service(
+            ServiceNames.USER_BUSINESS_PERMISSION
+        )
         # 加载意图配置
         if config_path is None:
             config_path = os.path.join(os.path.dirname(__file__), "intent_config.json")
@@ -47,6 +52,28 @@ class IntentProcessor:
             log_level="DEBUG",
         )
         return config
+
+    def _get_user_data_path(self, user_id: str) -> str:
+        """
+        获取用户数据存储路径
+
+        Args:
+            user_id: 用户ID
+
+        Returns:
+            str: 用户数据文件夹路径
+        """
+
+        return self.user_permission_service.get_user_data_path(user_id)
+
+    def get_user_indentity(self, user_id: str) -> Dict[str, Any]:
+        """
+        获取用户身份
+        """
+        user_data_path = self._get_user_data_path(user_id)
+        with open(os.path.join(user_data_path, "user_identity.json"), "r", encoding="utf-8") as f:
+            user_identity = json.load(f)
+        return user_identity
 
     # region 一阶段功能识别
 
@@ -343,6 +370,7 @@ class IntentProcessor:
         # 为每个组合生成流式回复生成器
         for combination in top_combinations:
             # 构建上下文提示词和系统提示词
+            # 用来做优化训练，还是需要元数据
             contextual_prompt, role_system_prompt = (
                 self._build_response_generation_context(
                     combination, final_text, source_mode="stt"
@@ -354,6 +382,8 @@ class IntentProcessor:
             )
 
             combination["stream_completion"] = stream_completion
+            combination["contextual_prompt"] = contextual_prompt
+            combination["role_system_prompt"] = role_system_prompt
 
         return router_result
 
@@ -398,14 +428,27 @@ class IntentProcessor:
 ## 思考与感受
 1. 元认知分析
 在回应我的想法前，先退后一步。
-感受一下我这个想法背后的底层假设是什么？
-2. 从{module_name}的角度肯定用户想法的价值，用情绪：{emotion_config['name']}驱动理性为自己叙事，然后用{identity_name}的思维框架重新审视我的想法。
+识别想法中的【核心愿景】（我想象的美好画面）和【事实断言】（我用来支撑画面的数据/逻辑）。
+
+2. 链接愿景 (Link the Vision)
+从{module_name}的角度，用一句话精准地捕捉并肯定那个【核心愿景】。只针对动机和情感，肯定用户想法的价值，建立共鸣。
+这是yes, and两步法的yes部分。
+
 ## 回应方式
-3. 说一些我可能没意识到的地方
-结合上面两步的思考，帮助我更全面和更多样化的看待自己的想法。
-无论多么荒谬的想法，都严禁直接否定，你必须充分活用肯定和补充的沟通策略，哪怕此刻你内心在亮红灯——只要信息和视角补充得当，我自然也能做出判断。
-以{identity_name}，你的角度让我的想法完成度更高一点，你的肯定不需要大费篇幅说出来，毕竟你也是我的分身，要有那种默契感，省略铺垫直接切入关键点。
-4. 注意，你就是我的分身，这是一个独白，禁止用“我们”，“你”之类的指称，所有的回复都是第一人称。
+3. 精准重构 (Pinpoint & Reframe)
+这是“And”的部分，分两步执行：
+a. **无缝校准 (Seamless Refinement):** 关键在于无缝转折。必须处理【事实断言】中的瑕疵，但要完全避免使用“但是”、“不过”等制造对立感的词语。应采用承接式话术，且快速直接的指出发现的问题，然后立即进入到拓展升华的部分。
+b. **拓展升华 (Expand & Elevate):** 在校准后的、更坚实的基础上，提出一个尖锐的建设性问题，将思考从“是什么”推向“还能怎样”，说一些我可能没意识到的地方，揭示未被注意的盲点或可能性，探索真正的潜力。
+
+用情绪：{emotion_config['name']}驱动理性为自己叙事，然后用{identity_name}的思维框架重新审视我的想法。
+以{identity_name}，你的角度通过补充视角或可操作的建议，提升想法的完成度，避免泛泛的赞赏或直接否定。
+回应保持第一人称独白风格，省略铺垫，体现默契感，仿佛我是自己的分身在反思。
+
+## 约束
+- 始终保持建设性，鼓励反思而非否定。
+- 平衡支持与批判，确保回应推动更全面的思考。
+- 避免使用“我们”“你”等指称，保持第一人称独白。
+- 提出的问题和视角必须具体、可操作，指向实际改进方向。
 
 回应长度：80-150字，直接说话，不要解释身份设定、不要提及模块、不要解释思考步骤。"""
 
@@ -457,6 +500,7 @@ class IntentProcessor:
             "群体认同模块": {
                 "name": "归属渴望",
                 "recognition": "负责建立和维护社会连接的功能集合",
+                "core_question": "我做什么能获得群体认同？促进沟通、建立信任、寻求共识？",
                 "response_guidance": "关注环境中的合作信号、友好姿态、共同点和群体规范。评估他人是“朋友”还是“潜在伙伴”。评估自己的行为是否符合群体预期。",
             },
             "社会地位模块": {

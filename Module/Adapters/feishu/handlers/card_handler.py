@@ -574,3 +574,11 @@ class CardHandler:
                 }
             }
         )
+
+    # region STT回调
+    @card_operation_safe("更新输入文本失败")
+    def update_input_text(self, context: MessageContext_Refactor):
+        """更新输入文本"""
+        pass
+
+    # endregion
