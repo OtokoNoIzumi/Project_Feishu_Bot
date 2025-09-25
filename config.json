@@ -1,7 +1,7 @@
 {
   "coze": {
     "api_base": "https://api.coze.cn/v1/workflow/run",
-    "tts_workflow_id": "7540125143995252763",
+    "tts_workflow_id": "7473130113548402722",
     "voice_id": "peach",
     "image_workflow_id": "7532385375723012138",
     "cn_voice_id": "7468518846874402867",
@@ -10,7 +10,7 @@
   },
   "log_level": "INFO",
   "debug_verbose": false,
-  "GEMINI_MODEL_NAME": "gemini-2.5-flash-preview-05-20",
+  "GEMINI_MODEL_NAME": "gemini-2.5-flash",
   "pending_cache": {
     "max_operations_per_user": 2,
     "operation_timeouts": {
@@ -29,7 +29,7 @@
         "time": "07:30:00",
         "enabled": true,
         "debug": {
-          "force_latest_time": false,
+          "force_latest_time": true,
           "force_offset_seconds": 5
         },
         "params": {}
@@ -51,7 +51,7 @@
         "name": "bili_updates_afternoon",
         "type": "bili_updates",
         "time": "15:30:00",
-        "enabled": true,
+        "enabled": false,
         "debug": {
           "force_latest_time": false,
           "force_offset_seconds": 5
@@ -62,7 +62,7 @@
         "name": "bili_updates_night",
         "type": "bili_updates",
         "time": "23:55:00",
-        "enabled": true,
+        "enabled": false,
         "debug": {
           "force_latest_time": false,
           "force_offset_seconds": 5
@@ -127,5 +127,7 @@
     "query_context_timeout": 300,
     "default_item_type": "instant",
     "backup_enabled": false
-  }
+  },
+  "subscription_url": "https://fba01.fbsubcn01.cc:2096/flydsubal/pgog22hp47yd6u8v?sub=2&extend=1",
+  "subscription_total_gb": 100
 }

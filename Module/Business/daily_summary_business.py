@@ -30,9 +30,11 @@ from Module.Adapters.feishu.cards.json_builder import JsonBuilder
 from .summary.backend.bili_daily_data import BiliDailyData
 from .summary.backend.routine_daily_data import RoutineDailyData
 from .summary.backend.system_daily_data import SystemDailyData
+from .summary.backend.temp_daily_data import SubscriptionUsageData
 from .summary.frontend.bili_daily_element import BiliDailyElement
 from .summary.frontend.routine_daily_element import RoutineDailyElement
 from .summary.frontend.system_daily_element import SystemDailyElement
+from .summary.frontend.temp_daily_element import SubscriptionUsageElement
 
 
 class DailySummaryBusiness(BaseProcessor):
@@ -71,9 +73,11 @@ class DailySummaryBusiness(BaseProcessor):
         self.bili_data = BiliDailyData(app_controller)
         self.routine_data = RoutineDailyData(app_controller)
         self.system_data = SystemDailyData(app_controller)
+        self.subscription_data = SubscriptionUsageData(app_controller)
         self.bili_element = BiliDailyElement(app_controller)
         self.routine_element = RoutineDailyElement(app_controller)
         self.system_element = SystemDailyElement()
+        self.subscription_element = SubscriptionUsageElement()
 
     @require_service("bili_adskip", "B站广告跳过服务不可用")
     @safe_execute("创建每日信息汇总失败")
@@ -145,6 +149,13 @@ class DailySummaryBusiness(BaseProcessor):
                 "user_enabled": True,
                 "backend_instance": self.system_data,  # 系统数据处理实例
                 "data_method": "get_operation_data",
+            },
+            "subscription_usage": {
+                "name": "订阅服务用量",
+                "system_permission": True,
+                "user_enabled": True,
+                "backend_instance": self.subscription_data,  # 订阅服务数据处理实例
+                "data_method": "get_subscription_usage_data",
             },
             "services_status": {
                 "name": "服务状态",
@@ -264,6 +275,13 @@ class DailySummaryBusiness(BaseProcessor):
         if operation_data:
             elements.extend(
                 self.system_element.build_operation_elements(operation_data)
+            )
+
+        # 使用订阅服务前端模块构建订阅服务用量元素
+        subscription_usage_data = daily_raw_data.get("subscription_usage", {}).get("data", {})
+        if subscription_usage_data:
+            elements.extend(
+                self.subscription_element.build_subscription_usage_elements(subscription_usage_data)
             )
 
         # 使用系统前端模块构建服务状态元素
