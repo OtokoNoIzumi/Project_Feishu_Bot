@@ -21,10 +21,30 @@ class SubscriptionUsageData:
     def get_subscription_usage_data(self, _data_params: Dict[str, Any] = None) -> Dict[str, Any]:
         """获取订阅服务用量数据"""
         try:
-            # 从配置中获取订阅链接和总流量
+            # 从环境变量获取订阅链接和总流量
             config_service = self.app_controller.get_service("config")
-            url = config_service.get("subscription_url", "https://fba01.fbsubcn01.cc:2096/flydsubal/pgog22hp47yd6u8v?sub=2&extend=1")
-            total_gb = config_service.get("subscription_total_gb", 100)
+            url = config_service.get_env("SUBSCRIPTION_URL")
+            total_gb_str = config_service.get_env("SUBSCRIPTION_TOTAL_GB")
+
+            if not url:
+                return {
+                    "success": False,
+                    "error": "未配置SUBSCRIPTION_URL环境变量"
+                }
+
+            if not total_gb_str:
+                return {
+                    "success": False,
+                    "error": "未配置SUBSCRIPTION_TOTAL_GB环境变量"
+                }
+
+            try:
+                total_gb = int(total_gb_str)
+            except ValueError:
+                return {
+                    "success": False,
+                    "error": "SUBSCRIPTION_TOTAL_GB环境变量必须是数字"
+                }
 
             # 获取订阅内容
             response = requests.get(url, timeout=10)

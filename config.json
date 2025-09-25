@@ -29,7 +29,7 @@
         "time": "07:30:00",
         "enabled": true,
         "debug": {
-          "force_latest_time": true,
+          "force_latest_time": false,
           "force_offset_seconds": 5
         },
         "params": {}
@@ -51,7 +51,7 @@
         "name": "bili_updates_afternoon",
         "type": "bili_updates",
         "time": "15:30:00",
-        "enabled": false,
+        "enabled": true,
         "debug": {
           "force_latest_time": false,
           "force_offset_seconds": 5
@@ -62,7 +62,7 @@
         "name": "bili_updates_night",
         "type": "bili_updates",
         "time": "23:55:00",
-        "enabled": false,
+        "enabled": true,
         "debug": {
           "force_latest_time": false,
           "force_offset_seconds": 5
@@ -127,7 +127,5 @@
     "query_context_timeout": 300,
     "default_item_type": "instant",
     "backup_enabled": false
-  },
-  "subscription_url": "https://fba01.fbsubcn01.cc:2096/flydsubal/pgog22hp47yd6u8v?sub=2&extend=1",
-  "subscription_total_gb": 100
+  }
 }
