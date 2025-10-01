@@ -688,8 +688,8 @@ class MessageHandler:
 
                 end_time = time.time()
                 # if not modified:
-                if last_chunk.candidates[0].finish_reason != FinishReason.STOP:
-                    print("test-last_chunk", modified, last_chunk)
+                # if last_chunk.candidates[0].finish_reason != FinishReason.STOP:
+                print("test-last_chunk", modified, last_chunk)
                 print('test-thought_text\n', thought_text)
                 if last_chunk is None:
                     print("启用第二套方案")

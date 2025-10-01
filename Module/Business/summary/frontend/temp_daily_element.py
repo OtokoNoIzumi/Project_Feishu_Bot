@@ -63,13 +63,15 @@ class SubscriptionUsageElement:
         usage_percent = (used_gb / total_gb) * 100
         should_suggest_package = (usage_percent >= 90) or (days_left_in_month <= 20)
 
-        if daily_available >= avg_benchmark_per_day:
+        if daily_available >= avg_benchmark_per_day*0.9:
             # 流量宽裕
             surplus_ratio = (benchmark_percentage - 100) / 100
             if surplus_ratio >= 0.5:
                 return f"✅ **使用建议:** 流量非常充裕（比{total_gb}GB的日均基准多{surplus_ratio*100:.0f}%），加油多多使用"
-            else:
+            elif surplus_ratio >= 0.1:
                 return f"✅ **使用建议:** 流量充足（比{total_gb}GB的日均基准多{surplus_ratio*100:.0f}%），可适度放宽使用"
+            else:
+                return f"✅ **使用建议:** 流量充足（接近日均基准{avg_benchmark_per_day:.1f}GB），可适度放宽使用"
 
         else:
             # 流量偏紧
@@ -77,7 +79,7 @@ class SubscriptionUsageElement:
             if shortage_ratio >= 0.3:
                 suggestion = f"🔴 **使用建议:** 流量紧张（只有{total_gb}GB的日均基准的{benchmark_percentage:.0f}%），请谨慎使用"
             else:
-                suggestion = f"⚠️ **使用建议:** 流量略显不足（只有{total_gb}GB的日均基准的{shortage_ratio*100:.0f}%），建议适度节约"
+                suggestion = f"⚠️ **使用建议:** 流量略显不足（只有{total_gb}GB的日均基准的{benchmark_percentage*100:.0f}%），建议适度节约"
 
             # 套餐追加提示（流量偏紧时才建议）
             if should_suggest_package and projected_monthly_usage > total_gb:

@@ -1649,10 +1649,10 @@ class RoutineRecord(BaseProcessor):
             self._update_duration_stats(stats, duration)
 
         if cycle_info:
-            print(f"record_mode: {record_mode}")
+            stats["cycle_count"] = cycle_info.get("cycle_count", 0)
             if record_mode == RoutineRecordModes.EDIT:
                 increment = duration if target_type == RoutineTargetTypes.TIME.value else 1
-                stats["cycle_count"] = cycle_info.get("cycle_count", 0) + increment
+                stats["cycle_count"] += increment
             stats["last_cycle_count"] = cycle_info.get("last_cycle_count", 0)
             stats["last_refresh_date"] = cycle_info.get("last_refresh_date", "")
 
