@@ -54,6 +54,7 @@ class MessageTypes:
     AUDIO = "audio"
     MENU_CLICK = "menu_click"
     CARD_ACTION = "card_action"
+    POST = "post"  # 飞书富文本消息（文章类型）
 
 
 class MenuClickTypes:

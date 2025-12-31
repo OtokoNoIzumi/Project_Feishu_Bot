@@ -22,7 +22,7 @@ from Module.Services.constants import (
 )
 from .processors import (
     BaseProcessor, MessageContext, ProcessResult, RouteResult,
-    TextProcessor, MediaProcessor, BilibiliProcessor,
+    TextProcessor, MediaProcessor, BilibiliProcessor, PostContent,
     AdminProcessor, ScheduleProcessor,
     require_app_controller, safe_execute
 )
@@ -74,8 +74,10 @@ class MessageRouter(BaseProcessor):
                 return self._process_audio_message(context)
             case MessageTypes.CARD_ACTION:
                 return self._process_card_action(context)
+            case MessageTypes.POST:
+                return self._process_post_message(context)
             case _:
-                # 目前已知的有post（文章）和todo（待办）两种类型
+                # 目前已知的有todo（待办）等其他类型
                 return ProcessResult.error_result(f"不支持的消息类型: {context.message_type}")
 
     @safe_execute("文本消息处理失败")
@@ -153,6 +155,65 @@ class MessageRouter(BaseProcessor):
     def _process_audio_message(self, context: MessageContext) -> ProcessResult:
         """处理音频消息"""
         return self.media.handle_audio_message(context)
+
+    @safe_execute("POST消息处理失败")
+    def _process_post_message(self, context: MessageContext) -> ProcessResult:
+        """
+        处理POST类型消息（飞书富文本文章）
+
+        根据 title 作为驱动开关进行路由，例如：
+        - title="饮食" → 调用饮食处理逻辑
+        - 其他 title → 待扩展
+
+        Args:
+            context: 消息上下文，content 应为 PostContent 或包含 title/text/image_keys 的字典
+
+        Returns:
+            ProcessResult: 处理结果
+        """
+        # 提取 POST 内容（必须是 PostContent 数据类）
+        content = context.content
+
+        # 统一处理：无论是 legacy 还是 refactor，都应该是 PostContent
+        if not isinstance(content, PostContent):
+            return ProcessResult.error_result(
+                f"POST 消息 content 必须是 PostContent 类型，实际类型: {type(content)}"
+            )
+
+        title = content.title
+        text = content.text
+        image_keys = content.image_keys
+
+        # title 可以为空字符串，空字符串时不进行路由
+        if not title:
+            # title 为空时，返回提示信息
+            return ProcessResult.success_result(
+                ResponseTypes.TEXT,
+                {
+                    "text": f"✅ 已收到 POST 消息\n内容: {text[:100]}{'...' if len(text) > 100 else ''}\n图片: {len(image_keys)} 张\n\n（未指定标题，无法路由）"
+                },
+                parent_id=context.message_id
+            )
+
+        # 根据 title 进行路由（类似 TEXT 消息的驱动逻辑）
+        # 目前只实现"饮食"开关，后续可扩展
+        if title == "饮食":
+            # TODO: 调用饮食处理器
+            # 暂时返回提示信息，等待饮食处理器实现
+            debug_utils.log_and_print(
+                f"📝 收到饮食记录 POST: title={title}, text={text[:50]}..., images={len(image_keys)}",
+                log_level="INFO"
+            )
+            return ProcessResult.success_result(
+                ResponseTypes.TEXT,
+                {
+                    "text": f"✅ 已收到饮食记录\n标题: {title}\n内容: {text[:100]}{'...' if len(text) > 100 else ''}\n图片: {len(image_keys)} 张\n\n（饮食处理功能开发中）"
+                },
+                parent_id=context.message_id
+            )
+        else:
+            # 其他 title 暂不支持
+            return ProcessResult.error_result(f"暂不支持 title='{title}' 的 POST 消息处理")
 
     @safe_execute("卡片动作处理失败")
     def _process_card_action(self, context: MessageContext) -> ProcessResult:

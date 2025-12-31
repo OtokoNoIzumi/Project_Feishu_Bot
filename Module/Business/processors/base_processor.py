@@ -40,6 +40,14 @@ class FileContent:
     file_key: Optional[str] = None
     image_key: Optional[str] = None
 
+@dataclass
+class PostContent:
+    """飞书 POST 类型消息内容（富文本文章）"""
+    title: str  # 文章标题，作为驱动开关（如"饮食"）
+    text: str  # 合并所有文本内容
+    image_keys: List[str] = field(default_factory=list)  # 所有图片的 image_key 列表
+    raw_content: Optional[Dict[str, Any]] = None  # 原始 POST 内容，用于调试
+
 # 定义一个 ContentUnion 类型，用于类型提示
 ContentPayloads = Union[
     str, # 简单文本可以继续用 str
@@ -47,6 +55,7 @@ ContentPayloads = Union[
     CardActionContent,
     MenuClickContent,
     FileContent,
+    PostContent,
     Dict[str, Any] # 保留 Dict 作为通用或未标准化的载荷
 ]
 

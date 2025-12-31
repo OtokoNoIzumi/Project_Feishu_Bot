@@ -8,7 +8,7 @@ from .base_processor import (
     BaseProcessor, MessageContext, ProcessResult, safe_execute, require_app_controller,
     RouteResult, MessageContext_Refactor
 )
-from .base_processor import TextContent, CardActionContent, MenuClickContent, FileContent, ContentPayloads
+from .base_processor import TextContent, CardActionContent, MenuClickContent, FileContent, PostContent, ContentPayloads
 from .text_processor import TextProcessor
 from .media_processor import MediaProcessor
 from .bilibili_processor import BilibiliProcessor
@@ -31,6 +31,7 @@ __all__ = [
     'CardActionContent',
     'MenuClickContent',
     'FileContent',
+    'PostContent',
     'ContentPayloads',
     'RouteResult',
 ]

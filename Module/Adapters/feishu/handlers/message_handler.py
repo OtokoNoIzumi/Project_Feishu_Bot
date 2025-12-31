@@ -21,6 +21,7 @@ from Module.Business.processors import (
     MessageContext_Refactor,
     TextContent,
     FileContent,
+    PostContent,
     RouteResult,
 )
 from ..decorators import (
@@ -908,18 +909,109 @@ class MessageHandler:
 
         return legacy_context, New_MessageContext
 
+    def _parse_post_content(self, message) -> PostContent:
+        """
+        解析 POST 类型消息内容（统一解析逻辑）
+
+        支持多语言格式：{"zh_cn": {...}, "en_us": {...}}
+        支持简化格式：{"title": "...", "content": [...]}
+
+        Args:
+            message: 飞书消息对象
+
+        Returns:
+            PostContent: 解析后的 POST 内容
+        """
+        # 解析 JSON
+        if isinstance(message.content, str):
+            post_data = json.loads(message.content)
+        else:
+            post_data = message.content
+
+        # 处理多语言结构：优先使用 zh_cn，否则使用第一个可用语言
+        if "zh_cn" in post_data:
+            lang_data = post_data["zh_cn"]
+        elif "en_us" in post_data:
+            lang_data = post_data["en_us"]
+        elif "title" in post_data or "content" in post_data:
+            # 简化格式，直接使用
+            lang_data = post_data
+        else:
+            # 尝试获取第一个键的值
+            lang_data = next(iter(post_data.values())) if post_data else {}
+
+        # 提取 title 和 content
+        title = lang_data.get("title", "")
+        content_items = lang_data.get("content", [])
+
+        # 合并所有文本内容和图片
+        text_parts = []
+        image_keys = []
+
+        for item_group in content_items:
+            if not isinstance(item_group, list):
+                continue
+
+            for item in item_group:
+                if not isinstance(item, dict):
+                    continue
+
+                tag = item.get("tag")
+
+                # 处理文本类型标签
+                if tag == "text":
+                    text = item.get("text", "")
+                    if text:
+                        text_parts.append(text)
+                elif tag == "a":  # 超链接
+                    text = item.get("text", "")
+                    if text:
+                        text_parts.append(text)
+                elif tag == "at":  # @用户
+                    # @标签通常不提取文本，但可以记录
+                    pass
+                elif tag == "md":  # Markdown
+                    text = item.get("text", "")
+                    if text:
+                        text_parts.append(text)
+                elif tag == "code_block":  # 代码块
+                    text = item.get("text", "")
+                    if text:
+                        text_parts.append(text)
+
+                # 处理图片类型标签
+                elif tag == "img":
+                    image_key = item.get("image_key")
+                    if image_key:
+                        image_keys.append(image_key)
+                elif tag == "media":  # 视频（也包含封面图片）
+                    image_key = item.get("image_key")
+                    if image_key:
+                        image_keys.append(image_key)
+
+                # 其他标签（emotion, hr 等）忽略
+
+        return PostContent(
+            title=title,
+            text=" ".join(text_parts),
+            image_keys=image_keys,
+            raw_content=post_data
+        )
+
     def _extract_message_content(self, message) -> Any:
-        """提取飞书消息内容"""
+        """提取飞书消息内容（legacy 方法）"""
         match message.message_type:
             case "text":
                 return json.loads(message.content)["text"]
             case "image" | "audio":
                 return json.loads(message.content)
+            case "post":
+                return self._parse_post_content(message)
             case _:
                 return message.content
 
     def _extract_message_content_refactor(self, message) -> Any:
-        """提取飞书消息内容"""
+        """提取飞书消息内容（重构版，返回标准化数据类）"""
         match message.message_type:
             case "text":
                 return TextContent(text=json.loads(message.content)["text"])
@@ -927,6 +1019,8 @@ class MessageHandler:
                 return FileContent(image_key=json.loads(message.content)["image_key"])
             case "audio":
                 return FileContent(file_key=json.loads(message.content)["file_key"])
+            case "post":
+                return self._parse_post_content(message)
             case _:
                 return message.content
 
