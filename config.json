@@ -10,7 +10,7 @@
   },
   "log_level": "INFO",
   "debug_verbose": false,
-  "GEMINI_MODEL_NAME": "gemini-2.5-flash",
+  "GEMINI_MODEL_NAME": "gemini-3-flash-preview",
   "pending_cache": {
     "max_operations_per_user": 2,
     "operation_timeouts": {
