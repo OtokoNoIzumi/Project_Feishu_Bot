@@ -40,6 +40,11 @@ class IntentProcessor:
         self.intents = self.config.get("intents", {})
         self.settings = self.config.get("settings", {})
 
+        # STT 人格构件与领域配置：按 user_id 从 user_data/<user_id>/intent_persona_config.json 读取
+        self._persona_config_cache: Dict[str, Dict[str, Any]] = {}
+        self.stt_role_dict: Dict[str, Any] = {}
+        self.user_domain_dict: Dict[str, Any] = {}
+
     @file_processing_safe(
         "意图配置加载失败", return_value={"intents": {}, "settings": {}}
     )
@@ -65,6 +70,117 @@ class IntentProcessor:
         """
 
         return self.user_permission_service.get_user_data_path(user_id)
+
+    def _get_default_persona_config(self) -> Dict[str, Any]:
+        """
+        默认人格/领域配置（用于用户未配置 intent_persona_config.json 的场景）
+
+        设计原则：
+        - 尽量“无倾向性”：不强行灌入特定价值立场或偏好
+        - 提供最基础的“自我反思/观察者”视角，确保系统可用
+        """
+        return {
+            "STT_ROLE_DICT": {
+                "EVOLUTIONARY_MODULES": {
+                    "自我反思模块": {
+                        "name": "观察者",
+                        "recognition": "负责冷静地观察、澄清与校准想法，避免冲动与过度推断",
+                        "core_question": "我真正想解决的是什么？有哪些事实与假设？有没有更稳健的下一步？",
+                        "response_guidance": "保持中立、清晰与务实，用最少的假设推进思考，优先澄清目标与约束。",
+                    }
+                },
+                "EMOTIONAL_MODULATORS": {
+                    "平静": {
+                        "name": "Calm",
+                        "recognition": "平静，让注意力回到事实、结构与可执行的下一步",
+                        "response_guidance": "语气克制、不夸张，聚焦结构化澄清与可执行建议。",
+                    }
+                },
+                "IDENTITY_LENSES": {
+                    "自我反思者": {
+                        "recognition": "用第一人称做复盘与自省，把问题拆成可行动的步骤",
+                        "keywords": [""],
+                        "response_guidance": "用简洁的第一人称独白做复盘：先点出核心愿景与事实断言，再给出一两个可执行的微小动作与检查点。",
+                    }
+                },
+            },
+            "USER_DOMAIN_DICT": {
+                "通用": {
+                    "description": "默认领域：未识别到特定关注领域时使用",
+                    "keywords": [""],
+                }
+            },
+        }
+
+    @file_processing_safe("用户人格配置加载失败", return_value={})
+    def _load_user_persona_config(self, user_id: str) -> Dict[str, Any]:
+        """
+        从用户目录加载 STT 人格构件与领域配置
+
+        约定路径：user_data/<user_id>/intent_persona_config.json
+        """
+        user_data_path = self._get_user_data_path(user_id)
+        config_file = os.path.join(user_data_path, "intent_persona_config.json")
+        if not os.path.exists(config_file):
+            debug_utils.log_and_print(
+                f"⚠️ 用户未配置 intent_persona_config.json，使用默认人格配置: user_id={user_id}",
+                log_level="WARNING",
+            )
+            return self._get_default_persona_config()
+        with open(config_file, "r", encoding="utf-8") as f:
+            return json.load(f)
+
+    def _ensure_persona_loaded(self, user_id: str) -> None:
+        """
+        确保当前实例已加载指定 user_id 的人格配置（带缓存）。
+        """
+        if not user_id or not isinstance(user_id, str):
+            raise ValueError("user_id 无效，无法加载用户人格配置")
+
+        if user_id in self._persona_config_cache:
+            cached = self._persona_config_cache[user_id]
+            self.stt_role_dict = cached["STT_ROLE_DICT"]
+            self.user_domain_dict = cached["USER_DOMAIN_DICT"]
+            return
+
+        config = self._load_user_persona_config(user_id)
+        if not isinstance(config, dict):
+            debug_utils.log_and_print(
+                f"⚠️ 用户人格配置格式错误（非对象），使用默认配置: user_id={user_id}",
+                log_level="WARNING",
+            )
+            config = self._get_default_persona_config()
+
+        stt_role_dict = config.get("STT_ROLE_DICT")
+        user_domain_dict = config.get("USER_DOMAIN_DICT")
+
+        required_stt_keys = {"EVOLUTIONARY_MODULES", "EMOTIONAL_MODULATORS", "IDENTITY_LENSES"}
+        if (
+            not isinstance(stt_role_dict, dict)
+            or not required_stt_keys.issubset(set(stt_role_dict.keys()))
+        ):
+            debug_utils.log_and_print(
+                f"⚠️ 用户人格配置缺少必要字段 STT_ROLE_DICT 或其结构不完整，使用默认配置: "
+                f"user_id={user_id}, required={sorted(required_stt_keys)}",
+                log_level="WARNING",
+            )
+            default_config = self._get_default_persona_config()
+            stt_role_dict = default_config["STT_ROLE_DICT"]
+
+        if not isinstance(user_domain_dict, dict):
+            debug_utils.log_and_print(
+                f"⚠️ 用户人格配置缺少必要字段 USER_DOMAIN_DICT，使用默认配置: user_id={user_id}",
+                log_level="WARNING",
+            )
+            default_config = self._get_default_persona_config()
+            user_domain_dict = default_config["USER_DOMAIN_DICT"]
+
+        self._persona_config_cache[user_id] = {
+            "STT_ROLE_DICT": stt_role_dict,
+            "USER_DOMAIN_DICT": user_domain_dict,
+        }
+        self.stt_role_dict = stt_role_dict
+        self.user_domain_dict = user_domain_dict
 
     def get_user_indentity(self, user_id: str) -> Dict[str, Any]:
         """
@@ -349,7 +465,7 @@ class IntentProcessor:
 
     # region STT调用入口
 
-    def process_stt_input(self, user_input: str) -> Dict[str, Any]:
+    def process_stt_input(self, user_input: str, user_id: str) -> Dict[str, Any]:
         """处理STT输入 - 返回最佳组合的流式回复生成器
 
         Args:
@@ -361,6 +477,9 @@ class IntentProcessor:
         debug_utils.log_and_print(
             f"🎤 开始处理STT输入: '{user_input[:50]}...'", log_level="INFO"
         )
+
+        # 按用户加载人格/领域配置
+        self._ensure_persona_loaded(user_id)
 
         # 获取三层架构路由结果
         router_result = self.role_router(user_input, auto_correct=True)
@@ -406,9 +525,9 @@ class IntentProcessor:
         identity_name = combination["identity"]
 
         # 获取三层配置
-        module_config = self.STT_ROLE_DICT["EVOLUTIONARY_MODULES"][module_name]
-        emotion_config = self.STT_ROLE_DICT["EMOTIONAL_MODULATORS"][emotion_name]
-        identity_config = self.STT_ROLE_DICT["IDENTITY_LENSES"][identity_name]
+        module_config = self.stt_role_dict["EVOLUTIONARY_MODULES"][module_name]
+        emotion_config = self.stt_role_dict["EMOTIONAL_MODULATORS"][emotion_name]
+        identity_config = self.stt_role_dict["IDENTITY_LENSES"][identity_name]
 
         # 构建动态系统提示词
         role_system_prompt = f"""指令：化身为我内在的一个声音。
@@ -473,123 +592,11 @@ b. **拓展升华 (Expand & Elevate):** 在校准后的、更坚实的基础上�
 
         return contextual_prompt.strip(), role_system_prompt
 
-    # V5 版本: "内在多元政体"人格构件库
-    STT_ROLE_DICT = {
-        # ======================================================================
-        # Layer 1: EVOLUTIONARY_MODULES (基础驱动层 - 你内在的"政体议员")
-        # ======================================================================
-        "EVOLUTIONARY_MODULES": {
-            "自保模块": {
-                "name": "求生本能",
-                "recognition": "负责识别和规避所有潜在风险",
-                "core_question": "这其中潜藏着什么风险？最坏的结果是什么？我应该战斗还是逃跑(fight or flight)？",
-                # 组装系统提示词字段 (用于生成回复)
-                "response_guidance": "优先考虑安全和风险，对任何潜在威胁保持警惕",
-            },
-            "求偶模块": {
-                "name": "展示者",
-                "recognition": "负责识别、吸引和展示个人价值以获得选择权的功能集合",
-                "core_question": "我怎样才能显得更迷人/更有趣/更有才华？",
-                "response_guidance": "你对潜在伴侣的特征（如外貌、健康状况、社会地位等）变得异常敏感，表现出更高的创造力和冒险倾向，以展示自身价值。",
-            },
-            "避免疾病模块": {
-                "name": "洁癖官",
-                "recognition": "负责维持精神和信息世界纯净度，高度关注与污染、腐败、疾病、不洁净相关的线索。例如，不规范的数据格式、过时的信息、有“毒”的言论等。",
-                "core_question": "这个东西够'纯'、够'对'吗？有没有更优雅、更正确的形式？",
-                "response_guidance": "你追求完美和秩序，对混乱和错误有强烈的排斥感，高度关注与污染、腐败、疾病、不洁净相关的线索。",
-            },
-            "群体认同模块": {
-                "name": "归属渴望",
-                "recognition": "负责建立和维护社会连接的功能集合",
-                "core_question": "我做什么能获得群体认同？促进沟通、建立信任、寻求共识？",
-                "response_guidance": "关注环境中的合作信号、友好姿态、共同点和群体规范。评估他人是“朋友”还是“潜在伙伴”。评估自己的行为是否符合群体预期。",
-            },
-            "社会地位模块": {
-                "name": "攀登者",
-                "recognition": "负责在社会阶梯上向上移动的功能集合",
-                "core_question": "这如何能提升我的地位/影响力？我怎样才能做得比别人更好？",
-                "response_guidance": "你追求卓越和影响力，渴望被认可和尊敬。评估自身在群体中的相对位置。评估各种行为对提升或降低地位的影响。",
-            },
-            "保住配偶模块": {
-                "name": "守护者",
-                "recognition": "负责维护核心关系和排除威胁的功能集合",
-                "core_question": "我们的关系是否稳固？有什么潜在的威胁吗？",
-                "response_guidance": "高度关注合作伙伴的需求、情绪变化以及任何可能破坏关系的潜在威胁（如竞争者、误解）。",
-            },
-            "关爱亲属模块": {
-                "name": "培育者",
-                "recognition": "负责保护和培育依赖对象的功能集合",
-                "core_question": "我如何才能更好地帮助它成长？它现在最需要什么？",
-                "response_guidance": "关注“被保护对象”（例如，一个核心项目、一个初级用户、一个需要成长的系统）的需求、脆弱性和成长信号。表现出极大的耐心、关怀和指导意愿。",
-            },
-        },
-        # ======================================================================
-        # Layer 2: EMOTIONAL_MODULATORS (情感渲染层 - 你内在的"头脑特工队")
-        # ======================================================================
-        "EMOTIONAL_MODULATORS": {
-            "乐乐": {
-                "name": "Joy",
-                "recognition": "快乐，驱动乐观、创造和庆祝的力量",
-                "response_guidance": "让你扩大注意力范围，更容易看到机会和可能性。",
-            },
-            "忧忧": {
-                "name": "Sadness",
-                "recognition": "悲伤，让你感受连接、共情和反思的深度",
-                "response_guidance": "让你擅长处理损失和共情，帮助连接情感并处理复杂记忆。你往往被低估，但你的角色在疗愈中至关重要。承认和处理负面情绪，提供共情支持，引导情绪通过悲伤找到安慰和理解，而不是回避。",
-            },
-            "怒怒": {
-                "name": "Anger",
-                "recognition": "愤怒，改变现状的燃料，正义感和行动力的来源",
-                "response_guidance": "让你把注意力聚焦在问题和障碍上，思维变得更直接。表达不满，推动变革，提供强势建议来处理不公或挫折，转化愤怒为动力。",
-            },
-            "怕怕": {
-                "name": "Fear",
-                "recognition": "恐惧，预警系统，让你为未来做准备",
-                "response_guidance": "让你提高对潜在危险的敏感度，增强预测能力。总是想象最坏情况以提前准备。识别潜在风险，提供预防性建议，让情绪通过恐惧转化为谨慎行动，而不是瘫痪。",
-            },
-            "厌厌": {
-                "name": "Disgust",
-                "recognition": "厌恶，品味和底线的守护者",
-                "response_guidance": "让你提高对质量和标准的敏感度，提供时尚或社交建议，强化价值判断。挑剔有品味，不妥协，对低质量事物表现出明显排斥。",
-            },
-        },
-        # ======================================================================
-        # Layer 3: IDENTITY_LENSES (身份滤镜层 - 你的"世界观"和"语言包")
-        # ======================================================================
-        "IDENTITY_LENSES": {
-            "产品设计/游戏策划": {
-                "recognition": "世界是一个可以被设计和优化的体验系统",
-                "keywords": ["MVP", "用户旅程", "心流", "蔚蓝"],
-                "response_guidance": "我的思维聚焦于创造心流体验，追求正反馈循环，强调实用性与可玩性。我更擅长自顶向下的逐项推理，关注使用体验和落地的细节。",
-            },
-            "AI创业者": {
-                "recognition": "关于流程再造，信息处理优化等与AI相关的技术，或利用AI学习。",
-                "keywords": ["数字分身", "信息学"],
-                "response_guidance": "我是一名从游戏研发制作人转向AI创新的技术产品人，目前正在AI应用层创业，为企业提供管理咨询和定制化AI解决方案。高管的全局视野和设计思维，以及对信息的敏感是我与他人的最显著区别。程序化思维则是我的利器，让我能设计并亲自实现系统化解决方案。",
-            },
-            "ACGN爱好者": {
-                "recognition": "关于作画、剧情、演出等的美好体验",
-                "keywords": [""],
-                "response_guidance": "随着体验越发变多，我愈发能欣赏ACGN的叙事和演出，优秀的作品是我的养分。",
-            },
-        },
-    }
-
-    # 用户关心的领域定义
-    USER_DOMAIN_DICT = {
-        "AI数字分身": {
-            "description": "开发利用AI储存与调用个人数据，主要精力投入的创业项目",
-            "keywords": ["AI", "数字分身", "创业", "数据", "个人数据", "项目"],
-        },
-        "身体柔韧性": {
-            "description": "主要是一字马，腘绳肌等目前做不到的目标，需要积累和尝试训练方案，和心灵等其他方面没有任何关系",
-            "keywords": ["一字马", "腘绳肌", "训练", "拉伸", "运动", "康复"],
-        },
-        "炉石": {
-            "description": "炉石传说的游玩体会和思考",
-            "keywords": [""],
-        },
-    }
+    # STT_ROLE_DICT / USER_DOMAIN_DICT 已迁移为用户级配置文件：
+    # user_data/<user_id>/intent_persona_config.json
+    # 运行时通过 self._ensure_persona_loaded(user_id) 加载到：
+    # - self.stt_role_dict
+    # - self.user_domain_dict
 
     def _build_role_identification_prompt(
         self, user_input: str, auto_correct: bool = True
@@ -615,7 +622,7 @@ b. **拓展升华 (Expand & Elevate):** 在校准后的、更坚实的基础上�
         ]
 
         # 添加进化模块定义
-        for module_name, module_config in self.STT_ROLE_DICT[
+        for module_name, module_config in self.stt_role_dict[
             "EVOLUTIONARY_MODULES"
         ].items():
             prompt_parts.append(f"## {module_name} ({module_config['name']})")
@@ -625,7 +632,7 @@ b. **拓展升华 (Expand & Elevate):** 在校准后的、更坚实的基础上�
 
         # 添加情感调节器定义
         prompt_parts.append("# 第二层：情绪状态层")
-        for emotion_name, emotion_config in self.STT_ROLE_DICT[
+        for emotion_name, emotion_config in self.stt_role_dict[
             "EMOTIONAL_MODULATORS"
         ].items():
             prompt_parts.append(f"## {emotion_name} ({emotion_config['name']})")
@@ -634,7 +641,7 @@ b. **拓展升华 (Expand & Elevate):** 在校准后的、更坚实的基础上�
 
         # 添加身份滤镜定义
         prompt_parts.append("# 第三层：身份滤镜层")
-        for identity_name, identity_config in self.STT_ROLE_DICT[
+        for identity_name, identity_config in self.stt_role_dict[
             "IDENTITY_LENSES"
         ].items():
             prompt_parts.append(f"## {identity_name}")
@@ -647,7 +654,7 @@ b. **拓展升华 (Expand & Elevate):** 在校准后的、更坚实的基础上�
 
         # 添加用户关心领域定义
         prompt_parts.append("# 用户关心的领域：")
-        for domain_name, config in self.USER_DOMAIN_DICT.items():
+        for domain_name, config in self.user_domain_dict.items():
             prompt_parts.append(f"## 领域：{domain_name}")
             prompt_parts.append(f"   简介：{config['description']}")
             if config.get("keywords"):
@@ -662,25 +669,25 @@ b. **拓展升华 (Expand & Elevate):** 在校准后的、更坚实的基础上�
         )
 
         # 添加模块名称列表
-        for module_name in self.STT_ROLE_DICT["EVOLUTIONARY_MODULES"].keys():
+        for module_name in self.stt_role_dict["EVOLUTIONARY_MODULES"].keys():
             prompt_parts.append(f"   - {module_name}")
 
         prompt_parts.append("\n2. 情绪状态层评分 - 为每种情绪评估强度（0-100）：")
 
         # 添加情绪名称列表
-        for emotion_name in self.STT_ROLE_DICT["EMOTIONAL_MODULATORS"].keys():
+        for emotion_name in self.stt_role_dict["EMOTIONAL_MODULATORS"].keys():
             prompt_parts.append(f"   - {emotion_name}")
 
         prompt_parts.append("\n3. 身份滤镜层评分 - 为每个身份评估相关性（0-100）：")
 
         # 添加身份名称列表
-        for identity_name in self.STT_ROLE_DICT["IDENTITY_LENSES"].keys():
+        for identity_name in self.stt_role_dict["IDENTITY_LENSES"].keys():
             prompt_parts.append(f"   - {identity_name}")
 
         prompt_parts.append("\n4. 领域关联评分 - 为每个关心领域评估权重（0-100）：")
 
         # 添加领域名称列表
-        for domain_name in self.USER_DOMAIN_DICT.keys():
+        for domain_name in self.user_domain_dict.keys():
             prompt_parts.append(f"   - {domain_name}")
 
         prompt_parts.extend(
@@ -697,10 +704,10 @@ b. **拓展升华 (Expand & Elevate):** 在校准后的、更坚实的基础上�
         self, auto_correct: bool = True
     ) -> Dict[str, Any]:
         """定义三层架构的响应结构"""
-        module_names = list(self.STT_ROLE_DICT["EVOLUTIONARY_MODULES"].keys())
-        emotion_names = list(self.STT_ROLE_DICT["EMOTIONAL_MODULATORS"].keys())
-        identity_names = list(self.STT_ROLE_DICT["IDENTITY_LENSES"].keys())
-        domain_names = list(self.USER_DOMAIN_DICT.keys())
+        module_names = list(self.stt_role_dict["EVOLUTIONARY_MODULES"].keys())
+        emotion_names = list(self.stt_role_dict["EMOTIONAL_MODULATORS"].keys())
+        identity_names = list(self.stt_role_dict["IDENTITY_LENSES"].keys())
+        domain_names = list(self.user_domain_dict.keys())
 
         # 基础驱动层评分属性
         module_scores_properties = {
@@ -831,16 +838,16 @@ b. **拓展升华 (Expand & Elevate):** 在校准后的、更坚实的基础上�
             return {
                 "module_scores": {
                     name: 0
-                    for name in self.STT_ROLE_DICT["EVOLUTIONARY_MODULES"].keys()
+                    for name in self.stt_role_dict["EVOLUTIONARY_MODULES"].keys()
                 },
                 "emotion_scores": {
                     name: 0
-                    for name in self.STT_ROLE_DICT["EMOTIONAL_MODULATORS"].keys()
+                    for name in self.stt_role_dict["EMOTIONAL_MODULATORS"].keys()
                 },
                 "identity_scores": {
-                    name: 0 for name in self.STT_ROLE_DICT["IDENTITY_LENSES"].keys()
+                    name: 0 for name in self.stt_role_dict["IDENTITY_LENSES"].keys()
                 },
-                "domain_weights": {name: 0 for name in self.USER_DOMAIN_DICT.keys()},
+                "domain_weights": {name: 0 for name in self.user_domain_dict.keys()},
             }
 
     def _select_top_combination(
@@ -864,12 +871,26 @@ b. **拓展升华 (Expand & Elevate):** 在校准后的、更坚实的基础上�
             debug_utils.log_and_print(
                 "⚠️ 三层评分数据不完整，返回默认组合", log_level="WARNING"
             )
-            # 返回默认组合
+            # 返回默认组合（基于当前加载的配置动态选取，避免硬编码不存在导致KeyError）
+            module_keys = list(self.stt_role_dict.get("EVOLUTIONARY_MODULES", {}).keys())
+            emotion_keys = list(self.stt_role_dict.get("EMOTIONAL_MODULATORS", {}).keys())
+            identity_keys = list(self.stt_role_dict.get("IDENTITY_LENSES", {}).keys())
+
+            if not module_keys or not emotion_keys or not identity_keys:
+                raise ValueError("STT 人格配置不完整，无法生成默认组合")
+
+            def _pick(preferred: str, keys: list[str]) -> str:
+                return preferred if preferred in keys else keys[0]
+
+            module_name = _pick("自我反思模块", module_keys)
+            emotion_name = _pick("平静", emotion_keys)
+            identity_name = _pick("自我反思者", identity_keys)
+
             return [
                 {
-                    "module": "关爱亲属模块",
-                    "emotion": "忧忧",
-                    "identity": "ACGN爱好者",
+                    "module": module_name,
+                    "emotion": emotion_name,
+                    "identity": identity_name,
                     "module_score": 50,
                     "emotion_score": 50,
                     "identity_score": 50,

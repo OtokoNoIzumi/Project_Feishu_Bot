@@ -572,7 +572,9 @@ class MediaProcessor(BaseProcessor):
                     # 语音没办法承载未来茫茫多的router，而且先跑通，就用语音自己router一下好了
                     result_text += f"🔎 匹配类型: {final_result['match_type']}\n\n"
                     llm_service = self.app_controller.get_service(ServiceNames.LLM)
-                    router_result = llm_service.process_stt_input(final_result["text"])
+                    router_result = llm_service.process_stt_input(
+                        final_result["text"], user_id
+                    )
                     return router_result
 
                 case _:

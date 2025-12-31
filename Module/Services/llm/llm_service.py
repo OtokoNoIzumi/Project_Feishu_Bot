@@ -193,9 +193,9 @@ class LLMService:
 
     # STT意图处理
 
-    def process_stt_input(self, user_input: str) -> Dict[str, Any]:
+    def process_stt_input(self, user_input: str, user_id: str) -> Dict[str, Any]:
         """处理STT输入"""
-        return self.intent_processor.process_stt_input(user_input)
+        return self.intent_processor.process_stt_input(user_input, user_id)
 
     # endregion
 
