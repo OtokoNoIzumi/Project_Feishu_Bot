@@ -5,6 +5,8 @@
 """
 
 from .base_processor import BaseProcessor, MessageContext, ProcessResult
+from .temp_move_module import TempMoveModule
+from Module.Services.constants import ServiceNames, ResponseTypes
 
 
 class TextProcessor(BaseProcessor):
@@ -94,3 +96,81 @@ class TextProcessor(BaseProcessor):
         return ProcessResult.success_result("text", {
             "text": f"收到你发送的消息：{user_msg}"
         }, parent_id=context.message_id)
+
+    def temp_move_report(self, context: MessageContext) -> ProcessResult:
+        """处理搬家报告指令（临时功能）"""
+        self._log_command(context.user_name, "🏠", "生成搬家报告")
+
+        if not self.app_controller:
+            return ProcessResult.error_result("系统服务不可用")
+
+        try:
+            # 获取项目根路径
+            config_service = self.app_controller.get_service(ServiceNames.CONFIG)
+            project_root = config_service.project_root_path
+
+            # 获取LLM服务
+            llm_service = self.app_controller.get_service(ServiceNames.LLM)
+            if not llm_service or not llm_service.is_available():
+                return ProcessResult.error_result("LLM服务不可用")
+
+            # 读取TOML配置
+            toml_text = TempMoveModule.read_toml_text(project_root)
+
+            # 生成报告
+            report = TempMoveModule.generate_report(llm_service, toml_text)
+
+            return ProcessResult.success_result("text", {
+                "text": report
+            }, parent_id=context.message_id)
+
+        except Exception as e:
+            return ProcessResult.error_result(f"生成搬家报告失败: {str(e)}")
+
+    def temp_move_update(self, context: MessageContext, new_content: str) -> ProcessResult:
+        """处理新家内容更新指令（临时功能）"""
+        self._log_command(context.user_name, "🏠", "更新搬家项目信息", new_content[:50])
+
+        if not self.app_controller:
+            return ProcessResult.error_result("系统服务不可用")
+
+        try:
+            # 获取项目根路径
+            config_service = self.app_controller.get_service(ServiceNames.CONFIG)
+            project_root = config_service.project_root_path
+
+            # 获取LLM服务
+            llm_service = self.app_controller.get_service(ServiceNames.LLM)
+            if not llm_service or not llm_service.is_available():
+                return ProcessResult.error_result("LLM服务不可用")
+
+            # 读取当前TOML配置（保存原始内容用于diff）
+            toml_text = TempMoveModule.read_toml_text(project_root)
+
+            # 合并新内容
+            merged_toml, suggestions = TempMoveModule.merge_new_content(llm_service, toml_text, new_content)
+
+            if merged_toml is None:
+                return ProcessResult.error_result("合并内容失败，请稍后重试")
+
+            # 写回文件
+            success = TempMoveModule.write_toml_text(project_root, merged_toml)
+
+            if success:
+                # 生成富文本格式的差异报告（使用redline库）
+                rich_text_content = TempMoveModule._generate_toml_diff_rich_text(
+                    toml_text, merged_toml, new_content, suggestions
+                )
+
+                return ProcessResult.success_result(
+                    ResponseTypes.RICH_TEXT,
+                    {
+                        "rich_text_content": rich_text_content
+                    },
+                    parent_id=context.message_id
+                )
+            else:
+                return ProcessResult.error_result("保存更新失败")
+
+        except Exception as e:
+            return ProcessResult.error_result(f"更新搬家项目信息失败: {str(e)}")

@@ -497,7 +497,6 @@ class MessageHandler:
             if isinstance(result, Dict):
                 # 用一个特别的分支返回处理的copletion，再在这里迭代更新试试看？
                 # result就是business_data？
-                print('test-result', result)
                 # 有business_data作为数据容器，就不用action data里塞一堆了
 
                 start_time = time.time()
@@ -579,7 +578,7 @@ class MessageHandler:
                 blank_element = JsonBuilder.build_markdown_element(
                     "", element_id=business_data.get("markdown_element_id", "")
                 )
-                blamk_element_json = json.dumps(blank_element, ensure_ascii=False)
+                blank_element_json = json.dumps(blank_element, ensure_ascii=False)
                 initial_text_element = False
                 thought_animation_index = 0
                 # 更新卡片元素，先清空，再更新，实现打字机效果
@@ -596,11 +595,16 @@ class MessageHandler:
                         if not part.text:
                             continue
                         elif part.thought:
-                            thought_animation_index = (thought_animation_index + 1) % len(self.THOUGHT_ANIMATION)
+                            thought_animation_index = (
+                                thought_animation_index + 1
+                            ) % len(self.THOUGHT_ANIMATION)
                             thought_element = JsonBuilder.build_markdown_element(
-                                self.THOUGHT_ANIMATION[thought_animation_index], element_id=business_data.get("markdown_element_id", "")
+                                self.THOUGHT_ANIMATION[thought_animation_index],
+                                element_id=business_data.get("markdown_element_id", ""),
                             )
-                            thought_element_json = json.dumps(thought_element, ensure_ascii=False)
+                            thought_element_json = json.dumps(
+                                thought_element, ensure_ascii=False
+                            )
                             ext_sequence += 1
                             self.sender.update_card_element(
                                 card_id,
@@ -617,11 +621,13 @@ class MessageHandler:
                                 self.sender.update_card_element(
                                     card_id,
                                     business_data.get("markdown_element_id", ""),
-                                    blamk_element_json,
+                                    blank_element_json,
                                     sequence + ext_sequence,
                                 )
                                 ext_sequence += 1
-                                final_text = "来自" + role_1["identity"] + "身份的回复："
+                                final_text = (
+                                    "来自" + role_1["identity"] + "身份的回复："
+                                )
                                 self.sender.stream_update_card_content(
                                     card_id,
                                     business_data.get("markdown_element_id", ""),
@@ -690,7 +696,7 @@ class MessageHandler:
                 # if not modified:
                 # if last_chunk.candidates[0].finish_reason != FinishReason.STOP:
                 print("test-last_chunk", modified, last_chunk)
-                print('test-thought_text\n', thought_text)
+                print("test-thought_text\n", thought_text)
                 if last_chunk is None:
                     print("启用第二套方案")
                     print("test- role1 detail", role_1["stream_completion"].__dict__())
@@ -711,12 +717,12 @@ class MessageHandler:
                 blank_element = JsonBuilder.build_markdown_element(
                     "", element_id=business_data.get("markdown_element_id", "")
                 )
-                blamk_element_json = json.dumps(blank_element, ensure_ascii=False)
+                blank_element_json = json.dumps(blank_element, ensure_ascii=False)
                 # 更新卡片元素，先清空，再更新，实现打字机效果
                 self.sender.update_card_element(
                     card_id,
                     business_data.get("markdown_element_id", ""),
-                    blamk_element_json,
+                    blank_element_json,
                     sequence,
                 )
 

@@ -131,7 +131,7 @@ class DailySummaryBusiness(BaseProcessor):
                 "data_method": "get_routine_data",
                 "analyze_method": "analyze_routine_data",
                 "data_params": {
-                    "image_generator": "coze_image_generator",
+                    "image_generator": "hunyuan_image_generator",
                 },
             },
             "bili_video": {

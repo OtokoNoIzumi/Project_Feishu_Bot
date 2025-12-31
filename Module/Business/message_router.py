@@ -83,6 +83,17 @@ class MessageRouter(BaseProcessor):
         """处理文本消息，B站视频指令返回RouteResult，其他返回ProcessResult"""
         user_msg = context.content
 
+        # 临时功能：搬家助手指令（优先级最高，便于后续移除）
+        if user_msg == "搬家":
+            return self.text.temp_move_report(context)
+
+        if user_msg.startswith("新家 "):
+            new_content = user_msg.split(" ", 1)[1] if len(user_msg.split(" ", 1)) > 1 else ""
+            if new_content:
+                return self.text.temp_move_update(context, new_content)
+            else:
+                return ProcessResult.error_result("新家指令需要提供内容，格式：新家 [内容]")
+
         # 1. 检查管理员命令
         if self.admin.is_admin_command(user_msg):
             return self.admin.handle_admin_command(context, user_msg)

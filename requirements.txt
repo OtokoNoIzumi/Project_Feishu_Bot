@@ -9,3 +9,5 @@ pandas
 numpy
 groq
 deepgram-sdk
+redlines
+toml
