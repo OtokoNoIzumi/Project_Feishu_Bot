@@ -231,7 +231,9 @@ class MessageRouter(BaseProcessor):
                 log_level="INFO",
             )
             # 触发适配器层异步对接：下载图片 -> 调用后端 diet analyze -> 渲染卡片（不写入）
-            return ProcessResult.success_result(
+            # 使用 success_result 但设置 should_reply=False，避免主流程发送普通回复
+            # _handle_async_actions 会从 response_content 中获取 NEXT_ACTION 并处理
+            result = ProcessResult.success_result(
                 ResponseTypes.TEXT,
                 {
                     ProcessResultConstKeys.NEXT_ACTION: ProcessResultNextAction.PROCESS_DIET_ANALYZE,
@@ -240,6 +242,8 @@ class MessageRouter(BaseProcessor):
                 },
                 parent_id=context.message_id,
             )
+            result.should_reply = False  # 关键：避免主流程发送普通回复
+            return result
         else:
             # 其他 title 暂不支持
             return ProcessResult.error_result(

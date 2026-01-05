@@ -43,7 +43,7 @@ class DietHistoryResponse(BaseModel):
 
 # --- 并发控制（Semaphore）---
 # 限制同时进行 Gemini 交互的请求数（全局总并发限制）
-GLOBAL_SEMAPHORE = asyncio.Semaphore(1)
+GLOBAL_SEMAPHORE = asyncio.Semaphore(20)
 
 
 def get_global_semaphore():
