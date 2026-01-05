@@ -98,6 +98,7 @@ class ProcessResultNextAction:
     PROCESS_IMAGE_CONVERSION = "process_image_conversion"
     PROCESS_BILI_VIDEO = "process_bili_video"
     PROCESS_AUDIO_STT = "process_audio_stt"
+    PROCESS_DIET_ANALYZE = "process_diet_analyze"
 
 
 # ========== 用户界面元素常量 ==========

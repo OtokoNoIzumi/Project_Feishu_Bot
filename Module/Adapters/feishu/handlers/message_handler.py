@@ -11,6 +11,10 @@ import json
 import threading
 from typing import Optional, Any, Dict
 import time
+import base64
+import os
+import urllib.request
+import urllib.error
 
 from google.genai.types import FinishReason
 
@@ -258,6 +262,9 @@ class MessageHandler:
             ProcessResultNextAction.PROCESS_AUDIO_STT: lambda: self._handle_audio_stt_async(
                 context_refactor
             ),
+            ProcessResultNextAction.PROCESS_DIET_ANALYZE: lambda: self._handle_diet_analyze_async(
+                data, context_refactor, result.response_content
+            ),
         }
 
         if result.response_type == ResponseTypes.ASYNC_ACTION:
@@ -430,6 +437,106 @@ class MessageHandler:
             else:
                 # 图像转换失败，发送错误信息
                 self.sender.send_feishu_reply(original_data, result)
+
+        self._execute_async(process_in_background)
+
+    # endregion
+
+    # region 饮食分析
+
+    def _call_backend_diet_analyze(
+        self, user_id: str, user_note: str, images_b64: list
+    ) -> Dict[str, Any]:
+        base_url = os.getenv("BACKEND_BASE_URL", "http://127.0.0.1:8001").rstrip("/")
+        token = os.getenv("BACKEND_INTERNAL_TOKEN", "").strip()
+
+        payload = {
+            "user_id": user_id,
+            "user_note": user_note or "",
+            "images_b64": images_b64 or [],
+        }
+        data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+
+        req = urllib.request.Request(
+            url=f"{base_url}/api/diet/analyze",
+            data=data,
+            method="POST",
+            headers={"Content-Type": "application/json"},
+        )
+        if token:
+            req.add_header("authorization", f"Bearer {token}")
+
+        try:
+            with urllib.request.urlopen(req, timeout=120) as resp:
+                body = resp.read().decode("utf-8", errors="ignore")
+                return (
+                    json.loads(body)
+                    if body
+                    else {"success": False, "error": "Empty response"}
+                )
+        except urllib.error.HTTPError as e:
+            body = ""
+            try:
+                body = e.read().decode("utf-8", errors="ignore")
+            except Exception:
+                pass
+            return {
+                "success": False,
+                "error": f"HTTPError {e.code}: {body or e.reason}",
+            }
+        except Exception as e:
+            return {"success": False, "error": f"Backend call failed: {e}"}
+
+    @async_operation_safe("饮食分析异步处理失败")
+    def _handle_diet_analyze_async(
+        self, original_data, context: MessageContext_Refactor, payload: Dict[str, Any]
+    ):
+        def process_in_background():
+            self.sender.send_feishu_reply(
+                original_data,
+                ProcessResult.success_result(
+                    "text",
+                    {"text": "正在分析饮食记录，请稍候..."},
+                    parent_id=context.message_id,
+                ),
+            )
+
+            user_note = (payload.get("diet_user_note") or "").strip()
+            image_keys = payload.get("diet_image_keys") or []
+
+            images_b64 = []
+            for key in image_keys:
+                img_bytes = self.sender.get_image_bytes(context.message_id, key)
+                if not img_bytes:
+                    continue
+                images_b64.append(base64.b64encode(img_bytes).decode("utf-8"))
+
+            backend_resp = self._call_backend_diet_analyze(
+                user_id=context.user_id, user_note=user_note, images_b64=images_b64
+            )
+            if not backend_resp.get("success"):
+                err = backend_resp.get("error") or "饮食分析失败"
+                self.sender.send_feishu_reply(
+                    original_data, ProcessResult.error_result(str(err))
+                )
+                return
+
+            result = backend_resp.get("result") or {}
+            from Module.Adapters.feishu.cards.diet_cards import DietAnalysisCardBuilder
+
+            card_data = DietAnalysisCardBuilder.build_card_dsl(result)
+
+            card_content = {"type": "card_json", "data": card_data}
+            card_id = self.sender.create_card_entity(card_content)
+            if card_id:
+                card_content = {"type": "card", "data": {"card_id": card_id}}
+
+            self.sender.send_interactive_card(
+                card_content=card_content,
+                reply_mode="reply",
+                user_id=context.user_id,
+                message_id=context.message_id,
+            )
 
         self._execute_async(process_in_background)
 
@@ -995,7 +1102,7 @@ class MessageHandler:
             title=title,
             text=" ".join(text_parts),
             image_keys=image_keys,
-            raw_content=post_data
+            raw_content=post_data,
         )
 
     def _extract_message_content(self, message) -> Any:

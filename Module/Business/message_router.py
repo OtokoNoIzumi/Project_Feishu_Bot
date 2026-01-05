@@ -17,16 +17,32 @@ import json
 from Module.Common.scripts.common import debug_utils
 from Module.Services.router.card_builder import CardBuilder
 from Module.Services.constants import (
-    ServiceNames, ResponseTypes,
-    MessageTypes, CardActions, Messages, DesignPlanConstants
+    ServiceNames,
+    ResponseTypes,
+    MessageTypes,
+    CardActions,
+    Messages,
+    DesignPlanConstants,
 )
 from .processors import (
-    BaseProcessor, MessageContext, ProcessResult, RouteResult,
-    TextProcessor, MediaProcessor, BilibiliProcessor, PostContent,
-    AdminProcessor, ScheduleProcessor,
-    require_app_controller, safe_execute
+    BaseProcessor,
+    MessageContext,
+    ProcessResult,
+    RouteResult,
+    TextProcessor,
+    MediaProcessor,
+    BilibiliProcessor,
+    PostContent,
+    AdminProcessor,
+    ScheduleProcessor,
+    require_app_controller,
+    safe_execute,
 )
 from .routine_record import RoutineRecord
+from Module.Services.constants import (
+    ProcessResultConstKeys,
+    ProcessResultNextAction,
+)
 
 
 class MessageRouter(BaseProcessor):
@@ -36,6 +52,7 @@ class MessageRouter(BaseProcessor):
     作为业务层的统一入口，直接暴露具体的业务功能
     方法名称直接表达业务意图，避免中间路由层
     """
+
     def __init__(self, app_controller=None):
         super().__init__(app_controller)
 
@@ -49,8 +66,6 @@ class MessageRouter(BaseProcessor):
 
         # 初始化Action分发表
         self._init_action_dispatchers()
-
-
 
     @require_app_controller("系统服务不可用")
     @safe_execute("消息处理失败")
@@ -78,7 +93,9 @@ class MessageRouter(BaseProcessor):
                 return self._process_post_message(context)
             case _:
                 # 目前已知的有todo（待办）等其他类型
-                return ProcessResult.error_result(f"不支持的消息类型: {context.message_type}")
+                return ProcessResult.error_result(
+                    f"不支持的消息类型: {context.message_type}"
+                )
 
     @safe_execute("文本消息处理失败")
     def _process_text_message(self, context: MessageContext):
@@ -90,11 +107,15 @@ class MessageRouter(BaseProcessor):
             return self.text.temp_move_report(context)
 
         if user_msg.startswith("新家 "):
-            new_content = user_msg.split(" ", 1)[1] if len(user_msg.split(" ", 1)) > 1 else ""
+            new_content = (
+                user_msg.split(" ", 1)[1] if len(user_msg.split(" ", 1)) > 1 else ""
+            )
             if new_content:
                 return self.text.temp_move_update(context, new_content)
             else:
-                return ProcessResult.error_result("新家指令需要提供内容，格式：新家 [内容]")
+                return ProcessResult.error_result(
+                    "新家指令需要提供内容，格式：新家 [内容]"
+                )
 
         # 1. 检查管理员命令
         if self.admin.is_admin_command(user_msg):
@@ -112,8 +133,12 @@ class MessageRouter(BaseProcessor):
             return self.media.handle_tts_command(context, user_msg)
 
         # 图像生成指令
-        if user_msg.startswith(Messages.IMAGE_GEN_PREFIX) or user_msg.startswith(Messages.AI_DRAW_PREFIX):
-            content = self._extract_command_content(user_msg, [Messages.IMAGE_GEN_PREFIX, Messages.AI_DRAW_PREFIX])
+        if user_msg.startswith(Messages.IMAGE_GEN_PREFIX) or user_msg.startswith(
+            Messages.AI_DRAW_PREFIX
+        ):
+            content = self._extract_command_content(
+                user_msg, [Messages.IMAGE_GEN_PREFIX, Messages.AI_DRAW_PREFIX]
+            )
             self._log_command(context.user_name, "🎨", "触发图像生成指令", content)
             return self.media.handle_image_generation_command(context, user_msg)
 
@@ -136,12 +161,16 @@ class MessageRouter(BaseProcessor):
                 return self.bili.video_menu_route_choice()
 
         # AI智能路由（新增 - 在原有指令之前）
-        router_service = self.app_controller.get_service(ServiceNames.ROUTER) if self.app_controller else None
+        router_service = (
+            self.app_controller.get_service(ServiceNames.ROUTER)
+            if self.app_controller
+            else None
+        )
         if router_service:
             route_result = router_service.route_message(user_msg, context.user_id)
-            route_success = route_result.get('success', False)
-            route_type = route_result.get('route_type', '')
-            if route_success and route_type in ['shortcut', 'ai_intent']:
+            route_success = route_result.get("success", False)
+            route_type = route_result.get("route_type", "")
+            if route_success and route_type in ["shortcut", "ai_intent"]:
                 # 路由成功，返回确认卡片
                 return self._handle_ai_route_result(context, route_result)
 
@@ -192,46 +221,55 @@ class MessageRouter(BaseProcessor):
                 {
                     "text": f"✅ 已收到 POST 消息\n内容: {text[:100]}{'...' if len(text) > 100 else ''}\n图片: {len(image_keys)} 张\n\n（未指定标题，无法路由）"
                 },
-                parent_id=context.message_id
+                parent_id=context.message_id,
             )
 
         # 根据 title 进行路由（类似 TEXT 消息的驱动逻辑）
-        # 目前只实现"饮食"开关，后续可扩展
         if title == "饮食":
-            # TODO: 调用饮食处理器
-            # 暂时返回提示信息，等待饮食处理器实现
             debug_utils.log_and_print(
                 f"📝 收到饮食记录 POST: title={title}, text={text[:50]}..., images={len(image_keys)}",
-                log_level="INFO"
+                log_level="INFO",
             )
+            # 触发适配器层异步对接：下载图片 -> 调用后端 diet analyze -> 渲染卡片（不写入）
             return ProcessResult.success_result(
                 ResponseTypes.TEXT,
                 {
-                    "text": f"✅ 已收到饮食记录\n标题: {title}\n内容: {text[:100]}{'...' if len(text) > 100 else ''}\n图片: {len(image_keys)} 张\n\n（饮食处理功能开发中）"
+                    ProcessResultConstKeys.NEXT_ACTION: ProcessResultNextAction.PROCESS_DIET_ANALYZE,
+                    "diet_user_note": text,
+                    "diet_image_keys": list(image_keys or []),
                 },
-                parent_id=context.message_id
+                parent_id=context.message_id,
             )
         else:
             # 其他 title 暂不支持
-            return ProcessResult.error_result(f"暂不支持 title='{title}' 的 POST 消息处理")
+            return ProcessResult.error_result(
+                f"暂不支持 title='{title}' 的 POST 消息处理"
+            )
 
     @safe_execute("卡片动作处理失败")
     def _process_card_action(self, context: MessageContext) -> ProcessResult:
         """处理卡片动作 - 配置驱动 + 降级机制"""
         card_action = context.content
-        action_value = context.metadata.get('action_value', {})
+        action_value = context.metadata.get("action_value", {})
 
         # ✅ 优先尝试配置驱动路由（MVP3目标）
         adapter_name = context.adapter_name
         adapter = self.app_controller.get_adapter(adapter_name)
 
-        if adapter and hasattr(adapter, 'card_handler') and hasattr(adapter.card_handler, 'handle_card_action'):
+        if (
+            adapter
+            and hasattr(adapter, "card_handler")
+            and hasattr(adapter.card_handler, "handle_card_action")
+        ):
             # 尝试新的配置驱动路由
             process_result = adapter.card_handler.handle_card_action(context)
             if process_result.success:
                 return process_result
             else:
-                debug_utils.log_and_print(f"⚠️ 配置驱动路由失败，使用降级方案: {process_result.error_message}", log_level="WARNING")
+                debug_utils.log_and_print(
+                    f"⚠️ 配置驱动路由失败，使用降级方案: {process_result.error_message}",
+                    log_level="WARNING",
+                )
 
         # 🔄 降级到硬编码分发表（保持系统可用）
         handler = self.action_dispatchers.get(card_action)
@@ -248,7 +286,6 @@ class MessageRouter(BaseProcessor):
             # AI路由卡片动作
             CardActions.CANCEL: self._handle_ai_card_action,
             CardActions.EDIT_CONTENT: self._handle_ai_card_action,
-
             # 用户类型选择动作（特殊处理）
             CardActions.UPDATE_USER_TYPE: self._handle_user_type_select_action,
             CardActions.CONFIRM_USER_UPDATE: self._handle_pending_admin_card_action,
@@ -256,10 +293,11 @@ class MessageRouter(BaseProcessor):
             CardActions.ADTIME_EDITOR_CHANGE: self._handle_pending_admin_card_action,
             CardActions.CANCEL_USER_UPDATE: self._handle_pending_admin_card_action,
             CardActions.CANCEL_ADS_UPDATE: self._handle_pending_admin_card_action,
-
         }
 
-    def _handle_ai_route_result(self, context: MessageContext, route_result: Dict[str, Any]) -> ProcessResult:
+    def _handle_ai_route_result(
+        self, context: MessageContext, route_result: Dict[str, Any]
+    ) -> ProcessResult:
         """
         处理AI路由结果，返回确认卡片
 
@@ -271,16 +309,16 @@ class MessageRouter(BaseProcessor):
             ProcessResult: 包含确认卡片的处理结果
         """
         try:
-            intent = route_result.get('intent', '未知')
-            confidence = route_result.get('confidence', 0)
-            route_type = route_result.get('route_type', 'unknown')
+            intent = route_result.get("intent", "未知")
+            confidence = route_result.get("confidence", 0)
+            route_type = route_result.get("route_type", "unknown")
 
             # 记录路由成功
             self._log_command(
                 context.user_name,
                 "🎯",
                 f"AI路由成功: {intent} ({route_type})",
-                f"置信度: {confidence}%"
+                f"置信度: {confidence}%",
             )
 
             # 根据意图类型选择处理方式
@@ -288,34 +326,44 @@ class MessageRouter(BaseProcessor):
                 # 检查设计方案卡片开关
                 if DesignPlanConstants.CARD_ENABLED:
                     # 业务层只负责判断，返回特殊响应类型让前端层处理
-                    parameters = route_result.get('parameters', {})
+                    parameters = route_result.get("parameters", {})
                     card_data = {
-                        'operation_id': f"design_plan_{context.user_id}_{int(time.time())}",
-                        'content': route_result.get('content', ''),
-                        **parameters  # 直接扁平化parameters到第一层
+                        "operation_id": f"design_plan_{context.user_id}_{int(time.time())}",
+                        "content": route_result.get("content", ""),
+                        **parameters,  # 直接扁平化parameters到第一层
                     }
-                    return ProcessResult.success_result(ResponseTypes.DESIGN_PLAN_CARD, card_data, parent_id=context.message_id)
+                    return ProcessResult.success_result(
+                        ResponseTypes.DESIGN_PLAN_CARD,
+                        card_data,
+                        parent_id=context.message_id,
+                    )
                 else:
                     # 卡片功能关闭，返回文本回复
-                    parameters = route_result.get('parameters', {})
-                    customer_name = parameters.get('customer_name', '客户')
+                    parameters = route_result.get("parameters", {})
+                    customer_name = parameters.get("customer_name", "客户")
                     response_text = f"✅ 已收到{customer_name}的设计方案需求\n\n"
                     response_text += f"原始输入：{route_result.get('content', '')}\n\n"
-                    response_text += f"AI识别参数：{json.dumps(parameters, ensure_ascii=False)}"
-                    return ProcessResult.success_result("text", {
-                        "text": response_text
-                    }, parent_id=context.message_id)
+                    response_text += (
+                        f"AI识别参数：{json.dumps(parameters, ensure_ascii=False)}"
+                    )
+                    return ProcessResult.success_result(
+                        "text", {"text": response_text}, parent_id=context.message_id
+                    )
             else:
                 # 其他意图使用CardBuilder处理
                 card_builder = CardBuilder()
                 card_content = card_builder.build_intent_confirmation_card(route_result)
-                return ProcessResult.success_result("interactive", card_content, parent_id=context.message_id)
+                return ProcessResult.success_result(
+                    "interactive", card_content, parent_id=context.message_id
+                )
 
         except Exception as e:
             debug_utils.log_and_print(f"❌ AI路由结果处理失败: {e}", log_level="ERROR")
             return ProcessResult.error_result(f"路由处理失败: {str(e)}")
 
-    def _handle_ai_card_action(self, context: MessageContext, action_value: Dict[str, Any]) -> ProcessResult:
+    def _handle_ai_card_action(
+        self, context: MessageContext, action_value: Dict[str, Any]
+    ) -> ProcessResult:
         """
         处理AI路由卡片的按钮动作
 
@@ -329,28 +377,32 @@ class MessageRouter(BaseProcessor):
         try:
             # 从action_value中获取action类型
             card_action = action_value.get("card_action") or context.content
-            intent = action_value.get('intent', '未知')
-            content = action_value.get('content', '')
+            intent = action_value.get("intent", "未知")
+            content = action_value.get("content", "")
 
             match card_action:
                 case "cancel":
                     # 取消操作
-                    return ProcessResult.success_result("text", {
-                        "text": f"已取消 {intent} 操作"
-                    }, parent_id=context.message_id)
+                    return ProcessResult.success_result(
+                        "text",
+                        {"text": f"已取消 {intent} 操作"},
+                        parent_id=context.message_id,
+                    )
 
                 case "edit_content":
                     # 编辑内容（暂时返回提示，后续可扩展为编辑界面）
-                    return ProcessResult.success_result("text", {
-                        "text": f"编辑功能开发中，当前内容：{content}"
-                    }, parent_id=context.message_id)
+                    return ProcessResult.success_result(
+                        "text",
+                        {"text": f"编辑功能开发中，当前内容：{content}"},
+                        parent_id=context.message_id,
+                    )
 
                 case "confirm_thought" | "confirm_schedule" | "confirm_food_order":
                     # 确认操作 - 暂时返回成功提示，后续集成实际的数据存储
                     action_map = {
                         "confirm_thought": "思考记录",
                         "confirm_schedule": "日程安排",
-                        "confirm_food_order": "点餐订单"
+                        "confirm_food_order": "点餐订单",
                     }
 
                     operation_name = action_map.get(card_action, "操作")
@@ -360,14 +412,14 @@ class MessageRouter(BaseProcessor):
                         context.user_name,
                         "✅",
                         f"确认{operation_name}",
-                        content[:50] + "..." if len(content) > 50 else content
+                        content[:50] + "..." if len(content) > 50 else content,
                     )
 
                     content_text = f"✅ {operation_name}已确认记录\n\n内容：{content}"
                     content_text += "\n\n💡 数据存储功能将在后续版本实现"
-                    return ProcessResult.success_result("text", {
-                        "text": content_text
-                    }, parent_id=context.message_id)
+                    return ProcessResult.success_result(
+                        "text", {"text": content_text}, parent_id=context.message_id
+                    )
 
                 case _:
                     return ProcessResult.error_result(f"未知的卡片动作: {card_action}")
@@ -378,8 +430,7 @@ class MessageRouter(BaseProcessor):
 
     @safe_execute("缓存业务管理员卡片动作处理失败")
     def _handle_pending_admin_card_action(
-        self, unused_context: MessageContext,
-        action_value: Dict[str, Any]
+        self, unused_context: MessageContext, action_value: Dict[str, Any]
     ) -> ProcessResult:
         """
         处理缓存业务管理员卡片动作
@@ -396,8 +447,7 @@ class MessageRouter(BaseProcessor):
 
     @safe_execute("下拉选择处理失败")
     def _handle_user_type_select_action(
-        self, unused_context: MessageContext,
-        action_value: Dict[str, Any]
+        self, unused_context: MessageContext, action_value: Dict[str, Any]
     ) -> ProcessResult:
         """
         处理select_static类型的卡片动作（用户修改下拉选择）
@@ -411,35 +461,45 @@ class MessageRouter(BaseProcessor):
             ProcessResult: 处理结果
         """
         # 从action_value提取关键信息
-        operation_id = action_value.get('operation_id')
-        selected_option = action_value.get('option', '0')
+        operation_id = action_value.get("operation_id")
+        selected_option = action_value.get("option", "0")
 
         if not operation_id:
-            debug_utils.log_and_print("❌ select_action缺少operation_id", log_level="ERROR")
+            debug_utils.log_and_print(
+                "❌ select_action缺少operation_id", log_level="ERROR"
+            )
             return ProcessResult.no_reply_result()
 
         # 获取pending操作
-        pending_cache_service = self.app_controller.get_service(ServiceNames.PENDING_CACHE)
+        pending_cache_service = self.app_controller.get_service(
+            ServiceNames.PENDING_CACHE
+        )
         operation = pending_cache_service.get_operation(operation_id)
 
         if not operation:
-            debug_utils.log_and_print(f"❌ 未找到操作: {operation_id}", log_level="ERROR")
+            debug_utils.log_and_print(
+                f"❌ 未找到操作: {operation_id}", log_level="ERROR"
+            )
             return ProcessResult.no_reply_result()
 
         # 使用交互组件架构获取更新逻辑
-        update_success = self._apply_select_change(operation, selected_option, action_value)
+        update_success = self._apply_select_change(
+            operation, selected_option, action_value
+        )
 
         if not update_success:
             debug_utils.log_and_print(
                 f"⚠️ 选择更新失败: option={selected_option}, operation={operation_id}",
-                log_level="WARNING"
+                log_level="WARNING",
             )
 
         # 返回静默处理（select_action不显示Toast，用户体验更流畅）
         return ProcessResult.no_reply_result()
 
     @safe_execute("选择变更应用失败")
-    def _apply_select_change(self, operation, selected_option: str, action_data: Dict[str, Any]) -> bool:
+    def _apply_select_change(
+        self, operation, selected_option: str, action_data: Dict[str, Any]
+    ) -> bool:
         """
         应用选择变更到操作数据 - 基于action_data直接更新
 
@@ -456,27 +516,32 @@ class MessageRouter(BaseProcessor):
         value_mapping = action_data.get("value_mapping", {})
 
         if not target_field:
-            debug_utils.log_and_print(f"❌ action_data缺少target_field", log_level="ERROR")
+            debug_utils.log_and_print(
+                f"❌ action_data缺少target_field", log_level="ERROR"
+            )
             return False
 
         if selected_option not in value_mapping:
-            debug_utils.log_and_print(f"⚠️ 无效的选项映射: {selected_option}", log_level="WARNING")
+            debug_utils.log_and_print(
+                f"⚠️ 无效的选项映射: {selected_option}", log_level="WARNING"
+            )
             return False
 
         # 执行数据更新
         new_value = value_mapping[selected_option]
         old_value = operation.operation_data.get(target_field)
 
-        pending_cache_service = self.app_controller.get_service(ServiceNames.PENDING_CACHE)
+        pending_cache_service = self.app_controller.get_service(
+            ServiceNames.PENDING_CACHE
+        )
         success = pending_cache_service.update_operation_data(
-            operation.operation_id,
-            {target_field: new_value}
+            operation.operation_id, {target_field: new_value}
         )
 
         if success:
             debug_utils.log_and_print(
                 f"🔄 操作数据已更新: {target_field} {old_value}→{new_value}",
-                log_level="INFO"
+                log_level="INFO",
             )
         else:
             debug_utils.log_and_print(f"❌ 操作数据更新失败", log_level="ERROR")
@@ -494,15 +559,17 @@ class MessageRouter(BaseProcessor):
                 "media": "MediaProcessor",
                 "bilibili": "BilibiliProcessor",
                 "admin": "AdminProcessor",
-                "schedule": "ScheduleProcessor"
+                "schedule": "ScheduleProcessor",
             },
             "app_controller_available": self.app_controller is not None,
             "supported_message_types": [
-                MessageTypes.TEXT, MessageTypes.IMAGE, MessageTypes.AUDIO,
-                MessageTypes.CARD_ACTION
+                MessageTypes.TEXT,
+                MessageTypes.IMAGE,
+                MessageTypes.AUDIO,
+                MessageTypes.CARD_ACTION,
             ],
             "registered_actions": {
                 "count": len(self.action_dispatchers),
-                "actions": list(self.action_dispatchers.keys())
-            }
+                "actions": list(self.action_dispatchers.keys()),
+            },
         }

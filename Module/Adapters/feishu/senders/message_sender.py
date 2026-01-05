@@ -446,6 +446,54 @@ class MessageSender:
 
         return success, message_id
 
+    def _get_message_resource_payload(
+        self, message_id: str, file_key: str, resource_type: str
+    ) -> Optional[Tuple[bytes, str, str]]:
+        """
+        获取飞书消息资源二进制数据 + 元信息（内部单源实现）
+
+        Args:
+            message_id: 消息ID
+            file_key: 资源 file_key（image_key / file_key）
+            resource_type: "image" / "file" 等（飞书资源类型）
+
+        Returns:
+            Optional[Tuple[bytes, str, str]]: (bytes, file_name, mime_type)，失败返回 None
+        """
+        if not message_id or not file_key or not resource_type:
+            return None
+
+        request = (
+            GetMessageResourceRequest.builder()
+            .message_id(message_id)
+            .file_key(file_key)
+            .type(resource_type)
+            .build()
+        )
+        response = self.client.im.v1.message_resource.get(request)
+        if not response.success():
+            debug_utils.log_and_print(
+                f"获取资源失败(type={resource_type}): {response.code} - {response.msg}",
+                log_level="ERROR",
+            )
+            return None
+
+        file_content = response.file.read()
+        if not file_content:
+            debug_utils.log_and_print("资源数据为空", log_level="ERROR")
+            return None
+        file_name = getattr(response.file, "file_name", "")
+        mime_type = getattr(response.file, "content_type", "")
+        return file_content, file_name, mime_type
+
+    def _get_message_resource_bytes(
+        self, message_id: str, file_key: str, resource_type: str
+    ) -> Optional[bytes]:
+        payload = self._get_message_resource_payload(message_id, file_key, resource_type)
+        if not payload:
+            return None
+        return payload[0]
+
     @feishu_sdk_safe("获取图像资源失败", return_value=None)
     def get_image_resource(self, original_data) -> Optional[Tuple[str, str, str, int]]:
         """
@@ -466,35 +514,16 @@ class MessageSender:
         image_key = image_content["image_key"]
         message_id = message.message_id
 
-        # 获取图片资源
-        request = (
-            GetMessageResourceRequest.builder()
-            .message_id(message_id)
-            .file_key(image_key)
-            .type("image")
-            .build()
-        )
-
-        response = self.client.im.v1.message_resource.get(request)
-
-        if not response.success():
-            debug_utils.log_and_print(
-                f"获取图片资源失败: {response.code} - {response.msg}", log_level="ERROR"
-            )
+        # 单源：只发一次请求，兼容保留 file_name / mime_type 获取逻辑
+        payload = self._get_message_resource_payload(message_id, image_key, "image")
+        if not payload:
             return None
 
-        # 读取图片数据
-        file_content = response.file.read()
-        if not file_content:
-            debug_utils.log_and_print("图片数据为空", log_level="ERROR")
-            return None
-
-        # 获取文件信息
-        file_name = getattr(response.file, "file_name", "image.jpg")
-        mime_type = getattr(response.file, "content_type", "image/jpeg")
+        file_content, file_name, mime_type = payload
+        # 兜底默认值（SDK 可能不给）
+        file_name = file_name or "image.jpg"
+        mime_type = mime_type or "image/jpeg"
         file_size = len(file_content)
-
-        # 转换为base64
         image_base64 = base64.b64encode(file_content).decode("utf-8")
 
         debug_utils.log_and_print(
@@ -502,7 +531,7 @@ class MessageSender:
         )
         return image_base64, mime_type, file_name, file_size
 
-    @feishu_sdk_safe("获取文件资源失败", return_value=(None, None, None))
+    @feishu_sdk_safe("获取文件资源失败", return_value=None)
     def get_file_resource(self, message_id: str, file_key: str) -> Optional[bytes]:
         """
         获取文件资源
@@ -514,33 +543,27 @@ class MessageSender:
         Returns:
             Optional[bytes]: 文件二进制数据，获取失败时返回None
         """
-        # 获取文件资源
-        request = (
-            GetMessageResourceRequest.builder()
-            .message_id(message_id)
-            .file_key(file_key)
-            .type("file")
-            .build()
-        )
-
-        response = self.client.im.v1.message_resource.get(request)
-
-        if not response.success():
-            debug_utils.log_and_print(
-                f"获取文件资源失败: {response.code} - {response.msg}", log_level="ERROR"
-            )
-            return None, None, None
-
-        # 读取文件数据
-        file_content = response.file.read()
+        file_content = self._get_message_resource_bytes(message_id, file_key, "file")
         if not file_content:
-            debug_utils.log_and_print("文件数据为空", log_level="ERROR")
             return None
-
         debug_utils.log_and_print(
             f"成功获取文件资源, 大小: {len(file_content)} bytes", log_level="INFO"
         )
         return file_content
+
+    @feishu_sdk_safe("获取图片资源失败", return_value=None)
+    def get_image_bytes(self, message_id: str, image_key: str) -> Optional[bytes]:
+        """
+        通过 message_id + image_key 获取图片二进制数据
+
+        Args:
+            message_id: 消息ID（包含该 image_key 的那条消息）
+            image_key: 图片 key
+
+        Returns:
+            Optional[bytes]: 图片二进制数据
+        """
+        return self._get_message_resource_bytes(message_id, image_key, "image")
 
     @file_operation_safe("批量上传图片失败", return_value=False)
     def upload_and_send_images(self, original_data, image_paths: List[str]) -> bool:
