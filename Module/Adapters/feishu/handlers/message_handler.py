@@ -13,8 +13,7 @@ from typing import Optional, Any, Dict
 import time
 import base64
 import os
-import urllib.request
-import urllib.error
+import requests
 
 from google.genai.types import FinishReason
 
@@ -447,6 +446,15 @@ class MessageHandler:
     def _call_backend_diet_analyze(
         self, user_id: str, user_note: str, images_b64: list
     ) -> Dict[str, Any]:
+        """
+        调用后端异步 API（在 thread 中使用同步 HTTP 客户端）
+
+        说明：
+        - 飞书侧使用 thread 实现异步（不阻塞主线程）
+        - 在 thread 中使用同步的 requests.post() 调用后端
+        - 后端是异步 FastAPI，可以处理并发请求
+        - 这样既保证了飞书不阻塞，又利用了后端的异步能力
+        """
         base_url = os.getenv("BACKEND_BASE_URL", "http://127.0.0.1:8001").rstrip("/")
         token = os.getenv("BACKEND_INTERNAL_TOKEN", "").strip()
 
@@ -455,37 +463,35 @@ class MessageHandler:
             "user_note": user_note or "",
             "images_b64": images_b64 or [],
         }
-        data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
 
-        req = urllib.request.Request(
-            url=f"{base_url}/api/diet/analyze",
-            data=data,
-            method="POST",
-            headers={"Content-Type": "application/json"},
-        )
+        headers = {"Content-Type": "application/json"}
         if token:
-            req.add_header("authorization", f"Bearer {token}")
+            headers["Authorization"] = f"Bearer {token}"
 
         try:
-            with urllib.request.urlopen(req, timeout=120) as resp:
-                body = resp.read().decode("utf-8", errors="ignore")
-                return (
-                    json.loads(body)
-                    if body
-                    else {"success": False, "error": "Empty response"}
-                )
-        except urllib.error.HTTPError as e:
-            body = ""
+            response = requests.post(
+                url=f"{base_url}/api/diet/analyze",
+                json=payload,
+                headers=headers,
+                timeout=120,
+            )
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.HTTPError as e:
+            error_body = ""
             try:
-                body = e.read().decode("utf-8", errors="ignore")
+                if e.response:
+                    error_body = e.response.text
             except Exception:
                 pass
             return {
                 "success": False,
-                "error": f"HTTPError {e.code}: {body or e.reason}",
+                "error": f"HTTPError {e.response.status_code if e.response else 'unknown'}: {error_body or str(e)}",
             }
-        except Exception as e:
+        except requests.exceptions.RequestException as e:
             return {"success": False, "error": f"Backend call failed: {e}"}
+        except Exception as e:
+            return {"success": False, "error": f"Unexpected error: {e}"}
 
     @async_operation_safe("饮食分析异步处理失败")
     def _handle_diet_analyze_async(
