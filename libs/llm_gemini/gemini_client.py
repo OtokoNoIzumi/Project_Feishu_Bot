@@ -122,6 +122,49 @@ class GeminiStructuredClient:
                 self._handle_auth_error(reset_client=False)
             return {"error": f"Gemini 调用失败: {e}"}
 
+    async def generate_text_async(
+        self, prompt: str, images: List[PIL.Image.Image] = None, max_tokens: int = 1500
+    ) -> str:
+        """
+        异步文本生成（不带 schema，返回自然文本）
+
+        参考 llm_service.py 的 simple_chat 方法
+        用于通用文本生成，不强制 JSON 格式
+
+        Args:
+            prompt: 输入的提示词
+            images: 图片列表（可选）
+            max_tokens: 最大生成 token 数
+
+        Returns:
+            str: 生成的文本内容，如果出错返回错误信息字符串
+        """
+        if not self.client_ready:
+            self._init_client()
+            if not self.client_ready:
+                return "Gemini 客户端不可用（无可用 API Key 或初始化失败）"
+
+        try:
+            # 使用 client.aio 原生异步接口，不传 response_schema
+            response = await self.client.aio.models.generate_content(
+                model=self.config.model_name,
+                contents=self._build_contents(prompt, images or []),
+                config={
+                    "temperature": self.config.temperature,
+                    "max_output_tokens": max_tokens,
+                },
+            )
+            if hasattr(response, "text"):
+                return response.text
+            else:
+                return "无法解析 Gemini 响应格式"
+
+        except Exception as e:
+            msg = str(e)
+            if "API key" in msg or "authentication" in msg.lower():
+                self._handle_auth_error(reset_client=True)
+            return f"Gemini 异步调用失败: {e}"
+
     async def generate_json_async(self, prompt: str, images: List[PIL.Image.Image], schema: Dict[str, Any]) -> Dict[str, Any]:
         """
         异步版本（使用 client.aio 原生异步 API）

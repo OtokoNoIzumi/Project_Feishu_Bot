@@ -1,9 +1,6 @@
 from typing import Any, Dict, List
 
-
-def _kcal_to_kj(kcal: float) -> float:
-    return float(kcal) * 4.184
-
+from libs.utils.energy_units import kcal_to_kj
 
 def normalize_captured_labels(llm_result: Dict[str, Any]) -> List[Dict[str, Any]]:
     labels: List[Dict[str, Any]] = []
@@ -12,14 +9,14 @@ def normalize_captured_labels(llm_result: Dict[str, Any]) -> List[Dict[str, Any]
             continue
         unit = (raw.get("energy_unit") or "KJ").strip()
         value = float(raw.get("energy_value") or 0.0)
-        energy_kj = _kcal_to_kj(value) if unit == "Kcal" else value
+        energy_kj = kcal_to_kj(value) if unit == "Kcal" else value
         labels.append(
             {
                 "product_name": str(raw.get("product_name") or ""),
                 "brand": str(raw.get("brand") or ""),
                 "variant": str(raw.get("variant") or ""),
                 "serving_size": str(raw.get("serving_size") or "100g"),
-                "energy_kj_per_serving": round(energy_kj, 4),
+                "energy_kj_per_serving": energy_kj,
                 "protein_g_per_serving": float(raw.get("protein_g") or 0.0),
                 "fat_g_per_serving": float(raw.get("fat_g") or 0.0),
                 "carbs_g_per_serving": float(raw.get("carbs_g") or 0.0),
@@ -104,7 +101,7 @@ def finalize_record(llm_result: Dict[str, Any]) -> Dict[str, Any]:
     meal_summary_in = llm_result.get("meal_summary") or {}
     advice = str(meal_summary_in.get("advice") or "")
 
-    return {
+    result = {
         "meal_summary": {
             "total_energy_kj": round(total_energy_kj, 4),
             "net_weight_g": round(total_weight_g, 4),
@@ -114,5 +111,12 @@ def finalize_record(llm_result: Dict[str, Any]) -> Dict[str, Any]:
         "dishes": dishes_out,
         "user_note_process": str(llm_result.get("user_note_process") or ""),
     }
+
+    # 保留 extra_image_summary（如果 LLM 输出了）
+    extra_image_summary = llm_result.get("extra_image_summary")
+    if extra_image_summary and str(extra_image_summary).strip():
+        result["extra_image_summary"] = str(extra_image_summary).strip()
+
+    return result
 
 
