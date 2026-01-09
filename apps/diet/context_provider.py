@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-from datetime import date, datetime
-from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 from libs.core.config_loader import load_json
 from libs.core.project_paths import get_project_root
 from apps.common.record_service import RecordService
+from pathlib import Path
 
 
 def _diet_user_dir(user_id: str) -> Path:
@@ -88,17 +87,12 @@ def get_context_bundle(user_id: str) -> Dict[str, Any]:
     """
     从 user_data/<user_id>/diet/ 读取背景数据（仅由 user_id 获取）：
     - profile.json -> user_target（用户目标配置）
-    - records.jsonl（动态计算）-> today_so_far（今日已确认记录的累计进度，不包含当前 analyze 的数据）
-
-    若文件缺失或无有效内容，回退 demo。
-
-    注意：today_so_far 特指不包含当前 analyze 这份新数据的其他累计进度。
-    例如：首次记录中餐触发时，today_so_far 里只有早餐的，因为中餐的还没写入。
+    - RecordService -> today_so_far
     """
     base = _diet_user_dir(user_id)
     profile = load_json(base / "profile.json") if base.exists() else {}
 
-    # 动态计算 today_so_far（不包含当前 analyze 的数据）
+    # 动态计算 today_so_far
     today_so_far = _calculate_today_so_far(user_id=user_id)
 
     # 如果 profile 和 today_so_far 都为空，回退 demo
@@ -118,6 +112,3 @@ def get_context_bundle(user_id: str) -> Dict[str, Any]:
         }
 
     return out
-
-
-

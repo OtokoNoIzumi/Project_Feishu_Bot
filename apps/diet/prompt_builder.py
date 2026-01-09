@@ -1,4 +1,4 @@
-def build_diet_prompt(user_note: str = "") -> str:
+def build_diet_prompt(user_note: str = "", recent_products_str: str = "") -> str:
     user_note_emphasis = ""
     if user_note and user_note.strip():
         user_note_emphasis = f"""
@@ -9,8 +9,17 @@ def build_diet_prompt(user_note: str = "") -> str:
 例：用户说“没吃花生”，即使图片里有花生，也必须将其重量设为 0。
 """
 
+    context_info = ""
+    if recent_products_str:
+        context_info = f"""
+【用户常吃产品库（Known Products）】
+如果用户 Note 提及或图片识别出以下产品，请优先复用其营养数据：
+{recent_products_str}
+"""
+
     return f"""你是一位精准营养数据清洗师。你的任务是把“图片 + 用户输入”转成结构化的饮食记录。
 {user_note_emphasis}
+{context_info}
 【输入数据】
 1) 图片流：可能包含称重读数（进食前/后/中途）与包装营养成分表。
 2) 用户输入：可能包含食物描述、纠错、分量说明等。
@@ -37,6 +46,9 @@ Step B：营养密度来源
 1) 用户输入优先
 2) 所有中文字段使用简体中文
 3) 标准化菜名：standard_name 用通用名，便于后续统计
+4) **名称清洗**：product_name 严禁包含 brand。正确示范：brand="荷高", product_name="脱脂纯牛奶"。错误示范：product_name="荷高脱脂纯牛奶"。
+5) **防止重复输出**：如果识别出的产品与【用户常吃产品库】中的条目完全一致（Brand/Name/Variant/Nutrients都匹配），且没有新的 custom_note 需要添加，则**不要**将其输出到 `captured_labels` 中。仅在发现新产品、数据修正或需要补充 custom_note 时才输出。
+6) **特殊备注**：如果用户 Note 包含通过图片无法获取但需长期记忆的属性（如“密度1.03”、“需冷藏”），请存入 `captured_labels.custom_note`。
 
 【输出要求】
 1) 严格按提供的 JSON Schema 输出
@@ -47,5 +59,3 @@ Step B：营养密度来源
    - 只描述对建议生成有用但无法结构化的信息（如烹饪方式、新鲜度、搭配方式、用餐环境等）
    - 如果图片信息已完全被结构化字段覆盖，输出空字符串
 """
-
-

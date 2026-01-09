@@ -34,6 +34,7 @@ DIET_LLM_SCHEMA = {
                     "carbs_g": {"type": "number"},
                     "sodium_mg": {"type": "number"},
                     "fiber_g": {"type": "number"},
+                    "custom_note": {"type": "string", "description": "用户对该产品的特殊备注（如密度、购买渠道等）"},
                 },
                 "required": [
                     "product_name",

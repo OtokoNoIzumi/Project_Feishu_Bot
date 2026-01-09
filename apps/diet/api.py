@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import logging
+import hashlib
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, File, Form, UploadFile
@@ -106,7 +107,11 @@ def build_diet_router(settings: BackendSettings) -> APIRouter:
         async with semaphore:
             await limiter.check_and_wait()
             # 统一使用的是 bytes 版本，因为 Base64 在入口处已被解码
-            result = await analyze_uc.execute_with_image_bytes_async(user_note=user_note, images_bytes=images_bytes)
+            result = await analyze_uc.execute_with_image_bytes_async(
+                user_note=user_note, 
+                images_bytes=images_bytes,
+                user_id=user_id
+            )
             
             if isinstance(result, dict) and result.get("error"):
                 return DietAnalyzeResponse(success=False, error=str(result.get("error")))
@@ -114,12 +119,15 @@ def build_diet_router(settings: BackendSettings) -> APIRouter:
             # 自动保存逻辑
             saved_status = None
             if auto_save:
+                image_hashes = [hashlib.sha256(b).hexdigest() for b in images_bytes]
+                
                 try:
                     saved_status = await RecordService.save_diet_record(
                         user_id=user_id,
                         meal_summary=result.get("meal_summary", {}),
                         dishes=result.get("dishes", []),
-                        captured_labels=result.get("captured_labels", [])
+                        captured_labels=result.get("captured_labels", []),
+                        image_hashes=image_hashes
                     )
                 except Exception as e:
                     saved_status = {"status": "error", "detail": str(e)}

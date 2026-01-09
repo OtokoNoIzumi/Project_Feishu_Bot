@@ -75,5 +75,25 @@ class JsonlStorage:
                 
         return data
 
+    def write_dataset(self, user_id: str, category: str, filename: str, data_list: List[Dict[str, Any]]) -> str:
+        """
+        [Danger] 覆盖写入整个数据集。用于去重/修正场景。
+        """
+        dir_path = self._get_user_dir(user_id, category)
+        file_path = dir_path / filename
+        
+        lines = []
+        for item in data_list:
+            # Ensure serialization
+            if "created_at" not in item:
+                item["created_at"] = datetime.now().isoformat()
+            lines.append(json.dumps(item, ensure_ascii=False))
+            
+        # Write atomic (or somewhat atomic on Windows via rename ideally, but simple overwrite here)
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines) + "\n")
+            
+        return str(file_path)
+
 # 全局单例
 global_storage = JsonlStorage()

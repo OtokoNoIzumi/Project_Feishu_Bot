@@ -31,6 +31,7 @@ def normalize_captured_labels(llm_result: Dict[str, Any]) -> List[Dict[str, Any]
                 "carbs_g_per_serving": float(raw.get("carbs_g") or 0.0),
                 "sodium_mg_per_serving": float(raw.get("sodium_mg") or 0.0),
                 "fiber_g_per_serving": float(raw.get("fiber_g") or 0.0),
+                "custom_note": str(raw.get("custom_note") or ""),
             }
         )
     return labels
