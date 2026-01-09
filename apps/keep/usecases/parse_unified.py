@@ -36,11 +36,11 @@ class KeepUnifiedParseUsecase:
         if not images_bytes:
             return {"error": "No images provided"}
 
-        images = self.client.load_images_from_bytes(images_bytes)
+
         prompt = build_keep_unified_prompt(user_note=user_note)
         
         # 使用统一 Schema 进行混合解析
-        llm_result = await self.client.generate_json_async(prompt=prompt, images=images, schema=KEEP_UNIFIED_LLM_SCHEMA)
+        llm_result = await self.client.generate_json_async(prompt=prompt, images=images_bytes, schema=KEEP_UNIFIED_LLM_SCHEMA)
         
         if isinstance(llm_result, dict) and llm_result.get("error"):
             return {"error": llm_result.get("error")}

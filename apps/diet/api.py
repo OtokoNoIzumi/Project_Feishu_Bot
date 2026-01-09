@@ -1,4 +1,6 @@
 import asyncio
+import base64
+import logging
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, File, Form, UploadFile
@@ -13,6 +15,8 @@ from apps.diet.usecases.commit import DietCommitUsecase
 from apps.diet.usecases.history import DietHistoryUsecase
 from apps.common.record_service import RecordService
 from libs.utils.rate_limiter import AsyncRateLimiter
+
+logger = logging.getLogger(__name__)
 
 
 def _has_any_input(user_note: str, images_b64: List[str]) -> bool:
@@ -81,6 +85,8 @@ def build_diet_router(settings: BackendSettings) -> APIRouter:
         return get_model_limiter(settings)
 
     # --- Helper: 统一处理分析与自动保存逻辑 ---
+
+
     async def _process_analysis(
         user_id: str,
         user_note: str,
@@ -92,6 +98,10 @@ def build_diet_router(settings: BackendSettings) -> APIRouter:
         """
         核心业务逻辑：并发控制 -> 调用 LLM 分析 -> (可选) 自动入库 -> 返回结果
         """
+        # [Usage Log] Request Entrance
+        access_log = f"[Request] User:{user_id} | Images:{len(images_bytes)} | Note:{bool(user_note)} | AutoSave:{auto_save}"
+        logger.info(access_log)
+
         if (not user_note or not user_note.strip()) and not images_bytes:
             return DietAnalyzeResponse(success=False, error="user_note 与 images 不能同时为空")
 
@@ -132,7 +142,7 @@ def build_diet_router(settings: BackendSettings) -> APIRouter:
         # 为了保持 controller干净，我们这里简单解码，或者最好复用 private helper
         # 但 analyze_uc.execute_async 是接受 b64 的。
         # 为了复用 _process_analysis (它接受 bytes)，我们需要在这里解码。
-        import base64
+
         images_bytes = []
         for s in req.images_b64 or []:
             if s:

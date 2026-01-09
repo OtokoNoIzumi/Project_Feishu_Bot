@@ -50,9 +50,9 @@ class DietAnalyzeUsecase:
 
     async def execute_with_image_bytes_async(self, user_note: str, images_bytes: List[bytes]) -> Dict[str, Any]:
         """异步版本（用于 FastAPI 异步接口）"""
-        images = self.client.load_images_from_bytes(images_bytes)
+
         prompt = build_diet_prompt(user_note=user_note)
-        llm_result = await self.client.generate_json_async(prompt=prompt, images=images, schema=DIET_LLM_SCHEMA)
+        llm_result = await self.client.generate_json_async(prompt=prompt, images=images_bytes, schema=DIET_LLM_SCHEMA)
         if isinstance(llm_result, dict) and llm_result.get("error"):
             return {"error": llm_result.get("error")}
         return finalize_record(llm_result)

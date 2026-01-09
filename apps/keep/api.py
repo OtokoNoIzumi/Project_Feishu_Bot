@@ -1,4 +1,6 @@
 import asyncio
+import base64
+import logging
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, File, Form, UploadFile
@@ -13,6 +15,8 @@ from apps.keep.usecases.parse_dimensions import KeepDimensionsParseUsecase
 from apps.keep.usecases.parse_unified import KeepUnifiedParseUsecase
 from apps.common.record_service import RecordService
 from libs.utils.rate_limiter import AsyncRateLimiter
+
+logger = logging.getLogger(__name__)
 
 
 # --- Request/Response Models ---
@@ -100,6 +104,8 @@ def build_keep_router(settings: BackendSettings) -> APIRouter:
             return {"status": "error", "detail": str(e)}
 
     # --- Generic Processing Helper ---
+
+
     async def _process_parse(
         user_id: str,
         user_note: str,
@@ -111,6 +117,10 @@ def build_keep_router(settings: BackendSettings) -> APIRouter:
         limiter: AsyncRateLimiter,
         response_model: Any
     ):
+        # [Usage Log] Request Entrance
+        access_log = f"[Request] User:{user_id} | Action:keep_{event_type_for_save} | Images:{len(images_bytes)} | Note:{bool(user_note)} | AutoSave:{auto_save}"
+        logger.info(access_log)
+
         async with semaphore:
             await limiter.check_and_wait()
             result = await usecase.execute_with_image_bytes_async(user_note=user_note, images_bytes=images_bytes)
@@ -135,7 +145,7 @@ def build_keep_router(settings: BackendSettings) -> APIRouter:
         semaphore: asyncio.Semaphore = Depends(get_global_semaphore),
         limiter: AsyncRateLimiter = Depends(_get_model_limiter),
     ):
-        import base64
+
         images_bytes = []
         for s in req.images_b64 or []:
             if s:
@@ -166,7 +176,7 @@ def build_keep_router(settings: BackendSettings) -> APIRouter:
         semaphore: asyncio.Semaphore = Depends(get_global_semaphore),
         limiter: AsyncRateLimiter = Depends(_get_model_limiter),
     ):
-        import base64
+
         images_bytes = []
         for s in req.images_b64 or []:
             if s:
@@ -197,7 +207,7 @@ def build_keep_router(settings: BackendSettings) -> APIRouter:
         semaphore: asyncio.Semaphore = Depends(get_global_semaphore),
         limiter: AsyncRateLimiter = Depends(_get_model_limiter),
     ):
-        import base64
+
         images_bytes = []
         for s in req.images_b64 or []:
             if s:
@@ -232,7 +242,7 @@ def build_keep_router(settings: BackendSettings) -> APIRouter:
         统一接口：智能分析上传的 Keep 图片（支持体重/睡眠/围度混合，支持多张图）。
         auto_save=True 时会自动拆分并保存所有识别到的事件。
         """
-        import base64
+
         images_bytes = []
         for s in req.images_b64 or []:
             if s:
