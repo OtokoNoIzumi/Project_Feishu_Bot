@@ -11,8 +11,7 @@ from apps.llm_runtime import get_global_semaphore, get_model_limiter
 from apps.settings import BackendSettings
 from apps.diet.usecases.advice import DietAdviceUsecase
 from apps.diet.usecases.analyze import DietAnalyzeUsecase
-from apps.diet.usecases.commit import DietCommitUsecase
-from apps.diet.usecases.history import DietHistoryUsecase
+
 from apps.common.record_service import RecordService
 from libs.utils.rate_limiter import AsyncRateLimiter
 
@@ -77,8 +76,7 @@ def build_diet_router(settings: BackendSettings) -> APIRouter:
 
     analyze_uc = DietAnalyzeUsecase(gemini_model_name=settings.gemini_model_name)
     advice_uc = DietAdviceUsecase(gemini_model_name=settings.gemini_model_name)
-    commit_uc = DietCommitUsecase()
-    history_uc = DietHistoryUsecase()
+
 
     # 创建闭包函数，捕获 settings
     def _get_model_limiter() -> AsyncRateLimiter:
@@ -205,12 +203,19 @@ def build_diet_router(settings: BackendSettings) -> APIRouter:
 
     @router.post("/api/diet/commit", response_model=DietCommitResponse, dependencies=[Depends(auth_dep)])
     async def diet_commit(req: DietCommitRequest):
-        saved = commit_uc.execute(user_id=req.user_id, record=req.record)
+        # Flatten the structure if needed or pass as is if RecordService supports it.
+        # RecordService.save_diet_record expects unpacked args.
+        saved = await RecordService.save_diet_record(
+            user_id=req.user_id,
+            meal_summary=req.record.get("meal_summary", {}),
+            dishes=req.record.get("dishes", []),
+            captured_labels=req.record.get("labels_snapshot", [])
+        )
         return DietCommitResponse(success=True, saved_record=saved)
 
     @router.get("/api/diet/history", response_model=DietHistoryResponse, dependencies=[Depends(auth_dep)])
     async def diet_history(user_id: str, limit: int = 20):
-        records = history_uc.execute(user_id=user_id, limit=limit)
+        records = RecordService.get_recent_diet_records(user_id=user_id, limit=limit)
         return DietHistoryResponse(success=True, records=records)
 
     return router

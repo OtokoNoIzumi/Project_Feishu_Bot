@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Dict, List
 from pydantic import BaseModel, Field
 
@@ -63,3 +63,45 @@ class RecordService:
             )
             
         return {"status": "success", "items_count": len(dishes), "labels_archived": len(captured_labels)}
+
+    @staticmethod
+    def get_todays_diet_records(user_id: str) -> List[Dict[str, Any]]:
+        """
+        获取今日已记录的饮食流水（倒序，最新的在前）
+        """
+        now = datetime.now()
+        date_str = now.strftime("%Y-%m-%d")
+        return global_storage.read_dataset(
+            user_id=user_id, 
+            category="diet", 
+            filename=f"ledger_{date_str}.jsonl",
+            limit=100
+        )
+
+    @staticmethod
+    def get_recent_diet_records(user_id: str, limit: int = 20) -> List[Dict[str, Any]]:
+        """
+        获取最近的饮食记录（跨越过去 7 天查找，填满 limit 为止）
+        """
+        
+        all_records = []
+        now = datetime.now()
+        
+        # Look back 7 days
+        for i in range(7):
+            if len(all_records) >= limit:
+                break
+                
+            day_cursor = now - timedelta(days=i)
+            date_str = day_cursor.strftime("%Y-%m-%d")
+            
+            day_records = global_storage.read_dataset(
+                user_id=user_id, 
+                category="diet", 
+                filename=f"ledger_{date_str}.jsonl",
+                limit=limit - len(all_records)
+            )
+            
+            all_records.extend(day_records)
+            
+        return all_records[:limit]

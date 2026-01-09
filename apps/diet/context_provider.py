@@ -6,7 +6,7 @@ from typing import Any, Dict, Optional
 
 from libs.core.config_loader import load_json
 from libs.core.project_paths import get_project_root
-from libs.user_data.jsonl_store import JSONLStore
+from apps.common.record_service import RecordService
 
 
 def _diet_user_dir(user_id: str) -> Path:
@@ -38,12 +38,8 @@ def _demo_context() -> Dict[str, Any]:
 
 def _calculate_today_so_far(user_id: str) -> Dict[str, Any]:
     """
-    从 records.jsonl 动态计算今天已确认的记录汇总。
-    只统计今天（本地日期）且已确认入库的记录。
+    从 RecordService 计算今天已确认的记录汇总。
     """
-    store = JSONLStore(namespace="diet")
-    today_str = date.today().isoformat()
-
     consumed_energy_kj = 0.0
     consumed_protein_g = 0.0
     consumed_fat_g = 0.0
@@ -52,20 +48,10 @@ def _calculate_today_so_far(user_id: str) -> Dict[str, Any]:
     consumed_fiber_g = 0.0
     activity_burn_kj = 0.0
 
-    records = store.read_latest(user_id=user_id, limit=100)
+    # 直接获取今日流水，无需再进行日期过滤
+    records = RecordService.get_todays_diet_records(user_id)
+    
     for rec in records:
-        # 检查是否今天（根据 created_at 或 record 内的日期字段）
-        rec_date = None
-        if "created_at" in rec:
-            try:
-                dt = datetime.fromisoformat(rec["created_at"].replace("Z", "+00:00"))
-                rec_date = dt.date().isoformat()
-            except Exception:
-                pass
-
-        if rec_date != today_str:
-            continue
-
         # 汇总 meal_summary
         meal = rec.get("meal_summary") or {}
         if isinstance(meal, dict):
@@ -85,8 +71,8 @@ def _calculate_today_so_far(user_id: str) -> Dict[str, Any]:
                 consumed_sodium_mg += float(macros.get("sodium_mg") or 0.0)
                 consumed_fiber_g += float(macros.get("fiber_g") or 0.0)
 
-        # TODO: activity_burn_kj 需要从 Keep 或其他运动数据源汇总（阶段3暂不实现）
-
+        # TODO: activity_burn_kj 需要从 Keep 或其他运动数据源汇总
+        
     return {
         "consumed_energy_kj": round(consumed_energy_kj, 4),
         "consumed_protein_g": round(consumed_protein_g, 4),
