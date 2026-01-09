@@ -11,6 +11,7 @@ from apps.diet.usecases.advice import DietAdviceUsecase
 from apps.diet.usecases.analyze import DietAnalyzeUsecase
 from apps.diet.usecases.commit import DietCommitUsecase
 from apps.diet.usecases.history import DietHistoryUsecase
+from apps.common.record_service import RecordService
 from libs.utils.rate_limiter import AsyncRateLimiter
 
 
@@ -27,12 +28,14 @@ class DietAnalyzeRequest(BaseModel):
     user_id: str = Field(..., min_length=1)
     user_note: str = ""
     images_b64: List[str] = []
+    auto_save: bool = False  # 新增控制开关，默认为 False
 
 
 class DietAnalyzeResponse(BaseModel):
     success: bool
     result: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
+    saved_status: Optional[Dict[str, Any]] = None  # 返回保存状态
 
 
 class DietAdviceRequest(BaseModel):
@@ -77,6 +80,44 @@ def build_diet_router(settings: BackendSettings) -> APIRouter:
     def _get_model_limiter() -> AsyncRateLimiter:
         return get_model_limiter(settings)
 
+    # --- Helper: 统一处理分析与自动保存逻辑 ---
+    async def _process_analysis(
+        user_id: str,
+        user_note: str,
+        images_bytes: List[bytes],
+        auto_save: bool,
+        semaphore: asyncio.Semaphore,
+        limiter: AsyncRateLimiter,
+    ) -> DietAnalyzeResponse:
+        """
+        核心业务逻辑：并发控制 -> 调用 LLM 分析 -> (可选) 自动入库 -> 返回结果
+        """
+        if (not user_note or not user_note.strip()) and not images_bytes:
+            return DietAnalyzeResponse(success=False, error="user_note 与 images 不能同时为空")
+
+        async with semaphore:
+            await limiter.check_and_wait()
+            # 统一使用的是 bytes 版本，因为 Base64 在入口处已被解码
+            result = await analyze_uc.execute_with_image_bytes_async(user_note=user_note, images_bytes=images_bytes)
+            
+            if isinstance(result, dict) and result.get("error"):
+                return DietAnalyzeResponse(success=False, error=str(result.get("error")))
+
+            # 自动保存逻辑
+            saved_status = None
+            if auto_save:
+                try:
+                    saved_status = await RecordService.save_diet_record(
+                        user_id=user_id,
+                        meal_summary=result.get("meal_summary", {}),
+                        dishes=result.get("dishes", []),
+                        captured_labels=result.get("captured_labels", [])
+                    )
+                except Exception as e:
+                    saved_status = {"status": "error", "detail": str(e)}
+
+            return DietAnalyzeResponse(success=True, result=result, saved_status=saved_status)
+
     @router.post("/api/diet/analyze", response_model=DietAnalyzeResponse, dependencies=[Depends(auth_dep)])
     async def diet_analyze(
         req: DietAnalyzeRequest,
@@ -84,33 +125,44 @@ def build_diet_router(settings: BackendSettings) -> APIRouter:
         limiter: AsyncRateLimiter = Depends(_get_model_limiter),
     ):
         """
-        异步饮食分析接口（支持多用户并发 + 并发限制 + 频率限制）
-
-        - 使用 Semaphore 控制全局并发数
-        - 使用 RateLimiter 控制不同模型的 RPM
+        异步饮食分析接口（JSON/Base64）
         """
-        if not _has_any_input(req.user_note, req.images_b64):
-            return DietAnalyzeResponse(success=False, error="user_note 与 images_b64 不能同时为空")
+        # A. 预处理：Base64 -> Bytes
+        # 注意：这里需要引入 base64 模块或者复用 usecase 里的解码逻辑
+        # 为了保持 controller干净，我们这里简单解码，或者最好复用 private helper
+        # 但 analyze_uc.execute_async 是接受 b64 的。
+        # 为了复用 _process_analysis (它接受 bytes)，我们需要在这里解码。
+        import base64
+        images_bytes = []
+        for s in req.images_b64 or []:
+            if s:
+                try:
+                    images_bytes.append(base64.b64decode(s))
+                except:
+                    continue
 
-        async with semaphore:
-            await limiter.check_and_wait()
-            result = await analyze_uc.execute_async(user_note=req.user_note, images_b64=req.images_b64)
-            if isinstance(result, dict) and result.get("error"):
-                return DietAnalyzeResponse(success=False, error=str(result.get("error")))
-            return DietAnalyzeResponse(success=True, result=result)
+        return await _process_analysis(
+            user_id=req.user_id,
+            user_note=req.user_note,
+            images_bytes=images_bytes,
+            auto_save=req.auto_save,
+            semaphore=semaphore,
+            limiter=limiter,
+        )
 
     @router.post("/api/diet/analyze_upload", response_model=DietAnalyzeResponse, dependencies=[Depends(auth_dep)])
     async def diet_analyze_upload(
         user_id: str = Form(...),
         user_note: str = Form(""),
+        auto_save: bool = Form(False),
         images: List[UploadFile] = File(default=[], description="食品照片"),
         semaphore: asyncio.Semaphore = Depends(get_global_semaphore),
         limiter: AsyncRateLimiter = Depends(_get_model_limiter),
     ):
         """
-        异步饮食分析接口（文件上传版本，支持多用户并发 + 并发限制 + 频率限制）
+        异步饮食分析接口（文件上传版本）
         """
-        # B. 读取文件（异步）
+        # A. 预处理：UploadFile -> Bytes
         images_bytes: List[bytes] = []
         for f in images or []:
             try:
@@ -118,15 +170,15 @@ def build_diet_router(settings: BackendSettings) -> APIRouter:
             except Exception:
                 continue
 
-        if (not user_note or not user_note.strip()) and not images_bytes:
-            return DietAnalyzeResponse(success=False, error="user_note 与 images 不能同时为空")
+        return await _process_analysis(
+            user_id=user_id,
+            user_note=user_note,
+            images_bytes=images_bytes,
+            auto_save=auto_save,
+            semaphore=semaphore,
+            limiter=limiter,
+        )
 
-        async with semaphore:
-            await limiter.check_and_wait()
-            result = await analyze_uc.execute_with_image_bytes_async(user_note=user_note, images_bytes=images_bytes)
-            if isinstance(result, dict) and result.get("error"):
-                return DietAnalyzeResponse(success=False, error=str(result.get("error")))
-            return DietAnalyzeResponse(success=True, result=result)
 
     @router.post("/api/diet/advice", response_model=DietAdviceResponse, dependencies=[Depends(auth_dep)])
     async def diet_advice(

@@ -1,3 +1,12 @@
+"""
+Diet 后处理层
+
+Why this exists?
+虽然 LLM Schema 已经定义了结构，但实际工程中需要做必要的清洗和计算，例如：
+1. 能量单位统一：Ocr 可能是 Kcal，这里统一转 KJ。
+2. 总量聚合计算：LLM 算数不可靠，我们在代码里自己加总 total_energy / net_weight。
+3. 字段清洗：确保 None 变成 0.0 或空字符串，防止下游报错。
+"""
 from typing import Any, Dict, List
 
 from libs.utils.energy_units import kcal_to_kj
@@ -21,6 +30,7 @@ def normalize_captured_labels(llm_result: Dict[str, Any]) -> List[Dict[str, Any]
                 "fat_g_per_serving": float(raw.get("fat_g") or 0.0),
                 "carbs_g_per_serving": float(raw.get("carbs_g") or 0.0),
                 "sodium_mg_per_serving": float(raw.get("sodium_mg") or 0.0),
+                "fiber_g_per_serving": float(raw.get("fiber_g") or 0.0),
             }
         )
     return labels
@@ -62,6 +72,7 @@ def finalize_record(llm_result: Dict[str, Any]) -> Dict[str, Any]:
             fat_g = float((macros.get("fat_g") or 0.0))
             carbs_g = float((macros.get("carbs_g") or 0.0))
             sodium_mg = float((macros.get("sodium_mg") or 0.0))
+            fiber_g = float((macros.get("fiber_g") or 0.0))
 
             data_source = str(ing.get("data_source") or "generic_estimate")
             energy_kj = _macro_energy_kj(protein_g, fat_g, carbs_g)
@@ -92,6 +103,7 @@ def finalize_record(llm_result: Dict[str, Any]) -> Dict[str, Any]:
                         "fat_g": round(fat_g, 4),
                         "carbs_g": round(carbs_g, 4),
                         "sodium_mg": round(sodium_mg, 4),
+                        "fiber_g": round(fiber_g, 4),
                     },
                 }
             )
@@ -100,12 +112,14 @@ def finalize_record(llm_result: Dict[str, Any]) -> Dict[str, Any]:
 
     meal_summary_in = llm_result.get("meal_summary") or {}
     advice = str(meal_summary_in.get("advice") or "")
+    diet_time = str(meal_summary_in.get("diet_time") or "snack")
 
     result = {
         "meal_summary": {
             "total_energy_kj": round(total_energy_kj, 4),
             "net_weight_g": round(total_weight_g, 4),
             "advice": advice,
+            "diet_time": diet_time,
         },
         "captured_labels": labels,
         "dishes": dishes_out,

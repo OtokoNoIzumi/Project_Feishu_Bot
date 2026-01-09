@@ -11,50 +11,39 @@ from apps.keep.usecases.parse_scale import KeepScaleParseUsecase
 from apps.keep.usecases.parse_sleep import KeepSleepParseUsecase
 from apps.keep.usecases.parse_dimensions import KeepDimensionsParseUsecase
 from apps.keep.usecases.parse_unified import KeepUnifiedParseUsecase
+from apps.common.record_service import RecordService
 from libs.utils.rate_limiter import AsyncRateLimiter
 
 
 # --- Request/Response Models ---
 
-class KeepScaleParseRequest(BaseModel):
+class KeepParseRequestBase(BaseModel):
     user_id: str = Field(..., min_length=1)
     user_note: str = ""
     images_b64: List[str] = []
+    auto_save: bool = False
 
-class KeepScaleParseResponse(BaseModel):
+class KeepParseResponseBase(BaseModel):
     success: bool
     result: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
+    saved_status: Optional[Dict[str, Any]] = None
 
-class KeepSleepParseRequest(BaseModel):
-    user_id: str = Field(..., min_length=1)
-    user_note: str = ""
-    images_b64: List[str] = []
+# Scale
+class KeepScaleParseRequest(KeepParseRequestBase): pass
+class KeepScaleParseResponse(KeepParseResponseBase): pass
 
-class KeepSleepParseResponse(BaseModel):
-    success: bool
-    result: Optional[Dict[str, Any]] = None
-    error: Optional[str] = None
+# Sleep
+class KeepSleepParseRequest(KeepParseRequestBase): pass
+class KeepSleepParseResponse(KeepParseResponseBase): pass
 
-class KeepDimensionsParseRequest(BaseModel):
-    user_id: str = Field(..., min_length=1)
-    user_note: str = ""
-    images_b64: List[str] = []
+# Dimensions
+class KeepDimensionsParseRequest(KeepParseRequestBase): pass
+class KeepDimensionsParseResponse(KeepParseResponseBase): pass
 
-class KeepDimensionsParseResponse(BaseModel):
-    success: bool
-    result: Optional[Dict[str, Any]] = None
-    error: Optional[str] = None
-
-class KeepUnifiedParseRequest(BaseModel):
-    user_id: str = Field(..., min_length=1)
-    user_note: str = ""
-    images_b64: List[str] = []
-
-class KeepUnifiedParseResponse(BaseModel):
-    success: bool
-    result: Optional[Dict[str, Any]] = None
-    error: Optional[str] = None
+# Unified
+class KeepUnifiedParseRequest(KeepParseRequestBase): pass
+class KeepUnifiedParseResponse(KeepParseResponseBase): pass
 
 
 def build_keep_router(settings: BackendSettings) -> APIRouter:
@@ -70,124 +59,169 @@ def build_keep_router(settings: BackendSettings) -> APIRouter:
     def _get_model_limiter() -> AsyncRateLimiter:
         return get_model_limiter(settings)
 
-    # return router  <-- Removing this line as it prevents endpoints from being registered
+    async def _auto_save_result(user_id: str, event_type: str, result: Dict[str, Any]) -> Dict[str, Any]:
+        """Auto-save helper for single event types"""
+        try:
+            data_to_save = result
+            # Try to unwrap common keys if present to save cleaner data
+            if event_type == "scale" and "scale_event" in result:
+                data_to_save = result["scale_event"]
+            elif event_type == "sleep" and "sleep_event" in result:
+                data_to_save = result["sleep_event"]
+            elif event_type == "dimensions" and "body_measure_event" in result:
+                data_to_save = result["body_measure_event"]
+            
+            await RecordService.save_keep_event(user_id, event_type, data_to_save)
+            return {"status": "success", "detail": f"Saved {event_type} event"}
+        except Exception as e:
+            return {"status": "error", "detail": str(e)}
 
-    # --- Scale Endpoint --- (Updated to match request)
+    async def _auto_save_unified_result(user_id: str, result: Dict[str, Any]) -> Dict[str, Any]:
+        """Auto-save helper for unified results"""
+        saved_details = []
+        try:
+            for item in result.get("scale_events", []):
+                await RecordService.save_keep_event(user_id, "scale", item)
+                saved_details.append("scale")
+            
+            for item in result.get("sleep_events", []):
+                await RecordService.save_keep_event(user_id, "sleep", item)
+                saved_details.append("sleep")
 
+            for item in result.get("body_measure_events", []):
+                await RecordService.save_keep_event(user_id, "dimensions", item)
+                saved_details.append("dimensions")
+                
+            msg = f"Saved {len(saved_details)} items"
+            if saved_details:
+                msg += f": {', '.join(saved_details)}"
+            return {"status": "success", "detail": msg}
+        except Exception as e:
+            return {"status": "error", "detail": str(e)}
+
+    # --- Generic Processing Helper ---
+    async def _process_parse(
+        user_id: str,
+        user_note: str,
+        images_bytes: List[bytes],
+        auto_save: bool,
+        usecase: Any,
+        event_type_for_save: str, # 'scale', 'sleep', 'dimensions', or 'unified'
+        semaphore: asyncio.Semaphore,
+        limiter: AsyncRateLimiter,
+        response_model: Any
+    ):
+        async with semaphore:
+            await limiter.check_and_wait()
+            result = await usecase.execute_with_image_bytes_async(user_note=user_note, images_bytes=images_bytes)
+            
+            if isinstance(result, dict) and result.get("error"):
+                return response_model(success=False, error=str(result.get("error")))
+            
+            saved_status = None
+            if auto_save:
+                if event_type_for_save == "unified":
+                    saved_status = await _auto_save_unified_result(user_id, result)
+                else:
+                    saved_status = await _auto_save_result(user_id, event_type_for_save, result)
+
+            return response_model(success=True, result=result, saved_status=saved_status)
+
+
+    # --- Scale Endpoints ---
     @router.post("/api/keep/scale/parse", response_model=KeepScaleParseResponse, dependencies=[Depends(auth_dep)])
     async def keep_scale_parse(
         req: KeepScaleParseRequest,
         semaphore: asyncio.Semaphore = Depends(get_global_semaphore),
         limiter: AsyncRateLimiter = Depends(_get_model_limiter),
     ):
-        await limiter.check_and_wait()
-        async with semaphore:
-            result = await scale_uc.execute_async(user_note=req.user_note, images_b64=req.images_b64)
-            if isinstance(result, dict) and result.get("error"):
-                return KeepScaleParseResponse(success=False, error=str(result.get("error")))
-            return KeepScaleParseResponse(success=True, result=result)
+        import base64
+        images_bytes = []
+        for s in req.images_b64 or []:
+            if s:
+                try: images_bytes.append(base64.b64decode(s))
+                except: continue
+        
+        return await _process_parse(req.user_id, req.user_note, images_bytes, req.auto_save, scale_uc, "scale", semaphore, limiter, KeepScaleParseResponse)
 
-    @router.post(
-        "/api/keep/scale/parse_upload", response_model=KeepScaleParseResponse, dependencies=[Depends(auth_dep)]
-    )
+    @router.post("/api/keep/scale/parse_upload", response_model=KeepScaleParseResponse, dependencies=[Depends(auth_dep)])
     async def keep_scale_parse_upload(
         user_id: str = Form(...),
         user_note: str = Form(""),
+        auto_save: bool = Form(False),
         images: List[UploadFile] = File(default=[], description="KEEP截图"),
         semaphore: asyncio.Semaphore = Depends(get_global_semaphore),
         limiter: AsyncRateLimiter = Depends(_get_model_limiter),
     ):
-        await limiter.check_and_wait()
-        images_bytes: List[bytes] = []
+        images_bytes = []
         for f in images or []:
-            try:
-                images_bytes.append(await f.read())
-            except Exception:
-                continue
+            try: images_bytes.append(await f.read())
+            except: continue
+        return await _process_parse(user_id, user_note, images_bytes, auto_save, scale_uc, "scale", semaphore, limiter, KeepScaleParseResponse)
 
-        async with semaphore:
-            result = await scale_uc.execute_with_image_bytes_async(user_note=user_note, images_bytes=images_bytes)
-            if isinstance(result, dict) and result.get("error"):
-                return KeepScaleParseResponse(success=False, error=str(result.get("error")))
-            return KeepScaleParseResponse(success=True, result=result)
-
-    # --- Sleep Endpoint ---
-
+    # --- Sleep Endpoints ---
     @router.post("/api/keep/sleep/parse", response_model=KeepSleepParseResponse, dependencies=[Depends(auth_dep)])
     async def keep_sleep_parse(
         req: KeepSleepParseRequest,
         semaphore: asyncio.Semaphore = Depends(get_global_semaphore),
         limiter: AsyncRateLimiter = Depends(_get_model_limiter),
     ):
-        await limiter.check_and_wait()
-        async with semaphore:
-            result = await sleep_uc.execute_async(user_note=req.user_note, images_b64=req.images_b64)
-            if isinstance(result, dict) and result.get("error"):
-                return KeepSleepParseResponse(success=False, error=str(result.get("error")))
-            return KeepSleepParseResponse(success=True, result=result)
+        import base64
+        images_bytes = []
+        for s in req.images_b64 or []:
+            if s:
+                try: images_bytes.append(base64.b64decode(s))
+                except: continue
+        return await _process_parse(req.user_id, req.user_note, images_bytes, req.auto_save, sleep_uc, "sleep", semaphore, limiter, KeepSleepParseResponse)
 
     @router.post("/api/keep/sleep/parse_upload", response_model=KeepSleepParseResponse, dependencies=[Depends(auth_dep)])
     async def keep_sleep_parse_upload(
         user_id: str = Form(...),
         user_note: str = Form(""),
+        auto_save: bool = Form(False),
         images: List[UploadFile] = File(default=[], description="Keep睡眠截图"),
         semaphore: asyncio.Semaphore = Depends(get_global_semaphore),
         limiter: AsyncRateLimiter = Depends(_get_model_limiter),
     ):
-        await limiter.check_and_wait()
-        images_bytes: List[bytes] = []
+        images_bytes = []
         for f in images or []:
-            try:
-                images_bytes.append(await f.read())
-            except Exception:
-                continue
+            try: images_bytes.append(await f.read())
+            except: continue
+        return await _process_parse(user_id, user_note, images_bytes, auto_save, sleep_uc, "sleep", semaphore, limiter, KeepSleepParseResponse)
 
-        async with semaphore:
-            result = await sleep_uc.execute_with_image_bytes_async(user_note=user_note, images_bytes=images_bytes)
-            if isinstance(result, dict) and result.get("error"):
-                return KeepSleepParseResponse(success=False, error=str(result.get("error")))
-            return KeepSleepParseResponse(success=True, result=result)
 
-    # --- Dimensions Endpoint ---
-
+    # --- Dimensions Endpoints ---
     @router.post("/api/keep/dimensions/parse", response_model=KeepDimensionsParseResponse, dependencies=[Depends(auth_dep)])
     async def keep_dimensions_parse(
         req: KeepDimensionsParseRequest,
         semaphore: asyncio.Semaphore = Depends(get_global_semaphore),
         limiter: AsyncRateLimiter = Depends(_get_model_limiter),
     ):
-        await limiter.check_and_wait()
-        async with semaphore:
-            result = await dimensions_uc.execute_async(user_note=req.user_note, images_b64=req.images_b64)
-            if isinstance(result, dict) and result.get("error"):
-                return KeepDimensionsParseResponse(success=False, error=str(result.get("error")))
-            return KeepDimensionsParseResponse(success=True, result=result)
+        import base64
+        images_bytes = []
+        for s in req.images_b64 or []:
+            if s:
+                try: images_bytes.append(base64.b64decode(s))
+                except: continue
+        return await _process_parse(req.user_id, req.user_note, images_bytes, req.auto_save, dimensions_uc, "dimensions", semaphore, limiter, KeepDimensionsParseResponse)
 
     @router.post("/api/keep/dimensions/parse_upload", response_model=KeepDimensionsParseResponse, dependencies=[Depends(auth_dep)])
     async def keep_dimensions_parse_upload(
         user_id: str = Form(...),
         user_note: str = Form(""),
+        auto_save: bool = Form(False),
         images: List[UploadFile] = File(default=[], description="Keep围度截图"),
         semaphore: asyncio.Semaphore = Depends(get_global_semaphore),
         limiter: AsyncRateLimiter = Depends(_get_model_limiter),
     ):
-        await limiter.check_and_wait()
-        images_bytes: List[bytes] = []
+        images_bytes = []
         for f in images or []:
-            try:
-                images_bytes.append(await f.read())
-            except Exception:
-                continue
-
-        async with semaphore:
-            result = await dimensions_uc.execute_with_image_bytes_async(user_note=user_note, images_bytes=images_bytes)
-            if isinstance(result, dict) and result.get("error"):
-                return KeepDimensionsParseResponse(success=False, error=str(result.get("error")))
-            return KeepDimensionsParseResponse(success=True, result=result)
+            try: images_bytes.append(await f.read())
+            except: continue
+        return await _process_parse(user_id, user_note, images_bytes, auto_save, dimensions_uc, "dimensions", semaphore, limiter, KeepDimensionsParseResponse)
 
 
-    # --- Unified Endpoint ---
-
+    # --- Unified Endpoints ---
     @router.post("/api/keep/analyze", response_model=KeepUnifiedParseResponse, dependencies=[Depends(auth_dep)])
     async def keep_unified_analyze(
         req: KeepUnifiedParseRequest,
@@ -196,37 +230,29 @@ def build_keep_router(settings: BackendSettings) -> APIRouter:
     ):
         """
         统一接口：智能分析上传的 Keep 图片（支持体重/睡眠/围度混合，支持多张图）。
+        auto_save=True 时会自动拆分并保存所有识别到的事件。
         """
-        await limiter.check_and_wait()
-        async with semaphore:
-            result = await unified_uc.execute_async(user_note=req.user_note, images_b64=req.images_b64)
-            if isinstance(result, dict) and result.get("error"):
-                return KeepUnifiedParseResponse(success=False, error=str(result.get("error")))
-            return KeepUnifiedParseResponse(success=True, result=result)
+        import base64
+        images_bytes = []
+        for s in req.images_b64 or []:
+            if s:
+                try: images_bytes.append(base64.b64decode(s))
+                except: continue
+        return await _process_parse(req.user_id, req.user_note, images_bytes, req.auto_save, unified_uc, "unified", semaphore, limiter, KeepUnifiedParseResponse)
 
     @router.post("/api/keep/analyze_upload", response_model=KeepUnifiedParseResponse, dependencies=[Depends(auth_dep)])
     async def keep_unified_analyze_upload(
         user_id: str = Form(...),
         user_note: str = Form(""),
+        auto_save: bool = Form(False),
         images: List[UploadFile] = File(default=[], description="任意 Keep 截图（混合）"),
         semaphore: asyncio.Semaphore = Depends(get_global_semaphore),
         limiter: AsyncRateLimiter = Depends(_get_model_limiter),
     ):
-        """
-        统一接口（上传版）：适合 Swagger 测试。支持多图混合上传。
-        """
-        await limiter.check_and_wait()
-        images_bytes: List[bytes] = []
+        images_bytes = []
         for f in images or []:
-            try:
-                images_bytes.append(await f.read())
-            except Exception:
-                continue
-
-        async with semaphore:
-            result = await unified_uc.execute_with_image_bytes_async(user_note=user_note, images_bytes=images_bytes)
-            if isinstance(result, dict) and result.get("error"):
-                return KeepUnifiedParseResponse(success=False, error=str(result.get("error")))
-            return KeepUnifiedParseResponse(success=True, result=result)
+            try: images_bytes.append(await f.read())
+            except: continue
+        return await _process_parse(user_id, user_note, images_bytes, auto_save, unified_uc, "unified", semaphore, limiter, KeepUnifiedParseResponse)
 
     return router

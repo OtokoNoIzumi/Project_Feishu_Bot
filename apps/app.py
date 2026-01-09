@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from apps.settings import load_settings
 from apps.diet.api import build_diet_router
 from apps.keep.api import build_keep_router
+from apps.common.storage_api import build_storage_router
 
 
 def create_app() -> FastAPI:
@@ -24,6 +25,7 @@ def create_app() -> FastAPI:
 
     app.include_router(build_diet_router(settings))
     app.include_router(build_keep_router(settings))
+    app.include_router(build_storage_router(settings))
     return app
 
 
