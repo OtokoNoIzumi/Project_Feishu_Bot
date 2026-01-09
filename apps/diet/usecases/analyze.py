@@ -1,7 +1,7 @@
 import base64
 from typing import Any, Dict, List
 
-from libs.api_keys.api_key_manager import APIKeyManager
+from libs.api_keys.api_key_manager import get_default_api_key_manager
 from libs.llm_gemini.gemini_client import GeminiClientConfig, GeminiStructuredClient
 
 from apps.diet.llm_schema import DIET_LLM_SCHEMA
@@ -23,7 +23,7 @@ def _decode_images_b64(images_b64: List[str]) -> List[bytes]:
 
 class DietAnalyzeUsecase:
     def __init__(self, gemini_model_name: str):
-        self.api_keys = APIKeyManager()
+        self.api_keys = get_default_api_key_manager()
         self.client = GeminiStructuredClient(
             api_key_manager=self.api_keys,
             config=GeminiClientConfig(model_name=gemini_model_name, temperature=0.2),

@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 from dataclasses import dataclass
 from io import BytesIO
 from typing import Any, Dict, List, Optional
@@ -31,26 +32,30 @@ class GeminiStructuredClient:
         self.api_key_manager = api_key_manager
         self.config = config
         self.current_api_key: Optional[str] = None
-        self.client: Optional[Any] = None
-        self.client_ready: bool = False
+        self.client: Optional[genai.Client] = None
         self._init_client()
 
+    @property
+    def client_ready(self) -> bool:
+        return self.client is not None
+
     def _init_client(self) -> None:
+        """初始化客户端，如果获取不到 Key 则 client 保持为 None"""
+        self.client = None
+        self.current_api_key = None
+
         api_key = self.api_key_manager.get_key()
         if not api_key:
-            self.client_ready = False
             return
+
         try:
             # 使用 genai.Client 模式（支持 client.aio）
             self.client = genai.Client(api_key=api_key)
             self.current_api_key = api_key
-            self.client_ready = True
         except Exception as e:
             logger.error("Gemini client init failed: %s", e)
             self.api_key_manager.mark_failed(api_key)
-            self.current_api_key = None
             self.client = None
-            self.client_ready = False
 
     @staticmethod
     def load_images_from_bytes(images: List[bytes]) -> List[PIL.Image.Image]:
@@ -77,30 +82,44 @@ class GeminiStructuredClient:
             contents.extend(images)
         return contents
 
-    def _parse_response(self, response: Any) -> Dict[str, Any]:
-        """解析响应（公共逻辑）"""
-        if hasattr(response, "text"):
-            return json.loads(response.text)
-        elif hasattr(response, "parsed"):
-            return response.parsed
-        else:
-            return {"error": "无法解析 Gemini 响应格式"}
+    def _clean_json_text(self, text: str) -> str:
+        """去除可能存在的 Markdown 代码块标记"""
+        pattern = r"^```(?:json)?\s*(.*?)\s*```$"
+        match = re.search(pattern, text, re.DOTALL | re.MULTILINE)
+        if match:
+            return match.group(1)
+        return text
 
-    def _handle_auth_error(self, reset_client: bool = False) -> None:
-        """处理认证错误（公共逻辑）"""
-        if self.current_api_key:
+    def _parse_response(self, response: Any) -> Dict[str, Any]:
+        """解析响应（公共逻辑），增强鲁棒性"""
+        if hasattr(response, "parsed") and response.parsed is not None:
+             return response.parsed
+             
+        text = ""
+        if hasattr(response, "text"):
+            text = response.text
+        
+        if not text:
+             return {"error": "无法解析 Gemini 响应：内容为空"}
+
+        try:
+            cleaned_text = self._clean_json_text(text)
+            return json.loads(cleaned_text)
+        except json.JSONDecodeError as e:
+            return {"error": f"Gemini JSON 解析失败: {e}\n原始返回: {text[:200]}..."}
+
+    def _handle_auth_error(self, error: Exception) -> None:
+        """处理认证错误：标记 Key 失败并尝试重新初始化"""
+        msg = str(error)
+        is_auth_error = "API key" in msg or "authentication" in msg.lower() or "403" in msg
+        
+        if is_auth_error and self.current_api_key:
+            logger.warning(f"Auth error detected ({msg}), marking key as failed.")
             self.api_key_manager.mark_failed(self.current_api_key)
-        if reset_client:
-            self.client = None
-        self.client_ready = False
-        self._init_client()
+            self._init_client()
 
     def generate_json(self, prompt: str, images: List[PIL.Image.Image], schema: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        同步版本（保留向后兼容）
-
-        注意：同步版本使用 genai.Client，但调用同步方法（非 aio）
-        """
+        """同步版本（保留向后兼容）"""
         if not self.client_ready:
             self._init_client()
             if not self.client_ready:
@@ -114,38 +133,20 @@ class GeminiStructuredClient:
             )
             return self._parse_response(response)
 
-        except json.JSONDecodeError as e:
-            return {"error": f"Gemini JSON 解析失败: {e}"}
         except Exception as e:
-            msg = str(e)
-            if "API key" in msg or "authentication" in msg.lower():
-                self._handle_auth_error(reset_client=False)
+            self._handle_auth_error(e)
             return {"error": f"Gemini 调用失败: {e}"}
 
     async def generate_text_async(
         self, prompt: str, images: List[PIL.Image.Image] = None, max_tokens: int = 1500
     ) -> str:
-        """
-        异步文本生成（不带 schema，返回自然文本）
-
-        参考 llm_service.py 的 simple_chat 方法
-        用于通用文本生成，不强制 JSON 格式
-
-        Args:
-            prompt: 输入的提示词
-            images: 图片列表（可选）
-            max_tokens: 最大生成 token 数
-
-        Returns:
-            str: 生成的文本内容，如果出错返回错误信息字符串
-        """
+        """异步文本生成（不带 schema，返回自然文本）"""
         if not self.client_ready:
             self._init_client()
             if not self.client_ready:
                 return "Gemini 客户端不可用（无可用 API Key 或初始化失败）"
 
         try:
-            # 使用 client.aio 原生异步接口，不传 response_schema
             response = await self.client.aio.models.generate_content(
                 model=self.config.model_name,
                 contents=self._build_contents(prompt, images or []),
@@ -156,38 +157,20 @@ class GeminiStructuredClient:
             )
             if hasattr(response, "text"):
                 return response.text
-            else:
-                return "无法解析 Gemini 响应格式"
+            return "无法解析 Gemini 响应格式"
 
         except Exception as e:
-            msg = str(e)
-            if "API key" in msg or "authentication" in msg.lower():
-                self._handle_auth_error(reset_client=True)
+            self._handle_auth_error(e)
             return f"Gemini 异步调用失败: {e}"
 
     async def generate_json_async(self, prompt: str, images: List[PIL.Image.Image], schema: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        异步版本（使用 client.aio 原生异步 API）
-
-        对齐 BiliTools 的 call_gemini_with_retry 逻辑
-        用于 FastAPI 异步接口，支持高并发
-
-        API Key 管理逻辑：
-        1. 初始化时：从 api_key_manager 获取 key，创建 genai.Client(api_key=key)
-        2. 调用时：如果 client 未就绪，重新初始化（可能获取到新 key）
-        3. 认证失败时：
-           - 标记当前 key 为失败（api_key_manager.mark_failed()）
-           - 重新初始化 client（_init_client() 会从 api_key_manager 获取新 key）
-           - 如果重新初始化成功，下次调用会自动使用新 key
-           - 如果所有 key 都失败，client_ready 保持 False，下次调用会再次尝试初始化
-        """
+        """异步版本（使用 client.aio 原生异步 API）"""
         if not self.client_ready:
             self._init_client()
             if not self.client_ready:
                 return {"error": "Gemini 客户端不可用（无可用 API Key 或初始化失败）"}
 
         try:
-            # 【关键】使用 client.aio 原生异步接口
             response = await self.client.aio.models.generate_content(
                 model=self.config.model_name,
                 contents=self._build_contents(prompt, images),
@@ -195,12 +178,8 @@ class GeminiStructuredClient:
             )
             return self._parse_response(response)
 
-        except json.JSONDecodeError as e:
-            return {"error": f"Gemini JSON 解析失败: {e}"}
         except Exception as e:
-            msg = str(e)
-            if "API key" in msg or "authentication" in msg.lower():
-                self._handle_auth_error(reset_client=True)
+            self._handle_auth_error(e)
             return {"error": f"Gemini 异步调用失败: {e}"}
 
 

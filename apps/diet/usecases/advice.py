@@ -1,6 +1,6 @@
 from typing import Any, Dict, Optional
 
-from libs.api_keys.api_key_manager import APIKeyManager
+from libs.api_keys.api_key_manager import get_default_api_key_manager
 from libs.llm_gemini.gemini_client import GeminiClientConfig, GeminiStructuredClient
 
 from apps.diet.context_provider import get_context_bundle
@@ -9,7 +9,7 @@ from apps.diet.prompt_builder_advice import build_diet_advice_prompt
 
 class DietAdviceUsecase:
     def __init__(self, gemini_model_name: str):
-        self.api_keys = APIKeyManager()
+        self.api_keys = get_default_api_key_manager()
         self.client = GeminiStructuredClient(
             api_key_manager=self.api_keys,
             config=GeminiClientConfig(model_name=gemini_model_name, temperature=0.4),
