@@ -113,7 +113,79 @@ class RecordService:
             # 覆写文件
             global_storage.write_dataset(user_id, "diet", lib_file, final_lib)
             
+        # 5. 保存菜式库 (Personal Dish Library) - For UI Quick Add, not for LLM Context
+        # Automatically calculate per-100g normalization
+        RecordService._archive_dishes_to_library(user_id, dishes)
+
         return {"status": "success", "action": status_msg, "items_count": len(dishes), "labels_upserted": len(captured_labels)}
+
+    @staticmethod
+    def _archive_dishes_to_library(user_id: str, dishes: List[Dict]):
+        """
+        将非标品菜式（Dish）归一化后存入 dish_library.jsonl。
+        供 UI 层做数据分析和快捷录入。
+        """
+        filename = "dish_library.jsonl"
+        
+        for dish in dishes:
+            name = dish.get("standard_name")
+            if not name:
+                continue
+
+            # [Filter] 只存档纯估算的菜式。如果包含 label_ocr (标品/包装食品)，跳过。
+            has_ocr = False
+            for ing in dish.get("ingredients", []):
+                if ing.get("data_source") == "label_ocr":
+                    has_ocr = True
+                    break
+            if has_ocr:
+                continue
+                
+            # Aggregate totals
+            d_weight = 0.0
+            d_energy = 0.0
+            d_p = 0.0
+            d_f = 0.0
+            d_c = 0.0
+            d_na = 0.0
+            d_fib = 0.0
+            
+            valid_calc = True
+            for ing in dish.get("ingredients", []):
+                w = float(ing.get("weight_g") or 0)
+                d_weight += w
+                
+                d_energy += float(ing.get("energy_kj") or 0)
+                
+                m = ing.get("macros", {})
+                d_p += float(m.get("protein_g") or 0)
+                d_f += float(m.get("fat_g") or 0)
+                d_c += float(m.get("carbs_g") or 0)
+                d_na += float(m.get("sodium_mg") or 0)
+                d_fib += float(m.get("fiber_g") or 0)
+                
+            if d_weight <= 0:
+                continue
+                
+            # Normalize to per 100g
+            ratio = 100.0 / d_weight
+            
+            entry = {
+                "dish_name": name,
+                "recorded_weight_g": round(d_weight, 2),
+                "macros_per_100g": {
+                    "energy_kj": round(d_energy * ratio, 2),
+                    "protein_g": round(d_p * ratio, 2),
+                    "fat_g": round(d_f * ratio, 2),
+                    "carbs_g": round(d_c * ratio, 2),
+                    "sodium_mg": round(d_na * ratio, 2),
+                    "fiber_g": round(d_fib * ratio, 2)
+                },
+                "ingredients_snapshot": [i.get("name_zh") for i in dish.get("ingredients", [])],
+                "created_at": datetime.now().isoformat()
+            }
+            
+            global_storage.append(user_id, "diet", filename, entry)
 
     @staticmethod
     def get_todays_diet_records(user_id: str) -> List[Dict[str, Any]]:
@@ -122,6 +194,13 @@ class RecordService:
         """
         now = datetime.now()
         date_str = now.strftime("%Y-%m-%d")
+        return RecordService.get_diet_records_by_date(user_id, date_str)
+
+    @staticmethod
+    def get_diet_records_by_date(user_id: str, date_str: str) -> List[Dict[str, Any]]:
+        """
+        获取指定日期的饮食流水
+        """
         return global_storage.read_dataset(
             user_id=user_id, 
             category="diet", 
@@ -155,3 +234,31 @@ class RecordService:
             all_records.extend(day_records)
             
         return all_records[:limit]
+
+    @staticmethod
+    def get_diet_records_range(user_id: str, start_date: str, end_date: str) -> List[Dict[str, Any]]:
+        """
+        获取指定日期范围内的饮食记录（包含 start 和 end）。
+        返回顺序：按时间正序排列（Oldest -> Newest），方便报表生成。
+        """
+        try:
+            start = datetime.strptime(start_date, "%Y-%m-%d")
+            end = datetime.strptime(end_date, "%Y-%m-%d")
+        except ValueError:
+            return []
+        
+        all_records = []
+        delta = end - start
+        
+        # 遍历日期范围
+        for i in range(delta.days + 1):
+            day = start + timedelta(days=i)
+            day_str = day.strftime("%Y-%m-%d")
+            
+            # 读取该日所有记录
+            day_recs = global_storage.read_dataset(user_id, "diet", f"ledger_{day_str}.jsonl", limit=9999)
+            
+            # read_dataset 返回倒序（新->旧），我们需要正序（旧->新）拼接
+            all_records.extend(reversed(day_recs))
+            
+        return all_records

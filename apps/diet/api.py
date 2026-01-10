@@ -222,8 +222,14 @@ def build_diet_router(settings: BackendSettings) -> APIRouter:
         return DietCommitResponse(success=True, saved_record=saved)
 
     @router.get("/api/diet/history", response_model=DietHistoryResponse, dependencies=[Depends(auth_dep)])
-    async def diet_history(user_id: str, limit: int = 20):
-        records = RecordService.get_recent_diet_records(user_id=user_id, limit=limit)
+    async def diet_history(user_id: str, limit: int = 20, start_date: Optional[str] = None, end_date: Optional[str] = None):
+        if start_date and end_date:
+            # 日期范围查询 (Inclusive)
+            records = RecordService.get_diet_records_range(user_id, start_date, end_date)
+        else:
+            # 默认最近N条
+            records = RecordService.get_recent_diet_records(user_id=user_id, limit=limit)
+            
         return DietHistoryResponse(success=True, records=records)
 
     return router

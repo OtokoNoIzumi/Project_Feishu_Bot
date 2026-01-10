@@ -36,9 +36,7 @@ class KeepScaleParseUsecase:
     async def execute_with_image_bytes_async(self, user_note: str, images_bytes: List[bytes]) -> Dict[str, Any]:
 
         prompt = build_keep_scale_prompt(user_note=user_note)
-        print('test-images:', images)
         llm_result = await self.client.generate_json_async(prompt=prompt, images=images_bytes, schema=KEEP_SCALE_LLM_SCHEMA)
-        print('test-llm_result:', llm_result)
         if isinstance(llm_result, dict) and llm_result.get("error"):
             return {"error": llm_result.get("error")}
         return finalize_scale_event(llm_result)

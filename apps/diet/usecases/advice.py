@@ -41,6 +41,7 @@ class DietAdviceUsecase:
         prompt = build_diet_advice_prompt(
             facts=facts, context_bundle=context_bundle, user_input=combined_user_input
         )
+        print("test-prompt", prompt)
         # 使用不带 schema 的文本生成
         advice_text = await self.client.generate_text_async(prompt=prompt, images=[])
         if advice_text.startswith("Gemini") and "失败" in advice_text:

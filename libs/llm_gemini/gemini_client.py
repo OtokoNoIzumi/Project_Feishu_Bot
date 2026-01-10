@@ -245,6 +245,39 @@ class GeminiStructuredClient:
             self._handle_auth_error(e)
             return {"error": f"Gemini 异步调用失败: {e}"}
 
+    async def generate_text_async(self, prompt: str, images: List[bytes] = None) -> str:
+        """
+        生成纯文本（非结构化 JSON）。用于 Advice 或 Report 场景。
+        """
+        if not self.client_ready:
+            self._init_client()
+            if not self.client_ready:
+                return "系统错误：Gemini 客户端无法初始化（请检查 API Key）。"
+
+        try:
+            # 1. Prepare Contents
+            contents = [prompt]
+            if images:
+                upload_tasks = [self._upload_bytes_if_needed(b) for b in images]
+                uploaded_files = await asyncio.gather(*upload_tasks)
+                contents.extend(uploaded_files)
+
+            # 2. Generate
+            response = await self.client.aio.models.generate_content(
+                model=self.config.model_name,
+                contents=contents,
+                config={
+                    "temperature": self.config.temperature,
+                },
+            )
+
+            return response.text if response.text else ""
+
+        except Exception as e:
+            self._handle_auth_error(e)
+            logger.error(f"Generate text failed: {e}")
+            return f"生成失败: {str(e)}"
+
     # --- Backward Compatibility (Sync Logic is simplified or deprecated) ---
     # Since existing logic heavily relies on async, we focus on async.
     # If synchronous usage is needed, we should implement it similarly or wrap async.
