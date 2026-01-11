@@ -23,6 +23,11 @@
                 <span class="brand-name">Diet & Keep</span>
             </div>
 
+            <div class="side-menu" id="side-menu">
+                <button class="side-menu-item active" data-view="analysis">📊 分析</button>
+                <button class="side-menu-item" data-view="profile">👤 Profile</button>
+            </div>
+
             <div class="history-list" id="history-list">
                 <div class="history-section-title">今天</div>
                 <!-- 历史记录会动态填充 -->
@@ -33,36 +38,13 @@
             </div>
         </aside>
 
-        <!-- 中间：输入区 -->
-        <section class="input-panel">
-            <div class="chat-messages" id="chat-messages">
-                <div class="message assistant">你好！上传食物图片或描述饮食，我来帮你分析。</div>
-            </div>
-
-            <div class="input-area">
-                <div id="preview-container" class="preview-container hidden"></div>
-
-                <div class="input-box" id="input-box">
-                    <textarea id="chat-input" placeholder="描述你的饮食..." rows="1"></textarea>
-                    <div class="input-toolbar">
-                        <div class="toolbar-left">
-                            <button class="tool-btn" id="upload-btn" title="上传图片">➕</button>
-                            <input type="file" id="file-input" accept="image/*" multiple hidden>
-                            <div class="mode-switch">
-                                <button class="mode-btn active" data-mode="diet">🍽️ 饮食</button>
-                                <button class="mode-btn" data-mode="keep">💪 Keep</button>
-                            </div>
-                        </div>
-                        <button id="send-btn" class="send-btn" disabled>发送</button>
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <!-- 右侧：结果展示/编辑区（最宽） -->
+        <!-- 中间：确认/结果面板（最宽） -->
         <main class="result-panel">
             <div class="result-header">
-                <h2 id="result-title">分析结果</h2>
+                <div class="result-header-left">
+                    <button class="result-close-btn" id="result-close-btn" title="折叠">✕</button>
+                    <h2 id="result-title">分析结果</h2>
+                </div>
                 <div class="result-status" id="result-status"></div>
             </div>
 
@@ -80,6 +62,36 @@
                 <button class="btn btn-primary" id="save-btn">💾 保存记录</button>
             </div>
         </main>
+
+        <div class="result-overlay hidden" id="result-overlay"></div>
+
+        <!-- 右侧：输入区（对话 + 输入框始终保留） -->
+        <section class="input-panel">
+            <div class="chat-messages" id="chat-messages">
+                <div class="message assistant">你好！上传食物图片或描述饮食，我来帮你分析。</div>
+            </div>
+
+            <div class="input-area">
+                <div id="preview-container" class="preview-container hidden"></div>
+
+                <div class="input-box" id="input-box">
+                    <textarea id="chat-input" placeholder="描述你的饮食..." rows="1"></textarea>
+                    <div class="input-toolbar">
+                        <div class="toolbar-left">
+                            <button class="tool-btn" id="upload-btn" title="上传图片">➕</button>
+                            <input type="file" id="file-input" accept="image/*" multiple hidden>
+                            <button class="tool-btn tool-btn-mobile" id="toggle-result-btn" title="打开/折叠确认面板">📊</button>
+                            <button class="tool-btn tool-btn-mobile" id="open-profile-btn" title="Profile 设置">⚙️</button>
+                            <div class="mode-switch">
+                                <button class="mode-btn active" data-mode="diet">🍽️ 饮食</button>
+                                <button class="mode-btn" data-mode="keep">💪 Keep</button>
+                            </div>
+                        </div>
+                        <button id="send-btn" class="send-btn" disabled>发送</button>
+                    </div>
+                </div>
+            </div>
+        </section>
     </div>
 
     <script src="config.js"></script>

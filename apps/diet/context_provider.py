@@ -35,6 +35,7 @@ def _demo_context() -> Dict[str, Any]:
             "protein_g_target": 110.0,
             "fat_g_target": 50.0,
             "carbs_g_target": 150.0,
+            "sodium_mg_target": 2000.0,
         },
         "today_so_far": {
             "consumed_energy_kj": 2646,

@@ -1,6 +1,6 @@
 /**
  * Dashboard 主逻辑
- * 
+ *
  * 架构设计：
  * - 每个分析作为一个 Session，支持多版本(v1, v2...)
  * - Session 包含：原始附件、文字说明、多个版本的分析结果
@@ -11,6 +11,9 @@ const Dashboard = {
   // 模式：diet / keep
   mode: 'diet',
 
+  // 右侧（移动端抽屉）展示内容：analysis / profile
+  view: 'analysis',
+
   // 待上传的图片
   pendingImages: [],
 
@@ -19,6 +22,15 @@ const Dashboard = {
 
   // 当前选中的 session
   currentSession: null,
+
+  // 移动端：确认面板（结果面板）是否打开
+  isResultPanelOpen: false,
+
+  // Profile（前端先行：本地存储 + 占位请求）
+  profile: null,
+
+  // Diet：AI 菜式的 ingredients 折叠状态（默认折叠）
+  dietIngredientsCollapsed: {},
 
   // DOM 元素缓存
   el: {},
@@ -56,14 +68,34 @@ const Dashboard = {
       reAnalyzeBtn: document.getElementById('re-analyze-btn'),
       updateAdviceBtn: document.getElementById('update-advice-btn'),
       historyList: document.getElementById('history-list'),
+      sideMenu: document.getElementById('side-menu'),
+      toggleResultBtn: document.getElementById('toggle-result-btn'),
+      openProfileBtn: document.getElementById('open-profile-btn'),
+      resultCloseBtn: document.getElementById('result-close-btn'),
+      resultOverlay: document.getElementById('result-overlay'),
     };
   },
 
   bindEvents() {
+    // 左侧菜单：分析 / Profile
+    this.el.sideMenu?.querySelectorAll('.side-menu-item')?.forEach(btn => {
+      btn.addEventListener('click', () => this.switchView(btn.dataset.view));
+    });
+
     // 模式切换
     document.querySelectorAll('.mode-btn').forEach(btn => {
       btn.addEventListener('click', () => this.switchMode(btn.dataset.mode));
     });
+
+    // 移动端：打开/折叠确认面板
+    this.el.toggleResultBtn?.addEventListener('click', () => {
+      this.setResultPanelOpen(!this.isResultPanelOpen);
+    });
+    this.el.resultCloseBtn?.addEventListener('click', () => this.setResultPanelOpen(false));
+    this.el.resultOverlay?.addEventListener('click', () => this.setResultPanelOpen(false));
+
+    // 移动端快捷入口：Profile
+    this.el.openProfileBtn?.addEventListener('click', () => this.switchView('profile'));
 
     // 上传
     this.el.uploadBtn?.addEventListener('click', () => this.el.fileInput?.click());
@@ -103,6 +135,9 @@ const Dashboard = {
 
     // 保存记录
     this.el.saveBtn?.addEventListener('click', () => this.saveRecord());
+
+    // 初始化 Profile
+    this.profile = this.loadProfile();
   },
 
   switchMode(mode) {
@@ -112,6 +147,71 @@ const Dashboard = {
     });
     // 切换模式时清空右侧
     this.clearResult();
+  },
+
+  // ========== 视图 / 面板 ==========
+
+  isMobile() {
+    return window.matchMedia && window.matchMedia('(max-width: 768px)').matches;
+  },
+
+  // 统一的能量显示单位：kJ / kcal（默认 kJ）
+  getEnergyUnit() {
+    const u = this.profile?.diet?.energy_unit;
+    return u === 'kcal' ? 'kcal' : 'kJ';
+  },
+
+  // kcal -> kJ
+  kcalToKJ(kcal) {
+    return (Number(kcal) || 0) * 4.184;
+  },
+
+  // kJ -> kcal
+  kJToKcal(kj) {
+    return (Number(kj) || 0) / 4.184;
+  },
+
+  // 宏量 -> kcal（P/C=4,F=9）
+  macrosToKcal(proteinG, fatG, carbsG) {
+    const p = Number(proteinG) || 0;
+    const f = Number(fatG) || 0;
+    const c = Number(carbsG) || 0;
+    return p * 4 + f * 9 + c * 4;
+  },
+
+  setResultPanelOpen(open) {
+    this.isResultPanelOpen = Boolean(open);
+    const panel = document.querySelector('.result-panel');
+    if (panel) {
+      panel.classList.toggle('mobile-open', this.isResultPanelOpen && this.isMobile());
+    }
+    if (this.el.resultOverlay) {
+      this.el.resultOverlay.classList.toggle('hidden', !(this.isResultPanelOpen && this.isMobile()));
+    }
+  },
+
+  switchView(view) {
+    const next = view === 'profile' ? 'profile' : 'analysis';
+    this.view = next;
+
+    // 左侧菜单高亮
+    this.el.sideMenu?.querySelectorAll('.side-menu-item')?.forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.view === next);
+    });
+
+    if (next === 'profile') {
+      this.renderProfileView();
+      if (this.isMobile()) this.setResultPanelOpen(true);
+      return;
+    }
+
+    // 回到分析视图
+    if (this.currentSession && this.currentSession.versions.length > 0) {
+      this.renderResult(this.currentSession);
+    } else {
+      this.clearResult();
+    }
+    if (this.isMobile()) this.setResultPanelOpen(true);
   },
 
   // ========== 图片处理 ==========
@@ -290,6 +390,7 @@ const Dashboard = {
     // 渲染最新版本
     if (session.versions.length > 0) {
       this.renderResult(session);
+      if (this.isMobile()) this.setResultPanelOpen(true);
     }
   },
 
@@ -329,9 +430,8 @@ const Dashboard = {
 
     const session = this.currentSession;
 
-    // 获取附加的文字说明
-    const additionalNote = document.getElementById('additional-note')?.value.trim() || '';
-    const fullNote = [session.text, additionalNote].filter(Boolean).join('\n');
+    // 重新分析：直接使用当前输入框内容（已包含 user_note，不再二次拼接）
+    const fullNote = document.getElementById('additional-note')?.value.trim() || '';
 
     // 执行分析（使用原始附件）
     await this.executeAnalysis(session, fullNote);
@@ -375,6 +475,7 @@ const Dashboard = {
 
       // 渲染结果
       this.renderResult(session);
+      if (this.isMobile()) this.setResultPanelOpen(true);
 
       this.addMessage('分析完成！', 'assistant');
 
@@ -456,6 +557,8 @@ const Dashboard = {
     let totalProtein = 0;
     let totalFat = 0;
     let totalCarb = 0;
+    let totalSodiumMg = 0;
+    let totalFiberG = 0;
 
     const dishes = [];
 
@@ -465,6 +568,8 @@ const Dashboard = {
       let dishProtein = 0;
       let dishFat = 0;
       let dishCarb = 0;
+      let dishSodiumMg = 0;
+      let dishFiberG = 0;
 
       (dish.ingredients || []).forEach(ing => {
         const weight = ing.weight_g || 0;
@@ -474,6 +579,8 @@ const Dashboard = {
           dishProtein += ing.macros.protein_g || 0;
           dishFat += ing.macros.fat_g || 0;
           dishCarb += ing.macros.carbs_g || 0;
+          dishSodiumMg += ing.macros.sodium_mg || 0;
+          dishFiberG += ing.macros.fiber_g || 0;
         }
 
         // 计算能量
@@ -489,16 +596,30 @@ const Dashboard = {
         id: i,
         name: dish.standard_name || '未知',
         weight: Math.round(dishWeight),
-        energy: Math.round(dishEnergy),
-        protein: Math.round(dishProtein * 10) / 10,
-        fat: Math.round(dishFat * 10) / 10,
-        carb: Math.round(dishCarb * 10) / 10,
+        enabled: true,
+        source: 'ai',
+        ingredients: (dish.ingredients || []).map(ing => ({
+          name_zh: ing.name_zh,
+          weight_g: Number(ing.weight_g) || 0,
+          weight_method: ing.weight_method,
+          data_source: ing.data_source,
+          energy_kj: Number(ing.energy_kj) || 0,
+          macros: {
+            protein_g: Number(ing.macros?.protein_g) || 0,
+            fat_g: Number(ing.macros?.fat_g) || 0,
+            carbs_g: Number(ing.macros?.carbs_g) || 0,
+            sodium_mg: Number(ing.macros?.sodium_mg) || 0,
+            fiber_g: Number(ing.macros?.fiber_g) || 0,
+          },
+        })),
       });
 
       totalEnergy += dishEnergy;
       totalProtein += dishProtein;
       totalFat += dishFat;
       totalCarb += dishCarb;
+      totalSodiumMg += dishSodiumMg;
+      totalFiberG += dishFiberG;
     });
 
     return {
@@ -510,6 +631,8 @@ const Dashboard = {
         totalProtein: Math.round(totalProtein * 10) / 10,
         totalFat: Math.round(totalFat * 10) / 10,
         totalCarb: Math.round(totalCarb * 10) / 10,
+        totalFiber: Math.round(totalFiberG * 10) / 10,
+        totalSodiumMg: Math.round(totalSodiumMg),
       },
       dishes: dishes,
       advice: summary.advice || '',
@@ -595,6 +718,11 @@ const Dashboard = {
 
     // 缓存当前 dishes 用于编辑
     this.currentDishes = [...data.dishes];
+    this.currentDietMeta = {
+      mealName: summary.mealName || '饮食记录',
+      dietTime: summary.dietTime || '',
+    };
+    this.recalculateDietSummary(false);
 
     // 获取当前版本的 user_note
     const currentNote = version.userNote || session.text || '';
@@ -605,7 +733,7 @@ const Dashboard = {
           <div class="result-icon">🍽️</div>
           <div>
             <div class="result-card-title">${summary.mealName}</div>
-            <div class="result-card-subtitle">${this.currentDishes.length} 种食物 · ${summary.dietTime || ''}</div>
+            <div class="result-card-subtitle" id="diet-subtitle">${this.currentDishes.length} 种食物 · ${summary.dietTime || ''}</div>
           </div>
           ${session.versions.length > 1 ? `
             <div class="version-nav">
@@ -615,37 +743,54 @@ const Dashboard = {
             </div>
           ` : ''}
         </div>
-        
-        <div class="nutrition-grid">
-          <div class="nutrition-item">
-            <input type="number" class="nutrition-input" id="total-energy" value="${summary.totalEnergy}" onchange="Dashboard.markModified()">
-            <div class="nutrition-label">千卡</div>
+
+        <div class="nutrition-summary">
+          <div class="summary-energy">
+            <div class="value">
+              <span id="sum-total-energy">${this.currentDietTotals.totalEnergy}</span>
+              <span id="sum-energy-unit">${this.getEnergyUnit()}</span>
+            </div>
+            <div class="label">总能量（自动加总，来自宏量计算）</div>
           </div>
-          <div class="nutrition-item">
-            <input type="number" class="nutrition-input" id="total-protein" value="${summary.totalProtein}" step="0.1" onchange="Dashboard.markModified()">
-            <div class="nutrition-label">蛋白质 (g)</div>
-          </div>
-          <div class="nutrition-item">
-            <input type="number" class="nutrition-input" id="total-fat" value="${summary.totalFat}" step="0.1" onchange="Dashboard.markModified()">
-            <div class="nutrition-label">脂肪 (g)</div>
-          </div>
-          <div class="nutrition-item">
-            <input type="number" class="nutrition-input" id="total-carb" value="${summary.totalCarb}" step="0.1" onchange="Dashboard.markModified()">
-            <div class="nutrition-label">碳水 (g)</div>
+          <div class="summary-macros">
+            <div class="summary-macro-item">
+              <div class="value"><span id="sum-total-protein">${this.currentDietTotals.totalProtein}</span> g</div>
+              <div class="label">蛋白质</div>
+            </div>
+            <div class="summary-macro-item">
+              <div class="value"><span id="sum-total-fat">${this.currentDietTotals.totalFat}</span> g</div>
+              <div class="label">脂肪</div>
+            </div>
+            <div class="summary-macro-item">
+              <div class="value"><span id="sum-total-carb">${this.currentDietTotals.totalCarb}</span> g</div>
+              <div class="label">碳水</div>
+            </div>
+            <div class="summary-macro-item">
+              <div class="value"><span id="sum-total-fiber">${this.currentDietTotals.totalFiber}</span> g</div>
+              <div class="label">膳食纤维</div>
+            </div>
+            <div class="summary-macro-item">
+              <div class="value"><span id="sum-total-sodium">${this.currentDietTotals.totalSodiumMg}</span> mg</div>
+              <div class="label">钠</div>
+            </div>
+            <div class="summary-macro-item">
+              <div class="value"><span id="sum-total-weight">${this.currentDietTotals.totalWeightG}</span> g</div>
+              <div class="label">总重量</div>
+            </div>
           </div>
         </div>
-        
+
         <div class="dishes-section">
           <div class="dishes-title">食物明细</div>
-          <div id="dishes-list"></div>
-          <button class="add-dish-btn" onclick="Dashboard.addDish()">+ 添加食物</button>
+          <div id="diet-dishes-container"></div>
+          <button class="add-dish-btn" onclick="Dashboard.addDish()">+ 添加菜式</button>
         </div>
-        
+
         <div class="note-section">
           <div class="dishes-title">文字说明</div>
           <textarea id="additional-note" class="note-input" placeholder="补充或修正说明...">${currentNote}</textarea>
         </div>
-        
+
         <div id="advice-section" class="advice-section ${version.advice ? '' : 'hidden'}">
           <div class="dishes-title">AI 建议</div>
           <p class="advice-text" id="advice-text">${version.advice || ''}</p>
@@ -653,7 +798,7 @@ const Dashboard = {
       </div>
     `;
 
-    this.renderDishList();
+    this.renderDietDishes();
     this.el.resultTitle.textContent = '饮食分析结果';
     this.updateStatus(session.isSaved ? 'saved' : '');
   },
@@ -758,18 +903,282 @@ const Dashboard = {
     this.updateStatus(session.isSaved ? 'saved' : '');
   },
 
-  renderDishList() {
-    const container = document.getElementById('dishes-list');
-    if (!container || !this.currentDishes) return;
+  renderDietDishes() {
+    const wrap = document.getElementById('diet-dishes-container');
+    if (!wrap || !this.currentDishes) return;
 
-    container.innerHTML = this.currentDishes.map((d, i) => `
-      <div class="dish-row" data-index="${i}">
-        <input type="text" class="dish-input name" value="${d.name}" onchange="Dashboard.updateDish(${i}, 'name', this.value)">
-        <input type="number" class="dish-input number" value="${d.weight}" placeholder="克" onchange="Dashboard.updateDish(${i}, 'weight', this.value)">
-        <input type="number" class="dish-input number" value="${d.energy}" placeholder="kcal" onchange="Dashboard.updateDish(${i}, 'energy', this.value)">
-        <button class="dish-remove" onclick="Dashboard.removeDish(${i})">×</button>
+    if (this.isMobile()) {
+      wrap.innerHTML = this.renderDietDishesMobile();
+      return;
+    }
+
+    wrap.innerHTML = this.currentDishes.map((d, i) => this.renderDietDishBlockDesktop(d, i)).join('');
+  },
+
+  renderDietDishBlockDesktop(d, i) {
+    const enabled = d.enabled !== false;
+    const disableInputs = !enabled;
+    const unit = this.getEnergyUnit();
+    const totals = this.getDishTotals(d);
+    const energyText = this.formatEnergyFromMacros(totals.protein, totals.fat, totals.carb);
+    const removeBtn = d.source === 'user'
+      ? `<button class="cell-remove" onclick="Dashboard.removeDish(${i})">×</button>`
+      : `<span class="diet-level-tag">AI</span>`;
+
+    const dishName = d.source === 'user'
+      ? `<input type="text" class="cell-input" value="${d.name}" ${disableInputs ? 'disabled' : ''} oninput="Dashboard.updateDish(${i}, 'name', this.value)">`
+      : `<div class="diet-dish-name">${d.name}</div>`;
+
+    const ratio = this.getMacroEnergyRatio(totals.protein, totals.fat, totals.carb);
+    const ratioHtml = ratio.total_kcal > 0
+      ? `<span class="diet-chip">P ${ratio.p_pct}%</span><span class="diet-chip">F ${ratio.f_pct}%</span><span class="diet-chip">C ${ratio.c_pct}%</span>`
+      : '';
+
+    const dishSummaryHtml = `
+      <div class="diet-dish-stats">
+        <span class="diet-stat"><span class="k">能量</span><span class="v">${energyText} ${unit}</span></span>
+        <span class="diet-stat"><span class="k">蛋白</span><span class="v">${totals.protein}g</span></span>
+        <span class="diet-stat"><span class="k">脂肪</span><span class="v">${totals.fat}g</span></span>
+        <span class="diet-stat"><span class="k">碳水</span><span class="v">${totals.carb}g</span></span>
+        <span class="diet-stat"><span class="k">纤维</span><span class="v">${totals.fiber}g</span></span>
+        <span class="diet-stat"><span class="k">钠</span><span class="v">${totals.sodium_mg}mg</span></span>
+        <span class="diet-stat"><span class="k">重量</span><span class="v">${totals.weight}g</span></span>
+        <span class="diet-chips">${ratioHtml}</span>
       </div>
-    `).join('');
+    `;
+
+    let ingredientsHtml = '';
+    if (d.source === 'ai') {
+      const collapsed = this.dietIngredientsCollapsed?.[d.id] !== false;
+      const toggleText = collapsed ? '展开 Ingredients' : '收起 Ingredients';
+      const hiddenClass = collapsed ? 'collapsed' : '';
+      ingredientsHtml = `
+        <div class="diet-ingredients-wrap ${disableInputs ? 'disabled' : ''}">
+          <div class="diet-ingredients-bar">
+            <div class="diet-ingredients-title">Ingredients（可编辑）</div>
+            <button class="diet-toggle-btn" onclick="Dashboard.toggleIngredients(${d.id})">${toggleText}</button>
+          </div>
+          <div class="diet-ingredients-body ${hiddenClass}">
+            <div class="dish-table-wrap" style="min-width: 0;">
+              <table class="dish-table ingredients-table" style="min-width: 0; table-layout: fixed;">
+                <thead>
+                  <tr>
+                    <th>成分</th>
+                    <th class="num">能量</th>
+                    <th class="num">蛋白(g)</th>
+                    <th class="num">脂肪(g)</th>
+                    <th class="num">碳水(g)</th>
+                    <th class="num">纤维(g)</th>
+                    <th class="num">钠(mg)</th>
+                    <th class="num">重量(g)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${(d.ingredients || []).map((ing, j) => {
+                    const e = this.formatEnergyFromMacros(ing.macros?.protein_g, ing.macros?.fat_g, ing.macros?.carbs_g);
+                    const ro = 'readonly tabindex="-1"';
+                    const dis = disableInputs ? 'disabled' : '';
+                    return `
+                      <tr>
+                        <td>
+                          <input type="text" class="cell-input cell-readonly" value="${ing.name_zh || ''}" ${ro}>
+                        </td>
+                        <td>
+                          <input type="text" class="cell-input num cell-readonly" value="${e}" ${ro}>
+                        </td>
+                        <td>
+                          <input type="number" class="cell-input num" value="${ing.macros?.protein_g ?? 0}" min="0" step="0.1" ${dis} oninput="Dashboard.updateIngredient(${i}, ${j}, 'protein_g', this.value)">
+                        </td>
+                        <td>
+                          <input type="number" class="cell-input num" value="${ing.macros?.fat_g ?? 0}" min="0" step="0.1" ${dis} oninput="Dashboard.updateIngredient(${i}, ${j}, 'fat_g', this.value)">
+                        </td>
+                        <td>
+                          <input type="number" class="cell-input num" value="${ing.macros?.carbs_g ?? 0}" min="0" step="0.1" ${dis} oninput="Dashboard.updateIngredient(${i}, ${j}, 'carbs_g', this.value)">
+                        </td>
+                        <td>
+                          <input type="number" class="cell-input num" value="${ing.macros?.fiber_g ?? 0}" min="0" step="0.1" ${dis} oninput="Dashboard.updateIngredient(${i}, ${j}, 'fiber_g', this.value)">
+                        </td>
+                        <td>
+                          <input type="number" class="cell-input num" value="${ing.macros?.sodium_mg ?? 0}" min="0" step="1" ${dis} oninput="Dashboard.updateIngredient(${i}, ${j}, 'sodium_mg', this.value)">
+                        </td>
+                        <td>
+                          <input type="number" class="cell-input num" value="${ing.weight_g ?? 0}" min="0" step="0.1" ${dis} oninput="Dashboard.updateIngredient(${i}, ${j}, 'weight_g', this.value)">
+                        </td>
+                      </tr>
+                    `;
+                  }).join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    // 用户新增菜式：保持“汇总编辑”（不展开 ingredients）
+    let userEditRow = '';
+    if (d.source === 'user') {
+      const dis = disableInputs ? 'disabled' : '';
+      const ro = 'readonly tabindex="-1"';
+      userEditRow = `
+        <div class="diet-user-edit-row ${disableInputs ? 'disabled' : ''}">
+          <div class="diet-ingredients-bar">
+            <div class="diet-ingredients-title">菜式（可编辑）</div>
+          </div>
+          <div class="dish-table-wrap" style="min-width: 0;">
+            <table class="dish-table ingredients-table" style="min-width: 0; table-layout: fixed;">
+              <thead>
+                <tr>
+                  <th>菜式</th>
+                  <th class="num">能量</th>
+                  <th class="num">蛋白(g)</th>
+                  <th class="num">脂肪(g)</th>
+                  <th class="num">碳水(g)</th>
+                  <th class="num">纤维(g)</th>
+                  <th class="num">钠(mg)</th>
+                  <th class="num">重量(g)</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><input type="text" class="cell-input cell-readonly" value="${d.name}" ${ro}></td>
+                  <td><input type="text" class="cell-input num cell-readonly" value="${energyText}" ${ro}></td>
+                  <td><input type="number" class="cell-input num" value="${d.protein ?? 0}" min="0" step="0.1" ${dis} oninput="Dashboard.updateDish(${i}, 'protein', this.value)"></td>
+                  <td><input type="number" class="cell-input num" value="${d.fat ?? 0}" min="0" step="0.1" ${dis} oninput="Dashboard.updateDish(${i}, 'fat', this.value)"></td>
+                  <td><input type="number" class="cell-input num" value="${d.carb ?? 0}" min="0" step="0.1" ${dis} oninput="Dashboard.updateDish(${i}, 'carb', this.value)"></td>
+                  <td><input type="number" class="cell-input num" value="${d.fiber ?? 0}" min="0" step="0.1" ${dis} oninput="Dashboard.updateDish(${i}, 'fiber', this.value)"></td>
+                  <td><input type="number" class="cell-input num" value="${d.sodium_mg ?? 0}" min="0" step="1" ${dis} oninput="Dashboard.updateDish(${i}, 'sodium_mg', this.value)"></td>
+                  <td><input type="number" class="cell-input num" value="${d.weight ?? 0}" min="0" step="0.1" ${dis} oninput="Dashboard.updateDish(${i}, 'weight', this.value)"></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `;
+    }
+
+    return `
+      <div class="diet-dish-block ${disableInputs ? 'disabled' : ''}">
+        <div class="diet-dish-header">
+          <div class="diet-dish-left">
+            <input type="checkbox" ${enabled ? 'checked' : ''} onchange="Dashboard.toggleDishEnabled(${i}, this.checked)">
+            ${dishName}
+          </div>
+          <div class="diet-dish-right">
+            ${removeBtn}
+          </div>
+        </div>
+        ${dishSummaryHtml}
+        ${d.source === 'user' ? userEditRow : ingredientsHtml}
+      </div>
+    `;
+  },
+
+  renderDietDishesMobile() {
+    return `
+      ${this.currentDishes.map((d, i) => {
+        const enabled = d.enabled !== false;
+        const totals = this.getDishTotals(d);
+        const unit = this.getEnergyUnit();
+        const energyText = this.formatEnergyFromMacros(totals.protein, totals.fat, totals.carb);
+        const disableInputs = !enabled;
+        const canRemove = d.source === 'user';
+        const dis = disableInputs ? 'disabled' : '';
+
+        // AI：菜式头只读 + ingredients 可编辑
+        const collapsed = this.dietIngredientsCollapsed?.[d.id] !== false;
+        const toggleText = collapsed ? '展开' : '收起';
+        const aiIngredients = d.source === 'ai'
+          ? `
+            <div class="dishes-title" style="margin-top: 10px;">Ingredients（可编辑）</div>
+            <button class="diet-toggle-btn" style="margin: 6px 0 10px 0;" onclick="Dashboard.toggleIngredients(${d.id})">${toggleText}</button>
+            <div class="${collapsed ? 'diet-ingredients-body collapsed' : 'diet-ingredients-body'}">
+            ${(d.ingredients || []).map((ing, j) => {
+              const ie = this.formatEnergyFromMacros(ing.macros?.protein_g, ing.macros?.fat_g, ing.macros?.carbs_g);
+              return `
+                <div class="keep-item" style="border-bottom: none; padding: 10px 0 6px 0;">
+                  <div class="keep-main" style="gap: 8px;">
+                    <span class="keep-sub">${ing.name_zh || ''}</span>
+                    <span class="keep-details"><span>能量 ${ie} ${unit}</span></span>
+                  </div>
+                </div>
+                <div class="dish-row" style="grid-template-columns: repeat(3, 1fr); gap: 8px; border-bottom: none;">
+                  <input type="number" class="dish-input number" placeholder="蛋白(g)" value="${ing.macros?.protein_g ?? 0}" min="0" step="0.1" ${dis} oninput="Dashboard.updateIngredient(${i}, ${j}, 'protein_g', this.value)">
+                  <input type="number" class="dish-input number" placeholder="脂肪(g)" value="${ing.macros?.fat_g ?? 0}" min="0" step="0.1" ${dis} oninput="Dashboard.updateIngredient(${i}, ${j}, 'fat_g', this.value)">
+                  <input type="number" class="dish-input number" placeholder="碳水(g)" value="${ing.macros?.carbs_g ?? 0}" min="0" step="0.1" ${dis} oninput="Dashboard.updateIngredient(${i}, ${j}, 'carbs_g', this.value)">
+                </div>
+                <div class="dish-row" style="grid-template-columns: repeat(3, 1fr); gap: 8px; border-bottom: none;">
+                  <input type="number" class="dish-input number" placeholder="纤维(g)" value="${ing.macros?.fiber_g ?? 0}" min="0" step="0.1" ${dis} oninput="Dashboard.updateIngredient(${i}, ${j}, 'fiber_g', this.value)">
+                  <input type="number" class="dish-input number" placeholder="钠(mg)" value="${ing.macros?.sodium_mg ?? 0}" min="0" step="1" ${dis} oninput="Dashboard.updateIngredient(${i}, ${j}, 'sodium_mg', this.value)">
+                  <input type="number" class="dish-input number" placeholder="重量(g)" value="${ing.weight_g ?? 0}" min="0" step="0.1" ${dis} oninput="Dashboard.updateIngredient(${i}, ${j}, 'weight_g', this.value)">
+                </div>
+              `;
+            }).join('')}
+            </div>
+          `
+          : '';
+
+        // 用户新增：保持汇总编辑
+        const userEditor = d.source === 'user'
+          ? `
+            <div class="dish-row" style="grid-template-columns: repeat(3, 1fr); gap: 8px; border-bottom: none; padding-top: 10px;">
+              <input type="number" class="dish-input number" placeholder="蛋白(g)" value="${d.protein ?? 0}" min="0" step="0.1" ${dis} oninput="Dashboard.updateDish(${i}, 'protein', this.value)">
+              <input type="number" class="dish-input number" placeholder="脂肪(g)" value="${d.fat ?? 0}" min="0" step="0.1" ${dis} oninput="Dashboard.updateDish(${i}, 'fat', this.value)">
+              <input type="number" class="dish-input number" placeholder="碳水(g)" value="${d.carb ?? 0}" min="0" step="0.1" ${dis} oninput="Dashboard.updateDish(${i}, 'carb', this.value)">
+            </div>
+            <div class="dish-row" style="grid-template-columns: repeat(3, 1fr); gap: 8px; border-bottom: none;">
+              <input type="number" class="dish-input number" placeholder="纤维(g)" value="${d.fiber ?? 0}" min="0" step="0.1" ${dis} oninput="Dashboard.updateDish(${i}, 'fiber', this.value)">
+              <input type="number" class="dish-input number" placeholder="钠(mg)" value="${d.sodium_mg ?? 0}" min="0" step="1" ${dis} oninput="Dashboard.updateDish(${i}, 'sodium_mg', this.value)">
+              <input type="number" class="dish-input number" placeholder="重量(g)" value="${d.weight ?? 0}" min="0" step="0.1" ${dis} oninput="Dashboard.updateDish(${i}, 'weight', this.value)">
+            </div>
+          `
+          : '';
+
+        return `
+          <div class="keep-section" style="${disableInputs ? 'opacity: 0.55;' : ''}">
+            <div style="display:flex; align-items:center; justify-content: space-between; gap: 10px;">
+              <div style="display:flex; align-items:center; gap: 10px; min-width: 0;">
+                <input type="checkbox" ${enabled ? 'checked' : ''} onchange="Dashboard.toggleDishEnabled(${i}, this.checked)">
+                ${d.source === 'user'
+                  ? `<input type="text" class="dish-input name" style="flex:1; min-width: 0;" value="${d.name}" ${dis} oninput="Dashboard.updateDish(${i}, 'name', this.value)">`
+                  : `<div style="flex:1; min-width: 0; font-weight: 600; overflow:hidden; text-overflow: ellipsis; white-space: nowrap;">${d.name}</div>`
+                }
+              </div>
+              ${canRemove ? `<button class="cell-remove" onclick="Dashboard.removeDish(${i})">×</button>` : `<span class="text-muted" style="font-size:0.75rem;">AI</span>`}
+            </div>
+
+            <div class="keep-item" style="border-bottom:none; padding-bottom: 0;">
+              <div class="keep-details" style="gap: 8px;">
+                <span>能量 ${energyText} ${unit}</span>
+                <span>蛋白 ${totals.protein}g</span>
+                <span>脂肪 ${totals.fat}g</span>
+                <span>碳水 ${totals.carb}g</span>
+                <span>纤维 ${totals.fiber}g</span>
+                <span>钠 ${totals.sodium_mg}mg</span>
+                <span>重量 ${totals.weight}g</span>
+              </div>
+            </div>
+
+            ${d.source === 'user' ? userEditor : aiIngredients}
+          </div>
+        `;
+      }).join('')}
+    `;
+  },
+
+  formatEnergyFromMacros(proteinG, fatG, carbsG) {
+    const kcal = this.macrosToKcal(proteinG, fatG, carbsG);
+    const unit = this.getEnergyUnit();
+    if (unit === 'kcal') return String(Math.round(kcal));
+    return String(Math.round(this.kcalToKJ(kcal)));
+  },
+
+  toggleDishEnabled(index, enabled) {
+    if (this.currentDishes && this.currentDishes[index]) {
+      this.currentDishes[index].enabled = Boolean(enabled);
+      this.recalculateDietSummary(true);
+      this.renderDietDishes();
+    }
   },
 
   renderAdvice(adviceText) {
@@ -785,24 +1194,132 @@ const Dashboard = {
 
   updateDish(index, field, value) {
     if (this.currentDishes && this.currentDishes[index]) {
-      this.currentDishes[index][field] = field === 'name' ? value : parseFloat(value) || 0;
-      this.markModified();
+      // AI 菜式：菜式层级不可编辑（只允许编辑 ingredients）
+      if (this.currentDishes[index].source === 'ai') {
+        return;
+      }
+      this.currentDishes[index][field] = field === 'name' ? value : (parseFloat(value) || 0);
+      this.recalculateDietSummary(true);
     }
+  },
+
+  updateIngredient(dishIndex, ingIndex, field, value) {
+    const dish = this.currentDishes?.[dishIndex];
+    if (!dish || dish.source !== 'ai') return;
+    const ing = dish.ingredients?.[ingIndex];
+    if (!ing) return;
+
+    if (field === 'weight_g') {
+      ing.weight_g = parseFloat(value) || 0;
+    } else {
+      ing.macros = ing.macros || {};
+      ing.macros[field] = parseFloat(value) || 0;
+    }
+
+    this.recalculateDietSummary(true);
+    this.renderDietDishes();
+  },
+
+  toggleIngredients(dishId) {
+    const curr = this.dietIngredientsCollapsed?.[dishId];
+    // 默认折叠：undefined 视为 true
+    const next = curr === false ? true : false;
+    this.dietIngredientsCollapsed[dishId] = next;
+    this.renderDietDishes();
   },
 
   addDish() {
     if (!this.currentDishes) this.currentDishes = [];
-    this.currentDishes.push({ id: Date.now(), name: '新食物', weight: 0, energy: 0 });
-    this.renderDishList();
-    this.markModified();
+    this.currentDishes.push({
+      id: Date.now(),
+      name: '新菜式',
+      weight: 0,
+      protein: 0,
+      fat: 0,
+      carb: 0,
+      fiber: 0,
+      sodium_mg: 0,
+      enabled: true,
+      source: 'user',
+    });
+    this.renderDietDishes();
+    this.recalculateDietSummary(true);
   },
 
   removeDish(index) {
     if (this.currentDishes) {
+      const d = this.currentDishes[index];
+      if (d && d.source !== 'user') {
+        this.addMessage('AI 识别的菜式不支持删除，可取消勾选以停用', 'assistant');
+        return;
+      }
       this.currentDishes.splice(index, 1);
-      this.renderDishList();
-      this.markModified();
+      this.renderDietDishes();
+      this.recalculateDietSummary(true);
     }
+  },
+
+  recalculateDietSummary(markModified) {
+    const dishes = this.currentDishes || [];
+    const totals = {
+      totalEnergyKcal: 0,
+      totalProtein: 0,
+      totalFat: 0,
+      totalCarb: 0,
+      totalFiber: 0,
+      totalSodiumMg: 0,
+      totalWeightG: 0,
+    };
+
+    for (const d of dishes) {
+      if (d.enabled === false) continue;
+
+      const t = this.getDishTotals(d);
+      totals.totalEnergyKcal += this.macrosToKcal(t.protein, t.fat, t.carb);
+      totals.totalProtein += t.protein;
+      totals.totalFat += t.fat;
+      totals.totalCarb += t.carb;
+      totals.totalFiber += t.fiber;
+      totals.totalSodiumMg += t.sodium_mg;
+      totals.totalWeightG += t.weight;
+    }
+
+    // 统一保留位数：热量/钠为整数；其他为 0.1
+    const unit = this.getEnergyUnit();
+    const totalEnergyDisplay = unit === 'kcal'
+      ? Math.round(totals.totalEnergyKcal)
+      : Math.round(this.kcalToKJ(totals.totalEnergyKcal));
+
+    this.currentDietTotals = {
+      totalEnergy: totalEnergyDisplay,
+      totalProtein: Math.round(totals.totalProtein * 10) / 10,
+      totalFat: Math.round(totals.totalFat * 10) / 10,
+      totalCarb: Math.round(totals.totalCarb * 10) / 10,
+      totalFiber: Math.round(totals.totalFiber * 10) / 10,
+      totalSodiumMg: Math.round(totals.totalSodiumMg),
+      totalWeightG: Math.round(totals.totalWeightG),
+    };
+
+    // 更新总览 DOM
+    const setText = (id, v) => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = String(v);
+    };
+    setText('sum-total-energy', this.currentDietTotals.totalEnergy);
+    setText('sum-energy-unit', unit);
+    setText('sum-total-protein', this.currentDietTotals.totalProtein);
+    setText('sum-total-fat', this.currentDietTotals.totalFat);
+    setText('sum-total-carb', this.currentDietTotals.totalCarb);
+    setText('sum-total-fiber', this.currentDietTotals.totalFiber);
+    setText('sum-total-sodium', this.currentDietTotals.totalSodiumMg);
+    setText('sum-total-weight', this.currentDietTotals.totalWeightG);
+
+    const subtitle = document.getElementById('diet-subtitle');
+    if (subtitle && this.currentDietMeta) {
+      subtitle.textContent = `${dishes.length} 种食物 · ${this.currentDietMeta.dietTime || ''}`;
+    }
+
+    if (markModified) this.markModified();
   },
 
   markModified() {
@@ -814,19 +1331,359 @@ const Dashboard = {
   },
 
   collectEditedData() {
+    // 目前只对 diet 结果做“确认面板编辑”
+    if (this.mode !== 'diet') return {};
+
+    if (!this.currentDietTotals) {
+      this.recalculateDietSummary(false);
+    }
+
+    const totals = this.currentDietTotals || {};
+    const mealName = this.currentDietMeta?.mealName || '饮食记录';
+    const dietTime = this.currentDietMeta?.dietTime || '';
+    const unit = this.getEnergyUnit();
+    const totalEnergyKcal = unit === 'kcal'
+      ? (Number(totals.totalEnergy) || 0)
+      : this.kJToKcal(Number(totals.totalEnergy) || 0);
+
+    const editedDishes = (this.currentDishes || []).filter(d => d.enabled !== false).map(d => {
+      // A. AI 识别菜式：保留 ingredients 结构，直接保存“逐成分编辑后的数据”
+      if (d.source === 'ai' && Array.isArray(d.ingredients) && d.ingredients.length > 0) {
+        return {
+          standard_name: d.name,
+          ingredients: (d.ingredients || []).map(ing => ({
+            name_zh: ing.name_zh,
+            weight_g: Number(ing.weight_g) || 0,
+            weight_method: ing.weight_method,
+            data_source: ing.data_source,
+            energy_kj: Math.round(this.kcalToKJ(this.macrosToKcal(
+              ing.macros?.protein_g,
+              ing.macros?.fat_g,
+              ing.macros?.carbs_g
+            )) * 1000) / 1000,
+            macros: {
+              protein_g: Number(ing.macros?.protein_g) || 0,
+              fat_g: Number(ing.macros?.fat_g) || 0,
+              carbs_g: Number(ing.macros?.carbs_g) || 0,
+              fiber_g: Number(ing.macros?.fiber_g) || 0,
+              sodium_mg: Number(ing.macros?.sodium_mg) || 0,
+            },
+          })),
+        };
+      }
+
+      // B. 用户新增菜式：用单一 ingredient 表示（结构保持一致）
+      return {
+        standard_name: d.name,
+        ingredients: [
+          {
+            name_zh: d.name,
+            weight_g: Number(d.weight) || 0,
+            weight_method: "user_edit",
+            data_source: "user_edit",
+            energy_kj: Math.round(this.kcalToKJ(this.macrosToKcal(d.protein, d.fat, d.carb)) * 1000) / 1000,
+            macros: {
+              protein_g: Number(d.protein) || 0,
+              fat_g: Number(d.fat) || 0,
+              carbs_g: Number(d.carb) || 0,
+              fiber_g: Number(d.fiber) || 0,
+              sodium_mg: Number(d.sodium_mg) || 0,
+            },
+          }
+        ],
+      };
+    });
+
     return {
       meal_summary: {
-        total_energy: parseFloat(document.getElementById('total-energy')?.value) || 0,
-        total_protein: parseFloat(document.getElementById('total-protein')?.value) || 0,
-        total_fat: parseFloat(document.getElementById('total-fat')?.value) || 0,
-        total_carb: parseFloat(document.getElementById('total-carb')?.value) || 0,
+        meal_name: mealName,
+        diet_time: dietTime,
+        total_energy_kj: Math.round(this.kcalToKJ(totalEnergyKcal) * 1000) / 1000,
+        total_protein_g: Number(totals.totalProtein) || 0,
+        total_fat_g: Number(totals.totalFat) || 0,
+        total_carbs_g: Number(totals.totalCarb) || 0,
+        total_fiber_g: Number(totals.totalFiber) || 0,
+        total_sodium_mg: Number(totals.totalSodiumMg) || 0,
       },
-      dishes: (this.currentDishes || []).map(d => ({
-        name: d.name,
-        estimated_weight: d.weight,
-        estimated_energy: d.energy,
-      })),
+      dishes: editedDishes,
     };
+  },
+
+  getDishTotals(dish) {
+    // AI：按 ingredients 加总；User：按 dish 汇总字段
+    if (dish?.source === 'ai') {
+      const ings = dish.ingredients || [];
+      const sum = (fn) => ings.reduce((a, x) => a + (fn(x) || 0), 0);
+      const w = sum(x => Number(x.weight_g) || 0);
+      const p = sum(x => Number(x.macros?.protein_g) || 0);
+      const f = sum(x => Number(x.macros?.fat_g) || 0);
+      const c = sum(x => Number(x.macros?.carbs_g) || 0);
+      const fib = sum(x => Number(x.macros?.fiber_g) || 0);
+      const na = sum(x => Number(x.macros?.sodium_mg) || 0);
+      return {
+        weight: Math.round(w * 10) / 10,
+        protein: Math.round(p * 10) / 10,
+        fat: Math.round(f * 10) / 10,
+        carb: Math.round(c * 10) / 10,
+        fiber: Math.round(fib * 10) / 10,
+        sodium_mg: Math.round(na),
+      };
+    }
+    return {
+      weight: Math.round((Number(dish?.weight) || 0) * 10) / 10,
+      protein: Math.round((Number(dish?.protein) || 0) * 10) / 10,
+      fat: Math.round((Number(dish?.fat) || 0) * 10) / 10,
+      carb: Math.round((Number(dish?.carb) || 0) * 10) / 10,
+      fiber: Math.round((Number(dish?.fiber) || 0) * 10) / 10,
+      sodium_mg: Math.round(Number(dish?.sodium_mg) || 0),
+    };
+  },
+
+  getMacroEnergyRatio(proteinG, fatG, carbsG) {
+    const p = (Number(proteinG) || 0) * 4;
+    const f = (Number(fatG) || 0) * 9;
+    const c = (Number(carbsG) || 0) * 4;
+    const t = p + f + c;
+    if (t <= 0) {
+      return { total_kcal: 0, p_pct: 0, f_pct: 0, c_pct: 0 };
+    }
+    return {
+      total_kcal: t,
+      p_pct: Math.round((p / t) * 100),
+      f_pct: Math.round((f / t) * 100),
+      c_pct: Math.round((c / t) * 100),
+    };
+  },
+
+  // ========== Profile（前端先行） ==========
+
+  getDefaultProfile() {
+    return {
+      timezone: 'Asia/Shanghai',
+      diet: {
+        energy_unit: 'kJ',
+        goal: 'fat_loss',
+        daily_energy_kj_target: 6273,
+        protein_g_target: 110,
+        fat_g_target: 50,
+        carbs_g_target: 150,
+        sodium_mg_target: 2000,
+      },
+      keep: {
+        weight_kg_target: 0,
+        body_fat_pct_target: 0,
+        dimensions_cm_target: {
+          chest_cm: 0,
+          waist_cm: 0,
+          hips_cm: 0,
+        }
+      }
+    };
+  },
+
+  loadProfile() {
+    try {
+      const raw = localStorage.getItem('dk_profile_v1');
+      if (!raw) return this.getDefaultProfile();
+      const parsed = JSON.parse(raw);
+      return Object.assign(this.getDefaultProfile(), parsed || {});
+    } catch (e) {
+      return this.getDefaultProfile();
+    }
+  },
+
+  saveProfileLocal(profile) {
+    localStorage.setItem('dk_profile_v1', JSON.stringify(profile));
+    this.profile = profile;
+  },
+
+  renderProfileView() {
+    const p = this.profile || this.getDefaultProfile();
+    this.el.resultTitle.textContent = 'Profile 设置';
+    this.updateStatus('');
+    this.el.resultFooter.classList.add('hidden');
+
+    this.el.resultContent.innerHTML = `
+      <div class="result-card">
+        <div class="result-card-header">
+          <div class="result-icon">👤</div>
+          <div>
+            <div class="result-card-title">用户 Profile</div>
+            <div class="result-card-subtitle">前端先行：本地保存 + 占位提交请求（后端业务稍后接入）</div>
+          </div>
+        </div>
+
+        <div class="dish-row" style="grid-template-columns: 1fr 1fr; gap: 12px;">
+          <div>
+            <div class="dishes-title">时区</div>
+            <select id="profile-timezone" class="dish-input" style="width: 100%;">
+              ${this.renderTimezoneOptions(p.timezone)}
+            </select>
+          </div>
+          <div>
+            <div class="dishes-title">能量显示单位</div>
+            <select id="energy-unit" class="dish-input" style="width: 100%;" onchange="Dashboard.setEnergyUnit(this.value)">
+              <option value="kJ" ${this.getEnergyUnit() === 'kJ' ? 'selected' : ''}>kJ（默认）</option>
+              <option value="kcal" ${this.getEnergyUnit() === 'kcal' ? 'selected' : ''}>kcal</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="dishes-title">Diet 目标</div>
+        <div class="dish-row" style="grid-template-columns: 1fr 1fr; gap: 12px;">
+          <div>
+            <div class="nutrition-label" style="text-align:left;">目标类型</div>
+            <select id="diet-goal" class="dish-input" style="width: 100%;">
+              ${this.renderDietGoalOptions(p.diet?.goal)}
+            </select>
+          </div>
+          <div>
+            <div class="nutrition-label" style="text-align:left;">每日能量目标 (kJ)</div>
+            <input id="diet-energy-kj" type="number" class="dish-input number" value="${p.diet?.daily_energy_kj_target ?? 0}">
+          </div>
+        </div>
+        <div class="dish-row" style="grid-template-columns: repeat(3, 1fr); gap: 12px;">
+          <div>
+            <div class="nutrition-label" style="text-align:left;">蛋白质 (g)</div>
+            <input id="diet-protein-g" type="number" class="dish-input number" value="${p.diet?.protein_g_target ?? 0}" step="0.1">
+          </div>
+          <div>
+            <div class="nutrition-label" style="text-align:left;">脂肪 (g)</div>
+            <input id="diet-fat-g" type="number" class="dish-input number" value="${p.diet?.fat_g_target ?? 0}" step="0.1">
+          </div>
+          <div>
+            <div class="nutrition-label" style="text-align:left;">碳水 (g)</div>
+            <input id="diet-carbs-g" type="number" class="dish-input number" value="${p.diet?.carbs_g_target ?? 0}" step="0.1">
+          </div>
+        </div>
+        <div class="dish-row" style="grid-template-columns: 1fr 1fr; gap: 12px;">
+          <div>
+            <div class="nutrition-label" style="text-align:left;">钠 (mg)</div>
+            <input id="diet-sodium-mg" type="number" class="dish-input number" value="${p.diet?.sodium_mg_target ?? 0}" step="1">
+          </div>
+          <div>
+            <div class="nutrition-label" style="text-align:left;">（预留）膳食纤维 (g)</div>
+            <input id="diet-fiber-g" type="number" class="dish-input number" value="${p.diet?.fiber_g_target ?? 0}" step="0.1">
+          </div>
+        </div>
+
+        <div class="dishes-title" style="margin-top: 18px;">Keep 目标</div>
+        <div class="dish-row" style="grid-template-columns: 1fr 1fr; gap: 12px;">
+          <div>
+            <div class="nutrition-label" style="text-align:left;">体重 (kg)</div>
+            <input id="keep-weight-kg" type="number" class="dish-input number" value="${p.keep?.weight_kg_target ?? 0}" step="0.1">
+          </div>
+          <div>
+            <div class="nutrition-label" style="text-align:left;">体脂率 (%)</div>
+            <input id="keep-bodyfat-pct" type="number" class="dish-input number" value="${p.keep?.body_fat_pct_target ?? 0}" step="0.1">
+          </div>
+        </div>
+
+        <div class="dishes-title" style="margin-top: 12px;">围度目标 (cm)</div>
+        <div class="dish-row" style="grid-template-columns: repeat(3, 1fr); gap: 12px;">
+          <div>
+            <div class="nutrition-label" style="text-align:left;">胸围</div>
+            <input id="keep-chest-cm" type="number" class="dish-input number" value="${p.keep?.dimensions_cm_target?.chest_cm ?? 0}" step="0.1">
+          </div>
+          <div>
+            <div class="nutrition-label" style="text-align:left;">腰围</div>
+            <input id="keep-waist-cm" type="number" class="dish-input number" value="${p.keep?.dimensions_cm_target?.waist_cm ?? 0}" step="0.1">
+          </div>
+          <div>
+            <div class="nutrition-label" style="text-align:left;">臀围</div>
+            <input id="keep-hips-cm" type="number" class="dish-input number" value="${p.keep?.dimensions_cm_target?.hips_cm ?? 0}" step="0.1">
+          </div>
+        </div>
+
+        <div class="result-footer" style="padding: 0; border-top: none; margin-top: 18px; justify-content: flex-end;">
+          <button class="btn btn-secondary" onclick="Dashboard.switchView('analysis')">返回分析</button>
+          <button class="btn btn-primary" onclick="Dashboard.saveProfile()">保存 Profile</button>
+        </div>
+      </div>
+    `;
+  },
+
+  renderTimezoneOptions(selected) {
+    const zones = [
+      { value: 'Asia/Shanghai', label: '中国（Asia/Shanghai）' },
+      { value: 'Asia/Hong_Kong', label: '中国香港（Asia/Hong_Kong）' },
+      { value: 'Asia/Taipei', label: '中国台北（Asia/Taipei）' },
+      { value: 'Asia/Tokyo', label: '日本（Asia/Tokyo）' },
+      { value: 'Asia/Singapore', label: '新加坡（Asia/Singapore）' },
+      { value: 'Europe/London', label: '英国（Europe/London）' },
+      { value: 'Europe/Berlin', label: '德国（Europe/Berlin）' },
+      { value: 'America/Los_Angeles', label: '美国西海岸（America/Los_Angeles）' },
+      { value: 'America/New_York', label: '美国东海岸（America/New_York）' },
+    ];
+    return zones.map(z => `<option value="${z.value}" ${z.value === selected ? 'selected' : ''}>${z.label}</option>`).join('');
+  },
+
+  renderDietGoalOptions(selected) {
+    const goals = [
+      { value: 'fat_loss', label: '减脂' },
+      { value: 'maintain', label: '维持' },
+      { value: 'muscle_gain', label: '增肌' },
+      { value: 'health', label: '健康' },
+    ];
+    const sel = selected || 'fat_loss';
+    return goals.map(g => `<option value="${g.value}" ${g.value === sel ? 'selected' : ''}>${g.label}</option>`).join('');
+  },
+
+  async saveProfile() {
+    const getNum = (id) => parseFloat(document.getElementById(id)?.value) || 0;
+    const getStr = (id) => String(document.getElementById(id)?.value || '');
+
+    const profile = {
+      timezone: getStr('profile-timezone'),
+      diet: {
+        energy_unit: getStr('energy-unit') || 'kJ',
+        goal: getStr('diet-goal'),
+        daily_energy_kj_target: getNum('diet-energy-kj'),
+        protein_g_target: getNum('diet-protein-g'),
+        fat_g_target: getNum('diet-fat-g'),
+        carbs_g_target: getNum('diet-carbs-g'),
+        sodium_mg_target: getNum('diet-sodium-mg'),
+        fiber_g_target: getNum('diet-fiber-g'),
+      },
+      keep: {
+        weight_kg_target: getNum('keep-weight-kg'),
+        body_fat_pct_target: getNum('keep-bodyfat-pct'),
+        dimensions_cm_target: {
+          chest_cm: getNum('keep-chest-cm'),
+          waist_cm: getNum('keep-waist-cm'),
+          hips_cm: getNum('keep-hips-cm'),
+        }
+      }
+    };
+
+    this.saveProfileLocal(profile);
+    this.addMessage('✓ Profile 已在本地保存', 'assistant');
+
+    // 占位提交（后端业务尚未实现）
+    try {
+      await API.post('/profile/save', {
+        user_id: Auth.getUserId() || 'anonymous',
+        profile
+      });
+      this.addMessage('✓ Profile 已提交到后端', 'assistant');
+    } catch (e) {
+      this.addMessage('后端 Profile 接口尚未接入（已本地保存）', 'assistant');
+    }
+  },
+
+  setEnergyUnit(unit) {
+    const u = unit === 'kcal' ? 'kcal' : 'kJ';
+    const next = this.profile || this.getDefaultProfile();
+    next.diet = next.diet || {};
+    next.diet.energy_unit = u;
+    this.saveProfileLocal(next);
+
+    // 立即生效：若在分析视图，更新汇总与明细能量显示
+    if (this.view !== 'analysis') return;
+    if (this.currentSession && this.currentSession.versions.length > 0) {
+      this.recalculateDietSummary(false);
+      this.renderDietDishes();
+    }
   },
 
   // ========== 保存 ==========
@@ -915,14 +1772,11 @@ const Dashboard = {
   // ========== 状态管理 ==========
 
   showLoading() {
-    this.el.resultContent.innerHTML = `
-      <div class="empty-state">
-        <div class="loading-spinner"></div>
-        <p style="margin-top: 16px;">正在分析中...</p>
-      </div>
-    `;
-    this.el.resultFooter.classList.add('hidden');
-    this.updateStatus('');
+    // 仅状态提示：不遮挡/不替换整个确认面板内容
+    this.updateStatus('loading');
+    if (this.el.resultFooter) {
+      this.el.resultFooter.classList.add('hidden');
+    }
   },
 
   showError(message) {
@@ -937,11 +1791,13 @@ const Dashboard = {
   },
 
   clearResult() {
+    // 轻量占位：不做大面积遮挡
     this.el.resultContent.innerHTML = `
-      <div class="empty-state">
-        <div class="empty-icon">📊</div>
-        <h3>等待分析</h3>
-        <p>上传图片或输入描述开始分析</p>
+      <div class="result-card" style="padding: 16px;">
+        <div class="text-secondary" style="font-weight: 600; margin-bottom: 6px;">分析面板</div>
+        <div class="text-muted" style="font-size: 0.875rem;">
+          上传图片或输入描述后点击发送开始分析。分析过程中这里会显示状态与可编辑结果。
+        </div>
       </div>
     `;
     this.el.resultFooter.classList.add('hidden');
@@ -956,6 +1812,9 @@ const Dashboard = {
     if (status === 'saved') {
       el.textContent = '✓ 已保存';
       el.classList.add('saved');
+    } else if (status === 'loading') {
+      el.innerHTML = `<span class="loading-spinner" style="display:inline-block; width:14px; height:14px; vertical-align: -2px; margin-right:6px;"></span>分析中...`;
+      el.classList.add('loading');
     } else if (status === 'modified') {
       el.textContent = '● 已修改';
       el.classList.add('modified');
