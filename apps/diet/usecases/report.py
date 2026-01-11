@@ -12,7 +12,7 @@ class DietReportUsecase:
         )
 
     async def generate_daily_report(self, user_id: str, date_str: str) -> Dict[str, Any]:
-        records = RecordService.get_diet_records_by_date(user_id, date_str)
+        records = RecordService.get_unified_records_by_date(user_id, date_str)
         if not records:
             return {"error": "该日期无饮食记录"}
             

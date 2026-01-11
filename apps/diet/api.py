@@ -223,12 +223,18 @@ def build_diet_router(settings: BackendSettings) -> APIRouter:
 
     @router.get("/api/diet/history", response_model=DietHistoryResponse, dependencies=[Depends(auth_dep)])
     async def diet_history(user_id: str, limit: int = 20, start_date: Optional[str] = None, end_date: Optional[str] = None):
-        if start_date and end_date:
-            # 日期范围查询 (Inclusive)
-            records = RecordService.get_diet_records_range(user_id, start_date, end_date)
+        # 1. 如果有任一日期参数，进入范围查询模式
+        if start_date or end_date:
+            # 自动补全：若缺省其一，则默认查单日
+            if start_date and not end_date:
+                end_date = start_date
+            elif end_date and not start_date:
+                start_date = end_date
+                
+            records = RecordService.get_unified_records_range(user_id, start_date, end_date)
         else:
-            # 默认最近N条
-            records = RecordService.get_recent_diet_records(user_id=user_id, limit=limit)
+            # 2. 否则默认查询最近 N 条
+            records = RecordService.get_recent_unified_records(user_id=user_id, limit=limit)
             
         return DietHistoryResponse(success=True, records=records)
 

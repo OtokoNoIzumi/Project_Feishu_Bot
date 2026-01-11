@@ -6,9 +6,10 @@ from libs.storage_lib import global_storage
 
 class RecordService:
     @staticmethod
-    async def save_keep_event(user_id: str, event_type: str, event_data: Dict[str, Any]):
+    async def save_keep_event(user_id: str, event_type: str, event_data: Dict[str, Any], image_hashes: List[str] = None):
         """
         保存 Keep 事件（体重 scale / 睡眠 sleep / 围度 dimensions）
+        支持基于 image_hashes 的去重/更新。
         文件名按月归档，例如 keep_scale_2023_10.jsonl
         """
         now = datetime.now()
@@ -17,14 +18,38 @@ class RecordService:
         
         # 增加 type 字段方便索引
         event_data["event_type"] = event_type
+        if image_hashes:
+            event_data["image_hashes"] = image_hashes
         
-        global_storage.append(
-            user_id=user_id,
-            category="keep",
-            filename=filename,
-            data=event_data
-        )
-        return {"saved_to": filename, "status": "success"}
+        # 1. 读取当月所有记录
+        existing = global_storage.read_dataset(user_id, "keep", filename, limit=1000)
+        existing = list(reversed(existing)) # fix order to Oldest->Newest for processing
+        
+        replaced_index = -1
+        
+        # 2. 去重检查
+        if image_hashes:
+            h1 = set(image_hashes)
+            for i, rec in enumerate(existing):
+                if rec.get("image_hashes"):
+                    h2 = set(rec["image_hashes"])
+                    if h1 == h2:
+                        replaced_index = i
+                        break
+        
+        # 3. 写入
+        if replaced_index != -1:
+            existing[replaced_index] = event_data
+            global_storage.write_dataset(user_id, "keep", filename, existing)
+            return {"saved_to": filename, "status": "updated"}
+        else:
+            global_storage.append(
+                user_id=user_id,
+                category="keep",
+                filename=filename,
+                data=event_data
+            )
+            return {"saved_to": filename, "status": "appended"}
 
     @staticmethod
     async def save_diet_record(user_id: str, meal_summary: Dict, dishes: List[Dict], captured_labels: List[Dict], image_hashes: List[str] = None):
@@ -188,77 +213,157 @@ class RecordService:
             global_storage.append(user_id, "diet", filename, entry)
 
     @staticmethod
-    def get_todays_diet_records(user_id: str) -> List[Dict[str, Any]]:
+    def get_todays_unified_records(user_id: str) -> List[Dict[str, Any]]:
         """
-        获取今日已记录的饮食流水（倒序，最新的在前）
+        获取今日已记录的综合流水（倒序，最新的在前）
         """
         now = datetime.now()
         date_str = now.strftime("%Y-%m-%d")
-        return RecordService.get_diet_records_by_date(user_id, date_str)
+        return RecordService.get_unified_records_by_date(user_id, date_str)
 
     @staticmethod
-    def get_diet_records_by_date(user_id: str, date_str: str) -> List[Dict[str, Any]]:
+    def _read_keep_records_for_period(user_id: str, start_dt: datetime, end_dt: datetime) -> List[Dict[str, Any]]:
         """
-        获取指定日期的饮食流水
+        Helper: 读取指定时间段内的 Keep 记录 (Scale, Sleep, Dimensions)
         """
-        return global_storage.read_dataset(
-            user_id=user_id, 
-            category="diet", 
-            filename=f"ledger_{date_str}.jsonl",
-            limit=100
-        )
+        # 1. 计算涉及的月份
+        months = set()
+        curr = start_dt
+        while curr <= end_dt:
+            months.add(curr.strftime("%Y_%m"))
+            # increment by month logic (rough approx by 28 days is safer for loop, or logic calc)
+            next_month = (curr.replace(day=1) + timedelta(days=32)).replace(day=1)
+            if curr.month == 12: # simple logic to just jump
+                pass 
+            curr = next_month
 
-    @staticmethod
-    def get_recent_diet_records(user_id: str, limit: int = 20) -> List[Dict[str, Any]]:
-        """
-        获取最近的饮食记录（跨越过去 7 天查找，填满 limit 为止）
-        """
-        all_records = []
-        now = datetime.now()
+        # Edge case: end_dt month might be missed if loop jumps over, ensure end_dt is covered
+        months.add(end_dt.strftime("%Y_%m"))
         
-        # Look back 7 days
-        for i in range(7):
-            if len(all_records) >= limit:
-                break
+        keep_types = ["scale", "sleep", "dimensions"]
+        all_keep = []
+        
+        for m in months:
+            for ktype in keep_types:
+                fname = f"{ktype}_{m}.jsonl"
+                recs = global_storage.read_dataset(user_id, "keep", fname, limit=500)
+                all_keep.extend(recs)
+        
+        # Filter by exact range
+        filtered = []
+        for r in all_keep:
+            # Prefer event time, fallback to created_at
+            # Keep records usually have dedicated date fields but 'created_at' is standard meta
+            t_str = r.get("created_at")
+            if not t_str: continue
+            
+            try:
+                t = datetime.fromisoformat(t_str)
+                # Compare naive or aware? Assuming naive or consistent
+                if start_dt <= t <= end_dt:
+                    filtered.append(r)
+            except:
+                continue
                 
-            day_cursor = now - timedelta(days=i)
-            date_str = day_cursor.strftime("%Y-%m-%d")
+        return filtered
+
+    @staticmethod
+    def get_unified_records_by_date(user_id: str, date_str: str) -> List[Dict[str, Any]]:
+        """
+        获取指定日期的综合流水（Diet + Keep）
+        """
+        return RecordService.get_unified_records_range(user_id, date_str, date_str)
+
+    @staticmethod
+    def get_recent_unified_records(user_id: str, limit: int = 20) -> List[Dict[str, Any]]:
+        """
+        获取最近的记录流水（饮食+Keep），逻辑基于 get_unified_records_range
+        """
+        now = datetime.now()
+        start_date = (now - timedelta(days=7)).strftime("%Y-%m-%d")
+        end_date = now.strftime("%Y-%m-%d")
+        
+        # Get unified history
+        full_history = RecordService.get_unified_records_range(user_id, start_date, end_date)
+        
+        # Returns Oldest->Newest, so we slice the tail to get most recent
+        if not full_history:
+            return []
             
-            day_records = global_storage.read_dataset(
-                user_id=user_id, 
-                category="diet", 
-                filename=f"ledger_{date_str}.jsonl",
-                limit=limit - len(all_records)
-            )
-            
-            all_records.extend(day_records)
-            
-        return all_records[:limit]
+        return full_history[-limit:]
 
     @staticmethod
     def get_diet_records_range(user_id: str, start_date: str, end_date: str) -> List[Dict[str, Any]]:
         """
-        获取指定日期范围内的饮食记录（包含 start 和 end）。
-        返回顺序：按时间正序排列（Oldest -> Newest），方便报表生成。
+        [Pure] 仅获取指定日期范围内的饮食记录 (Diet Log Only)。
+        用于 get_unified_records_range 内部调用或仅需饮食数据的场景。
         """
         try:
             start = datetime.strptime(start_date, "%Y-%m-%d")
             end = datetime.strptime(end_date, "%Y-%m-%d")
         except ValueError:
             return []
-        
-        all_records = []
+            
+        records = []
         delta = end - start
         
-        # 遍历日期范围
         for i in range(delta.days + 1):
             day = start + timedelta(days=i)
             day_str = day.strftime("%Y-%m-%d")
-            
             # 读取该日所有记录
             day_recs = global_storage.read_dataset(user_id, "diet", f"ledger_{day_str}.jsonl", limit=9999)
+            records.extend(reversed(day_recs))
             
-            # read_dataset 返回倒序（新->旧），我们需要正序（旧->新）拼接
-            all_records.extend(reversed(day_recs))
+        return records
+
+    @staticmethod
+    def get_unified_records_range(user_id: str, start_date: str, end_date: str) -> List[Dict[str, Any]]:
+        """
+        获取指定日期范围内的【所有类型】记录（饮食 + Keep）。
+        包含：
+        1. 原始饮食记录
+        2. Keep 运动/睡眠/围度记录
+        3. 严格的时间过滤
+        4. 按时间正序排序
+        """
+        try:
+            start = datetime.strptime(start_date, "%Y-%m-%d")
+            # End date should be end of that day
+            end = datetime.strptime(end_date, "%Y-%m-%d").replace(hour=23, minute=59, second=59, microsecond=999999)
+        except ValueError:
+            return []
+        
+        all_records = []
+        
+        # 1. 获取 Diet 原始数据
+        diet_recs = RecordService.get_diet_records_range(user_id, start_date, end_date)
+        all_records.extend(diet_recs)
             
-        return all_records
+        # 2. 读取并合并 Keep Log
+        keep_recs = RecordService._read_keep_records_for_period(user_id, start, end)
+        all_records.extend(keep_recs)
+        
+        # 3. 全局严格时间过滤 (Strict Filtering)
+        final_records = []
+        for r in all_records:
+            t_str = r.get("created_at")
+            if not t_str:
+                continue
+            try:
+                t = datetime.fromisoformat(t_str)
+                # Ensure t is comparable to start/end (naive vs naive)
+                if t.tzinfo is not None:
+                     t = t.replace(tzinfo=None) 
+                
+                if start <= t <= end:
+                    final_records.append(r)
+            except:
+                continue
+
+        # 4. 按时间重新排序 (Oldest -> Newest)
+        def _sort_key(r):
+            return r.get("created_at", "")
+            
+        final_records.sort(key=_sort_key)
+            
+        return final_records

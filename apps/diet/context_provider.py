@@ -48,7 +48,7 @@ def _calculate_today_so_far(user_id: str) -> Dict[str, Any]:
     activity_burn_kj = 0.0
 
     # 直接获取今日流水，无需再进行日期过滤
-    records = RecordService.get_todays_diet_records(user_id)
+    records = RecordService.get_todays_unified_records(user_id)
     
     for rec in records:
         # 汇总 meal_summary

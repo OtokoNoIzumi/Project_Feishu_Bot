@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import logging
+import hashlib
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, File, Form, UploadFile
@@ -63,7 +64,7 @@ def build_keep_router(settings: BackendSettings) -> APIRouter:
     def _get_model_limiter() -> AsyncRateLimiter:
         return get_model_limiter(settings)
 
-    async def _auto_save_result(user_id: str, event_type: str, result: Dict[str, Any]) -> Dict[str, Any]:
+    async def _auto_save_result(user_id: str, event_type: str, result: Dict[str, Any], image_hashes: List[str] = None) -> Dict[str, Any]:
         """Auto-save helper for single event types"""
         try:
             data_to_save = result
@@ -75,25 +76,26 @@ def build_keep_router(settings: BackendSettings) -> APIRouter:
             elif event_type == "dimensions" and "body_measure_event" in result:
                 data_to_save = result["body_measure_event"]
             
-            await RecordService.save_keep_event(user_id, event_type, data_to_save)
+            # Pass image_hashes for deduplication
+            await RecordService.save_keep_event(user_id, event_type, data_to_save, image_hashes)
             return {"status": "success", "detail": f"Saved {event_type} event"}
         except Exception as e:
             return {"status": "error", "detail": str(e)}
 
-    async def _auto_save_unified_result(user_id: str, result: Dict[str, Any]) -> Dict[str, Any]:
+    async def _auto_save_unified_result(user_id: str, result: Dict[str, Any], image_hashes: List[str] = None) -> Dict[str, Any]:
         """Auto-save helper for unified results"""
         saved_details = []
         try:
             for item in result.get("scale_events", []):
-                await RecordService.save_keep_event(user_id, "scale", item)
+                await RecordService.save_keep_event(user_id, "scale", item, image_hashes)
                 saved_details.append("scale")
             
             for item in result.get("sleep_events", []):
-                await RecordService.save_keep_event(user_id, "sleep", item)
+                await RecordService.save_keep_event(user_id, "sleep", item, image_hashes)
                 saved_details.append("sleep")
 
             for item in result.get("body_measure_events", []):
-                await RecordService.save_keep_event(user_id, "dimensions", item)
+                await RecordService.save_keep_event(user_id, "dimensions", item, image_hashes)
                 saved_details.append("dimensions")
                 
             msg = f"Saved {len(saved_details)} items"
@@ -130,10 +132,13 @@ def build_keep_router(settings: BackendSettings) -> APIRouter:
             
             saved_status = None
             if auto_save:
+                # Compute image hashes for deduplication
+                image_hashes = [hashlib.sha256(b).hexdigest() for b in images_bytes]
+                
                 if event_type_for_save == "unified":
-                    saved_status = await _auto_save_unified_result(user_id, result)
+                    saved_status = await _auto_save_unified_result(user_id, result, image_hashes)
                 else:
-                    saved_status = await _auto_save_result(user_id, event_type_for_save, result)
+                    saved_status = await _auto_save_result(user_id, event_type_for_save, result, image_hashes)
 
             return response_model(success=True, result=result, saved_status=saved_status)
 
