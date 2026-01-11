@@ -294,10 +294,12 @@ const Dashboard = {
     }
 
     // 标题
-    if (options.title) {
+    // Fixed: 始终创建 title 元素，即使初始内容为空，以便后续 updateSessionCard 能找到并更新它
+    // 只有当是 session 卡片时才强制创建，普通消息按需创建
+    if (options.title || options.sessionId) {
       const titleEl = document.createElement('div');
       titleEl.className = 'message-title';
-      titleEl.textContent = options.title;
+      titleEl.textContent = options.title || '';
       msg.appendChild(titleEl);
     }
 
@@ -405,11 +407,13 @@ const Dashboard = {
     this.currentSession = session;
 
     // 添加消息卡片
-    const title = this.generateTitle(text, this.pendingImages.length);
+    // 逻辑：如果有文字，标题留空（后续更新）；如果只有图片无文字，标题显示图片数量
+    const initialTitle = text ? '' : (this.pendingImages.length > 0 ? `${this.pendingImages.length}张图片` : '');
+
     this.addMessage(text || '', 'user', {
       sessionId: session.id,
       images: session.imageUrls,
-      title: title,
+      title: initialTitle,
     });
 
     // 清空输入
@@ -653,17 +657,6 @@ const Dashboard = {
 
   // ========== 结果渲染 ==========
 
-  generateTitle(text, imageCount) {
-    if (text && text.length > 20) {
-      return text.substring(0, 20) + '...';
-    } else if (text) {
-      return text;
-    } else if (imageCount > 0) {
-      return `${imageCount}张图片`;
-    }
-    return '新分析';
-  },
-
   updateSessionCard(session) {
     const card = document.querySelector(`[data-session-id="${session.id}"]`);
     if (!card) return;
@@ -672,7 +665,10 @@ const Dashboard = {
     if (titleEl && session.versions.length > 0) {
       const latest = session.versions[session.versions.length - 1];
       if (latest.parsedData.type === 'diet') {
-        titleEl.textContent = `${latest.parsedData.summary.totalEnergy} kcal - ${latest.parsedData.dishes.length}种食物`;
+        const unit = this.getEnergyUnit();
+        const energy = latest.parsedData.summary.totalEnergy;
+        const val = unit === 'kcal' ? energy : Math.round(this.kcalToKJ(energy));
+        titleEl.textContent = `${val} ${unit} - ${latest.parsedData.dishes.length}种食物`;
       } else {
         const eventCount = latest.parsedData.scaleEvents.length +
           latest.parsedData.sleepEvents.length +
@@ -1497,101 +1493,248 @@ const Dashboard = {
     this.updateStatus('');
     this.el.resultFooter.classList.add('hidden');
 
+    const unit = this.getEnergyUnit();
+    // 计算显示的能量目标值
+    const rawEnergyTarget = p.diet?.daily_energy_kj_target ?? 0;
+    const displayEnergyTarget = unit === 'kcal' ? Math.round(this.kJToKcal(rawEnergyTarget)) : rawEnergyTarget;
+
+    const userName = Auth.user?.firstName || Auth.user?.fullName || Auth.user?.username || '用户';
+
     this.el.resultContent.innerHTML = `
-      <div class="result-card">
-        <div class="result-card-header">
-          <div class="result-icon">👤</div>
-          <div>
-            <div class="result-card-title">用户 Profile</div>
-            <div class="result-card-subtitle">前端先行：本地保存 + 占位提交请求（后端业务稍后接入）</div>
+      <style>
+        .profile-container { display: flex; flex-direction: column; gap: 20px; }
+        .profile-section {
+          background: var(--color-bg-secondary);
+          border: 1px solid var(--color-border);
+          border-radius: 16px;
+          padding: 20px 24px;
+        }
+        .profile-section-header {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          margin-bottom: 20px;
+          padding-bottom: 16px;
+          border-bottom: 1px solid var(--color-border);
+        }
+        .profile-section-icon {
+          width: 40px;
+          height: 40px;
+          border-radius: 10px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 1.25rem;
+          flex-shrink: 0;
+        }
+        .profile-section-icon.user { background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%); }
+        .profile-section-icon.diet { background: linear-gradient(135deg, #10b981 0%, #34d399 100%); }
+        .profile-section-icon.keep { background: linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%); }
+        .profile-section-title {
+          font-size: 1rem;
+          font-weight: 600;
+          color: var(--color-text-primary);
+        }
+        .profile-section-subtitle {
+          font-size: 0.75rem;
+          color: var(--color-text-muted);
+          margin-top: 2px;
+        }
+        .profile-grid {
+          display: grid;
+          grid-template-columns: repeat(2, 1fr);
+          gap: 16px;
+        }
+        .profile-field {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+        }
+        .profile-field-label {
+          font-size: 0.75rem;
+          font-weight: 500;
+          color: var(--color-text-muted);
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+        }
+        .profile-field-input {
+          background: var(--color-bg-tertiary);
+          border: 1px solid var(--color-border);
+          border-radius: 10px;
+          padding: 12px 14px;
+          font-size: 0.9rem;
+          color: var(--color-text-primary);
+          transition: all 0.2s ease;
+          width: 100%;
+          box-sizing: border-box;
+        }
+        .profile-field-input:hover {
+          border-color: rgba(99, 102, 241, 0.4);
+        }
+        .profile-field-input:focus {
+          outline: none;
+          border-color: var(--color-accent-primary);
+          box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+        }
+        .profile-field-input[type="number"] {
+          font-variant-numeric: tabular-nums;
+        }
+        .profile-actions {
+          display: flex;
+          justify-content: flex-end;
+          gap: 12px;
+          margin-top: 8px;
+        }
+        .profile-btn {
+          padding: 12px 24px;
+          border-radius: 10px;
+          font-size: 0.875rem;
+          font-weight: 500;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+        .profile-btn-secondary {
+          background: var(--color-bg-tertiary);
+          border: 1px solid var(--color-border);
+          color: var(--color-text-secondary);
+        }
+        .profile-btn-secondary:hover {
+          background: var(--color-bg-glass);
+          border-color: var(--color-text-muted);
+        }
+        .profile-btn-primary {
+          background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+          border: none;
+          color: white;
+        }
+        .profile-btn-primary:hover {
+          transform: translateY(-1px);
+          box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
+        }
+        .profile-macro-grid {
+          display: grid;
+          grid-template-columns: repeat(4, 1fr);
+          gap: 12px;
+        }
+        @media (max-width: 768px) {
+          .profile-grid { grid-template-columns: 1fr; }
+          .profile-macro-grid { grid-template-columns: repeat(2, 1fr); }
+        }
+      </style>
+
+      <div class="profile-container">
+        <!-- 用户信息 -->
+        <div class="profile-section">
+          <div class="profile-section-header">
+            <div class="profile-section-icon user">👤</div>
+            <div>
+              <div class="profile-section-title">${userName} 的档案</div>
+              <div class="profile-section-subtitle">个人设置与目标配置</div>
+            </div>
+          </div>
+          <div class="profile-grid">
+            <div class="profile-field">
+              <label class="profile-field-label">时区</label>
+              <select id="profile-timezone" class="profile-field-input">
+                ${this.renderTimezoneOptions(p.timezone)}
+              </select>
+            </div>
+            <div class="profile-field">
+              <label class="profile-field-label">能量显示单位</label>
+              <select id="energy-unit" class="profile-field-input" onchange="Dashboard.setEnergyUnit(this.value)">
+                <option value="kJ" ${unit === 'kJ' ? 'selected' : ''}>kJ（默认）</option>
+                <option value="kcal" ${unit === 'kcal' ? 'selected' : ''}>kcal</option>
+              </select>
+            </div>
           </div>
         </div>
 
-        <div class="dish-row" style="grid-template-columns: 1fr 1fr; gap: 12px;">
-          <div>
-            <div class="dishes-title">时区</div>
-            <select id="profile-timezone" class="dish-input" style="width: 100%;">
-              ${this.renderTimezoneOptions(p.timezone)}
-            </select>
+        <!-- Diet 目标 -->
+        <div class="profile-section">
+          <div class="profile-section-header">
+            <div class="profile-section-icon diet">🍽️</div>
+            <div>
+              <div class="profile-section-title">Diet 目标</div>
+              <div class="profile-section-subtitle">每日营养摄入目标设置</div>
+            </div>
           </div>
-          <div>
-            <div class="dishes-title">能量显示单位</div>
-            <select id="energy-unit" class="dish-input" style="width: 100%;" onchange="Dashboard.setEnergyUnit(this.value)">
-              <option value="kJ" ${this.getEnergyUnit() === 'kJ' ? 'selected' : ''}>kJ（默认）</option>
-              <option value="kcal" ${this.getEnergyUnit() === 'kcal' ? 'selected' : ''}>kcal</option>
-            </select>
+          <div class="profile-grid" style="margin-bottom: 16px;">
+            <div class="profile-field">
+              <label class="profile-field-label">目标类型</label>
+              <select id="diet-goal" class="profile-field-input">
+                ${this.renderDietGoalOptions(p.diet?.goal)}
+              </select>
+            </div>
+            <div class="profile-field">
+              <label class="profile-field-label">每日能量目标 (${unit})</label>
+              <input id="diet-energy-kj" type="number" class="profile-field-input" value="${displayEnergyTarget}">
+            </div>
           </div>
-        </div>
-
-        <div class="dishes-title">Diet 目标</div>
-        <div class="dish-row" style="grid-template-columns: 1fr 1fr; gap: 12px;">
-          <div>
-            <div class="nutrition-label" style="text-align:left;">目标类型</div>
-            <select id="diet-goal" class="dish-input" style="width: 100%;">
-              ${this.renderDietGoalOptions(p.diet?.goal)}
-            </select>
+          <div class="profile-macro-grid">
+            <div class="profile-field">
+              <label class="profile-field-label">蛋白质 (g)</label>
+              <input id="diet-protein-g" type="number" class="profile-field-input" value="${p.diet?.protein_g_target ?? 0}" step="0.1">
+            </div>
+            <div class="profile-field">
+              <label class="profile-field-label">脂肪 (g)</label>
+              <input id="diet-fat-g" type="number" class="profile-field-input" value="${p.diet?.fat_g_target ?? 0}" step="0.1">
+            </div>
+            <div class="profile-field">
+              <label class="profile-field-label">碳水 (g)</label>
+              <input id="diet-carbs-g" type="number" class="profile-field-input" value="${p.diet?.carbs_g_target ?? 0}" step="0.1">
+            </div>
+            <div class="profile-field">
+              <label class="profile-field-label">纤维 (g)</label>
+              <input id="diet-fiber-g" type="number" class="profile-field-input" value="${p.diet?.fiber_g_target ?? 0}" step="0.1">
+            </div>
           </div>
-          <div>
-            <div class="nutrition-label" style="text-align:left;">每日能量目标 (kJ)</div>
-            <input id="diet-energy-kj" type="number" class="dish-input number" value="${p.diet?.daily_energy_kj_target ?? 0}">
-          </div>
-        </div>
-        <div class="dish-row" style="grid-template-columns: repeat(3, 1fr); gap: 12px;">
-          <div>
-            <div class="nutrition-label" style="text-align:left;">蛋白质 (g)</div>
-            <input id="diet-protein-g" type="number" class="dish-input number" value="${p.diet?.protein_g_target ?? 0}" step="0.1">
-          </div>
-          <div>
-            <div class="nutrition-label" style="text-align:left;">脂肪 (g)</div>
-            <input id="diet-fat-g" type="number" class="dish-input number" value="${p.diet?.fat_g_target ?? 0}" step="0.1">
-          </div>
-          <div>
-            <div class="nutrition-label" style="text-align:left;">碳水 (g)</div>
-            <input id="diet-carbs-g" type="number" class="dish-input number" value="${p.diet?.carbs_g_target ?? 0}" step="0.1">
-          </div>
-        </div>
-        <div class="dish-row" style="grid-template-columns: 1fr 1fr; gap: 12px;">
-          <div>
-            <div class="nutrition-label" style="text-align:left;">钠 (mg)</div>
-            <input id="diet-sodium-mg" type="number" class="dish-input number" value="${p.diet?.sodium_mg_target ?? 0}" step="1">
-          </div>
-          <div>
-            <div class="nutrition-label" style="text-align:left;">（预留）膳食纤维 (g)</div>
-            <input id="diet-fiber-g" type="number" class="dish-input number" value="${p.diet?.fiber_g_target ?? 0}" step="0.1">
+          <div class="profile-grid" style="margin-top: 16px;">
+            <div class="profile-field">
+              <label class="profile-field-label">钠 (mg)</label>
+              <input id="diet-sodium-mg" type="number" class="profile-field-input" value="${p.diet?.sodium_mg_target ?? 0}" step="1">
+            </div>
           </div>
         </div>
 
-        <div class="dishes-title" style="margin-top: 18px;">Keep 目标</div>
-        <div class="dish-row" style="grid-template-columns: 1fr 1fr; gap: 12px;">
-          <div>
-            <div class="nutrition-label" style="text-align:left;">体重 (kg)</div>
-            <input id="keep-weight-kg" type="number" class="dish-input number" value="${p.keep?.weight_kg_target ?? 0}" step="0.1">
+        <!-- Keep 目标 -->
+        <div class="profile-section">
+          <div class="profile-section-header">
+            <div class="profile-section-icon keep">💪</div>
+            <div>
+              <div class="profile-section-title">Keep 目标</div>
+              <div class="profile-section-subtitle">体重与体态目标设置</div>
+            </div>
           </div>
-          <div>
-            <div class="nutrition-label" style="text-align:left;">体脂率 (%)</div>
-            <input id="keep-bodyfat-pct" type="number" class="dish-input number" value="${p.keep?.body_fat_pct_target ?? 0}" step="0.1">
+          <div class="profile-grid" style="margin-bottom: 16px;">
+            <div class="profile-field">
+              <label class="profile-field-label">目标体重 (kg)</label>
+              <input id="keep-weight-kg" type="number" class="profile-field-input" value="${p.keep?.weight_kg_target ?? 0}" step="0.1">
+            </div>
+            <div class="profile-field">
+              <label class="profile-field-label">目标体脂率 (%)</label>
+              <input id="keep-bodyfat-pct" type="number" class="profile-field-input" value="${p.keep?.body_fat_pct_target ?? 0}" step="0.1">
+            </div>
+          </div>
+          <div class="profile-macro-grid" style="grid-template-columns: repeat(3, 1fr);">
+            <div class="profile-field">
+              <label class="profile-field-label">胸围 (cm)</label>
+              <input id="keep-chest-cm" type="number" class="profile-field-input" value="${p.keep?.dimensions_cm_target?.chest_cm ?? 0}" step="0.1">
+            </div>
+            <div class="profile-field">
+              <label class="profile-field-label">腰围 (cm)</label>
+              <input id="keep-waist-cm" type="number" class="profile-field-input" value="${p.keep?.dimensions_cm_target?.waist_cm ?? 0}" step="0.1">
+            </div>
+            <div class="profile-field">
+              <label class="profile-field-label">臀围 (cm)</label>
+              <input id="keep-hips-cm" type="number" class="profile-field-input" value="${p.keep?.dimensions_cm_target?.hips_cm ?? 0}" step="0.1">
+            </div>
           </div>
         </div>
 
-        <div class="dishes-title" style="margin-top: 12px;">围度目标 (cm)</div>
-        <div class="dish-row" style="grid-template-columns: repeat(3, 1fr); gap: 12px;">
-          <div>
-            <div class="nutrition-label" style="text-align:left;">胸围</div>
-            <input id="keep-chest-cm" type="number" class="dish-input number" value="${p.keep?.dimensions_cm_target?.chest_cm ?? 0}" step="0.1">
-          </div>
-          <div>
-            <div class="nutrition-label" style="text-align:left;">腰围</div>
-            <input id="keep-waist-cm" type="number" class="dish-input number" value="${p.keep?.dimensions_cm_target?.waist_cm ?? 0}" step="0.1">
-          </div>
-          <div>
-            <div class="nutrition-label" style="text-align:left;">臀围</div>
-            <input id="keep-hips-cm" type="number" class="dish-input number" value="${p.keep?.dimensions_cm_target?.hips_cm ?? 0}" step="0.1">
-          </div>
-        </div>
-
-        <div class="result-footer" style="padding: 0; border-top: none; margin-top: 18px; justify-content: flex-end;">
-          <button class="btn btn-secondary" onclick="Dashboard.switchView('analysis')">返回分析</button>
-          <button class="btn btn-primary" onclick="Dashboard.saveProfile()">保存 Profile</button>
+        <!-- 操作按钮 -->
+        <div class="profile-actions">
+          <button class="profile-btn profile-btn-secondary" onclick="Dashboard.switchView('analysis')">返回分析</button>
+          <button class="profile-btn profile-btn-primary" onclick="Dashboard.saveProfile()">💾 保存档案</button>
         </div>
       </div>
     `;
@@ -1627,12 +1770,16 @@ const Dashboard = {
     const getNum = (id) => parseFloat(document.getElementById(id)?.value) || 0;
     const getStr = (id) => String(document.getElementById(id)?.value || '');
 
+    const currentUnit = getStr('energy-unit') || 'kJ';
+    const rawEnergyTarget = getNum('diet-energy-kj');
+    const energyTargetKj = currentUnit === 'kcal' ? Math.round(this.kcalToKJ(rawEnergyTarget)) : rawEnergyTarget;
+
     const profile = {
       timezone: getStr('profile-timezone'),
       diet: {
-        energy_unit: getStr('energy-unit') || 'kJ',
+        energy_unit: currentUnit,
         goal: getStr('diet-goal'),
-        daily_energy_kj_target: getNum('diet-energy-kj'),
+        daily_energy_kj_target: energyTargetKj,
         protein_g_target: getNum('diet-protein-g'),
         fat_g_target: getNum('diet-fat-g'),
         carbs_g_target: getNum('diet-carbs-g'),
@@ -1672,9 +1819,19 @@ const Dashboard = {
     next.diet.energy_unit = u;
     this.saveProfileLocal(next);
 
-    // 立即生效：若在分析视图，更新汇总与明细能量显示
-    if (this.view !== 'analysis') return;
-    if (this.currentSession && this.currentSession.versions.length > 0) {
+    // 立即生效
+    if (this.view === 'profile') {
+      this.renderProfileView();
+    }
+
+    // 更新所有会话卡片 Title
+    this.sessions.forEach(s => this.updateSessionCard(s));
+
+    // 更新历史列表
+    this.loadHistory(); // 清空并重置头
+    this.sessions.filter(s => s.isSaved).forEach(s => this.addHistoryItem(s));
+
+    if (this.view === 'analysis' && this.currentSession && this.currentSession.versions.length > 0) {
       this.recalculateDietSummary(false);
       this.renderDietDishes();
     }
@@ -1867,7 +2024,9 @@ const Dashboard = {
 
     if (session.mode === 'diet') {
       const ver = session.versions[session.versions.length - 1];
-      item.textContent = `${ver.parsedData.summary.totalEnergy} kcal`;
+      const unit = this.getEnergyUnit();
+      const val = unit === 'kcal' ? ver.parsedData.summary.totalEnergy : Math.round(this.kcalToKJ(ver.parsedData.summary.totalEnergy));
+      item.textContent = `${val} ${unit}`;
     } else {
       item.textContent = 'Keep 记录';
     }
