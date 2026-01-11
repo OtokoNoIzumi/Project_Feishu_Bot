@@ -71,21 +71,6 @@ class DietAdviceResponse(BaseModel):
     error: Optional[str] = None
 
 
-class DietCommitRequest(BaseModel):
-    """Request model for committing a diet record."""
-
-    user_id: str = Field(..., min_length=1)
-    record: Dict[str, Any]
-
-
-class DietCommitResponse(BaseModel):
-    """Response model for committing a diet record."""
-
-    success: bool
-    saved_record: Optional[Dict[str, Any]] = None
-    error: Optional[str] = None
-
-
 class DietHistoryResponse(BaseModel):
     """Response model for fetching diet history."""
 
@@ -246,22 +231,6 @@ def build_diet_router(settings: BackendSettings) -> APIRouter:
             if isinstance(advice, dict) and advice.get("error"):
                 return DietAdviceResponse(success=False, error=str(advice.get("error")))
             return DietAdviceResponse(success=True, result=advice)
-
-    @router.post(
-        "/api/diet/commit",
-        response_model=DietCommitResponse,
-        dependencies=[Depends(auth_dep)],
-    )
-    async def diet_commit(req: DietCommitRequest):
-        # Flatten the structure if needed or pass as is if RecordService supports it.
-        # RecordService.save_diet_record expects unpacked args.
-        saved = await RecordService.save_diet_record(
-            user_id=req.user_id,
-            meal_summary=req.record.get("meal_summary", {}),
-            dishes=req.record.get("dishes", []),
-            captured_labels=req.record.get("labels_snapshot", []),
-        )
-        return DietCommitResponse(success=True, saved_record=saved)
 
     @router.get(
         "/api/diet/history",

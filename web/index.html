@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Diet & Keep - 登录</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css">
+  <script async crossorigin="anonymous"
+    data-clerk-publishable-key="pk_test_YWR2YW5jZWQtcHVtYS01Mi5jbGVyay5hY2NvdW50cy5kZXYk"
+    src="https://cdn.jsdelivr.net/npm/@clerk/clerk-js@latest/dist/clerk.browser.js">
+  </script>
+</head>
+<body>
+  <div class="login-container">
+    <div class="login-card glass-card">
+      <div class="login-logo">🍎</div>
+      <h1 class="login-title">Diet & Keep</h1>
+      <p class="login-subtitle">智能饮食与健康数据分析</p>
+      <div id="clerk-auth"></div>
+      <div id="loading-state" class="text-center" style="padding: 40px 0;">
+        <div class="loading-spinner" style="margin: 0 auto;"></div>
+        <p class="text-muted" style="margin-top: 16px;">正在加载...</p>
+      </div>
+    </div>
+  </div>
+  <script src="config.js"></script>
+  <script src="js/auth.js"></script>
+  <script>
+    window.addEventListener('load', async () => {
+      await window.Clerk.load();
+      document.getElementById('loading-state').style.display = 'none';
+      if (window.Clerk.user) {
+        window.location.href = 'dashboard.html';
+        return;
+      }
+      window.Clerk.mountSignIn(document.getElementById('clerk-auth'));
+      window.Clerk.addListener((r) => { if (r.user) window.location.href = 'dashboard.html'; });
+    });
+  </script>
+</body>
+</html>

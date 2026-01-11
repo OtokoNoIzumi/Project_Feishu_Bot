@@ -8,6 +8,7 @@ routers, and health checks.
 import logging
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from apps.settings import load_settings
 from apps.diet.api import build_diet_router
@@ -29,6 +30,19 @@ def create_app() -> FastAPI:
     logging.getLogger("google.genai").setLevel(logging.WARNING)
 
     fastapi_app = FastAPI(title="Backend", version="0.1.0")
+    
+    # CORS 配置 - 允许前端跨域访问
+    fastapi_app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[
+            "http://localhost:8080",
+            "http://127.0.0.1:8080",
+            "https://*.github.io",  # GitHub Pages
+        ],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
     @fastapi_app.get("/health")
     async def health():

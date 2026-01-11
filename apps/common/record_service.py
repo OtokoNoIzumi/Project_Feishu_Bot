@@ -1,3 +1,4 @@
+import hashlib
 from datetime import datetime, timedelta
 from typing import Any, Dict, List
 from pydantic import BaseModel, Field
@@ -13,10 +14,12 @@ class RecordService:
         event_data: Dict[str, Any],
         image_hashes: List[str] = None,
         occurred_at: datetime = None,
+        record_id: str = None,
     ):
         """
         保存 Keep 事件（体重 scale / 睡眠 sleep / 围度 dimensions）
         occurred_at: 事件发生时间。决定了文件名归档。
+        record_id: 如提供则用于更新已有记录。
         """
         now = datetime.now()
         business_time = occurred_at if occurred_at else now
@@ -24,15 +27,20 @@ class RecordService:
         month_str = business_time.strftime("%Y_%m")
         filename = f"{event_type}_{month_str}.jsonl"
 
+        # 生成新的 record_id（如果没有提供）
+        if not record_id:
+            hash_str = "_".join(sorted(image_hashes or [])) + now.isoformat()
+            record_id = hashlib.md5(hash_str.encode()).hexdigest()[:12]
+
         # 增加 type 字段方便索引
         event_data["event_type"] = event_type
+        event_data["record_id"] = record_id
 
         # 元数据：创建时间 (System Time)
         if "created_at" not in event_data:
             event_data["created_at"] = now.isoformat()
 
         # 业务数据：发生时间 (Business Time)
-        # 如果调用者指定了发生了时间，显式存储。Keep 数据结构中如果已有类似字段，保持共存。
         event_data["occurred_at"] = business_time.isoformat()
 
         if image_hashes:
@@ -47,25 +55,34 @@ class RecordService:
         replaced_index = -1
 
         # 2. 去重检查
-        if image_hashes:
-            h1 = set(image_hashes)
-            for i, rec in enumerate(existing):
-                if rec.get("image_hashes"):
-                    h2 = set(rec["image_hashes"])
-                    if h1 == h2:
-                        replaced_index = i
-                        break
+        for i, rec in enumerate(existing):
+            # A. 最优先：record_id 完全一致
+            if record_id and rec.get("record_id") == record_id:
+                replaced_index = i
+                break
+            # B. 次优先：图片 Hash 完全一致
+            if image_hashes and rec.get("image_hashes"):
+                h1 = set(image_hashes)
+                h2 = set(rec["image_hashes"])
+                if h1 == h2:
+                    replaced_index = i
+                    break
 
         # 3. 写入
         if replaced_index != -1:
+            # 保留原始 created_at
+            original_created = existing[replaced_index].get("created_at")
+            if original_created:
+                event_data["created_at"] = original_created
+            event_data["updated_at"] = now.isoformat()
             existing[replaced_index] = event_data
             global_storage.write_dataset(user_id, "keep", filename, existing)
-            return {"saved_to": filename, "status": "updated"}
+            return {"saved_to": filename, "status": "updated", "record_id": record_id}
         else:
             global_storage.append(
                 user_id=user_id, category="keep", filename=filename, data=event_data
             )
-            return {"saved_to": filename, "status": "appended"}
+            return {"saved_to": filename, "status": "appended", "record_id": record_id}
 
     @staticmethod
     async def save_diet_record(
@@ -75,23 +92,33 @@ class RecordService:
         captured_labels: List[Dict],
         image_hashes: List[str] = None,
         occurred_at: datetime = None,
+        record_id: str = None,
     ):
         """
         保存饮食记录。包含智能去重逻辑：
-        1. 如果 image_hashes 完全一致 -> 视为修正，覆盖旧记录。
-        2. 否则 -> 追加新记录。
+        1. 如果 record_id 已提供 -> 通过 record_id 匹配更新
+        2. 如果 image_hashes 完全一致 -> 视为修正，覆盖旧记录。
+        3. 否则 -> 追加新记录。
         occurred_at: 饮食发生时间，用于补录历史数据。如果不传则默认为当前时间。
 
         同时对 product_library 进行 Upsert（基于 Brand+Name+Variant），确保同一产品只保留最新数据。
         """
+        
         now = datetime.now()
         business_time = occurred_at if occurred_at else now
 
         date_str = business_time.strftime("%Y-%m-%d")
         filename = f"ledger_{date_str}.jsonl"
 
+        # 生成新的 record_id（如果没有提供）
+        if not record_id:
+            # 使用 image_hashes + timestamp 生成唯一 ID
+            hash_str = "_".join(sorted(image_hashes or [])) + now.isoformat()
+            record_id = hashlib.md5(hash_str.encode()).hexdigest()[:12]
+
         new_record = {
             "type": "diet_log",
+            "record_id": record_id,
             "meal_summary": meal_summary,
             "dishes": dishes,
             "labels_snapshot": captured_labels,
@@ -108,7 +135,11 @@ class RecordService:
 
         # 2. 遍历查找是否有需要覆盖的目标 (Ledger Deduplication)
         for i, rec in enumerate(existing):
-            # A. 强特征：图片 Hash 完全一致
+            # A. 最优先：record_id 完全一致
+            if record_id and rec.get("record_id") == record_id:
+                replaced_index = i
+                break
+            # B. 次优先：图片 Hash 完全一致
             if image_hashes and rec.get("image_hashes"):
                 h1 = set(image_hashes)
                 h2 = set(rec["image_hashes"])
@@ -118,7 +149,11 @@ class RecordService:
 
         # 3. 执行写入 (Ledger Write)
         if replaced_index != -1:
-            # 覆盖模式
+            # 覆盖模式 - 保留原始 created_at
+            original_created = existing[replaced_index].get("created_at")
+            if original_created:
+                new_record["created_at"] = original_created
+            new_record["updated_at"] = now.isoformat()
             existing[replaced_index] = new_record
             global_storage.write_dataset(user_id, "diet", filename, existing)
             status_msg = "updated"
@@ -174,6 +209,7 @@ class RecordService:
         return {
             "status": "success",
             "action": status_msg,
+            "record_id": record_id,
             "items_count": len(dishes),
             "labels_upserted": len(captured_labels),
         }
@@ -349,17 +385,6 @@ class RecordService:
             start = datetime.strptime(start_date, "%Y-%m-%d")
             end = datetime.strptime(end_date, "%Y-%m-%d")
         except ValueError:
-            # Maybe keep this one as arguments come from API?
-            # User said "internal defined". If API validates it, this is redundant.
-            # But let's assume it's reliable.
-            # actually, let's just remove the try wrapper if we trust the caller.
-            # But wait, looking at api.py, it passes strings directly from query params.
-            # Those could be invalid.
-            # However, the user explicitly asked to check where "internal projects define and format is reliable".
-            # Query params are external.
-            # But `RecordService` is internal.
-            # If `api.py` doesn't validate... `api.py` takes `Optional[str]`.
-            # I will keep this specific input validation as it borders on external input boundary.
             return []
 
         records = []

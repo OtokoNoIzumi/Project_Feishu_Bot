@@ -4,7 +4,7 @@ Storage API Router.
 Provides internal endpoints for saving Keep and Diet records directly.
 """
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, Body
 from pydantic import BaseModel, Field
@@ -23,10 +23,13 @@ def build_storage_router(settings: BackendSettings) -> APIRouter:
         user_id: str
         event_type: str = Field(..., description="scale / sleep / body_measure")
         event_data: Dict[str, Any]
+        image_hashes: List[str] = []
+        record_id: Optional[str] = None
 
     class SaveResponse(BaseModel):
         success: bool
         detail: str
+        saved_record: Optional[Dict[str, Any]] = None
 
     @router.post(
         "/api/storage/keep/save",
@@ -36,10 +39,14 @@ def build_storage_router(settings: BackendSettings) -> APIRouter:
     async def save_keep_event(req: SaveKeepEventRequest):
         """保存 Keep 原子事件"""
         try:
-            await RecordService.save_keep_event(
-                req.user_id, req.event_type, req.event_data
+            result = await RecordService.save_keep_event(
+                user_id=req.user_id,
+                event_type=req.event_type,
+                event_data=req.event_data,
+                image_hashes=req.image_hashes,
+                record_id=req.record_id,
             )
-            return SaveResponse(success=True, detail="Saved")
+            return SaveResponse(success=True, detail="Saved", saved_record=result)
         except Exception as e:
             return SaveResponse(success=False, detail=str(e))
 
@@ -49,6 +56,8 @@ def build_storage_router(settings: BackendSettings) -> APIRouter:
         meal_summary: Dict[str, Any]
         dishes: List[Dict[str, Any]]
         captured_labels: List[Dict[str, Any]] = []
+        image_hashes: List[str] = []
+        record_id: Optional[str] = None
 
     @router.post(
         "/api/storage/diet/save",
@@ -58,11 +67,17 @@ def build_storage_router(settings: BackendSettings) -> APIRouter:
     async def save_diet_record(req: SaveDietRequest):
         """保存饮食记录（会自动拆分存储）"""
         try:
-            await RecordService.save_diet_record(
-                req.user_id, req.meal_summary, req.dishes, req.captured_labels
+            result = await RecordService.save_diet_record(
+                user_id=req.user_id,
+                meal_summary=req.meal_summary,
+                dishes=req.dishes,
+                captured_labels=req.captured_labels,
+                image_hashes=req.image_hashes,
+                record_id=req.record_id,
             )
-            return SaveResponse(success=True, detail="Saved to ledger and library")
+            return SaveResponse(success=True, detail="Saved to ledger and library", saved_record=result)
         except Exception as e:
             return SaveResponse(success=False, detail=str(e))
 
     return router
+

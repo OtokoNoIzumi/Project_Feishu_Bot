@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Diet & Keep - Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/styles.css">
+    <link rel="stylesheet" href="css/dashboard.css">
+    <script async crossorigin="anonymous"
+        data-clerk-publishable-key="pk_test_YWR2YW5jZWQtcHVtYS01Mi5jbGVyay5hY2NvdW50cy5kZXYk"
+        src="https://cdn.jsdelivr.net/npm/@clerk/clerk-js@latest/dist/clerk.browser.js">
+        </script>
+</head>
+
+<body>
+    <div class="app-container">
+        <!-- 左侧：历史记录栏 -->
+        <aside class="history-panel">
+            <div class="panel-header">
+                <span class="brand-icon">🍎</span>
+                <span class="brand-name">Diet & Keep</span>
+            </div>
+
+            <div class="history-list" id="history-list">
+                <div class="history-section-title">今天</div>
+                <!-- 历史记录会动态填充 -->
+            </div>
+
+            <div class="history-footer">
+                <div id="user-button"></div>
+            </div>
+        </aside>
+
+        <!-- 中间：输入区 -->
+        <section class="input-panel">
+            <div class="chat-messages" id="chat-messages">
+                <div class="message assistant">你好！上传食物图片或描述饮食，我来帮你分析。</div>
+            </div>
+
+            <div class="input-area">
+                <div id="preview-container" class="preview-container hidden"></div>
+
+                <div class="input-box" id="input-box">
+                    <textarea id="chat-input" placeholder="描述你的饮食..." rows="1"></textarea>
+                    <div class="input-toolbar">
+                        <div class="toolbar-left">
+                            <button class="tool-btn" id="upload-btn" title="上传图片">➕</button>
+                            <input type="file" id="file-input" accept="image/*" multiple hidden>
+                            <div class="mode-switch">
+                                <button class="mode-btn active" data-mode="diet">🍽️ 饮食</button>
+                                <button class="mode-btn" data-mode="keep">💪 Keep</button>
+                            </div>
+                        </div>
+                        <button id="send-btn" class="send-btn" disabled>发送</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 右侧：结果展示/编辑区（最宽） -->
+        <main class="result-panel">
+            <div class="result-header">
+                <h2 id="result-title">分析结果</h2>
+                <div class="result-status" id="result-status"></div>
+            </div>
+
+            <div id="result-content" class="result-content">
+                <div class="empty-state">
+                    <div class="empty-icon">📊</div>
+                    <h3>等待分析</h3>
+                    <p>上传食物图片或输入描述开始分析</p>
+                </div>
+            </div>
+
+            <div id="result-footer" class="result-footer hidden">
+                <button class="btn btn-secondary" id="re-analyze-btn">🔄 重新分析</button>
+                <button class="btn btn-secondary" id="update-advice-btn">✨ 更新建议</button>
+                <button class="btn btn-primary" id="save-btn">💾 保存记录</button>
+            </div>
+        </main>
+    </div>
+
+    <script src="config.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/api.js"></script>
+    <script src="js/dashboard.js"></script>
+</body>
+
+</html>
