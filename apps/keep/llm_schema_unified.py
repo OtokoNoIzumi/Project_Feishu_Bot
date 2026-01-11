@@ -25,6 +25,10 @@ KEEP_UNIFIED_LLM_SCHEMA = {
             "description": "检测到的所有身体围度测量事件",
             "items": KEEP_DIMENSIONS_LLM_SCHEMA["properties"]["body_measure_event"],
         },
+        "occurred_at": {
+            "type": "string",
+            "description": "如果用户在 User Note 中明确指定了数据的时间（如'1月1日的数据'），请转换为 'YYYY-MM-DD HH:MM:SS'。否则留空。",
+        },
     },
     "required": [],  # 允许为空，因为可能只传了某一种图片
 }

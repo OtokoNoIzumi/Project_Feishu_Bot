@@ -1,4 +1,6 @@
+from datetime import datetime
 def build_diet_prompt(user_note: str = "", recent_products_str: str = "") -> str:
+    current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     user_note_emphasis = ""
     if user_note and user_note.strip():
         user_note_emphasis = f"""
@@ -41,6 +43,12 @@ Step A：重量
 Step B：营养密度来源
 - label_ocr：若食材来自已 OCR 的包装标签，则必须使用标签数据
 - generic_estimate：散装食物可做通用估计
+
+【Part 3：时间提取（Time Extraction）】
+当前系统时间：{current_time}
+请根据当前时间和用户输入，判断事件发生的准确时间。
+- 如果用户提到相对时间（如“昨天中午”、“上周五晚餐”）或绝对日期（如“12月29日”），请基于系统时间推算，并输出 'YYYY-MM-DD HH:MM:SS' 格式到 `occurred_at`。
+- 如果用户未指定时间，`occurred_at` 输出空字符串。
 
 【通用规则】
 1) 用户输入优先

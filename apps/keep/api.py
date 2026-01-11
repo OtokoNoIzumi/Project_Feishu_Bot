@@ -2,6 +2,7 @@ import asyncio
 import base64
 import logging
 import hashlib
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, File, Form, UploadFile
@@ -64,7 +65,7 @@ def build_keep_router(settings: BackendSettings) -> APIRouter:
     def _get_model_limiter() -> AsyncRateLimiter:
         return get_model_limiter(settings)
 
-    async def _auto_save_result(user_id: str, event_type: str, result: Dict[str, Any], image_hashes: List[str] = None) -> Dict[str, Any]:
+    async def _auto_save_result(user_id: str, event_type: str, result: Dict[str, Any], image_hashes: List[str] = None, occurred_at: datetime = None) -> Dict[str, Any]:
         """Auto-save helper for single event types"""
         try:
             data_to_save = result
@@ -77,25 +78,25 @@ def build_keep_router(settings: BackendSettings) -> APIRouter:
                 data_to_save = result["body_measure_event"]
             
             # Pass image_hashes for deduplication
-            await RecordService.save_keep_event(user_id, event_type, data_to_save, image_hashes)
+            await RecordService.save_keep_event(user_id, event_type, data_to_save, image_hashes, occurred_at)
             return {"status": "success", "detail": f"Saved {event_type} event"}
         except Exception as e:
             return {"status": "error", "detail": str(e)}
 
-    async def _auto_save_unified_result(user_id: str, result: Dict[str, Any], image_hashes: List[str] = None) -> Dict[str, Any]:
+    async def _auto_save_unified_result(user_id: str, result: Dict[str, Any], image_hashes: List[str] = None, occurred_at: datetime = None) -> Dict[str, Any]:
         """Auto-save helper for unified results"""
         saved_details = []
         try:
             for item in result.get("scale_events", []):
-                await RecordService.save_keep_event(user_id, "scale", item, image_hashes)
+                await RecordService.save_keep_event(user_id, "scale", item, image_hashes, occurred_at)
                 saved_details.append("scale")
             
             for item in result.get("sleep_events", []):
-                await RecordService.save_keep_event(user_id, "sleep", item, image_hashes)
+                await RecordService.save_keep_event(user_id, "sleep", item, image_hashes, occurred_at)
                 saved_details.append("sleep")
 
             for item in result.get("body_measure_events", []):
-                await RecordService.save_keep_event(user_id, "dimensions", item, image_hashes)
+                await RecordService.save_keep_event(user_id, "dimensions", item, image_hashes, occurred_at)
                 saved_details.append("dimensions")
                 
             msg = f"Saved {len(saved_details)} items"
@@ -134,11 +135,23 @@ def build_keep_router(settings: BackendSettings) -> APIRouter:
             if auto_save:
                 # Compute image hashes for deduplication
                 image_hashes = [hashlib.sha256(b).hexdigest() for b in images_bytes]
+
+                # Check for occurred_at from LLM extraction (Backfill support)
+                occurred_dt = None
+                oa_str = result.get("occurred_at")
+                if oa_str:
+                    try:
+                        # Try parsing YYYY-MM-DD HH:MM:SS
+                        # Handle potential YYYY-MM-DD HH:MM if SS missing
+                        if len(oa_str) == 16: oa_str += ":00"
+                        occurred_dt = datetime.fromisoformat(oa_str.replace(" ", "T"))
+                    except:
+                        pass 
                 
                 if event_type_for_save == "unified":
-                    saved_status = await _auto_save_unified_result(user_id, result, image_hashes)
+                    saved_status = await _auto_save_unified_result(user_id, result, image_hashes, occurred_dt)
                 else:
-                    saved_status = await _auto_save_result(user_id, event_type_for_save, result, image_hashes)
+                    saved_status = await _auto_save_result(user_id, event_type_for_save, result, image_hashes, occurred_dt)
 
             return response_model(success=True, result=result, saved_status=saved_status)
 

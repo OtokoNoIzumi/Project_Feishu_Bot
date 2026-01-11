@@ -2,6 +2,7 @@ import asyncio
 import base64
 import logging
 import hashlib
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, File, Form, UploadFile
@@ -121,13 +122,26 @@ def build_diet_router(settings: BackendSettings) -> APIRouter:
             if auto_save:
                 image_hashes = [hashlib.sha256(b).hexdigest() for b in images_bytes]
                 
+                # Check for occurred_at from LLM extraction (Backfill support)
+                occurred_dt = None
+                oa_str = result.get("occurred_at")
+                if oa_str:
+                    try:
+                        # Try parsing YYYY-MM-DD HH:MM:SS
+                        # Handle potential YYYY-MM-DD HH:MM if SS missing
+                        if len(oa_str) == 16: oa_str += ":00"
+                        occurred_dt = datetime.fromisoformat(oa_str.replace(" ", "T"))
+                    except:
+                        pass # Valid to fail, fallback to now() inside service
+                
                 try:
                     saved_status = await RecordService.save_diet_record(
                         user_id=user_id,
                         meal_summary=result.get("meal_summary", {}),
                         dishes=result.get("dishes", []),
                         captured_labels=result.get("captured_labels", []),
-                        image_hashes=image_hashes
+                        image_hashes=image_hashes,
+                        occurred_at=occurred_dt
                     )
                 except Exception as e:
                     saved_status = {"status": "error", "detail": str(e)}

@@ -6,18 +6,28 @@ from libs.storage_lib import global_storage
 
 class RecordService:
     @staticmethod
-    async def save_keep_event(user_id: str, event_type: str, event_data: Dict[str, Any], image_hashes: List[str] = None):
+    async def save_keep_event(user_id: str, event_type: str, event_data: Dict[str, Any], image_hashes: List[str] = None, occurred_at: datetime = None):
         """
         保存 Keep 事件（体重 scale / 睡眠 sleep / 围度 dimensions）
-        支持基于 image_hashes 的去重/更新。
-        文件名按月归档，例如 keep_scale_2023_10.jsonl
+        occurred_at: 事件发生时间。决定了文件名归档。
         """
         now = datetime.now()
-        month_str = now.strftime("%Y_%m")
+        business_time = occurred_at if occurred_at else now
+        
+        month_str = business_time.strftime("%Y_%m")
         filename = f"{event_type}_{month_str}.jsonl"
         
         # 增加 type 字段方便索引
         event_data["event_type"] = event_type
+        
+        # 元数据：创建时间 (System Time)
+        if "created_at" not in event_data:
+            event_data["created_at"] = now.isoformat()
+            
+        # 业务数据：发生时间 (Business Time)
+        # 如果调用者指定了发生了时间，显式存储。Keep 数据结构中如果已有类似字段，保持共存。
+        event_data["occurred_at"] = business_time.isoformat()
+
         if image_hashes:
             event_data["image_hashes"] = image_hashes
         
@@ -52,16 +62,19 @@ class RecordService:
             return {"saved_to": filename, "status": "appended"}
 
     @staticmethod
-    async def save_diet_record(user_id: str, meal_summary: Dict, dishes: List[Dict], captured_labels: List[Dict], image_hashes: List[str] = None):
+    async def save_diet_record(user_id: str, meal_summary: Dict, dishes: List[Dict], captured_labels: List[Dict], image_hashes: List[str] = None, occurred_at: datetime = None):
         """
         保存饮食记录。包含智能去重逻辑：
         1. 如果 image_hashes 完全一致 -> 视为修正，覆盖旧记录。
         2. 否则 -> 追加新记录。
+        occurred_at: 饮食发生时间，用于补录历史数据。如果不传则默认为当前时间。
         
         同时对 product_library 进行 Upsert（基于 Brand+Name+Variant），确保同一产品只保留最新数据。
         """
         now = datetime.now()
-        date_str = now.strftime("%Y-%m-%d")
+        business_time = occurred_at if occurred_at else now
+        
+        date_str = business_time.strftime("%Y-%m-%d")
         filename = f"ledger_{date_str}.jsonl"
         
         new_record = {
@@ -70,10 +83,11 @@ class RecordService:
             "dishes": dishes,
             "labels_snapshot": captured_labels,
             "image_hashes": image_hashes or [],
-            "created_at": now.isoformat()
+            "created_at": now.isoformat(), # System Time
+            "occurred_at": business_time.isoformat() # Business Time
         }
         
-        # 1. 读取今日所有记录 (read_dataset 返还倒序，需反转为正序处理)
+        # 1. 读取该日所有记录 (read_dataset 返还倒序，需反转为正序处理)
         existing = global_storage.read_dataset(user_id, "diet", filename, limit=1000)
         existing = list(reversed(existing))
         
@@ -252,14 +266,16 @@ class RecordService:
         # Filter by exact range
         filtered = []
         for r in all_keep:
-            # Prefer event time, fallback to created_at
-            # Keep records usually have dedicated date fields but 'created_at' is standard meta
-            t_str = r.get("created_at")
+            # Strictly use occurred_at
+            t_str = r.get("occurred_at")
             if not t_str: continue
             
             try:
                 t = datetime.fromisoformat(t_str)
-                # Compare naive or aware? Assuming naive or consistent
+                # Ensure TZ-naive comparison if needed, or rely on python comparison compat
+                if t.tzinfo is not None:
+                    t = t.replace(tzinfo=None)
+                    
                 if start_dt <= t <= end_dt:
                     filtered.append(r)
             except:
@@ -312,6 +328,12 @@ class RecordService:
             day_str = day.strftime("%Y-%m-%d")
             # 读取该日所有记录
             day_recs = global_storage.read_dataset(user_id, "diet", f"ledger_{day_str}.jsonl", limit=9999)
+            
+            # Inject source date for reliable filtering later (fixes backfill issue)
+            # We trust the filename date over created_at for determining "which day this belongs to"
+            for r in day_recs:
+                r["_source_date"] = day_str
+                
             records.extend(reversed(day_recs))
             
         return records
@@ -321,10 +343,9 @@ class RecordService:
         """
         获取指定日期范围内的【所有类型】记录（饮食 + Keep）。
         包含：
-        1. 原始饮食记录
-        2. Keep 运动/睡眠/围度记录
-        3. 严格的时间过滤
-        4. 按时间正序排序
+        1. 原始饮食记录 (Filter by occurred_at > _source_date)
+        2. Keep 运动/睡眠/围度记录 (Filter by occurred_at > created_at)
+        3. 结果合并排序
         """
         try:
             start = datetime.strptime(start_date, "%Y-%m-%d")
@@ -335,35 +356,37 @@ class RecordService:
         
         all_records = []
         
-        # 1. 获取 Diet 原始数据
+        # 1. 获取 Diet 原始数据 (文件名范围获取，已注入 _source_date)
         diet_recs = RecordService.get_diet_records_range(user_id, start_date, end_date)
         all_records.extend(diet_recs)
             
-        # 2. 读取并合并 Keep Log
+        # 2. 读取 Keep 数据 (Keep files are monthly)
         keep_recs = RecordService._read_keep_records_for_period(user_id, start, end)
         all_records.extend(keep_recs)
         
-        # 3. 全局严格时间过滤 (Strict Filtering)
-        final_records = []
+        # 3. 统一过滤
+        # 使用 Tuple (datetime, dict) 暂存有效记录，避免重复解析和污染数据
+        valid_entries = []
+        
         for r in all_records:
-            t_str = r.get("created_at")
+            # Strictly rely on occurred_at
+            t_str = r.get("occurred_at")
             if not t_str:
                 continue
+            
             try:
-                t = datetime.fromisoformat(t_str)
-                # Ensure t is comparable to start/end (naive vs naive)
-                if t.tzinfo is not None:
-                     t = t.replace(tzinfo=None) 
-                
-                if start <= t <= end:
-                    final_records.append(r)
-            except:
+                dt = datetime.fromisoformat(t_str)
+            except ValueError:
                 continue
+            
+            # Filter range (Normalize TZ for strict comparison)
+            check_dt = dt.replace(tzinfo=None) if dt.tzinfo else dt
+            
+            if start <= check_dt <= end:
+                valid_entries.append((check_dt, r))
 
-        # 4. 按时间重新排序 (Oldest -> Newest)
-        def _sort_key(r):
-            return r.get("created_at", "")
+        # 4. Sort by effective business time (Tuple[0])
+        valid_entries.sort(key=lambda x: x[0])
             
-        final_records.sort(key=_sort_key)
-            
-        return final_records
+        # 5. Return only records
+        return [x[1] for x in valid_entries]

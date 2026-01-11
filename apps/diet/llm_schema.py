@@ -93,8 +93,12 @@ DIET_LLM_SCHEMA = {
             "description": "图片中未被结构化字段覆盖、但对建议生成有用的额外视觉信息。例如：烹饪方式（蒸/煮/炸/烤，如果standard_name未体现）、食物的新鲜度/成熟度、搭配的酱料/配菜（如果未在dishes中单独列出）、用餐环境线索等。如果图片信息已完全被结构化字段覆盖，则输出空字符串。",
         },
         "user_note_process": {"type": "string"},
+        "occurred_at": {
+            "type": "string",
+            "description": "如果用户在输入中明确指定了进食时间（如'昨天中午'、'12月29日'），请将其转换为 'YYYY-MM-DD HH:MM:SS' 格式。如果未指定，请输出空字符串。",
+        },
     },
-    "required": ["meal_summary", "dishes"],
+    "required": ["meal_summary", "dishes", "occurred_at"],
 }
 
 

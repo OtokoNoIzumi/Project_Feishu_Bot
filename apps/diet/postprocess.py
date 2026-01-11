@@ -132,6 +132,11 @@ def finalize_record(llm_result: Dict[str, Any]) -> Dict[str, Any]:
     if extra_image_summary and str(extra_image_summary).strip():
         result["extra_image_summary"] = str(extra_image_summary).strip()
 
+    # 保留 occurred_at (补录时间)
+    occurred_at = llm_result.get("occurred_at")
+    if occurred_at and str(occurred_at).strip():
+        result["occurred_at"] = str(occurred_at).strip()
+
     return result
 
 
