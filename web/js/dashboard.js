@@ -750,7 +750,7 @@ const Dashboard = {
               <span id="sum-total-energy">${this.currentDietTotals.totalEnergy}</span>
               <span id="sum-energy-unit">${this.getEnergyUnit()}</span>
             </div>
-            <div class="label">总能量（自动加总，来自宏量计算）</div>
+            <div class="label">总能量（自动加总）</div>
           </div>
           <div class="summary-macros">
             <div class="summary-macro-item">
@@ -912,7 +912,66 @@ const Dashboard = {
       return;
     }
 
-    wrap.innerHTML = this.currentDishes.map((d, i) => this.renderDietDishBlockDesktop(d, i)).join('');
+    // Desktop: AI 菜式各自渲染为 block，用户菜式共享一个表格
+    const aiDishes = this.currentDishes.map((d, i) => ({ ...d, originalIndex: i })).filter(d => d.source === 'ai');
+    const userDishes = this.currentDishes.map((d, i) => ({ ...d, originalIndex: i })).filter(d => d.source === 'user');
+
+    let html = '';
+
+    // 渲染 AI 菜式
+    html += aiDishes.map(d => this.renderDietDishBlockDesktop(d, d.originalIndex)).join('');
+
+    // 渲染用户菜式（共享一个表格）
+    if (userDishes.length > 0) {
+      html += this.renderUserDishesTable(userDishes);
+    }
+
+    wrap.innerHTML = html;
+  },
+
+  // 用户菜式共享表格渲染
+  renderUserDishesTable(userDishes) {
+    const unit = this.getEnergyUnit();
+    return `
+      <div class="diet-user-dishes-table">
+        <div class="dish-table-wrap" style="min-width: 0;">
+          <table class="dish-table ingredients-table" style="min-width: 0; table-layout: fixed;">
+            <thead>
+              <tr>
+                <th>菜式名称</th>
+                <th class="num">能量(${unit})</th>
+                <th class="num">蛋白(g)</th>
+                <th class="num">脂肪(g)</th>
+                <th class="num">碳水(g)</th>
+                <th class="num">纤维(g)</th>
+                <th class="num">钠(mg)</th>
+                <th class="num">重量(g)</th>
+                <th style="width: 36px;"></th>
+              </tr>
+            </thead>
+            <tbody>
+              ${userDishes.map(d => {
+      const i = d.originalIndex;
+      const energyText = this.formatEnergyFromMacros(d.protein, d.fat, d.carb);
+      return `
+                  <tr>
+                    <td><input type="text" class="cell-input" value="${d.name}" oninput="Dashboard.updateDish(${i}, 'name', this.value)"></td>
+                    <td><input type="text" class="cell-input num cell-readonly" value="${energyText}" readonly tabindex="-1"></td>
+                    <td><input type="number" class="cell-input num" value="${d.protein ?? 0}" min="0" step="0.1" oninput="Dashboard.updateDish(${i}, 'protein', this.value)"></td>
+                    <td><input type="number" class="cell-input num" value="${d.fat ?? 0}" min="0" step="0.1" oninput="Dashboard.updateDish(${i}, 'fat', this.value)"></td>
+                    <td><input type="number" class="cell-input num" value="${d.carb ?? 0}" min="0" step="0.1" oninput="Dashboard.updateDish(${i}, 'carb', this.value)"></td>
+                    <td><input type="number" class="cell-input num" value="${d.fiber ?? 0}" min="0" step="0.1" oninput="Dashboard.updateDish(${i}, 'fiber', this.value)"></td>
+                    <td><input type="number" class="cell-input num" value="${d.sodium_mg ?? 0}" min="0" step="1" oninput="Dashboard.updateDish(${i}, 'sodium_mg', this.value)"></td>
+                    <td><input type="number" class="cell-input num" value="${d.weight ?? 0}" min="0" step="0.1" oninput="Dashboard.updateDish(${i}, 'weight', this.value)"></td>
+                    <td><button class="cell-remove" onclick="Dashboard.removeDish(${i})">×</button></td>
+                  </tr>
+                `;
+    }).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
   },
 
   renderDietDishBlockDesktop(d, i) {
@@ -921,21 +980,23 @@ const Dashboard = {
     const unit = this.getEnergyUnit();
     const totals = this.getDishTotals(d);
     const energyText = this.formatEnergyFromMacros(totals.protein, totals.fat, totals.carb);
-    const removeBtn = d.source === 'user'
-      ? `<button class="cell-remove" onclick="Dashboard.removeDish(${i})">×</button>`
-      : `<span class="diet-level-tag">AI</span>`;
-
-    const dishName = d.source === 'user'
-      ? `<input type="text" class="cell-input" value="${d.name}" ${disableInputs ? 'disabled' : ''} oninput="Dashboard.updateDish(${i}, 'name', this.value)">`
-      : `<div class="diet-dish-name">${d.name}</div>`;
 
     const ratio = this.getMacroEnergyRatio(totals.protein, totals.fat, totals.carb);
     const ratioHtml = ratio.total_kcal > 0
       ? `<span class="diet-chip">P ${ratio.p_pct}%</span><span class="diet-chip">F ${ratio.f_pct}%</span><span class="diet-chip">C ${ratio.c_pct}%</span>`
       : '';
 
-    const dishSummaryHtml = `
-      <div class="diet-dish-stats">
+    // AI 菜式展开/收起按钮
+    const collapsed = d.source === 'ai' ? (this.dietIngredientsCollapsed?.[d.id] !== false) : false;
+    const toggleBtnHtml = d.source === 'ai'
+      ? `<button class="diet-toggle-btn" onclick="Dashboard.toggleIngredients(${d.id})">${collapsed ? '展开' : '收起'}</button>`
+      : '';
+
+    // 合并为单行：checkbox + 菜式名称 + 汇总统计 + P/F/C 比例 + 展开按钮
+    const dishHeaderHtml = `
+      <div class="diet-dish-header-combined">
+        <input type="checkbox" ${enabled ? 'checked' : ''} onchange="Dashboard.toggleDishEnabled(${i}, this.checked)">
+        <div class="diet-dish-name">${d.name}</div>
         <span class="diet-stat"><span class="k">能量</span><span class="v">${energyText} ${unit}</span></span>
         <span class="diet-stat"><span class="k">蛋白</span><span class="v">${totals.protein}g</span></span>
         <span class="diet-stat"><span class="k">脂肪</span><span class="v">${totals.fat}g</span></span>
@@ -944,69 +1005,51 @@ const Dashboard = {
         <span class="diet-stat"><span class="k">钠</span><span class="v">${totals.sodium_mg}mg</span></span>
         <span class="diet-stat"><span class="k">重量</span><span class="v">${totals.weight}g</span></span>
         <span class="diet-chips">${ratioHtml}</span>
+        ${toggleBtnHtml}
       </div>
     `;
 
+    // Ingredients 表格（末尾列放 AI 标签）
     let ingredientsHtml = '';
     if (d.source === 'ai') {
-      const collapsed = this.dietIngredientsCollapsed?.[d.id] !== false;
-      const toggleText = collapsed ? '展开 Ingredients' : '收起 Ingredients';
       const hiddenClass = collapsed ? 'collapsed' : '';
       ingredientsHtml = `
         <div class="diet-ingredients-wrap ${disableInputs ? 'disabled' : ''}">
-          <div class="diet-ingredients-bar">
-            <div class="diet-ingredients-title">Ingredients（可编辑）</div>
-            <button class="diet-toggle-btn" onclick="Dashboard.toggleIngredients(${d.id})">${toggleText}</button>
-          </div>
           <div class="diet-ingredients-body ${hiddenClass}">
             <div class="dish-table-wrap" style="min-width: 0;">
               <table class="dish-table ingredients-table" style="min-width: 0; table-layout: fixed;">
                 <thead>
                   <tr>
                     <th>成分</th>
-                    <th class="num">能量</th>
+                    <th class="num">能量(${unit})</th>
                     <th class="num">蛋白(g)</th>
                     <th class="num">脂肪(g)</th>
                     <th class="num">碳水(g)</th>
                     <th class="num">纤维(g)</th>
                     <th class="num">钠(mg)</th>
                     <th class="num">重量(g)</th>
+                    <th style="width: 36px;"></th>
                   </tr>
                 </thead>
                 <tbody>
                   ${(d.ingredients || []).map((ing, j) => {
-                    const e = this.formatEnergyFromMacros(ing.macros?.protein_g, ing.macros?.fat_g, ing.macros?.carbs_g);
-                    const ro = 'readonly tabindex="-1"';
-                    const dis = disableInputs ? 'disabled' : '';
-                    return `
+        const e = this.formatEnergyFromMacros(ing.macros?.protein_g, ing.macros?.fat_g, ing.macros?.carbs_g);
+        const ro = 'readonly tabindex="-1"';
+        const dis = disableInputs ? 'disabled' : '';
+        return `
                       <tr>
-                        <td>
-                          <input type="text" class="cell-input cell-readonly" value="${ing.name_zh || ''}" ${ro}>
-                        </td>
-                        <td>
-                          <input type="text" class="cell-input num cell-readonly" value="${e}" ${ro}>
-                        </td>
-                        <td>
-                          <input type="number" class="cell-input num" value="${ing.macros?.protein_g ?? 0}" min="0" step="0.1" ${dis} oninput="Dashboard.updateIngredient(${i}, ${j}, 'protein_g', this.value)">
-                        </td>
-                        <td>
-                          <input type="number" class="cell-input num" value="${ing.macros?.fat_g ?? 0}" min="0" step="0.1" ${dis} oninput="Dashboard.updateIngredient(${i}, ${j}, 'fat_g', this.value)">
-                        </td>
-                        <td>
-                          <input type="number" class="cell-input num" value="${ing.macros?.carbs_g ?? 0}" min="0" step="0.1" ${dis} oninput="Dashboard.updateIngredient(${i}, ${j}, 'carbs_g', this.value)">
-                        </td>
-                        <td>
-                          <input type="number" class="cell-input num" value="${ing.macros?.fiber_g ?? 0}" min="0" step="0.1" ${dis} oninput="Dashboard.updateIngredient(${i}, ${j}, 'fiber_g', this.value)">
-                        </td>
-                        <td>
-                          <input type="number" class="cell-input num" value="${ing.macros?.sodium_mg ?? 0}" min="0" step="1" ${dis} oninput="Dashboard.updateIngredient(${i}, ${j}, 'sodium_mg', this.value)">
-                        </td>
-                        <td>
-                          <input type="number" class="cell-input num" value="${ing.weight_g ?? 0}" min="0" step="0.1" ${dis} oninput="Dashboard.updateIngredient(${i}, ${j}, 'weight_g', this.value)">
-                        </td>
+                        <td><input type="text" class="cell-input cell-readonly" value="${ing.name_zh || ''}" ${ro}></td>
+                        <td><input type="text" class="cell-input num cell-readonly" value="${e}" ${ro}></td>
+                        <td><input type="number" class="cell-input num" value="${ing.macros?.protein_g ?? 0}" min="0" step="0.1" ${dis} oninput="Dashboard.updateIngredient(${i}, ${j}, 'protein_g', this.value)"></td>
+                        <td><input type="number" class="cell-input num" value="${ing.macros?.fat_g ?? 0}" min="0" step="0.1" ${dis} oninput="Dashboard.updateIngredient(${i}, ${j}, 'fat_g', this.value)"></td>
+                        <td><input type="number" class="cell-input num" value="${ing.macros?.carbs_g ?? 0}" min="0" step="0.1" ${dis} oninput="Dashboard.updateIngredient(${i}, ${j}, 'carbs_g', this.value)"></td>
+                        <td><input type="number" class="cell-input num" value="${ing.macros?.fiber_g ?? 0}" min="0" step="0.1" ${dis} oninput="Dashboard.updateIngredient(${i}, ${j}, 'fiber_g', this.value)"></td>
+                        <td><input type="number" class="cell-input num" value="${ing.macros?.sodium_mg ?? 0}" min="0" step="1" ${dis} oninput="Dashboard.updateIngredient(${i}, ${j}, 'sodium_mg', this.value)"></td>
+                        <td><input type="number" class="cell-input num" value="${ing.weight_g ?? 0}" min="0" step="0.1" ${dis} oninput="Dashboard.updateIngredient(${i}, ${j}, 'weight_g', this.value)"></td>
+                        <td><span class="diet-level-tag">AI</span></td>
                       </tr>
                     `;
-                  }).join('')}
+      }).join('')}
                 </tbody>
               </table>
             </div>
@@ -1015,61 +1058,10 @@ const Dashboard = {
       `;
     }
 
-    // 用户新增菜式：保持“汇总编辑”（不展开 ingredients）
-    let userEditRow = '';
-    if (d.source === 'user') {
-      const dis = disableInputs ? 'disabled' : '';
-      const ro = 'readonly tabindex="-1"';
-      userEditRow = `
-        <div class="diet-user-edit-row ${disableInputs ? 'disabled' : ''}">
-          <div class="diet-ingredients-bar">
-            <div class="diet-ingredients-title">菜式（可编辑）</div>
-          </div>
-          <div class="dish-table-wrap" style="min-width: 0;">
-            <table class="dish-table ingredients-table" style="min-width: 0; table-layout: fixed;">
-              <thead>
-                <tr>
-                  <th>菜式</th>
-                  <th class="num">能量</th>
-                  <th class="num">蛋白(g)</th>
-                  <th class="num">脂肪(g)</th>
-                  <th class="num">碳水(g)</th>
-                  <th class="num">纤维(g)</th>
-                  <th class="num">钠(mg)</th>
-                  <th class="num">重量(g)</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td><input type="text" class="cell-input cell-readonly" value="${d.name}" ${ro}></td>
-                  <td><input type="text" class="cell-input num cell-readonly" value="${energyText}" ${ro}></td>
-                  <td><input type="number" class="cell-input num" value="${d.protein ?? 0}" min="0" step="0.1" ${dis} oninput="Dashboard.updateDish(${i}, 'protein', this.value)"></td>
-                  <td><input type="number" class="cell-input num" value="${d.fat ?? 0}" min="0" step="0.1" ${dis} oninput="Dashboard.updateDish(${i}, 'fat', this.value)"></td>
-                  <td><input type="number" class="cell-input num" value="${d.carb ?? 0}" min="0" step="0.1" ${dis} oninput="Dashboard.updateDish(${i}, 'carb', this.value)"></td>
-                  <td><input type="number" class="cell-input num" value="${d.fiber ?? 0}" min="0" step="0.1" ${dis} oninput="Dashboard.updateDish(${i}, 'fiber', this.value)"></td>
-                  <td><input type="number" class="cell-input num" value="${d.sodium_mg ?? 0}" min="0" step="1" ${dis} oninput="Dashboard.updateDish(${i}, 'sodium_mg', this.value)"></td>
-                  <td><input type="number" class="cell-input num" value="${d.weight ?? 0}" min="0" step="0.1" ${dis} oninput="Dashboard.updateDish(${i}, 'weight', this.value)"></td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-      `;
-    }
-
     return `
       <div class="diet-dish-block ${disableInputs ? 'disabled' : ''}">
-        <div class="diet-dish-header">
-          <div class="diet-dish-left">
-            <input type="checkbox" ${enabled ? 'checked' : ''} onchange="Dashboard.toggleDishEnabled(${i}, this.checked)">
-            ${dishName}
-          </div>
-          <div class="diet-dish-right">
-            ${removeBtn}
-          </div>
-        </div>
-        ${dishSummaryHtml}
-        ${d.source === 'user' ? userEditRow : ingredientsHtml}
+        ${dishHeaderHtml}
+        ${ingredientsHtml}
       </div>
     `;
   },
@@ -1077,25 +1069,25 @@ const Dashboard = {
   renderDietDishesMobile() {
     return `
       ${this.currentDishes.map((d, i) => {
-        const enabled = d.enabled !== false;
-        const totals = this.getDishTotals(d);
-        const unit = this.getEnergyUnit();
-        const energyText = this.formatEnergyFromMacros(totals.protein, totals.fat, totals.carb);
-        const disableInputs = !enabled;
-        const canRemove = d.source === 'user';
-        const dis = disableInputs ? 'disabled' : '';
+      const enabled = d.enabled !== false;
+      const totals = this.getDishTotals(d);
+      const unit = this.getEnergyUnit();
+      const energyText = this.formatEnergyFromMacros(totals.protein, totals.fat, totals.carb);
+      const disableInputs = !enabled;
+      const canRemove = d.source === 'user';
+      const dis = disableInputs ? 'disabled' : '';
 
-        // AI：菜式头只读 + ingredients 可编辑
-        const collapsed = this.dietIngredientsCollapsed?.[d.id] !== false;
-        const toggleText = collapsed ? '展开' : '收起';
-        const aiIngredients = d.source === 'ai'
-          ? `
+      // AI：菜式头只读 + ingredients 可编辑
+      const collapsed = this.dietIngredientsCollapsed?.[d.id] !== false;
+      const toggleText = collapsed ? '展开' : '收起';
+      const aiIngredients = d.source === 'ai'
+        ? `
             <div class="dishes-title" style="margin-top: 10px;">Ingredients（可编辑）</div>
             <button class="diet-toggle-btn" style="margin: 6px 0 10px 0;" onclick="Dashboard.toggleIngredients(${d.id})">${toggleText}</button>
             <div class="${collapsed ? 'diet-ingredients-body collapsed' : 'diet-ingredients-body'}">
             ${(d.ingredients || []).map((ing, j) => {
-              const ie = this.formatEnergyFromMacros(ing.macros?.protein_g, ing.macros?.fat_g, ing.macros?.carbs_g);
-              return `
+          const ie = this.formatEnergyFromMacros(ing.macros?.protein_g, ing.macros?.fat_g, ing.macros?.carbs_g);
+          return `
                 <div class="keep-item" style="border-bottom: none; padding: 10px 0 6px 0;">
                   <div class="keep-main" style="gap: 8px;">
                     <span class="keep-sub">${ing.name_zh || ''}</span>
@@ -1113,14 +1105,14 @@ const Dashboard = {
                   <input type="number" class="dish-input number" placeholder="重量(g)" value="${ing.weight_g ?? 0}" min="0" step="0.1" ${dis} oninput="Dashboard.updateIngredient(${i}, ${j}, 'weight_g', this.value)">
                 </div>
               `;
-            }).join('')}
+        }).join('')}
             </div>
           `
-          : '';
+        : '';
 
-        // 用户新增：保持汇总编辑
-        const userEditor = d.source === 'user'
-          ? `
+      // 用户新增：保持汇总编辑
+      const userEditor = d.source === 'user'
+        ? `
             <div class="dish-row" style="grid-template-columns: repeat(3, 1fr); gap: 8px; border-bottom: none; padding-top: 10px;">
               <input type="number" class="dish-input number" placeholder="蛋白(g)" value="${d.protein ?? 0}" min="0" step="0.1" ${dis} oninput="Dashboard.updateDish(${i}, 'protein', this.value)">
               <input type="number" class="dish-input number" placeholder="脂肪(g)" value="${d.fat ?? 0}" min="0" step="0.1" ${dis} oninput="Dashboard.updateDish(${i}, 'fat', this.value)">
@@ -1132,17 +1124,17 @@ const Dashboard = {
               <input type="number" class="dish-input number" placeholder="重量(g)" value="${d.weight ?? 0}" min="0" step="0.1" ${dis} oninput="Dashboard.updateDish(${i}, 'weight', this.value)">
             </div>
           `
-          : '';
+        : '';
 
-        return `
+      return `
           <div class="keep-section" style="${disableInputs ? 'opacity: 0.55;' : ''}">
             <div style="display:flex; align-items:center; justify-content: space-between; gap: 10px;">
               <div style="display:flex; align-items:center; gap: 10px; min-width: 0;">
                 <input type="checkbox" ${enabled ? 'checked' : ''} onchange="Dashboard.toggleDishEnabled(${i}, this.checked)">
                 ${d.source === 'user'
-                  ? `<input type="text" class="dish-input name" style="flex:1; min-width: 0;" value="${d.name}" ${dis} oninput="Dashboard.updateDish(${i}, 'name', this.value)">`
-                  : `<div style="flex:1; min-width: 0; font-weight: 600; overflow:hidden; text-overflow: ellipsis; white-space: nowrap;">${d.name}</div>`
-                }
+          ? `<input type="text" class="dish-input name" style="flex:1; min-width: 0;" value="${d.name}" ${dis} oninput="Dashboard.updateDish(${i}, 'name', this.value)">`
+          : `<div style="flex:1; min-width: 0; font-weight: 600; overflow:hidden; text-overflow: ellipsis; white-space: nowrap;">${d.name}</div>`
+        }
               </div>
               ${canRemove ? `<button class="cell-remove" onclick="Dashboard.removeDish(${i})">×</button>` : `<span class="text-muted" style="font-size:0.75rem;">AI</span>`}
             </div>
@@ -1162,7 +1154,7 @@ const Dashboard = {
             ${d.source === 'user' ? userEditor : aiIngredients}
           </div>
         `;
-      }).join('')}
+    }).join('')}
     `;
   },
 
@@ -1200,6 +1192,8 @@ const Dashboard = {
       }
       this.currentDishes[index][field] = field === 'name' ? value : (parseFloat(value) || 0);
       this.recalculateDietSummary(true);
+      // 重新渲染以更新能量显示
+      this.renderDietDishes();
     }
   },
 
