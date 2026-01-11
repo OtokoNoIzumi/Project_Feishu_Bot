@@ -1,20 +1,28 @@
+"""
+Diet API Router.
+
+Provides endpoints for diet analysis, advice generation, and record management.
+"""
+
 import asyncio
-import base64
-import logging
 import hashlib
-from datetime import datetime
+import logging
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, File, Form, UploadFile
 from pydantic import BaseModel, Field
 
+from apps.common.record_service import RecordService
+from apps.common.utils import (
+    decode_images_b64,
+    parse_occurred_at,
+    read_upload_files,
+)
 from apps.deps import require_internal_auth
-from apps.llm_runtime import get_global_semaphore, get_model_limiter
-from apps.settings import BackendSettings
 from apps.diet.usecases.advice import DietAdviceUsecase
 from apps.diet.usecases.analyze import DietAnalyzeUsecase
-
-from apps.common.record_service import RecordService
+from apps.llm_runtime import get_global_semaphore, get_model_limiter
+from apps.settings import BackendSettings
 from libs.utils.rate_limiter import AsyncRateLimiter
 
 logger = logging.getLogger(__name__)
@@ -30,6 +38,8 @@ def _has_any_input(user_note: str, images_b64: List[str]) -> bool:
 
 
 class DietAnalyzeRequest(BaseModel):
+    """Request model for diet analysis."""
+
     user_id: str = Field(..., min_length=1)
     user_note: str = ""
     images_b64: List[str] = []
@@ -37,6 +47,8 @@ class DietAnalyzeRequest(BaseModel):
 
 
 class DietAnalyzeResponse(BaseModel):
+    """Response model for diet analysis."""
+
     success: bool
     result: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
@@ -44,35 +56,46 @@ class DietAnalyzeResponse(BaseModel):
 
 
 class DietAdviceRequest(BaseModel):
+    """Request model for diet advice."""
+
     user_id: str = Field(..., min_length=1)
     facts: Dict[str, Any]
     user_note: str = Field(default="", description="用户输入（可选，用于理解用户意图）")
 
 
 class DietAdviceResponse(BaseModel):
+    """Response model for diet advice."""
+
     success: bool
     result: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
 
 
 class DietCommitRequest(BaseModel):
+    """Request model for committing a diet record."""
+
     user_id: str = Field(..., min_length=1)
     record: Dict[str, Any]
 
 
 class DietCommitResponse(BaseModel):
+    """Response model for committing a diet record."""
+
     success: bool
     saved_record: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
 
 
 class DietHistoryResponse(BaseModel):
+    """Response model for fetching diet history."""
+
     success: bool
     records: List[Dict[str, Any]] = []
     error: Optional[str] = None
 
 
 def build_diet_router(settings: BackendSettings) -> APIRouter:
+    """Build and return the diet API router."""
     router = APIRouter()
     auth_dep = require_internal_auth(settings)
 
@@ -96,14 +119,18 @@ def build_diet_router(settings: BackendSettings) -> APIRouter:
         """
         核心业务逻辑：并发控制 -> 调用 LLM 分析 -> (可选) 自动入库 -> 返回结果
         """
-        # [Usage Log] Request Entrance
-        access_log = f"[Request] User:{user_id} | Images:{len(images_bytes)} | Note:{bool(user_note)} | AutoSave:{auto_save}"
-        logger.info(access_log)
-
+        # pylint: disable=too-many-arguments
         if (not user_note or not user_note.strip()) and not images_bytes:
             return DietAnalyzeResponse(
                 success=False, error="user_note 与 images 不能同时为空"
             )
+
+        # [Usage Log] Request Entrance
+        access_log = (
+            f"[Request] User:{user_id} | Images:{len(images_bytes)} | "
+            f"Note:{bool(user_note)} | AutoSave:{auto_save}"
+        )
+        logger.info(access_log)
 
         async with semaphore:
             await limiter.check_and_wait()
@@ -123,17 +150,7 @@ def build_diet_router(settings: BackendSettings) -> APIRouter:
                 image_hashes = [hashlib.sha256(b).hexdigest() for b in images_bytes]
 
                 # Check for occurred_at from LLM extraction (Backfill support)
-                occurred_dt = None
-                oa_str = result.get("occurred_at")
-                if oa_str:
-                    try:
-                        # Try parsing YYYY-MM-DD HH:MM:SS
-                        # Handle potential YYYY-MM-DD HH:MM if SS missing
-                        if len(oa_str) == 16:
-                            oa_str += ":00"
-                        occurred_dt = datetime.fromisoformat(oa_str.replace(" ", "T"))
-                    except:
-                        pass  # Valid to fail, fallback to now() inside service
+                occurred_dt = parse_occurred_at(result.get("occurred_at"))
 
                 try:
                     saved_status = await RecordService.save_diet_record(
@@ -144,6 +161,7 @@ def build_diet_router(settings: BackendSettings) -> APIRouter:
                         image_hashes=image_hashes,
                         occurred_at=occurred_dt,
                     )
+                # pylint: disable=broad-exception-caught
                 except Exception as e:
                     saved_status = {"status": "error", "detail": str(e)}
 
@@ -170,13 +188,7 @@ def build_diet_router(settings: BackendSettings) -> APIRouter:
         # 但 analyze_uc.execute_async 是接受 b64 的。
         # 为了复用 _process_analysis (它接受 bytes)，我们需要在这里解码。
 
-        images_bytes = []
-        for s in req.images_b64 or []:
-            if s:
-                try:
-                    images_bytes.append(base64.b64decode(s))
-                except:
-                    continue
+        images_bytes = decode_images_b64(req.images_b64)
 
         return await _process_analysis(
             user_id=req.user_id,
@@ -203,13 +215,9 @@ def build_diet_router(settings: BackendSettings) -> APIRouter:
         """
         异步饮食分析接口（文件上传版本）
         """
+        # pylint: disable=too-many-arguments
         # A. 预处理：UploadFile -> Bytes
-        images_bytes: List[bytes] = []
-        for f in images or []:
-            try:
-                images_bytes.append(await f.read())
-            except Exception:
-                continue
+        images_bytes = await read_upload_files(images)
 
         return await _process_analysis(
             user_id=user_id,

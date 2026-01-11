@@ -14,6 +14,7 @@ from libs.utils.energy_units import kcal_to_kj
 
 
 def normalize_captured_labels(llm_result: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Normalize captured labels (energy units, defaults)."""
     labels: List[Dict[str, Any]] = []
     for raw in llm_result.get("captured_labels") or []:
         if not isinstance(raw, dict):
@@ -40,12 +41,14 @@ def normalize_captured_labels(llm_result: Dict[str, Any]) -> List[Dict[str, Any]
 
 
 def _macro_energy_kj(protein_g: float, fat_g: float, carbs_g: float) -> float:
+    """Calculate energy from macros (4-9-4 rule in KJ)."""
     return (protein_g * 4 + carbs_g * 4 + fat_g * 9) * 4.184
 
 
 def _match_label_for_ingredient(
     labels: List[Dict[str, Any]], ingredient_name: str
 ) -> Dict[str, Any] | None:
+    """Find a matching label for the given ingredient name."""
     name = (ingredient_name or "").strip()
     if not name:
         return None
@@ -57,6 +60,12 @@ def _match_label_for_ingredient(
 
 
 def finalize_record(llm_result: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Finalize the diet record by normalizing data and calculating totals.
+
+    Aggregates dish macros, applies labels to ingredients, and cleans up fields.
+    """
+    # pylint: disable=too-many-locals
     labels = normalize_captured_labels(llm_result)
 
     total_energy_kj = 0.0

@@ -1,3 +1,9 @@
+"""
+Keep Scale Postprocessing.
+
+Handles data cleaning and type conversion for Keep scale events.
+"""
+
 from typing import Any, Dict, Optional
 
 
@@ -11,7 +17,7 @@ def _to_float(v: Any) -> Optional[float]:
         return None
     try:
         return float(s)
-    except Exception:
+    except ValueError:
         return None
 
 
@@ -22,6 +28,7 @@ def _round_opt(v: Optional[float], ndigits: int = 4) -> Optional[float]:
 
 
 def finalize_scale_event(llm_result: Dict[str, Any]) -> Dict[str, Any]:
+    """Clean and finalize a scale event dictionary."""
     raw = llm_result.get("scale_event") or {}
     if not isinstance(raw, dict):
         raw = {}

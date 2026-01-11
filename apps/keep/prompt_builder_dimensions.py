@@ -1,4 +1,10 @@
+"""
+Keep Dimensions Prompt Builder.
+"""
+
+
 def build_keep_dimensions_prompt(user_note: str) -> str:
+    """Build the prompt for parsing Keep dimensions screenshots."""
     return f"""
 你是一个专业的 Keep 身体围度解析助手。请分析这张图片，建立身体围度数据。
 

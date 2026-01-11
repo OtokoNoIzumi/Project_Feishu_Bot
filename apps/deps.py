@@ -1,3 +1,9 @@
+"""
+Dependencies for FastAPI.
+
+Provides dependency injection for authentication and other shared resources.
+"""
+
 from typing import Optional
 
 from fastapi import Header, HTTPException, status
@@ -7,6 +13,15 @@ from apps.settings import BackendSettings
 
 
 def require_internal_auth(settings: BackendSettings):
+    """
+    Dependency generator for internal token authentication.
+
+    Args:
+        settings: The backend settings containing the internal token.
+
+    Returns:
+        A dependency function that validates the Authorization header.
+    """
     auth = InternalTokenAuth(token=settings.internal_token)
 
     async def _dep(authorization: Optional[str] = Header(default=None)):

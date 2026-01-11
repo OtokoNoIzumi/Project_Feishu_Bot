@@ -1,3 +1,9 @@
+"""
+Storage API Router.
+
+Provides internal endpoints for saving Keep and Diet records directly.
+"""
+
 from typing import Any, Dict, List
 
 from fastapi import APIRouter, Depends, Body

@@ -1,21 +1,32 @@
+"""
+Keep API Router.
+
+Provides endpoints for parsing Keep app screenshots (Scale, Sleep, Dimensions, or Unified)
+and storing the results.
+"""
+
 import asyncio
-import base64
-import logging
 import hashlib
+import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, File, Form, UploadFile
 from pydantic import BaseModel, Field
 
+from apps.common.record_service import RecordService
+from apps.common.utils import (
+    decode_images_b64,
+    parse_occurred_at,
+    read_upload_files,
+)
 from apps.deps import require_internal_auth
-from apps.llm_runtime import get_global_semaphore, get_model_limiter
-from apps.settings import BackendSettings
+from apps.keep.usecases.parse_dimensions import KeepDimensionsParseUsecase
 from apps.keep.usecases.parse_scale import KeepScaleParseUsecase
 from apps.keep.usecases.parse_sleep import KeepSleepParseUsecase
-from apps.keep.usecases.parse_dimensions import KeepDimensionsParseUsecase
 from apps.keep.usecases.parse_unified import KeepUnifiedParseUsecase
-from apps.common.record_service import RecordService
+from apps.llm_runtime import get_global_semaphore, get_model_limiter
+from apps.settings import BackendSettings
 from libs.utils.rate_limiter import AsyncRateLimiter
 
 logger = logging.getLogger(__name__)
@@ -25,6 +36,8 @@ logger = logging.getLogger(__name__)
 
 
 class KeepParseRequestBase(BaseModel):
+    """Base request model for Keep parsing."""
+
     user_id: str = Field(..., min_length=1)
     user_note: str = ""
     images_b64: List[str] = []
@@ -32,6 +45,8 @@ class KeepParseRequestBase(BaseModel):
 
 
 class KeepParseResponseBase(BaseModel):
+    """Base response model for Keep parsing."""
+
     success: bool
     result: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
@@ -40,38 +55,38 @@ class KeepParseResponseBase(BaseModel):
 
 # Scale
 class KeepScaleParseRequest(KeepParseRequestBase):
-    pass
+    """Request model for Keep scale parsing."""
 
 
 class KeepScaleParseResponse(KeepParseResponseBase):
-    pass
+    """Response model for Keep scale parsing."""
 
 
 # Sleep
 class KeepSleepParseRequest(KeepParseRequestBase):
-    pass
+    """Request model for Keep sleep parsing."""
 
 
 class KeepSleepParseResponse(KeepParseResponseBase):
-    pass
+    """Response model for Keep sleep parsing."""
 
 
 # Dimensions
 class KeepDimensionsParseRequest(KeepParseRequestBase):
-    pass
+    """Request model for Keep dimensions parsing."""
 
 
 class KeepDimensionsParseResponse(KeepParseResponseBase):
-    pass
+    """Response model for Keep dimensions parsing."""
 
 
 # Unified
 class KeepUnifiedParseRequest(KeepParseRequestBase):
-    pass
+    """Request model for Keep unified parsing."""
 
 
 class KeepUnifiedParseResponse(KeepParseResponseBase):
-    pass
+    """Response model for Keep unified parsing."""
 
 
 def build_keep_router(settings: BackendSettings) -> APIRouter:
@@ -112,6 +127,7 @@ def build_keep_router(settings: BackendSettings) -> APIRouter:
                 user_id, event_type, data_to_save, image_hashes, occurred_at
             )
             return {"status": "success", "detail": f"Saved {event_type} event"}
+        # pylint: disable=broad-exception-caught
         except Exception as e:
             return {"status": "error", "detail": str(e)}
 
@@ -146,6 +162,7 @@ def build_keep_router(settings: BackendSettings) -> APIRouter:
             if saved_details:
                 msg += f": {', '.join(saved_details)}"
             return {"status": "success", "detail": msg}
+        # pylint: disable=broad-exception-caught
         except Exception as e:
             return {"status": "error", "detail": str(e)}
 
@@ -162,8 +179,14 @@ def build_keep_router(settings: BackendSettings) -> APIRouter:
         limiter: AsyncRateLimiter,
         response_model: Any,
     ):
+        """Generic processing logic for all Keep parsing endpoints."""
+        # pylint: disable=too-many-arguments, too-many-locals
         # [Usage Log] Request Entrance
-        access_log = f"[Request] User:{user_id} | Action:keep_{event_type_for_save} | Images:{len(images_bytes)} | Note:{bool(user_note)} | AutoSave:{auto_save}"
+        access_log = (
+            f"[Request] User:{user_id} | Action:keep_{event_type_for_save} | "
+            f"Images:{len(images_bytes)} | Note:{bool(user_note)} | "
+            f"AutoSave:{auto_save}"
+        )
         logger.info(access_log)
 
         async with semaphore:
@@ -181,17 +204,7 @@ def build_keep_router(settings: BackendSettings) -> APIRouter:
                 image_hashes = [hashlib.sha256(b).hexdigest() for b in images_bytes]
 
                 # Check for occurred_at from LLM extraction (Backfill support)
-                occurred_dt = None
-                oa_str = result.get("occurred_at")
-                if oa_str:
-                    try:
-                        # Try parsing YYYY-MM-DD HH:MM:SS
-                        # Handle potential YYYY-MM-DD HH:MM if SS missing
-                        if len(oa_str) == 16:
-                            oa_str += ":00"
-                        occurred_dt = datetime.fromisoformat(oa_str.replace(" ", "T"))
-                    except:
-                        pass
+                occurred_dt = parse_occurred_at(result.get("occurred_at"))
 
                 if event_type_for_save == "unified":
                     saved_status = await _auto_save_unified_result(
@@ -217,14 +230,9 @@ def build_keep_router(settings: BackendSettings) -> APIRouter:
         semaphore: asyncio.Semaphore = Depends(get_global_semaphore),
         limiter: AsyncRateLimiter = Depends(_get_model_limiter),
     ):
+        """Async parse Keep scale screenshots."""
 
-        images_bytes = []
-        for s in req.images_b64 or []:
-            if s:
-                try:
-                    images_bytes.append(base64.b64decode(s))
-                except:
-                    continue
+        images_bytes = decode_images_b64(req.images_b64)
 
         return await _process_parse(
             req.user_id,
@@ -251,12 +259,9 @@ def build_keep_router(settings: BackendSettings) -> APIRouter:
         semaphore: asyncio.Semaphore = Depends(get_global_semaphore),
         limiter: AsyncRateLimiter = Depends(_get_model_limiter),
     ):
-        images_bytes = []
-        for f in images or []:
-            try:
-                images_bytes.append(await f.read())
-            except:
-                continue
+        """Async parse Keep scale screenshots (upload)."""
+        # pylint: disable=too-many-arguments
+        images_bytes = await read_upload_files(images)
         return await _process_parse(
             user_id,
             user_note,
@@ -280,14 +285,9 @@ def build_keep_router(settings: BackendSettings) -> APIRouter:
         semaphore: asyncio.Semaphore = Depends(get_global_semaphore),
         limiter: AsyncRateLimiter = Depends(_get_model_limiter),
     ):
+        """Async parse Keep sleep screenshots."""
 
-        images_bytes = []
-        for s in req.images_b64 or []:
-            if s:
-                try:
-                    images_bytes.append(base64.b64decode(s))
-                except:
-                    continue
+        images_bytes = decode_images_b64(req.images_b64)
         return await _process_parse(
             req.user_id,
             req.user_note,
@@ -313,12 +313,9 @@ def build_keep_router(settings: BackendSettings) -> APIRouter:
         semaphore: asyncio.Semaphore = Depends(get_global_semaphore),
         limiter: AsyncRateLimiter = Depends(_get_model_limiter),
     ):
-        images_bytes = []
-        for f in images or []:
-            try:
-                images_bytes.append(await f.read())
-            except:
-                continue
+        """Async parse Keep sleep screenshots (upload)."""
+        # pylint: disable=too-many-arguments
+        images_bytes = await read_upload_files(images)
         return await _process_parse(
             user_id,
             user_note,
@@ -342,14 +339,9 @@ def build_keep_router(settings: BackendSettings) -> APIRouter:
         semaphore: asyncio.Semaphore = Depends(get_global_semaphore),
         limiter: AsyncRateLimiter = Depends(_get_model_limiter),
     ):
+        """Async parse Keep dimensions screenshots."""
 
-        images_bytes = []
-        for s in req.images_b64 or []:
-            if s:
-                try:
-                    images_bytes.append(base64.b64decode(s))
-                except:
-                    continue
+        images_bytes = decode_images_b64(req.images_b64)
         return await _process_parse(
             req.user_id,
             req.user_note,
@@ -375,12 +367,9 @@ def build_keep_router(settings: BackendSettings) -> APIRouter:
         semaphore: asyncio.Semaphore = Depends(get_global_semaphore),
         limiter: AsyncRateLimiter = Depends(_get_model_limiter),
     ):
-        images_bytes = []
-        for f in images or []:
-            try:
-                images_bytes.append(await f.read())
-            except:
-                continue
+        """Async parse Keep dimensions screenshots (upload)."""
+        # pylint: disable=too-many-arguments
+        images_bytes = await read_upload_files(images)
         return await _process_parse(
             user_id,
             user_note,
@@ -408,14 +397,9 @@ def build_keep_router(settings: BackendSettings) -> APIRouter:
         统一接口：智能分析上传的 Keep 图片（支持体重/睡眠/围度混合，支持多张图）。
         auto_save=True 时会自动拆分并保存所有识别到的事件。
         """
+        # pylint: disable=too-many-arguments
 
-        images_bytes = []
-        for s in req.images_b64 or []:
-            if s:
-                try:
-                    images_bytes.append(base64.b64decode(s))
-                except:
-                    continue
+        images_bytes = decode_images_b64(req.images_b64)
         return await _process_parse(
             req.user_id,
             req.user_note,
@@ -443,12 +427,9 @@ def build_keep_router(settings: BackendSettings) -> APIRouter:
         semaphore: asyncio.Semaphore = Depends(get_global_semaphore),
         limiter: AsyncRateLimiter = Depends(_get_model_limiter),
     ):
-        images_bytes = []
-        for f in images or []:
-            try:
-                images_bytes.append(await f.read())
-            except:
-                continue
+        """Async unified Keep analysis (upload)."""
+        # pylint: disable=too-many-arguments
+        images_bytes = await read_upload_files(images)
         return await _process_parse(
             user_id,
             user_note,

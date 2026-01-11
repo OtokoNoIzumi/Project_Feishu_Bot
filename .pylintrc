@@ -1,0 +1,11 @@
+[MASTER]
+# 初始化钩子：在 Pylint 启动时，把当前目录加入到 Python 路径中
+init-hook='import sys; sys.path.append(".")'
+
+[MESSAGES CONTROL]
+# 你可以把之前那个 broad-exception-caught 的禁用也加在这里，全局生效
+# disable=C0114, C0115, C0116, W0718
+
+[FORMAT]
+# 统一行长配置，和你代码里的一致
+max-line-length=120

@@ -1,3 +1,10 @@
+"""
+LLM Runtime Configuration.
+
+Manages runtime controls for LLM interactions, such as concurrency (Semaphores)
+and rate limiting (RateLimiters) for specific models.
+"""
+
 import asyncio
 from typing import Dict
 
@@ -10,6 +17,7 @@ GLOBAL_SEMAPHORE = asyncio.Semaphore(20)
 
 
 def get_global_semaphore() -> asyncio.Semaphore:
+    """Returns the global semaphore for controlling concurrency."""
     return GLOBAL_SEMAPHORE
 
 

@@ -1,4 +1,11 @@
-from typing import List, Dict, Any
+"""
+Diet Memory Service.
+
+Retrieves and formats recent product memories to assist LLM in recognizing
+habitual food items.
+"""
+
+from typing import List
 from apps.common.record_service import global_storage
 
 
@@ -12,6 +19,7 @@ def get_product_memories(user_id: str, limit: int = 50) -> List[str]:
     - Deduplicate by 'product_name'.
     - Return formatted strings.
     """
+    # pylint: disable=too-many-locals
     records = global_storage.read_dataset(
         user_id, "diet", "product_library.jsonl", limit=limit
     )

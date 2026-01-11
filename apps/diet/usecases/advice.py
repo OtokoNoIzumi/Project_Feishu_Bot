@@ -1,3 +1,7 @@
+"""
+Diet Advice Usecase.
+"""
+
 from typing import Any, Dict, Optional
 
 from libs.api_keys.api_key_manager import get_default_api_key_manager
@@ -8,6 +12,12 @@ from apps.diet.prompt_builder_advice import build_diet_advice_prompt
 
 
 class DietAdviceUsecase:
+    """
+    Usecase for generating diet advice.
+    """
+
+    # pylint: disable=too-few-public-methods
+
     def __init__(self, gemini_model_name: str):
         self.api_keys = get_default_api_key_manager()
         self.client = GeminiStructuredClient(

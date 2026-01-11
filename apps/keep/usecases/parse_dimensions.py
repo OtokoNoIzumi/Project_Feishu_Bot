@@ -1,40 +1,19 @@
-import base64
-from typing import Any, Dict, List
+"""
+Keep Dimensions Parse Usecase.
+"""
 
-from libs.api_keys.api_key_manager import get_default_api_key_manager
-from libs.llm_gemini.gemini_client import GeminiClientConfig, GeminiStructuredClient
+from typing import Any, Dict, List
 
 from apps.keep.llm_schema_dimensions import KEEP_DIMENSIONS_LLM_SCHEMA
 from apps.keep.prompt_builder_dimensions import build_keep_dimensions_prompt
+from apps.keep.usecases.base import KeepBaseParseUsecase
 
 
-def _decode_images_b64(images_b64: List[str]) -> List[bytes]:
-    out: List[bytes] = []
-    for s in images_b64 or []:
-        if not s:
-            continue
-        try:
-            out.append(base64.b64decode(s))
-        except Exception:
-            continue
-    return out
+class KeepDimensionsParseUsecase(KeepBaseParseUsecase):
+    """Usecase for parsing Keep dimensions screenshots."""
 
-
-class KeepDimensionsParseUsecase:
     def __init__(self, gemini_model_name: str):
-        self.api_keys = get_default_api_key_manager()
-        self.client = GeminiStructuredClient(
-            api_key_manager=self.api_keys,
-            config=GeminiClientConfig(model_name=gemini_model_name, temperature=0.1),
-        )
-
-    async def execute_async(
-        self, user_note: str, images_b64: List[str]
-    ) -> Dict[str, Any]:
-        images_bytes = _decode_images_b64(images_b64)
-        return await self.execute_with_image_bytes_async(
-            user_note=user_note, images_bytes=images_bytes
-        )
+        super().__init__(gemini_model_name, temperature=0.1)
 
     async def execute_with_image_bytes_async(
         self, user_note: str, images_bytes: List[bytes]

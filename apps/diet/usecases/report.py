@@ -1,10 +1,20 @@
-from typing import Dict, Any, List
+"""
+Diet Report Usecase.
+
+Generates a daily nutritional report based on the user's records.
+"""
+
+from typing import Dict, Any
 from apps.common.record_service import RecordService
 from libs.llm_gemini.gemini_client import GeminiClientConfig, GeminiStructuredClient
 from libs.api_keys.api_key_manager import get_default_api_key_manager
 
 
 class DietReportUsecase:
+    """Usecase for generating daily diet reports."""
+
+    # pylint: disable=too-few-public-methods
+
     def __init__(self, gemini_model_name: str):
         self.api_keys = get_default_api_key_manager()
         self.client = GeminiStructuredClient(
@@ -15,6 +25,8 @@ class DietReportUsecase:
     async def generate_daily_report(
         self, user_id: str, date_str: str
     ) -> Dict[str, Any]:
+        """Generate a text report for the given date."""
+        # pylint: disable=too-many-locals
         records = RecordService.get_unified_records_by_date(user_id, date_str)
         if not records:
             return {"error": "该日期无饮食记录"}
@@ -30,19 +42,14 @@ class DietReportUsecase:
         transcript = []
 
         # Records are stored Newest->Oldest by default read_dataset logic usually,
-        # but let's just iterate and not worry about order for sum, but for text transcript we want Chronological.
-        # record_service.read_dataset returns lines list which is usually appended.
-        # Wait, My storage_lib.read_dataset returns [Newest, ..., Oldest] (reversed lines).
-        # So we should reverse it back to get Chronological.
-
+        # so we reverse it back to get Chronological.
         chronological_records = list(reversed(records))
 
         for rec in chronological_records:
             meal = rec.get("meal_summary", {})
             diet_time = meal.get("diet_time", "snack")
 
-            # Sum up meal totals if available, or re-sum from dishes to be safe?
-            # meal_summary.total_energy_kj is trustworthy.
+            # Sum up meal totals if available
             total_kj += float(meal.get("total_energy_kj") or 0)
 
             dish_desc = []

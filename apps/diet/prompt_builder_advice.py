@@ -1,3 +1,10 @@
+"""
+Diet Advice Prompt Builder.
+
+Constructs prompts for generating dietary advice based on analysis results,
+user context, and current time scenarios.
+"""
+
 import json
 from datetime import datetime
 from typing import Any, Dict
@@ -18,21 +25,19 @@ def _determine_scenario_without_analyze(hour: int) -> str:
     """没有 analyze 数据时，按当前时间判断场景（规划状态）"""
     if 6 <= hour < 10:
         return "现在是早上，用户正在规划一天的饮食。请基于用户目标与今日进度，给出全天饮食规划建议（早/午/晚/加餐的宏量分配与食物选择建议）。"
-    elif 10 <= hour < 14:
+    if 10 <= hour < 14:
         return "现在是中午，用户正在规划午餐。请基于用户目标与今日进度，给出午餐的选品建议和后续餐食的规划。"
-    elif 14 <= hour < 18:
+    if 14 <= hour < 18:
         return "现在是下午，用户正在规划加餐。请基于今日进度给出加餐建议（优先补什么、避免什么）。"
-    elif 18 <= hour < 22:
+    if 18 <= hour < 22:
         return "现在是晚上，用户正在规划晚餐。请基于今日进度给出晚餐选品建议（优先补什么、控制什么）。"
-    else:
-        return "现在是深夜/凌晨，用户可能在做全天回顾。请总结今日饮食与目标的匹配度，并给出明天的改进建议。"
+
+    return "现在是深夜/凌晨，用户可能在做全天回顾。请总结今日饮食与目标的匹配度，并给出明天的改进建议。"
 
 
 def _determine_scenario_with_analyze(facts: Dict[str, Any], hour: int) -> str:
     """
     有 analyze 数据时，根据 diet_time 和当前时间判断场景（已用餐状态）
-
-    如果 analyze 里有 diet_time，以它为准判断"该餐前/后"
     """
     meal_summary = facts.get("meal_summary") or {}
     diet_time = meal_summary.get("diet_time")
@@ -50,24 +55,33 @@ def _determine_scenario_with_analyze(facts: Dict[str, Any], hour: int) -> str:
         meal_name = meal_names[diet_time]
 
         # 判断是"该餐前"还是"该餐后"
-        if start_hour <= hour < end_hour or (hour >= end_hour and hour < end_hour + 2):
-            # 在该餐时间范围内或刚过（2小时内）：该餐后（已用餐）
+        is_after_meal = start_hour <= hour < end_hour or (
+            end_hour <= hour < end_hour + 2
+        )
+        if is_after_meal:
             return f"用户已用{meal_name}。请点评本次{meal_name}的营养质量，并给出后续餐食的调整建议。"
-        else:
-            # 还没到该餐时间：该餐前（规划该餐）
-            return f"用户正在规划{meal_name}。请基于用户目标与今日进度，给出{meal_name}的选品建议和后续餐食的规划。"
-    else:
-        # 没有 diet_time，按当前时间判断场景，但明确是"已用餐"状态
-        if 6 <= hour < 10:
-            return "现在是早上，用户已用餐。请点评本次餐食的营养质量，并给出今天后续餐食的规划建议。"
-        elif 10 <= hour < 14:
-            return "现在是中午，用户已用餐。请点评本次餐食的营养质量，并给出下午/晚上的调整建议。"
-        elif 14 <= hour < 18:
-            return "现在是下午，用户已用餐。请点评本次餐食的营养质量，并给出后续加餐/晚餐的建议。"
-        elif 18 <= hour < 22:
-            return "现在是晚上，用户已用餐。请点评本次餐食的营养质量，并给出今天的总结和明天的改进建议。"
-        else:
-            return "现在是深夜/凌晨，用户已用餐。请总结今日饮食与目标的匹配度，并给出明天的改进建议。"
+        # 还没到该餐时间：该餐前（规划该餐）
+        return f"用户正在规划{meal_name}。请基于用户目标与今日进度，给出{meal_name}的选品建议和后续餐食的规划。"
+
+    # 没有 diet_time，按当前时间判断场景，但明确是"已用餐"状态
+    scenario_map = {
+        "morning": "现在是早上，用户已用餐。请点评本次餐食的营养质量，并给出今天后续餐食的规划建议。",
+        "noon": "现在是中午，用户已用餐。请点评本次餐食的营养质量，并给出下午/晚上的调整建议。",
+        "afternoon": "现在是下午，用户已用餐。请点评本次餐食的营养质量，并给出后续加餐/晚餐的建议。",
+        "night": "现在是晚上，用户已用餐。请点评本次餐食的营养质量，并给出今天的总结和明天的改进建议。",
+        "late": "现在是深夜/凌晨，用户已用餐。请总结今日饮食与目标的匹配度，并给出明天的改进建议。",
+    }
+
+    if 6 <= hour < 10:
+        return scenario_map["morning"]
+    if 10 <= hour < 14:
+        return scenario_map["noon"]
+    if 14 <= hour < 18:
+        return scenario_map["afternoon"]
+    if 18 <= hour < 22:
+        return scenario_map["night"]
+
+    return scenario_map["late"]
 
 
 def build_diet_advice_prompt(
@@ -138,9 +152,9 @@ def build_diet_advice_prompt(
 {facts_str}
 {user_input_part}
 """
-    else:
-        # 没有 analyze 数据：只需要规划建议
-        return f"""你是一位懂训练与营养的教练型营养顾问。
+
+    # 没有 analyze 数据：只需要规划建议
+    return f"""你是一位懂训练与营养的教练型营养顾问。
 
 【场景】
 {scenario_desc}

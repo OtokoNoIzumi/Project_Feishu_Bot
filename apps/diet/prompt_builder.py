@@ -1,7 +1,14 @@
+"""
+Diet Prompt Builder.
+
+Constructs prompts for the Diet Analysis task, integrating user notes and context.
+"""
+
 from datetime import datetime
 
 
 def build_diet_prompt(user_note: str = "", recent_products_str: str = "") -> str:
+    """Build the prompt for diet analysis."""
     current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     user_note_emphasis = ""
     if user_note and user_note.strip():

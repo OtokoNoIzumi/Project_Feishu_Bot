@@ -1,4 +1,10 @@
+"""
+Keep Sleep Prompt Builder.
+"""
+
+
 def build_keep_sleep_prompt(user_note: str) -> str:
+    """Build the prompt for parsing Keep sleep screenshots."""
     return f"""
 你是一个专业的 Keep 睡眠报告解析助手。请分析这张图片，提取睡眠数据。
 

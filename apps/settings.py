@@ -1,3 +1,10 @@
+"""
+Backend Settings.
+
+Loads and validates configuration for the backend application,
+aggregating settings from environment variables and config files.
+"""
+
 import os
 from dataclasses import dataclass
 
@@ -6,6 +13,8 @@ from libs.core.config_loader import load_root_config
 
 @dataclass(frozen=True)
 class BackendSettings:
+    """Immutable configuration object for the backend service."""
+
     host: str
     port: int
     internal_token: str

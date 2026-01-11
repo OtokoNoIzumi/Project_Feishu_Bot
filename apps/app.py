@@ -1,3 +1,10 @@
+"""
+Main Application Entry Point.
+
+Configures and initializes the FastAPI application, including logging,
+routers, and health checks.
+"""
+
 import logging
 
 from fastapi import FastAPI
@@ -9,6 +16,7 @@ from apps.common.storage_api import build_storage_router
 
 
 def create_app() -> FastAPI:
+    """Create and configure the FastAPI application instance."""
     settings = load_settings()
     # Configure logging: info level for app, warning for noisy refs
     logging.basicConfig(
@@ -20,9 +28,9 @@ def create_app() -> FastAPI:
     logging.getLogger("httpcore").setLevel(logging.WARNING)
     logging.getLogger("google.genai").setLevel(logging.WARNING)
 
-    app = FastAPI(title="Backend", version="0.1.0")
+    fastapi_app = FastAPI(title="Backend", version="0.1.0")
 
-    @app.get("/health")
+    @fastapi_app.get("/health")
     async def health():
         return {
             "status": "ok",
@@ -31,10 +39,10 @@ def create_app() -> FastAPI:
             "internal_auth_enabled": bool(settings.internal_token),
         }
 
-    app.include_router(build_diet_router(settings))
-    app.include_router(build_keep_router(settings))
-    app.include_router(build_storage_router(settings))
-    return app
+    fastapi_app.include_router(build_diet_router(settings))
+    fastapi_app.include_router(build_keep_router(settings))
+    fastapi_app.include_router(build_storage_router(settings))
+    return fastapi_app
 
 
 app = create_app()

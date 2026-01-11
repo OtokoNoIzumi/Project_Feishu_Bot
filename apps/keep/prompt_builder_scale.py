@@ -1,4 +1,10 @@
+"""
+Keep Scale Prompt Builder.
+"""
+
+
 def build_keep_scale_prompt(user_note: str = "") -> str:
+    """Build the prompt for parsing Keep scale screenshots."""
     user_note_emphasis = ""
     if user_note and user_note.strip():
         user_note_emphasis = f"""

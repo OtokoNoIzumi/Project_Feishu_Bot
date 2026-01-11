@@ -1,11 +1,11 @@
-from apps.keep.llm_schema_scale import KEEP_SCALE_LLM_SCHEMA
-from apps.keep.llm_schema_sleep import KEEP_SLEEP_LLM_SCHEMA
-from apps.keep.llm_schema_dimensions import KEEP_DIMENSIONS_LLM_SCHEMA
-
 """
 Keep 统一解析 Schema (Multi-Modal / Multi-Image)
 允许在一个 Request 中包含多张图片，一次性提取所有可见的 Keep 事件。
 """
+
+from apps.keep.llm_schema_scale import KEEP_SCALE_LLM_SCHEMA
+from apps.keep.llm_schema_sleep import KEEP_SLEEP_LLM_SCHEMA
+from apps.keep.llm_schema_dimensions import KEEP_DIMENSIONS_LLM_SCHEMA
 
 KEEP_UNIFIED_LLM_SCHEMA = {
     "type": "object",

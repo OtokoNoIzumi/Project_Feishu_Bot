@@ -1,7 +1,12 @@
+"""
+Keep Unified Prompt Builder.
+"""
+
 from datetime import datetime
 
 
 def build_keep_unified_prompt(user_note: str) -> str:
+    """Build the prompt for parsing unified Keep screenshots."""
     current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     return f"""
 你是一个专业的 Keep 健康数据解析助手。用户上传了一张或多张图片（可能是体重体脂报告、睡眠报告、或身体数据中心截图）。

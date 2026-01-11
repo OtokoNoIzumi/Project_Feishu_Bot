@@ -1,14 +1,26 @@
+"""
+Diet Context Provider.
+
+Aggregates user context (profile, today's intake) for diet advice.
+"""
+
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, Dict
 
+# Pylint: standard imports before third party.
+# But 'libs' is first party in this repo, effectively.
+# Pylint treats 'libs' as third party if not configured?
+# Actually 'pathlib' is standard, 'libs' is first party.
+# 'apps' is first party.
 from libs.core.config_loader import load_json
 from libs.core.project_paths import get_project_root
 from apps.common.record_service import RecordService
-from pathlib import Path
 
 
 def _diet_user_dir(user_id: str) -> Path:
+
     root = get_project_root()
     safe_user = user_id.strip() if user_id and user_id.strip() else "no_user_id"
     return root / "user_data" / safe_user / "diet"
