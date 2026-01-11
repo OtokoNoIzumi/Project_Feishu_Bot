@@ -345,6 +345,14 @@
     font-size: 0.75rem;
     padding: 4px 8px;
     border-radius: var(--radius-sm);
+    min-height: 26px;
+    /* 确保有内容(26px)和无内容高度一致防止跳动 */
+    box-sizing: border-box;
+    /* 包含 padding */
+    display: inline-flex;
+    align-items: center;
+    line-height: 1;
+    /* 防止字体 line-height 撑开 */
 }
 
 .result-status.saved {
@@ -1079,26 +1087,41 @@
     border-radius: var(--radius-sm);
 }
 
+
+/* 消息头容器：用于并排显示标题和版本标 */
+.message-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 4px;
+    gap: 8px;
+}
+
 .message-title {
     font-weight: 600;
     font-size: 0.875rem;
-    margin-bottom: 4px;
-}
-
-.message-text {
-    font-size: 0.8rem;
-    opacity: 0.9;
+    margin-bottom: 0;
+    /* 由 header 控制间距 */
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .version-badge {
-    position: absolute;
-    top: 6px;
-    right: 6px;
-    background: var(--color-accent-primary);
-    color: white;
-    font-size: 0.65rem;
-    padding: 2px 6px;
-    border-radius: var(--radius-sm);
+    /* 移除 absolute 定位，改为流式布局 */
+    position: static;
+    background: rgba(99, 102, 241, 0.15);
+    /* 更轻量的背景 */
+    color: var(--color-accent-primary);
+    border: 1px solid rgba(99, 102, 241, 0.3);
+    font-size: 0.7rem;
+    /* 稍微大一点，易读 */
+    padding: 1px 6px;
+    border-radius: 10px;
+    /* 圆润风格 */
+    white-space: nowrap;
+    flex-shrink: 0;
 }
 
 .version-selector {

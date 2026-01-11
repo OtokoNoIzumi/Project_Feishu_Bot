@@ -296,19 +296,26 @@ const Dashboard = {
     // 标题
     // Fixed: 始终创建 title 元素，即使初始内容为空，以便后续 updateSessionCard 能找到并更新它
     // 只有当是 session 卡片时才强制创建，普通消息按需创建
-    if (options.title || options.sessionId) {
+    // 标题区域 (Header)
+    if (options.title || options.sessionId || (options.version && options.version > 1)) {
+      const headerEl = document.createElement('div');
+      headerEl.className = 'message-header';
+
+      // 标题
       const titleEl = document.createElement('div');
       titleEl.className = 'message-title';
-      titleEl.textContent = options.title || '';
-      msg.appendChild(titleEl);
-    }
+      titleEl.textContent = options.title || ''; // 即使为空也保留占位，保持高度
+      headerEl.appendChild(titleEl);
 
-    // 版本标签
-    if (options.version && options.version > 1) {
-      const versionEl = document.createElement('span');
-      versionEl.className = 'version-badge';
-      versionEl.textContent = `v${options.version}`;
-      msg.appendChild(versionEl);
+      // 版本标签 (放在 title 后面，Flex 布局会自动处理)
+      if (options.version && options.version > 1) {
+        const versionEl = document.createElement('span');
+        versionEl.className = 'version-badge';
+        versionEl.textContent = `v${options.version}`;
+        headerEl.appendChild(versionEl);
+      }
+
+      msg.appendChild(headerEl);
     }
 
     // 文字内容
@@ -679,13 +686,42 @@ const Dashboard = {
 
     // 更新版本标签
     if (session.versions.length > 1) {
-      let badge = card.querySelector('.version-badge');
+      // 查找或创建 Header
+      let header = card.querySelector('.message-header');
+      if (!header) {
+        // 如果旧结构没有 header，尝试找到 title 并包裹它 (兼容性处理)
+        const titleEl = card.querySelector('.message-title');
+        if (titleEl) {
+          header = document.createElement('div');
+          header.className = 'message-header';
+          titleEl.parentNode.insertBefore(header, titleEl);
+          header.appendChild(titleEl);
+        } else {
+          // 如果连 title 都没有，就创建新的
+          header = document.createElement('div');
+          header.className = 'message-header';
+          card.insertBefore(header, card.firstChild);
+        }
+      }
+
+      let badge = header.querySelector('.version-badge');
       if (!badge) {
         badge = document.createElement('span');
         badge.className = 'version-badge';
-        card.appendChild(badge);
+        header.appendChild(badge);
       }
+
+      // 优化字符串显示：明确当前版本与总数
       badge.textContent = `v${session.currentVersion}/${session.versions.length}`;
+
+      // 视觉微调：如果是最新版，高亮；如果是旧版，变灰
+      if (session.currentVersion === session.versions.length) {
+        badge.style.opacity = '1';
+        badge.title = '最新版本';
+      } else {
+        badge.style.opacity = '0.7';
+        badge.title = '历史版本';
+      }
     }
   },
 

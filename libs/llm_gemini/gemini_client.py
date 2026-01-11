@@ -45,13 +45,6 @@ class GeminiFilesCache:
 
     def _load_cache(self):
         if os.path.exists(self.cache_file):
-            # Assume cache is valid. If corrupt, we let it crash or reset?
-            # User wants to remove redundant tries. If the file exists but logic fails, maybe we should crash to notice.
-            # But for a cache, maybe we just reset.
-            # I will keep a narrow try for json decode, or remove if confident.
-            # Given "internal projects format is reliable", we can assume it's good.
-            # But let's be safe for file I/O partial reading.
-            # I'll simplify: just load.
             try:
                 with open(self.cache_file, "r", encoding="utf-8") as f:
                     self.cache = json.load(f)
@@ -63,8 +56,6 @@ class GeminiFilesCache:
             os.makedirs(os.path.dirname(self.cache_file), exist_ok=True)
 
     def _save_cache(self):
-        # Write efficiently; don't swallow exceptions excessively.
-        # But this is often called in background or finally blocks, so we don't want to crash app.
         try:
             with open(self.cache_file, "w", encoding="utf-8") as f:
                 json.dump(self.cache, f, ensure_ascii=False, indent=2)
@@ -143,7 +134,6 @@ class GeminiStructuredClient:
             self.client = genai.Client(api_key=api_key)
             self.current_api_key = api_key
         except Exception as e:
-            # Broad exception here is for SDK init safety, allows rotation.
             logger.error("Gemini client init failed: %s", e)
             self.api_key_manager.mark_failed(api_key)
             self.client = None
