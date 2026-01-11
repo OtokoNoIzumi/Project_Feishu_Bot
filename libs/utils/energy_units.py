@@ -13,9 +13,10 @@ KCAL_TO_KJ_FACTOR = 4.184
 
 
 def kcal_to_kj(kcal: float) -> float:
+    """Convert kilocalories to kilojoules."""
     return round(float(kcal) * KCAL_TO_KJ_FACTOR, 4)
 
 
 def kj_to_kcal(kj: float) -> float:
+    """Convert kilojoules to kilocalories."""
     return round(float(kj) / KCAL_TO_KJ_FACTOR, 4)
-

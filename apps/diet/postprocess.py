@@ -7,13 +7,15 @@ Why this exists?
 2. 总量聚合计算：LLM 算数不可靠，我们在代码里自己加总 total_energy / net_weight。
 3. 字段清洗：确保 None 变成 0.0 或空字符串，防止下游报错。
 """
+
 from typing import Any, Dict, List
 
 from libs.utils.energy_units import kcal_to_kj
 
+
 def normalize_captured_labels(llm_result: Dict[str, Any]) -> List[Dict[str, Any]]:
     labels: List[Dict[str, Any]] = []
-    for raw in (llm_result.get("captured_labels") or []):
+    for raw in llm_result.get("captured_labels") or []:
         if not isinstance(raw, dict):
             continue
         unit = (raw.get("energy_unit") or "KJ").strip()
@@ -41,7 +43,9 @@ def _macro_energy_kj(protein_g: float, fat_g: float, carbs_g: float) -> float:
     return (protein_g * 4 + carbs_g * 4 + fat_g * 9) * 4.184
 
 
-def _match_label_for_ingredient(labels: List[Dict[str, Any]], ingredient_name: str) -> Dict[str, Any] | None:
+def _match_label_for_ingredient(
+    labels: List[Dict[str, Any]], ingredient_name: str
+) -> Dict[str, Any] | None:
     name = (ingredient_name or "").strip()
     if not name:
         return None
@@ -59,11 +63,11 @@ def finalize_record(llm_result: Dict[str, Any]) -> Dict[str, Any]:
     total_weight_g = 0.0
 
     dishes_out: List[Dict[str, Any]] = []
-    for dish in (llm_result.get("dishes") or []):
+    for dish in llm_result.get("dishes") or []:
         if not isinstance(dish, dict):
             continue
         ing_out: List[Dict[str, Any]] = []
-        for ing in (dish.get("ingredients") or []):
+        for ing in dish.get("ingredients") or []:
             if not isinstance(ing, dict):
                 continue
             name_zh = str(ing.get("name_zh") or "")
@@ -96,7 +100,9 @@ def finalize_record(llm_result: Dict[str, Any]) -> Dict[str, Any]:
                 {
                     "name_zh": name_zh,
                     "weight_g": round(weight_g, 4),
-                    "weight_method": str(ing.get("weight_method") or "pure_visual_estimate"),
+                    "weight_method": str(
+                        ing.get("weight_method") or "pure_visual_estimate"
+                    ),
                     "data_source": data_source,
                     "energy_kj": round(energy_kj, 4),
                     "macros": {
@@ -109,7 +115,12 @@ def finalize_record(llm_result: Dict[str, Any]) -> Dict[str, Any]:
                 }
             )
 
-        dishes_out.append({"standard_name": str(dish.get("standard_name") or ""), "ingredients": ing_out})
+        dishes_out.append(
+            {
+                "standard_name": str(dish.get("standard_name") or ""),
+                "ingredients": ing_out,
+            }
+        )
 
     meal_summary_in = llm_result.get("meal_summary") or {}
     advice = str(meal_summary_in.get("advice") or "")
@@ -138,5 +149,3 @@ def finalize_record(llm_result: Dict[str, Any]) -> Dict[str, Any]:
         result["occurred_at"] = str(occurred_at).strip()
 
     return result
-
-

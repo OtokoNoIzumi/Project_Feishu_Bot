@@ -33,37 +33,50 @@ class DietAnalyzeUsecase:
     def execute(self, user_note: str, images_b64: List[str]) -> Dict[str, Any]:
         """同步版本（保留向后兼容）"""
         images_bytes = _decode_images_b64(images_b64)
-        return self.execute_with_image_bytes(user_note=user_note, images_bytes=images_bytes)
+        return self.execute_with_image_bytes(
+            user_note=user_note, images_bytes=images_bytes
+        )
 
-    def execute_with_image_bytes(self, user_note: str, images_bytes: List[bytes]) -> Dict[str, Any]:
+    def execute_with_image_bytes(
+        self, user_note: str, images_bytes: List[bytes]
+    ) -> Dict[str, Any]:
         """同步版本（保留向后兼容）"""
         images = self.client.load_images_from_bytes(images_bytes)
         prompt = build_diet_prompt(user_note=user_note)
-        llm_result = self.client.generate_json(prompt=prompt, images=images, schema=DIET_LLM_SCHEMA)
+        llm_result = self.client.generate_json(
+            prompt=prompt, images=images, schema=DIET_LLM_SCHEMA
+        )
         if isinstance(llm_result, dict) and llm_result.get("error"):
             return {"error": llm_result.get("error")}
         return finalize_record(llm_result)
 
-    async def execute_async(self, user_note: str, images_b64: List[str]) -> Dict[str, Any]:
+    async def execute_async(
+        self, user_note: str, images_b64: List[str]
+    ) -> Dict[str, Any]:
         """异步版本（用于 FastAPI 异步接口）"""
         images_bytes = _decode_images_b64(images_b64)
-        return await self.execute_with_image_bytes_async(user_note=user_note, images_bytes=images_bytes)
+        return await self.execute_with_image_bytes_async(
+            user_note=user_note, images_bytes=images_bytes
+        )
 
-    async def execute_with_image_bytes_async(self, user_note: str, images_bytes: List[bytes], user_id: str = "") -> Dict[str, Any]:
+    async def execute_with_image_bytes_async(
+        self, user_note: str, images_bytes: List[bytes], user_id: str = ""
+    ) -> Dict[str, Any]:
         """异步版本（用于 FastAPI 异步接口）"""
-        
+
         # 获取产品记忆 (Decoupled from generic context)
         recent_products_str = ""
         if user_id:
-            try:
-                mems = get_product_memories(user_id)
-                if mems:
-                    recent_products_str = "\n".join(mems)
-            except Exception:
-                pass
-        prompt = build_diet_prompt(user_note=user_note, recent_products_str=recent_products_str)
-        
-        llm_result = await self.client.generate_json_async(prompt=prompt, images=images_bytes, schema=DIET_LLM_SCHEMA)
+            mems = get_product_memories(user_id)
+            if mems:
+                recent_products_str = "\n".join(mems)
+        prompt = build_diet_prompt(
+            user_note=user_note, recent_products_str=recent_products_str
+        )
+
+        llm_result = await self.client.generate_json_async(
+            prompt=prompt, images=images_bytes, schema=DIET_LLM_SCHEMA
+        )
         if isinstance(llm_result, dict) and llm_result.get("error"):
             return {"error": llm_result.get("error")}
         return finalize_record(llm_result)

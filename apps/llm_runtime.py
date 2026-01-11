@@ -28,6 +28,3 @@ MODEL_LIMITERS: Dict[str, AsyncRateLimiter] = {
 def get_model_limiter(settings: BackendSettings) -> AsyncRateLimiter:
     """根据配置的模型名称获取对应的限流器"""
     return MODEL_LIMITERS.get(settings.gemini_model_name, MODEL_LIMITERS["default"])
-
-
-

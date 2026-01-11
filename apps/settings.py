@@ -33,5 +33,3 @@ def load_settings() -> BackendSettings:
         internal_token=internal_token,
         gemini_model_name=gemini_model_name,
     )
-
-

@@ -48,8 +48,4 @@ class DietAdviceUsecase:
         if advice_text.startswith("Gemini") and "失败" in advice_text:
             return {"error": advice_text}
 
-
         return {"advice_text": advice_text}
-
-
-

@@ -20,5 +20,3 @@ def require_internal_auth(settings: BackendSettings):
             )
 
     return _dep
-
-

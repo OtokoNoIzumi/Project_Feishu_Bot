@@ -7,6 +7,7 @@ from apps.deps import require_internal_auth
 from apps.settings import BackendSettings
 from apps.common.record_service import RecordService
 
+
 def build_storage_router(settings: BackendSettings) -> APIRouter:
     router = APIRouter()
     auth_dep = require_internal_auth(settings)
@@ -21,11 +22,17 @@ def build_storage_router(settings: BackendSettings) -> APIRouter:
         success: bool
         detail: str
 
-    @router.post("/api/storage/keep/save", response_model=SaveResponse, dependencies=[Depends(auth_dep)])
+    @router.post(
+        "/api/storage/keep/save",
+        response_model=SaveResponse,
+        dependencies=[Depends(auth_dep)],
+    )
     async def save_keep_event(req: SaveKeepEventRequest):
         """保存 Keep 原子事件"""
         try:
-            await RecordService.save_keep_event(req.user_id, req.event_type, req.event_data)
+            await RecordService.save_keep_event(
+                req.user_id, req.event_type, req.event_data
+            )
             return SaveResponse(success=True, detail="Saved")
         except Exception as e:
             return SaveResponse(success=False, detail=str(e))
@@ -37,7 +44,11 @@ def build_storage_router(settings: BackendSettings) -> APIRouter:
         dishes: List[Dict[str, Any]]
         captured_labels: List[Dict[str, Any]] = []
 
-    @router.post("/api/storage/diet/save", response_model=SaveResponse, dependencies=[Depends(auth_dep)])
+    @router.post(
+        "/api/storage/diet/save",
+        response_model=SaveResponse,
+        dependencies=[Depends(auth_dep)],
+    )
     async def save_diet_record(req: SaveDietRequest):
         """保存饮食记录（会自动拆分存储）"""
         try:

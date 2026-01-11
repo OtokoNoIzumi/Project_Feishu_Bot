@@ -70,7 +70,9 @@ def _determine_scenario_with_analyze(facts: Dict[str, Any], hour: int) -> str:
             return "现在是深夜/凌晨，用户已用餐。请总结今日饮食与目标的匹配度，并给出明天的改进建议。"
 
 
-def build_diet_advice_prompt(facts: Dict[str, Any], context_bundle: Dict[str, Any], user_input: str = "") -> str:
+def build_diet_advice_prompt(
+    facts: Dict[str, Any], context_bundle: Dict[str, Any], user_input: str = ""
+) -> str:
     """
     advice 的整体目标：根据一天的餐食进度和营养进度提供建议和反馈。
 
@@ -156,6 +158,3 @@ def build_diet_advice_prompt(facts: Dict[str, Any], context_bundle: Dict[str, An
 {ctx_str}
 {user_input_part}
 """
-
-
-

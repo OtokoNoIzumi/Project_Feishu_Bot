@@ -49,7 +49,7 @@ def _calculate_today_so_far(user_id: str) -> Dict[str, Any]:
 
     # 直接获取今日流水，无需再进行日期过滤
     records = RecordService.get_todays_unified_records(user_id)
-    
+
     for rec in records:
         # 汇总 meal_summary
         meal = rec.get("meal_summary") or {}
@@ -71,7 +71,7 @@ def _calculate_today_so_far(user_id: str) -> Dict[str, Any]:
                 consumed_fiber_g += float(macros.get("fiber_g") or 0.0)
 
         # TODO: activity_burn_kj 需要从 Keep 或其他运动数据源汇总
-        
+
     return {
         "consumed_energy_kj": round(consumed_energy_kj, 4),
         "consumed_protein_g": round(consumed_protein_g, 4),
@@ -107,7 +107,11 @@ def get_context_bundle(user_id: str) -> Dict[str, Any]:
         demo = _demo_context()
         out = {
             "user_target": profile or demo.get("user_target", {}),
-            "today_so_far": today_so_far if sum(today_so_far.values()) > 0 else demo.get("today_so_far", {}),
+            "today_so_far": (
+                today_so_far
+                if sum(today_so_far.values()) > 0
+                else demo.get("today_so_far", {})
+            ),
             "meta": {"source": "user_data"},
         }
 

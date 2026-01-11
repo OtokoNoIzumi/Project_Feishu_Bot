@@ -36,7 +36,9 @@ def finalize_scale_event(llm_result: Dict[str, Any]) -> Dict[str, Any]:
         "bmr_kcal_per_day": _round_opt(_to_float(raw.get("bmr_kcal_per_day")), 4),
         "muscle_kg": _round_opt(_to_float(raw.get("muscle_kg")), 4),
         "visceral_fat_level": _round_opt(_to_float(raw.get("visceral_fat_level")), 4),
-        "subcutaneous_fat_pct": _round_opt(_to_float(raw.get("subcutaneous_fat_pct")), 4),
+        "subcutaneous_fat_pct": _round_opt(
+            _to_float(raw.get("subcutaneous_fat_pct")), 4
+        ),
         "protein_pct": _round_opt(_to_float(raw.get("protein_pct")), 4),
         "skeletal_muscle_pct": _round_opt(_to_float(raw.get("skeletal_muscle_pct")), 4),
         "fat_free_mass_kg": _round_opt(_to_float(raw.get("fat_free_mass_kg")), 4),
@@ -47,7 +49,10 @@ def finalize_scale_event(llm_result: Dict[str, Any]) -> Dict[str, Any]:
     }
 
     # 清理 None 字段：保留 weight_kg 与 measured_at_local，其余缺失字段不输出
-    cleaned = {"measured_at_local": out["measured_at_local"], "weight_kg": out["weight_kg"]}
+    cleaned = {
+        "measured_at_local": out["measured_at_local"],
+        "weight_kg": out["weight_kg"],
+    }
     for k, v in out.items():
         if k in cleaned:
             continue
@@ -55,6 +60,3 @@ def finalize_scale_event(llm_result: Dict[str, Any]) -> Dict[str, Any]:
             cleaned[k] = v
 
     return {"scale_event": cleaned}
-
-
-

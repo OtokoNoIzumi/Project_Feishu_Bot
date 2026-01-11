@@ -3,6 +3,7 @@
 
 用于控制 API 调用频率（RPM：每分钟请求数）
 """
+
 import asyncio
 import time
 from typing import List
@@ -46,7 +47,8 @@ class AsyncRateLimiter:
 
                     # 等待结束，重新校准
                     now = time.time()
-                    self.timestamps = [t for t in self.timestamps if now - t < self.time_limit]
+                    self.timestamps = [
+                        t for t in self.timestamps if now - t < self.time_limit
+                    ]
 
             self.timestamps.append(now)
-

@@ -79,13 +79,11 @@ def build_diet_router(settings: BackendSettings) -> APIRouter:
     analyze_uc = DietAnalyzeUsecase(gemini_model_name=settings.gemini_model_name)
     advice_uc = DietAdviceUsecase(gemini_model_name=settings.gemini_model_name)
 
-
     # 创建闭包函数，捕获 settings
     def _get_model_limiter() -> AsyncRateLimiter:
         return get_model_limiter(settings)
 
     # --- Helper: 统一处理分析与自动保存逻辑 ---
-
 
     async def _process_analysis(
         user_id: str,
@@ -103,25 +101,27 @@ def build_diet_router(settings: BackendSettings) -> APIRouter:
         logger.info(access_log)
 
         if (not user_note or not user_note.strip()) and not images_bytes:
-            return DietAnalyzeResponse(success=False, error="user_note 与 images 不能同时为空")
+            return DietAnalyzeResponse(
+                success=False, error="user_note 与 images 不能同时为空"
+            )
 
         async with semaphore:
             await limiter.check_and_wait()
             # 统一使用的是 bytes 版本，因为 Base64 在入口处已被解码
             result = await analyze_uc.execute_with_image_bytes_async(
-                user_note=user_note, 
-                images_bytes=images_bytes,
-                user_id=user_id
+                user_note=user_note, images_bytes=images_bytes, user_id=user_id
             )
-            
+
             if isinstance(result, dict) and result.get("error"):
-                return DietAnalyzeResponse(success=False, error=str(result.get("error")))
+                return DietAnalyzeResponse(
+                    success=False, error=str(result.get("error"))
+                )
 
             # 自动保存逻辑
             saved_status = None
             if auto_save:
                 image_hashes = [hashlib.sha256(b).hexdigest() for b in images_bytes]
-                
+
                 # Check for occurred_at from LLM extraction (Backfill support)
                 occurred_dt = None
                 oa_str = result.get("occurred_at")
@@ -129,11 +129,12 @@ def build_diet_router(settings: BackendSettings) -> APIRouter:
                     try:
                         # Try parsing YYYY-MM-DD HH:MM:SS
                         # Handle potential YYYY-MM-DD HH:MM if SS missing
-                        if len(oa_str) == 16: oa_str += ":00"
+                        if len(oa_str) == 16:
+                            oa_str += ":00"
                         occurred_dt = datetime.fromisoformat(oa_str.replace(" ", "T"))
                     except:
-                        pass # Valid to fail, fallback to now() inside service
-                
+                        pass  # Valid to fail, fallback to now() inside service
+
                 try:
                     saved_status = await RecordService.save_diet_record(
                         user_id=user_id,
@@ -141,14 +142,20 @@ def build_diet_router(settings: BackendSettings) -> APIRouter:
                         dishes=result.get("dishes", []),
                         captured_labels=result.get("captured_labels", []),
                         image_hashes=image_hashes,
-                        occurred_at=occurred_dt
+                        occurred_at=occurred_dt,
                     )
                 except Exception as e:
                     saved_status = {"status": "error", "detail": str(e)}
 
-            return DietAnalyzeResponse(success=True, result=result, saved_status=saved_status)
+            return DietAnalyzeResponse(
+                success=True, result=result, saved_status=saved_status
+            )
 
-    @router.post("/api/diet/analyze", response_model=DietAnalyzeResponse, dependencies=[Depends(auth_dep)])
+    @router.post(
+        "/api/diet/analyze",
+        response_model=DietAnalyzeResponse,
+        dependencies=[Depends(auth_dep)],
+    )
     async def diet_analyze(
         req: DietAnalyzeRequest,
         semaphore: asyncio.Semaphore = Depends(get_global_semaphore),
@@ -180,7 +187,11 @@ def build_diet_router(settings: BackendSettings) -> APIRouter:
             limiter=limiter,
         )
 
-    @router.post("/api/diet/analyze_upload", response_model=DietAnalyzeResponse, dependencies=[Depends(auth_dep)])
+    @router.post(
+        "/api/diet/analyze_upload",
+        response_model=DietAnalyzeResponse,
+        dependencies=[Depends(auth_dep)],
+    )
     async def diet_analyze_upload(
         user_id: str = Form(...),
         user_note: str = Form(""),
@@ -209,8 +220,11 @@ def build_diet_router(settings: BackendSettings) -> APIRouter:
             limiter=limiter,
         )
 
-
-    @router.post("/api/diet/advice", response_model=DietAdviceResponse, dependencies=[Depends(auth_dep)])
+    @router.post(
+        "/api/diet/advice",
+        response_model=DietAdviceResponse,
+        dependencies=[Depends(auth_dep)],
+    )
     async def diet_advice(
         req: DietAdviceRequest,
         semaphore: asyncio.Semaphore = Depends(get_global_semaphore),
@@ -218,12 +232,18 @@ def build_diet_router(settings: BackendSettings) -> APIRouter:
     ):
         async with semaphore:
             await limiter.check_and_wait()
-            advice = await advice_uc.execute_async(user_id=req.user_id, facts=req.facts, user_note=req.user_note)
+            advice = await advice_uc.execute_async(
+                user_id=req.user_id, facts=req.facts, user_note=req.user_note
+            )
             if isinstance(advice, dict) and advice.get("error"):
                 return DietAdviceResponse(success=False, error=str(advice.get("error")))
             return DietAdviceResponse(success=True, result=advice)
 
-    @router.post("/api/diet/commit", response_model=DietCommitResponse, dependencies=[Depends(auth_dep)])
+    @router.post(
+        "/api/diet/commit",
+        response_model=DietCommitResponse,
+        dependencies=[Depends(auth_dep)],
+    )
     async def diet_commit(req: DietCommitRequest):
         # Flatten the structure if needed or pass as is if RecordService supports it.
         # RecordService.save_diet_record expects unpacked args.
@@ -231,12 +251,21 @@ def build_diet_router(settings: BackendSettings) -> APIRouter:
             user_id=req.user_id,
             meal_summary=req.record.get("meal_summary", {}),
             dishes=req.record.get("dishes", []),
-            captured_labels=req.record.get("labels_snapshot", [])
+            captured_labels=req.record.get("labels_snapshot", []),
         )
         return DietCommitResponse(success=True, saved_record=saved)
 
-    @router.get("/api/diet/history", response_model=DietHistoryResponse, dependencies=[Depends(auth_dep)])
-    async def diet_history(user_id: str, limit: int = 20, start_date: Optional[str] = None, end_date: Optional[str] = None):
+    @router.get(
+        "/api/diet/history",
+        response_model=DietHistoryResponse,
+        dependencies=[Depends(auth_dep)],
+    )
+    async def diet_history(
+        user_id: str,
+        limit: int = 20,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+    ):
         # 1. 如果有任一日期参数，进入范围查询模式
         if start_date or end_date:
             # 自动补全：若缺省其一，则默认查单日
@@ -244,14 +273,16 @@ def build_diet_router(settings: BackendSettings) -> APIRouter:
                 end_date = start_date
             elif end_date and not start_date:
                 start_date = end_date
-                
-            records = RecordService.get_unified_records_range(user_id, start_date, end_date)
+
+            records = RecordService.get_unified_records_range(
+                user_id, start_date, end_date
+            )
         else:
             # 2. 否则默认查询最近 N 条
-            records = RecordService.get_recent_unified_records(user_id=user_id, limit=limit)
-            
+            records = RecordService.get_recent_unified_records(
+                user_id=user_id, limit=limit
+            )
+
         return DietHistoryResponse(success=True, records=records)
 
     return router
-
-

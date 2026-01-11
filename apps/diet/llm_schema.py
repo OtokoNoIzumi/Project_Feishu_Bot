@@ -13,7 +13,11 @@ DIET_LLM_SCHEMA = {
             "type": "object",
             "properties": {
                 "advice": {"type": "string", "description": "简体中文饮食建议"},
-                "diet_time": {"type": "string", "enum": ["breakfast", "lunch", "dinner", "snack"], "description": "餐食分组"},
+                "diet_time": {
+                    "type": "string",
+                    "enum": ["breakfast", "lunch", "dinner", "snack"],
+                    "description": "餐食分组",
+                },
             },
             "required": ["advice", "diet_time"],
         },
@@ -26,15 +30,24 @@ DIET_LLM_SCHEMA = {
                     "product_name": {"type": "string"},
                     "brand": {"type": "string", "description": "不可见则为空字符串"},
                     "variant": {"type": "string", "description": "不可见则为空字符串"},
-                    "serving_size": {"type": "string", "enum": ["100g", "100ml", "per_pack"]},
-                    "energy_value": {"type": "number", "description": "OCR 读取到的能量数值"},
+                    "serving_size": {
+                        "type": "string",
+                        "enum": ["100g", "100ml", "per_pack"],
+                    },
+                    "energy_value": {
+                        "type": "number",
+                        "description": "OCR 读取到的能量数值",
+                    },
                     "energy_unit": {"type": "string", "enum": ["Kcal", "KJ"]},
                     "protein_g": {"type": "number"},
                     "fat_g": {"type": "number"},
                     "carbs_g": {"type": "number"},
                     "sodium_mg": {"type": "number"},
                     "fiber_g": {"type": "number"},
-                    "custom_note": {"type": "string", "description": "用户对该产品的特殊备注（如密度、购买渠道等）"},
+                    "custom_note": {
+                        "type": "string",
+                        "description": "用户对该产品的特殊备注（如密度、购买渠道等）",
+                    },
                 },
                 "required": [
                     "product_name",
@@ -56,7 +69,10 @@ DIET_LLM_SCHEMA = {
             "items": {
                 "type": "object",
                 "properties": {
-                    "standard_name": {"type": "string", "description": "标准化菜名（简体中文）"},
+                    "standard_name": {
+                        "type": "string",
+                        "description": "标准化菜名（简体中文）",
+                    },
                     "ingredients": {
                         "type": "array",
                         "items": {
@@ -66,9 +82,16 @@ DIET_LLM_SCHEMA = {
                                 "weight_g": {"type": "number"},
                                 "weight_method": {
                                     "type": "string",
-                                    "enum": ["subtraction_precise", "dish_ratio_estimate", "pure_visual_estimate"],
+                                    "enum": [
+                                        "subtraction_precise",
+                                        "dish_ratio_estimate",
+                                        "pure_visual_estimate",
+                                    ],
                                 },
-                                "data_source": {"type": "string", "enum": ["label_ocr", "generic_estimate"]},
+                                "data_source": {
+                                    "type": "string",
+                                    "enum": ["label_ocr", "generic_estimate"],
+                                },
                                 "macros": {
                                     "type": "object",
                                     "properties": {
@@ -78,10 +101,22 @@ DIET_LLM_SCHEMA = {
                                         "sodium_mg": {"type": "number"},
                                         "fiber_g": {"type": "number"},
                                     },
-                                    "required": ["protein_g", "fat_g", "carbs_g", "sodium_mg", "fiber_g"],
+                                    "required": [
+                                        "protein_g",
+                                        "fat_g",
+                                        "carbs_g",
+                                        "sodium_mg",
+                                        "fiber_g",
+                                    ],
                                 },
                             },
-                            "required": ["name_zh", "weight_g", "weight_method", "data_source", "macros"],
+                            "required": [
+                                "name_zh",
+                                "weight_g",
+                                "weight_method",
+                                "data_source",
+                                "macros",
+                            ],
                         },
                     },
                 },
@@ -100,5 +135,3 @@ DIET_LLM_SCHEMA = {
     },
     "required": ["meal_summary", "dishes", "occurred_at"],
 }
-
-

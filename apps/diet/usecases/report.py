@@ -3,6 +3,7 @@ from apps.common.record_service import RecordService
 from libs.llm_gemini.gemini_client import GeminiClientConfig, GeminiStructuredClient
 from libs.api_keys.api_key_manager import get_default_api_key_manager
 
+
 class DietReportUsecase:
     def __init__(self, gemini_model_name: str):
         self.api_keys = get_default_api_key_manager()
@@ -11,11 +12,13 @@ class DietReportUsecase:
             config=GeminiClientConfig(model_name=gemini_model_name, temperature=0.7),
         )
 
-    async def generate_daily_report(self, user_id: str, date_str: str) -> Dict[str, Any]:
+    async def generate_daily_report(
+        self, user_id: str, date_str: str
+    ) -> Dict[str, Any]:
         records = RecordService.get_unified_records_by_date(user_id, date_str)
         if not records:
             return {"error": "该日期无饮食记录"}
-            
+
         # Aggregate logic (Total energy, macros, dish list)
         total_kj = 0.0
         total_p = 0.0
@@ -23,30 +26,30 @@ class DietReportUsecase:
         total_c = 0.0
         total_na = 0.0
         total_fib = 0.0
-        
+
         transcript = []
-        
-        # Records are stored Newest->Oldest by default read_dataset logic usually, 
+
+        # Records are stored Newest->Oldest by default read_dataset logic usually,
         # but let's just iterate and not worry about order for sum, but for text transcript we want Chronological.
         # record_service.read_dataset returns lines list which is usually appended.
         # Wait, My storage_lib.read_dataset returns [Newest, ..., Oldest] (reversed lines).
         # So we should reverse it back to get Chronological.
-        
+
         chronological_records = list(reversed(records))
-        
+
         for rec in chronological_records:
             meal = rec.get("meal_summary", {})
             diet_time = meal.get("diet_time", "snack")
-            
+
             # Sum up meal totals if available, or re-sum from dishes to be safe?
             # meal_summary.total_energy_kj is trustworthy.
             total_kj += float(meal.get("total_energy_kj") or 0)
-            
+
             dish_desc = []
             for d in rec.get("dishes", []):
                 d_name = d.get("standard_name", "Unknown")
                 dish_desc.append(d_name)
-                
+
                 # Sum macros from ingredients
                 for ing in d.get("ingredients", []):
                     m = ing.get("macros", {})
@@ -55,7 +58,7 @@ class DietReportUsecase:
                     total_c += float(m.get("carbs_g") or 0)
                     total_na += float(m.get("sodium_mg") or 0)
                     total_fib += float(m.get("fiber_g") or 0)
-            
+
             transcript.append(f"- {diet_time}: {', '.join(dish_desc)}")
 
         # Build Prompt
@@ -78,16 +81,16 @@ class DietReportUsecase:
 """
         # Call LLM
         report_text = await self.client.generate_text_async(prompt)
-        
+
         return {
             "date": date_str,
             "stats": {
-                "energy_kj": round(total_kj, 1), 
-                "protein_g": round(total_p, 1), 
-                "fat_g": round(total_f, 1), 
+                "energy_kj": round(total_kj, 1),
+                "protein_g": round(total_p, 1),
+                "fat_g": round(total_f, 1),
                 "carbs_g": round(total_c, 1),
                 "sodium_mg": round(total_na, 1),
-                "fiber_g": round(total_fib, 1)
+                "fiber_g": round(total_fib, 1),
             },
-            "report_text": report_text
+            "report_text": report_text,
         }

@@ -17,6 +17,3 @@ def build_keep_scale_prompt(user_note: str = "") -> str:
 3) 时间：如果截图中能看到测量时间，填入 measured_at_local；看不到则填空字符串。
 4) 输出必须严格符合给定 JSON Schema，不要输出任何额外字段。
 """
-
-
-

@@ -1,3 +1,9 @@
+"""
+Token Auth.
+
+Provides a simple internal token-based authentication mechanism.
+"""
+
 from dataclasses import dataclass
 from typing import Optional
 
@@ -14,9 +20,13 @@ class InternalTokenAuth:
     token: Optional[str]
 
     def is_enabled(self) -> bool:
+        """Check if token auth is enabled (token is set)."""
         return bool(self.token and self.token.strip())
 
     def verify_authorization_header(self, authorization: Optional[str]) -> bool:
+        """
+        Verify the authorization header against the configured token.
+        """
         if not self.is_enabled():
             return True
         if not authorization:
@@ -24,7 +34,5 @@ class InternalTokenAuth:
         prefix = "Bearer "
         if not authorization.startswith(prefix):
             return False
-        provided = authorization[len(prefix):].strip()
+        provided = authorization[len(prefix) :].strip()
         return provided == (self.token or "").strip()
-
-

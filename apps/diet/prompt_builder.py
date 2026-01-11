@@ -1,4 +1,6 @@
 from datetime import datetime
+
+
 def build_diet_prompt(user_note: str = "", recent_products_str: str = "") -> str:
     current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     user_note_emphasis = ""

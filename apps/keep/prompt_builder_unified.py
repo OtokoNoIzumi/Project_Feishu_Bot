@@ -1,5 +1,6 @@
 from datetime import datetime
 
+
 def build_keep_unified_prompt(user_note: str) -> str:
     current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     return f"""

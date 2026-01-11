@@ -1,16 +1,20 @@
+"""
+Gemini Client.
+
+Provides an async client for interacting with Google's Gemini models,
+handling API key management, file uploading, and structured JSON generation.
+"""
+
 import asyncio
 import hashlib
 import json
 import logging
-import mimetypes
 import os
 import tempfile
 import time
 from dataclasses import dataclass
-from io import BytesIO
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
-import PIL.Image
 from google import genai
 from google.genai import types
 
@@ -21,6 +25,8 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class GeminiClientConfig:
+    """Configuration for Gemini Client."""
+
     model_name: str
     temperature: float = 0.2
 
@@ -39,22 +45,31 @@ class GeminiFilesCache:
 
     def _load_cache(self):
         if os.path.exists(self.cache_file):
+            # Assume cache is valid. If corrupt, we let it crash or reset?
+            # User wants to remove redundant tries. If the file exists but logic fails, maybe we should crash to notice.
+            # But for a cache, maybe we just reset.
+            # I will keep a narrow try for json decode, or remove if confident.
+            # Given "internal projects format is reliable", we can assume it's good.
+            # But let's be safe for file I/O partial reading.
+            # I'll simplify: just load.
             try:
                 with open(self.cache_file, "r", encoding="utf-8") as f:
                     self.cache = json.load(f)
-            except Exception as e:
-                logger.warning(f"Failed to load gemini cache: {e}")
+            except (json.JSONDecodeError, OSError) as e:
+                logger.warning("Failed to load gemini cache (resetting): %s", e)
                 self.cache = {}
         else:
             # Ensure dir exists
             os.makedirs(os.path.dirname(self.cache_file), exist_ok=True)
 
     def _save_cache(self):
+        # Write efficiently; don't swallow exceptions excessively.
+        # But this is often called in background or finally blocks, so we don't want to crash app.
         try:
             with open(self.cache_file, "w", encoding="utf-8") as f:
                 json.dump(self.cache, f, ensure_ascii=False, indent=2)
-        except Exception as e:
-            logger.warning(f"Failed to save gemini cache: {e}")
+        except OSError as e:
+            logger.warning("Failed to save gemini cache: %s", e)
 
     def get(self, file_hash: str, api_key_suffix: str) -> Optional[Dict[str, Any]]:
         """
@@ -81,17 +96,18 @@ class GeminiFilesCache:
         """
         # Calculate expiration: now + 47.5 hours (conservative)
         expiration = int(time.time() + 47.5 * 3600)
-        
+
         self.cache[file_hash] = {
             "key_suffix": api_key_suffix,
             "name": gemini_file.name,
             "uri": gemini_file.uri,
             "mime_type": gemini_file.mime_type,
-            "expiration_time": expiration
+            "expiration_time": expiration,
         }
         self._save_cache()
 
     def delete(self, file_hash: str):
+        """Delete an item from cache."""
         if file_hash in self.cache:
             del self.cache[file_hash]
             self._save_cache()
@@ -112,6 +128,7 @@ class GeminiStructuredClient:
 
     @property
     def client_ready(self) -> bool:
+        """Check if client is initialized."""
         return self.client is not None
 
     def _init_client(self) -> None:
@@ -126,6 +143,7 @@ class GeminiStructuredClient:
             self.client = genai.Client(api_key=api_key)
             self.current_api_key = api_key
         except Exception as e:
+            # Broad exception here is for SDK init safety, allows rotation.
             logger.error("Gemini client init failed: %s", e)
             self.api_key_manager.mark_failed(api_key)
             self.client = None
@@ -135,7 +153,9 @@ class GeminiStructuredClient:
             return self.current_api_key[-6:]
         return "unknown"
 
-    async def _upload_bytes_if_needed(self, image_bytes: bytes, mime_type: str = "image/png") -> types.File:
+    async def _upload_bytes_if_needed(
+        self, image_bytes: bytes, mime_type: str = "image/png"
+    ) -> types.File:
         """
         Upload logic with caching.
         """
@@ -148,51 +168,53 @@ class GeminiStructuredClient:
             # Return a File object constructed from cache info
             # Note: We don't verify if it really exists on server to save one RTT.
             # If it fails later, the error handler should invalidate cache.
-            logger.debug(f"Using cached Gemini file: {cached['name']}")
+            logger.debug("Using cached Gemini file: %s", cached["name"])
             return types.File(
-                name=cached["name"],
-                uri=cached["uri"],
-                mime_type=cached["mime_type"]
+                name=cached["name"], uri=cached["uri"], mime_type=cached["mime_type"]
             )
 
         # 2. Upload
-        logger.debug(f"Uploading new file to Gemini: hash={file_hash[:8]}")
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp: # Assuming PNG for bytes usually
-            tmp.write(image_bytes)
-            tmp_path = tmp.name
-
+        logger.debug("Uploading new file to Gemini: hash=%s", file_hash[:8])
+        # Use tempfile securely
+        tmp_fd, tmp_path = tempfile.mkstemp(suffix=".png")
         try:
-            # We use `await asyncio.to_thread` because `files.upload` might be synchronous IO
-            # The new SDK might have an async upload? client.aio.files.upload?
-            # Checking docs: client.files.upload is sync.
-            # Let's wrap it.
-            
-            def _sync_upload():
-                return self.client.files.upload(file=tmp_path, config={"mime_type": mime_type})
+            with os.fdopen(tmp_fd, "wb") as tmp:
+                tmp.write(image_bytes)
 
-            uploaded_file = await asyncio.to_thread(_sync_upload)
-            
-            # 3. Update Cache
-            self.file_cache.set(file_hash, key_suffix, uploaded_file)
-            return uploaded_file
+            try:
+                # We use `await asyncio.to_thread` because `files.upload` is synchronous IO
+                def _sync_upload():
+                    return self.client.files.upload(
+                        file=tmp_path, config={"mime_type": mime_type}
+                    )
 
+                uploaded_file = await asyncio.to_thread(_sync_upload)
+
+                # 3. Update Cache
+                self.file_cache.set(file_hash, key_suffix, uploaded_file)
+                return uploaded_file
+            finally:
+                pass  # Internal cleanup handled in outer finally
         finally:
-            # Cleanup temp file
             if os.path.exists(tmp_path):
                 try:
                     os.remove(tmp_path)
-                except:
+                except OSError:
                     pass
 
     def _handle_auth_error(self, error: Exception) -> None:
         msg = str(error)
-        is_auth_error = "API key" in msg or "authentication" in msg.lower() or "403" in msg
+        is_auth_error = (
+            "API key" in msg or "authentication" in msg.lower() or "403" in msg
+        )
         if is_auth_error and self.current_api_key:
-            logger.warning(f"Auth error detected ({msg}), marking key as failed.")
+            logger.warning("Auth error detected (%s), marking key as failed.", msg)
             self.api_key_manager.mark_failed(self.current_api_key)
             self._init_client()
 
-    async def generate_json_async(self, prompt: str, images: List[bytes], schema: Dict[str, Any]) -> Dict[str, Any]:
+    async def generate_json_async(
+        self, prompt: str, images: List[bytes], schema: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """
         Async generation with Files API support.
         Args:
@@ -206,7 +228,7 @@ class GeminiStructuredClient:
         try:
             # 1. Prepare Contents
             contents = [prompt]
-            
+
             # Upload images concurrently
             if images:
                 upload_tasks = [self._upload_bytes_if_needed(b) for b in images]
@@ -227,18 +249,18 @@ class GeminiStructuredClient:
 
             # 3. Parse
             if hasattr(response, "parsed") and response.parsed:
-                 return response.parsed
-            
+                return response.parsed
+
             text = getattr(response, "text", "")
             if not text:
                 return {"error": "响应为空"}
-            
+
             # Basic cleanup if not automatically parsed
             if text.startswith("```json"):
                 text = text[7:-3].strip()
             elif text.startswith("```"):
                 text = text[3:-3].strip()
-            
+
             return json.loads(text)
 
         except Exception as e:
@@ -275,9 +297,5 @@ class GeminiStructuredClient:
 
         except Exception as e:
             self._handle_auth_error(e)
-            logger.error(f"Generate text failed: {e}")
+            logger.error("Generate text failed: %s", e)
             return f"生成失败: {str(e)}"
-
-    # --- Backward Compatibility (Sync Logic is simplified or deprecated) ---
-    # Since existing logic heavily relies on async, we focus on async.
-    # If synchronous usage is needed, we should implement it similarly or wrap async.

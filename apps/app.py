@@ -11,13 +11,14 @@ from apps.common.storage_api import build_storage_router
 def create_app() -> FastAPI:
     settings = load_settings()
     # Configure logging: info level for app, warning for noisy refs
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-    
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s"
+    )
+
     # Silence httpx/httpcore (used by google-genai)
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("httpcore").setLevel(logging.WARNING)
     logging.getLogger("google.genai").setLevel(logging.WARNING)
-
 
     app = FastAPI(title="Backend", version="0.1.0")
 
@@ -37,5 +38,3 @@ def create_app() -> FastAPI:
 
 
 app = create_app()
-
-

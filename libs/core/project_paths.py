@@ -1,3 +1,10 @@
+"""
+Project Paths.
+
+Utilities for resolving project paths, such as the root directory,
+to ensure imports and file access work consistently regardless of CWD.
+"""
+
 from pathlib import Path
 
 
@@ -19,7 +26,8 @@ def get_project_root() -> Path:
 
 
 def ensure_dir(path: Path) -> Path:
+    """
+    Ensure the directory exists, creating it if necessary.
+    """
     path.mkdir(parents=True, exist_ok=True)
     return path
-
-
