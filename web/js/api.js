@@ -23,6 +23,10 @@ const API = {
             headers['Content-Type'] = 'application/json';
         }
 
+        // 【核心改动】添加 X-User-ID Header
+        const userId = Auth.getUserId() || 'anonymous';
+        headers['X-User-ID'] = userId;
+
         // 如果用户已登录，添加 Authorization 头
         if (Auth.isSignedIn()) {
             try {
@@ -95,8 +99,8 @@ const API = {
      * @param {boolean} autoSave - 是否自动保存
      */
     async analyzeDiet(userNote, imagesB64, autoSave = false) {
+        // user_id 已移至 Header，body 不再包含
         return this.post('/diet/analyze', {
-            user_id: Auth.getUserId() || 'anonymous',
             user_note: userNote,
             images_b64: imagesB64,
             auto_save: autoSave,
@@ -110,7 +114,6 @@ const API = {
      */
     async getDietAdvice(facts, userNote = '') {
         return this.post('/diet/advice', {
-            user_id: Auth.getUserId() || 'anonymous',
             facts,
             user_note: userNote,
         });
@@ -122,7 +125,6 @@ const API = {
      */
     async saveDiet(data) {
         return this.post('/storage/diet/save', {
-            user_id: Auth.getUserId() || 'anonymous',
             meal_summary: data.meal_summary || {},
             dishes: data.dishes || [],
             captured_labels: data.captured_labels || [],
@@ -136,10 +138,8 @@ const API = {
      * @param {number} limit - 返回数量
      */
     async getDietHistory(limit = 20) {
-        return this.get('/diet/history', {
-            user_id: Auth.getUserId() || 'anonymous',
-            limit,
-        });
+        // user_id 已移至 Header，query 不再包含
+        return this.get('/diet/history', { limit });
     },
 
     // ========== Keep API ==========
@@ -152,7 +152,6 @@ const API = {
      */
     async analyzeKeep(userNote, imagesB64, autoSave = false) {
         return this.post('/keep/analyze', {
-            user_id: Auth.getUserId() || 'anonymous',
             user_note: userNote,
             images_b64: imagesB64,
             auto_save: autoSave,
@@ -166,7 +165,6 @@ const API = {
      */
     async saveKeep(data, eventType = 'scale') {
         return this.post('/storage/keep/save', {
-            user_id: Auth.getUserId() || 'anonymous',
             event_type: eventType,
             event_data: data,
             image_hashes: data.image_hashes || [],

@@ -458,13 +458,16 @@ class MessageHandler:
         base_url = os.getenv("BACKEND_BASE_URL", "http://127.0.0.1:8001").rstrip("/")
         token = os.getenv("BACKEND_INTERNAL_TOKEN", "").strip()
 
+        # user_id 已移至 Header，payload 不再包含
         payload = {
-            "user_id": user_id,
             "user_note": user_note or "",
             "images_b64": images_b64 or [],
         }
 
-        headers = {"Content-Type": "application/json"}
+        headers = {
+            "Content-Type": "application/json",
+            "X-User-ID": user_id,  # 统一使用 Header 传递用户 ID
+        }
         if token:
             headers["Authorization"] = f"Bearer {token}"
 

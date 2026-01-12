@@ -20,7 +20,7 @@ from apps.common.utils import (
     parse_occurred_at,
     read_upload_files,
 )
-from apps.deps import require_internal_auth
+from apps.deps import get_current_user_id, require_internal_auth
 from apps.keep.usecases.parse_dimensions import KeepDimensionsParseUsecase
 from apps.keep.usecases.parse_scale import KeepScaleParseUsecase
 from apps.keep.usecases.parse_sleep import KeepSleepParseUsecase
@@ -32,13 +32,11 @@ from libs.utils.rate_limiter import AsyncRateLimiter
 logger = logging.getLogger(__name__)
 
 
-# --- Request/Response Models ---
-
+# --- Request/Response Models (user_id 已移除，改用 Header 注入) ---
 
 class KeepParseRequestBase(BaseModel):
     """Base request model for Keep parsing."""
 
-    user_id: str = Field(..., min_length=1)
     user_note: str = ""
     images_b64: List[str] = []
     auto_save: bool = False
@@ -53,40 +51,30 @@ class KeepParseResponseBase(BaseModel):
     saved_status: Optional[Dict[str, Any]] = None
 
 
-# Scale
+# Specific request/response classes (all inherit from base now)
 class KeepScaleParseRequest(KeepParseRequestBase):
-    """Request model for Keep scale parsing."""
-
+    pass
 
 class KeepScaleParseResponse(KeepParseResponseBase):
-    """Response model for Keep scale parsing."""
+    pass
 
-
-# Sleep
 class KeepSleepParseRequest(KeepParseRequestBase):
-    """Request model for Keep sleep parsing."""
-
+    pass
 
 class KeepSleepParseResponse(KeepParseResponseBase):
-    """Response model for Keep sleep parsing."""
+    pass
 
-
-# Dimensions
 class KeepDimensionsParseRequest(KeepParseRequestBase):
-    """Request model for Keep dimensions parsing."""
-
+    pass
 
 class KeepDimensionsParseResponse(KeepParseResponseBase):
-    """Response model for Keep dimensions parsing."""
+    pass
 
-
-# Unified
 class KeepUnifiedParseRequest(KeepParseRequestBase):
-    """Request model for Keep unified parsing."""
-
+    pass
 
 class KeepUnifiedParseResponse(KeepParseResponseBase):
-    """Response model for Keep unified parsing."""
+    pass
 
 
 def build_keep_router(settings: BackendSettings) -> APIRouter:
@@ -114,7 +102,6 @@ def build_keep_router(settings: BackendSettings) -> APIRouter:
         """Auto-save helper for single event types"""
         try:
             data_to_save = result
-            # Try to unwrap common keys if present to save cleaner data
             if event_type == "scale" and "scale_event" in result:
                 data_to_save = result["scale_event"]
             elif event_type == "sleep" and "sleep_event" in result:
@@ -122,7 +109,6 @@ def build_keep_router(settings: BackendSettings) -> APIRouter:
             elif event_type == "dimensions" and "body_measure_event" in result:
                 data_to_save = result["body_measure_event"]
 
-            # Pass image_hashes for deduplication
             await RecordService.save_keep_event(
                 user_id, event_type, data_to_save, image_hashes, occurred_at
             )
@@ -169,7 +155,7 @@ def build_keep_router(settings: BackendSettings) -> APIRouter:
     # --- Generic Processing Helper ---
 
     async def _process_parse(
-        user_id: str,
+        user_id: str,  # 已经过 deps 解析的 resolved ID
         user_note: str,
         images_bytes: List[bytes],
         auto_save: bool,
@@ -200,10 +186,7 @@ def build_keep_router(settings: BackendSettings) -> APIRouter:
 
             saved_status = None
             if auto_save:
-                # Compute image hashes for deduplication
                 image_hashes = [hashlib.sha256(b).hexdigest() for b in images_bytes]
-
-                # Check for occurred_at from LLM extraction (Backfill support)
                 occurred_dt = parse_occurred_at(result.get("occurred_at"))
 
                 if event_type_for_save == "unified":
@@ -227,23 +210,15 @@ def build_keep_router(settings: BackendSettings) -> APIRouter:
     )
     async def keep_scale_parse(
         req: KeepScaleParseRequest,
+        user_id: str = Depends(get_current_user_id),  # 从 Header 注入
         semaphore: asyncio.Semaphore = Depends(get_global_semaphore),
         limiter: AsyncRateLimiter = Depends(_get_model_limiter),
     ):
         """Async parse Keep scale screenshots."""
-
         images_bytes = decode_images_b64(req.images_b64)
-
         return await _process_parse(
-            req.user_id,
-            req.user_note,
-            images_bytes,
-            req.auto_save,
-            scale_uc,
-            "scale",
-            semaphore,
-            limiter,
-            KeepScaleParseResponse,
+            user_id, req.user_note, images_bytes, req.auto_save,
+            scale_uc, "scale", semaphore, limiter, KeepScaleParseResponse,
         )
 
     @router.post(
@@ -252,10 +227,10 @@ def build_keep_router(settings: BackendSettings) -> APIRouter:
         dependencies=[Depends(auth_dep)],
     )
     async def keep_scale_parse_upload(
-        user_id: str = Form(...),
         user_note: str = Form(""),
         auto_save: bool = Form(False),
         images: List[UploadFile] = File(default=[], description="KEEP截图"),
+        user_id: str = Depends(get_current_user_id),  # 从 Header 注入
         semaphore: asyncio.Semaphore = Depends(get_global_semaphore),
         limiter: AsyncRateLimiter = Depends(_get_model_limiter),
     ):
@@ -263,15 +238,8 @@ def build_keep_router(settings: BackendSettings) -> APIRouter:
         # pylint: disable=too-many-arguments
         images_bytes = await read_upload_files(images)
         return await _process_parse(
-            user_id,
-            user_note,
-            images_bytes,
-            auto_save,
-            scale_uc,
-            "scale",
-            semaphore,
-            limiter,
-            KeepScaleParseResponse,
+            user_id, user_note, images_bytes, auto_save,
+            scale_uc, "scale", semaphore, limiter, KeepScaleParseResponse,
         )
 
     # --- Sleep Endpoints ---
@@ -282,22 +250,15 @@ def build_keep_router(settings: BackendSettings) -> APIRouter:
     )
     async def keep_sleep_parse(
         req: KeepSleepParseRequest,
+        user_id: str = Depends(get_current_user_id),
         semaphore: asyncio.Semaphore = Depends(get_global_semaphore),
         limiter: AsyncRateLimiter = Depends(_get_model_limiter),
     ):
         """Async parse Keep sleep screenshots."""
-
         images_bytes = decode_images_b64(req.images_b64)
         return await _process_parse(
-            req.user_id,
-            req.user_note,
-            images_bytes,
-            req.auto_save,
-            sleep_uc,
-            "sleep",
-            semaphore,
-            limiter,
-            KeepSleepParseResponse,
+            user_id, req.user_note, images_bytes, req.auto_save,
+            sleep_uc, "sleep", semaphore, limiter, KeepSleepParseResponse,
         )
 
     @router.post(
@@ -306,10 +267,10 @@ def build_keep_router(settings: BackendSettings) -> APIRouter:
         dependencies=[Depends(auth_dep)],
     )
     async def keep_sleep_parse_upload(
-        user_id: str = Form(...),
         user_note: str = Form(""),
         auto_save: bool = Form(False),
         images: List[UploadFile] = File(default=[], description="Keep睡眠截图"),
+        user_id: str = Depends(get_current_user_id),
         semaphore: asyncio.Semaphore = Depends(get_global_semaphore),
         limiter: AsyncRateLimiter = Depends(_get_model_limiter),
     ):
@@ -317,15 +278,8 @@ def build_keep_router(settings: BackendSettings) -> APIRouter:
         # pylint: disable=too-many-arguments
         images_bytes = await read_upload_files(images)
         return await _process_parse(
-            user_id,
-            user_note,
-            images_bytes,
-            auto_save,
-            sleep_uc,
-            "sleep",
-            semaphore,
-            limiter,
-            KeepSleepParseResponse,
+            user_id, user_note, images_bytes, auto_save,
+            sleep_uc, "sleep", semaphore, limiter, KeepSleepParseResponse,
         )
 
     # --- Dimensions Endpoints ---
@@ -336,22 +290,15 @@ def build_keep_router(settings: BackendSettings) -> APIRouter:
     )
     async def keep_dimensions_parse(
         req: KeepDimensionsParseRequest,
+        user_id: str = Depends(get_current_user_id),
         semaphore: asyncio.Semaphore = Depends(get_global_semaphore),
         limiter: AsyncRateLimiter = Depends(_get_model_limiter),
     ):
         """Async parse Keep dimensions screenshots."""
-
         images_bytes = decode_images_b64(req.images_b64)
         return await _process_parse(
-            req.user_id,
-            req.user_note,
-            images_bytes,
-            req.auto_save,
-            dimensions_uc,
-            "dimensions",
-            semaphore,
-            limiter,
-            KeepDimensionsParseResponse,
+            user_id, req.user_note, images_bytes, req.auto_save,
+            dimensions_uc, "dimensions", semaphore, limiter, KeepDimensionsParseResponse,
         )
 
     @router.post(
@@ -360,10 +307,10 @@ def build_keep_router(settings: BackendSettings) -> APIRouter:
         dependencies=[Depends(auth_dep)],
     )
     async def keep_dimensions_parse_upload(
-        user_id: str = Form(...),
         user_note: str = Form(""),
         auto_save: bool = Form(False),
         images: List[UploadFile] = File(default=[], description="Keep围度截图"),
+        user_id: str = Depends(get_current_user_id),
         semaphore: asyncio.Semaphore = Depends(get_global_semaphore),
         limiter: AsyncRateLimiter = Depends(_get_model_limiter),
     ):
@@ -371,15 +318,8 @@ def build_keep_router(settings: BackendSettings) -> APIRouter:
         # pylint: disable=too-many-arguments
         images_bytes = await read_upload_files(images)
         return await _process_parse(
-            user_id,
-            user_note,
-            images_bytes,
-            auto_save,
-            dimensions_uc,
-            "dimensions",
-            semaphore,
-            limiter,
-            KeepDimensionsParseResponse,
+            user_id, user_note, images_bytes, auto_save,
+            dimensions_uc, "dimensions", semaphore, limiter, KeepDimensionsParseResponse,
         )
 
     # --- Unified Endpoints ---
@@ -390,6 +330,7 @@ def build_keep_router(settings: BackendSettings) -> APIRouter:
     )
     async def keep_unified_analyze(
         req: KeepUnifiedParseRequest,
+        user_id: str = Depends(get_current_user_id),
         semaphore: asyncio.Semaphore = Depends(get_global_semaphore),
         limiter: AsyncRateLimiter = Depends(_get_model_limiter),
     ):
@@ -397,19 +338,10 @@ def build_keep_router(settings: BackendSettings) -> APIRouter:
         统一接口：智能分析上传的 Keep 图片（支持体重/睡眠/围度混合，支持多张图）。
         auto_save=True 时会自动拆分并保存所有识别到的事件。
         """
-        # pylint: disable=too-many-arguments
-
         images_bytes = decode_images_b64(req.images_b64)
         return await _process_parse(
-            req.user_id,
-            req.user_note,
-            images_bytes,
-            req.auto_save,
-            unified_uc,
-            "unified",
-            semaphore,
-            limiter,
-            KeepUnifiedParseResponse,
+            user_id, req.user_note, images_bytes, req.auto_save,
+            unified_uc, "unified", semaphore, limiter, KeepUnifiedParseResponse,
         )
 
     @router.post(
@@ -418,12 +350,12 @@ def build_keep_router(settings: BackendSettings) -> APIRouter:
         dependencies=[Depends(auth_dep)],
     )
     async def keep_unified_analyze_upload(
-        user_id: str = Form(...),
         user_note: str = Form(""),
         auto_save: bool = Form(False),
         images: List[UploadFile] = File(
             default=[], description="任意 Keep 截图（混合）"
         ),
+        user_id: str = Depends(get_current_user_id),
         semaphore: asyncio.Semaphore = Depends(get_global_semaphore),
         limiter: AsyncRateLimiter = Depends(_get_model_limiter),
     ):
@@ -431,16 +363,8 @@ def build_keep_router(settings: BackendSettings) -> APIRouter:
         # pylint: disable=too-many-arguments
         images_bytes = await read_upload_files(images)
         return await _process_parse(
-            user_id,
-            user_note,
-            images_bytes,
-            auto_save,
-            unified_uc,
-            "unified",
-            semaphore,
-            limiter,
-            KeepUnifiedParseResponse,
+            user_id, user_note, images_bytes, auto_save,
+            unified_uc, "unified", semaphore, limiter, KeepUnifiedParseResponse,
         )
 
     return router
-
