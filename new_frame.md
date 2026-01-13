@@ -256,3 +256,104 @@ Project_Feishu_Bot/
 3.  **生命周期**: 
     *   建议缓存有效期可设为 24小时 (跨卡片复用)。
     *   卡片上下文 (`message_id` 绑定) 随卡片生命周期结束（如 1 小时后或归档后）清理。
+
+---
+
+## 6. 周分析功能 (Weekly Analysis) - Diet & Keep
+
+### 6.1 功能概述
+为 Diet 和 Keep 模块提供周维度的综合分析能力，包括：
+- 餐食质量分析与评分
+- 下周餐食建议
+- 热量校准系数估算
+- 目标进度对比
+- 围度变化分析
+- 可视化趋势图表
+
+### 6.2 目录结构
+保持与 `diet`/`keep` 一致的扁平结构：
+```
+apps/weekly_analysis/
+├── __init__.py
+├── api.py                  # FastAPI 端点
+├── data_collector.py       # 周数据采集
+├── analysis_schema.py      # Pydantic Schema (AI输出结构)
+├── weekly_prompt.py        # AI 分析 Prompt
+├── calorie_math.py         # 热量校准数学计算（非AI）
+├── chart_config.py         # ECharts 配置生成
+└── usecases/
+    └── weekly_analysis_usecase.py  # 核心业务逻辑
+```
+
+### 6.3 MVP 拆分与进度
+
+#### MVP1：数据采集 + 基础API骨架 ✅ 代码完成，待验证
+- [x] 创建 `apps/weekly_analysis/` 目录
+- [x] `data_collector.py`: 采集指定周的 diet/keep 数据
+  - `WeeklyDataBundle` 数据类含计算属性判断分析触发条件
+  - 复用 `RecordService` 的已有方法
+- [x] `api.py`: 基础端点 `/api/weekly-analysis/data`
+  - 支持 `week_offset` 参数（-1=上周, 0=本周）
+  - 支持直接指定 `week_start` 日期
+- [x] 注册到 `apps/app.py`
+- [ ] 验证数据采集正确性（需启动后端服务测试）
+
+#### MVP2：AI综合分析 ✅ 代码完成
+- [x] `analysis_schema.py`: 定义 AI 输出的 Pydantic Schema
+  - `WeeklyAnalysisResult` 主模型，包含可选的子分析模块
+  - `WeeklyDietAnalysis`, `MealSuggestion`, `CalorieCalibration`, `GoalProgress`, `DimensionChange`
+- [x] `weekly_prompt.py`: 构建综合分析 Prompt
+  - 动态格式化数据、根据可用性生成条件指令
+- [x] `usecases/weekly_analysis_usecase.py`: 调用 AI 生成分析
+  - 支持结构化JSON (`execute_async`) 和纯文本 (`execute_text_async`) 两种输出
+- [x] API 端点 `/api/weekly-analysis/report` 完善
+  - 支持 `output_mode=json|text`
+  - 集成并发控制和限流
+
+#### MVP3：热量校准 + 图表
+- [ ] `calorie_math.py`: 差值法热量校准计算
+- [ ] `chart_config.py`: 生成 ECharts 配置 JSON
+- [ ] 在 report 中整合图表数据
+
+#### MVP4：Web 前端集成
+- [ ] 左侧菜单添加"📅 周报"入口
+- [ ] 周报展示页面（含 ECharts 图表）
+- [ ] 交互调整（周切换等）
+
+#### MVP5：飞书集成
+- [ ] 在现有周报流程 (`routine_daily_element.py`) 中追加饮食健康分析章节
+- [ ] 飞书云文档内容生成
+
+### 6.4 数据源与条件
+
+| 数据 | 来源 | 采集逻辑 |
+|-----|------|---------|
+| Diet Records | `ledger_{date}.jsonl` | 周区间内所有文件 |
+| Dish Library | `dish_library.jsonl` | 取最新100条 |
+| Scale Records | `scale_{yyyy_mm}.jsonl` | 周区间内的记录 |
+| Sleep Records | `sleep_{yyyy_mm}.jsonl` | 周区间内的记录 |
+| Dimensions | `dimensions_{yyyy_mm}.jsonl` | 周内 + baseline(周前最后一条) |
+| Profile | `profile.json` | 用户目标配置 |
+| Preferences | `preferences.json` | 🆕 个性化饮食偏好 |
+
+### 6.5 分析触发条件
+
+| 分析项 | 触发条件 |
+|-------|---------|
+| 餐食质量分析 | `len(diet_records) > 0` |
+| 下周餐食建议 | `len(diet_records) > 0 and len(dish_library) > 0` |
+| 热量校准 | `len(diet_records) >= 3 and len(scale_records) >= 2` |
+| 目标进度 | `profile is not None` |
+| 围度分析 | 至少2个不同日期的围度数据 |
+
+### 6.6 个性化偏好配置
+新增 `user_data/<user_id>/diet/preferences.json`:
+```json
+{
+  "fixed_meals": {
+    "breakfast": "燕麦脱脂牛奶+水果（不建议替换）"
+  },
+  "dietary_restrictions": ["尽量少外食", "周末允许放松"],
+  "notes": "优先保证蛋白质摄入"
+}
+```

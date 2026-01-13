@@ -490,6 +490,11 @@ const Dashboard = {
 
       this.addMessage('分析完成！', 'assistant');
 
+      // 自动触发 advice 请求（仅饮食模式）
+      if (session.mode === 'diet' && this.currentDishes?.length > 0) {
+        this.autoFetchAdvice();
+      }
+
     } catch (error) {
       console.error('[Dashboard] Analysis failed:', error);
       this.addMessage(`分析失败: ${error.message}`, 'assistant');
@@ -533,14 +538,15 @@ const Dashboard = {
       const facts = this.collectEditedData();
       const userNote = document.getElementById('additional-note')?.value.trim() || '';
 
-      const adviceResult = await API.getDietAdvice(facts, userNote);
+      const response = await API.getDietAdvice(facts, userNote);
 
-      if (adviceResult.advice_text) {
-        currentVersion.advice = adviceResult.advice_text;
-        this.renderAdvice(adviceResult.advice_text);
+      // 后端返回 {success, result: {advice_text}} 结构
+      if (response.success && response.result?.advice_text) {
+        currentVersion.advice = response.result.advice_text;
+        this.renderAdvice(response.result.advice_text);
         this.addMessage('建议已更新', 'assistant');
-      } else if (adviceResult.error) {
-        this.addMessage(`建议生成失败: ${adviceResult.error}`, 'assistant');
+      } else if (response.error) {
+        this.addMessage(`建议生成失败: ${response.error}`, 'assistant');
       }
 
     } catch (error) {
@@ -548,6 +554,36 @@ const Dashboard = {
     } finally {
       this.el.updateAdviceBtn.disabled = false;
       this.el.updateAdviceBtn.textContent = '✨ 更新建议';
+    }
+  },
+
+  // 自动获取建议（分析完成后调用，不阻塞 UI）
+  async autoFetchAdvice() {
+    if (!this.currentSession || this.currentSession.mode !== 'diet') return;
+
+    const session = this.currentSession;
+    const currentVersion = session.versions[session.currentVersion - 1];
+    if (!currentVersion || currentVersion.advice) return; // 已有建议则跳过
+
+    try {
+      // 收集当前数据作为 facts
+      const facts = this.collectEditedData();
+      const userNote = document.getElementById('additional-note')?.value.trim() || '';
+
+      const response = await API.getDietAdvice(facts, userNote);
+
+      // 后端返回 {success, result: {advice_text}} 结构
+      if (response.success && response.result?.advice_text) {
+        currentVersion.advice = response.result.advice_text;
+        this.renderAdvice(response.result.advice_text);
+      } else if (response.error) {
+        this.renderAdviceError(response.error);
+      } else {
+        this.renderAdviceError('未获取到建议内容');
+      }
+    } catch (error) {
+      console.error('[Dashboard] Auto advice failed:', error);
+      this.renderAdviceError(error.message);
     }
   },
 
@@ -609,20 +645,41 @@ const Dashboard = {
         weight: Math.round(dishWeight),
         enabled: true,
         source: 'ai',
-        ingredients: (dish.ingredients || []).map(ing => ({
-          name_zh: ing.name_zh,
-          weight_g: Number(ing.weight_g) || 0,
-          weight_method: ing.weight_method,
-          data_source: ing.data_source,
-          energy_kj: Number(ing.energy_kj) || 0,
-          macros: {
-            protein_g: Number(ing.macros?.protein_g) || 0,
-            fat_g: Number(ing.macros?.fat_g) || 0,
-            carbs_g: Number(ing.macros?.carbs_g) || 0,
-            sodium_mg: Number(ing.macros?.sodium_mg) || 0,
-            fiber_g: Number(ing.macros?.fiber_g) || 0,
-          },
-        })),
+        ingredients: (dish.ingredients || []).map(ing => {
+          const weightG = Number(ing.weight_g) || 0;
+          const proteinG = Number(ing.macros?.protein_g) || 0;
+          const fatG = Number(ing.macros?.fat_g) || 0;
+          const carbsG = Number(ing.macros?.carbs_g) || 0;
+          const sodiumMg = Number(ing.macros?.sodium_mg) || 0;
+          const fiberG = Number(ing.macros?.fiber_g) || 0;
+
+          // 缓存原始密度（每克含量），用于等比缩放
+          const density = weightG > 0 ? {
+            protein_per_g: proteinG / weightG,
+            fat_per_g: fatG / weightG,
+            carbs_per_g: carbsG / weightG,
+            sodium_per_g: sodiumMg / weightG,
+            fiber_per_g: fiberG / weightG,
+          } : null;
+
+          return {
+            name_zh: ing.name_zh,
+            weight_g: weightG,
+            weight_method: ing.weight_method,
+            data_source: ing.data_source,
+            energy_kj: Number(ing.energy_kj) || 0,
+            macros: {
+              protein_g: proteinG,
+              fat_g: fatG,
+              carbs_g: carbsG,
+              sodium_mg: sodiumMg,
+              fiber_g: fiberG,
+            },
+            // 等比缩放相关
+            _density: density,
+            _proportionalScale: false,  // 默认关闭
+          };
+        }),
       });
 
       totalEnergy += dishEnergy;
@@ -647,6 +704,20 @@ const Dashboard = {
       },
       dishes: dishes,
       advice: summary.advice || '',
+      // 识别到的营养标签
+      capturedLabels: (data.captured_labels || data.labels_snapshot || []).map(lb => ({
+        productName: lb.product_name || '',
+        brand: lb.brand || '',
+        variant: lb.variant || '',
+        servingSize: lb.serving_size || '100g',
+        energyKjPerServing: lb.energy_kj_per_serving || 0,
+        proteinGPerServing: lb.protein_g_per_serving || 0,
+        fatGPerServing: lb.fat_g_per_serving || 0,
+        carbsGPerServing: lb.carbs_g_per_serving || 0,
+        sodiumMgPerServing: lb.sodium_mg_per_serving || 0,
+        fiberGPerServing: lb.fiber_g_per_serving || 0,
+        customNote: lb.custom_note || '',
+      })),
     };
   },
 
@@ -750,6 +821,7 @@ const Dashboard = {
 
     // 缓存当前 dishes 用于编辑
     this.currentDishes = [...data.dishes];
+    this.currentLabels = [...(data.capturedLabels || [])];  // 缓存营养标签用于编辑
     this.currentDietMeta = {
       mealName: summary.mealName || '饮食记录',
       dietTime: summary.dietTime || '',
@@ -812,6 +884,19 @@ const Dashboard = {
           </div>
         </div>
 
+        <div id="advice-section" class="advice-section">
+          <div class="advice-header">
+            <div class="dishes-title">💡 AI 营养点评</div>
+            <span id="advice-status" class="advice-status ${version.advice ? '' : 'loading'}"></span>
+          </div>
+          <div id="advice-content" class="advice-content">
+            ${version.advice
+        ? `<p class="advice-text">${version.advice}</p>`
+        : '<div class="advice-loading"><span class="loading-spinner"></span>正在生成点评...</div>'
+      }
+          </div>
+        </div>
+
         <div class="dishes-section">
           <div class="dishes-title">食物明细</div>
           <div id="diet-dishes-container"></div>
@@ -823,10 +908,52 @@ const Dashboard = {
           <textarea id="additional-note" class="note-input" placeholder="补充或修正说明...">${currentNote}</textarea>
         </div>
 
-        <div id="advice-section" class="advice-section ${version.advice ? '' : 'hidden'}">
-          <div class="dishes-title">AI 建议</div>
-          <p class="advice-text" id="advice-text">${version.advice || ''}</p>
+        ${data.capturedLabels && data.capturedLabels.length > 0 ? `
+        <div class="labels-section">
+          <div class="labels-header" onclick="Dashboard.toggleLabelsSection()">
+            <div class="dishes-title">🏷️ 识别到的营养标签 (${data.capturedLabels.length})</div>
+            <span class="labels-toggle" id="labels-toggle-icon">▼</span>
+          </div>
+          <div id="labels-content" class="labels-content collapsed">
+            ${data.capturedLabels.map((lb, idx) => `
+              <div class="label-card" data-label-index="${idx}">
+                <div class="label-edit-row">
+                  <div class="label-edit-field label-edit-primary">
+                    <label>产品名称</label>
+                    <input type="text" class="label-input" value="${lb.productName}" placeholder="产品名称" oninput="Dashboard.updateLabel(${idx}, 'productName', this.value)">
+                  </div>
+                  <div class="label-edit-field">
+                    <label>品牌</label>
+                    <input type="text" class="label-input" value="${lb.brand}" placeholder="品牌" oninput="Dashboard.updateLabel(${idx}, 'brand', this.value)">
+                  </div>
+                </div>
+                <div class="label-edit-row">
+                  <div class="label-edit-field">
+                    <label>规格/口味</label>
+                    <input type="text" class="label-input" value="${lb.variant}" placeholder="如：无糖/低脂" oninput="Dashboard.updateLabel(${idx}, 'variant', this.value)">
+                  </div>
+                  <div class="label-edit-field">
+                    <label>每份</label>
+                    <input type="text" class="label-input label-input-sm" value="${lb.servingSize}" placeholder="100g" oninput="Dashboard.updateLabel(${idx}, 'servingSize', this.value)">
+                  </div>
+                </div>
+                <div class="label-macros-display">
+                  <span class="label-macro"><span class="k">能量</span><span class="v">${Math.round(lb.energyKjPerServing)} kJ</span></span>
+                  <span class="label-macro"><span class="k">蛋白</span><span class="v">${lb.proteinGPerServing}g</span></span>
+                  <span class="label-macro"><span class="k">脂肪</span><span class="v">${lb.fatGPerServing}g</span></span>
+                  <span class="label-macro"><span class="k">碳水</span><span class="v">${lb.carbsGPerServing}g</span></span>
+                  <span class="label-macro"><span class="k">钠</span><span class="v">${lb.sodiumMgPerServing}mg</span></span>
+                  ${lb.fiberGPerServing > 0 ? `<span class="label-macro"><span class="k">纤维</span><span class="v">${lb.fiberGPerServing}g</span></span>` : ''}
+                </div>
+                <div class="label-edit-field label-edit-full">
+                  <label>备注</label>
+                  <input type="text" class="label-input" value="${lb.customNote}" placeholder="如：密度 1.033, 实测数据等" oninput="Dashboard.updateLabel(${idx}, 'customNote', this.value)">
+                </div>
+              </div>
+            `).join('')}
+          </div>
         </div>
+        ` : ''}
       </div>
     `;
 
@@ -1078,7 +1205,7 @@ const Dashboard = {
                         <td><input type="number" class="cell-input num" value="${ing.macros?.fiber_g ?? 0}" min="0" step="0.1" ${dis} oninput="Dashboard.updateIngredient(${i}, ${j}, 'fiber_g', this.value)"></td>
                         <td><input type="number" class="cell-input num" value="${ing.macros?.sodium_mg ?? 0}" min="0" step="1" ${dis} oninput="Dashboard.updateIngredient(${i}, ${j}, 'sodium_mg', this.value)"></td>
                         <td><input type="number" class="cell-input num" value="${ing.weight_g ?? 0}" min="0" step="0.1" ${dis} oninput="Dashboard.updateIngredient(${i}, ${j}, 'weight_g', this.value)"></td>
-                        <td><span class="diet-level-tag">AI</span></td>
+                        <td><button class="scale-toggle-btn ${ing._proportionalScale ? 'active' : ''}" onclick="Dashboard.toggleProportionalScale(${i}, ${j})" title="${ing._proportionalScale ? '比例模式：修改重量会等比调整营养素' : '独立模式：点击开启比例联动'}">${ing._proportionalScale ? '⚖' : '⚖'}</button></td>
                       </tr>
                     `;
       }).join('')}
@@ -1121,9 +1248,12 @@ const Dashboard = {
           const ie = this.formatEnergyFromMacros(ing.macros?.protein_g, ing.macros?.fat_g, ing.macros?.carbs_g);
           return `
                 <div class="keep-item" style="border-bottom: none; padding: 10px 0 6px 0;">
-                  <div class="keep-main" style="gap: 8px;">
-                    <span class="keep-sub">${ing.name_zh || ''}</span>
-                    <span class="keep-details"><span>能量 ${ie} ${unit}</span></span>
+                  <div class="keep-main" style="gap: 8px; justify-content: space-between;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                      <span class="keep-sub">${ing.name_zh || ''}</span>
+                      <span class="keep-details"><span>能量 ${ie} ${unit}</span></span>
+                    </div>
+                    <button class="scale-toggle-btn ${ing._proportionalScale ? 'active' : ''}" onclick="Dashboard.toggleProportionalScale(${i}, ${j})" title="${ing._proportionalScale ? '比例模式' : '独立模式'}">${ing._proportionalScale ? '⚖' : '⚖'}</button>
                   </div>
                 </div>
                 <div class="dish-row" style="grid-template-columns: repeat(3, 1fr); gap: 8px; border-bottom: none;">
@@ -1206,11 +1336,45 @@ const Dashboard = {
   },
 
   renderAdvice(adviceText) {
-    const section = document.getElementById('advice-section');
-    const textEl = document.getElementById('advice-text');
-    if (section && textEl) {
-      textEl.textContent = adviceText;
-      section.classList.remove('hidden');
+    const contentEl = document.getElementById('advice-content');
+    const statusEl = document.getElementById('advice-status');
+    if (contentEl) {
+      contentEl.innerHTML = `<p class="advice-text">${adviceText}</p>`;
+    }
+    if (statusEl) {
+      statusEl.className = 'advice-status';
+      statusEl.textContent = '';
+    }
+  },
+
+  renderAdviceError(errorMsg) {
+    const contentEl = document.getElementById('advice-content');
+    const statusEl = document.getElementById('advice-status');
+    if (contentEl) {
+      contentEl.innerHTML = `<div class="advice-error">⚠️ 建议获取失败：${errorMsg}</div>`;
+    }
+    if (statusEl) {
+      statusEl.className = 'advice-status error';
+      statusEl.textContent = '';
+    }
+  },
+
+  // 切换营养标签区域的折叠状态
+  toggleLabelsSection() {
+    const content = document.getElementById('labels-content');
+    const icon = document.getElementById('labels-toggle-icon');
+    if (content && icon) {
+      const isCollapsed = content.classList.contains('collapsed');
+      content.classList.toggle('collapsed');
+      icon.textContent = isCollapsed ? '▲' : '▼';
+    }
+  },
+
+  // 更新营养标签字段
+  updateLabel(index, field, value) {
+    if (this.currentLabels && this.currentLabels[index]) {
+      this.currentLabels[index][field] = value;
+      this.markModified();
     }
   },
 
@@ -1236,10 +1400,36 @@ const Dashboard = {
     if (!ing) return;
 
     if (field === 'weight_g') {
-      ing.weight_g = parseFloat(value) || 0;
+      const newWeight = parseFloat(value) || 0;
+      const oldWeight = ing.weight_g || 0;
+
+      // 如果开启了等比缩放且有密度数据，按比例调整所有营养素
+      if (ing._proportionalScale && ing._density && newWeight > 0) {
+        ing.macros.protein_g = Math.round(ing._density.protein_per_g * newWeight * 100) / 100;
+        ing.macros.fat_g = Math.round(ing._density.fat_per_g * newWeight * 100) / 100;
+        ing.macros.carbs_g = Math.round(ing._density.carbs_per_g * newWeight * 100) / 100;
+        ing.macros.sodium_mg = Math.round(ing._density.sodium_per_g * newWeight * 100) / 100;
+        ing.macros.fiber_g = Math.round(ing._density.fiber_per_g * newWeight * 100) / 100;
+      }
+      ing.weight_g = newWeight;
     } else {
       ing.macros = ing.macros || {};
       ing.macros[field] = parseFloat(value) || 0;
+
+      // 如果修改了营养素，更新密度缓存（以便后续等比缩放使用新比例）
+      if (ing.weight_g > 0) {
+        ing._density = ing._density || {};
+        const fieldToDensity = {
+          'protein_g': 'protein_per_g',
+          'fat_g': 'fat_per_g',
+          'carbs_g': 'carbs_per_g',
+          'sodium_mg': 'sodium_per_g',
+          'fiber_g': 'fiber_per_g',
+        };
+        if (fieldToDensity[field]) {
+          ing._density[fieldToDensity[field]] = ing.macros[field] / ing.weight_g;
+        }
+      }
     }
 
     this.recalculateDietSummary(true);
@@ -1251,6 +1441,30 @@ const Dashboard = {
     // 默认折叠：undefined 视为 true
     const next = curr === false ? true : false;
     this.dietIngredientsCollapsed[dishId] = next;
+    this.renderDietDishes();
+  },
+
+  // 切换成分的等比缩放开关
+  toggleProportionalScale(dishIndex, ingIndex) {
+    const dish = this.currentDishes?.[dishIndex];
+    if (!dish || dish.source !== 'ai') return;
+    const ing = dish.ingredients?.[ingIndex];
+    if (!ing) return;
+
+    // 切换状态
+    ing._proportionalScale = !ing._proportionalScale;
+
+    // 如果开启且没有密度数据，尝试计算
+    if (ing._proportionalScale && !ing._density && ing.weight_g > 0) {
+      ing._density = {
+        protein_per_g: (ing.macros?.protein_g || 0) / ing.weight_g,
+        fat_per_g: (ing.macros?.fat_g || 0) / ing.weight_g,
+        carbs_per_g: (ing.macros?.carbs_g || 0) / ing.weight_g,
+        sodium_per_g: (ing.macros?.sodium_mg || 0) / ing.weight_g,
+        fiber_per_g: (ing.macros?.fiber_g || 0) / ing.weight_g,
+      };
+    }
+
     this.renderDietDishes();
   },
 
@@ -1420,6 +1634,21 @@ const Dashboard = {
       };
     });
 
+    // 收集编辑后的营养标签
+    const editedLabels = (this.currentLabels || []).map(lb => ({
+      product_name: lb.productName || '',
+      brand: lb.brand || '',
+      variant: lb.variant || '',
+      serving_size: lb.servingSize || '100g',
+      energy_kj_per_serving: lb.energyKjPerServing || 0,
+      protein_g_per_serving: lb.proteinGPerServing || 0,
+      fat_g_per_serving: lb.fatGPerServing || 0,
+      carbs_g_per_serving: lb.carbsGPerServing || 0,
+      sodium_mg_per_serving: lb.sodiumMgPerServing || 0,
+      fiber_g_per_serving: lb.fiberGPerServing || 0,
+      custom_note: lb.customNote || '',
+    }));
+
     return {
       meal_summary: {
         meal_name: mealName,
@@ -1432,6 +1661,7 @@ const Dashboard = {
         total_sodium_mg: Number(totals.totalSodiumMg) || 0,
       },
       dishes: editedDishes,
+      captured_labels: editedLabels,
     };
   },
 

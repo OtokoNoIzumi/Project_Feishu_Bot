@@ -868,6 +868,47 @@
     font-size: 0.875rem;
 }
 
+/* 等比缩放开关按钮 */
+.scale-toggle-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    background: var(--color-bg-tertiary);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    color: var(--color-text-muted);
+    font-size: 0.875rem;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    filter: grayscale(0.8);
+    opacity: 0.6;
+}
+
+.scale-toggle-btn:hover {
+    background: var(--color-bg-glass);
+    border-color: var(--color-accent-primary);
+    filter: grayscale(0.3);
+    opacity: 0.9;
+}
+
+.scale-toggle-btn.active {
+    background: rgba(99, 102, 241, 0.15);
+    border-color: var(--color-accent-primary);
+    color: var(--color-accent-primary);
+    filter: grayscale(0);
+    opacity: 1;
+}
+
+/* 表格内的等比缩放按钮尺寸统一 */
+.ingredients-table td:nth-child(9) .scale-toggle-btn {
+    width: 24px;
+    height: 24px;
+    font-size: 0.75rem;
+}
+
 /* 用户自定义菜式表格：添加外框与 AI 表格一致 */
 .diet-user-dishes-table {
     margin-top: var(--spacing-md);
@@ -916,6 +957,264 @@
 .diet-summary-item .u {
     font-size: 0.75rem;
     color: var(--color-text-secondary);
+}
+
+/* AI 营养点评区域 */
+.advice-section {
+    margin-top: var(--spacing-lg);
+    padding: var(--spacing-md);
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.08) 0%, rgba(139, 92, 246, 0.05) 100%);
+    border: 1px solid rgba(99, 102, 241, 0.2);
+    border-radius: var(--radius-lg);
+}
+
+.advice-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-sm);
+}
+
+.advice-header .dishes-title {
+    margin-bottom: 0;
+}
+
+.advice-status {
+    font-size: 0.75rem;
+}
+
+.advice-status.loading::after {
+    content: '生成中...';
+    color: var(--color-text-muted);
+    animation: pulse 1.5s ease-in-out infinite;
+}
+
+.advice-status.error::after {
+    content: '失败';
+    color: var(--color-error);
+}
+
+.advice-content {
+    margin-top: var(--spacing-sm);
+}
+
+.advice-text {
+    font-size: 0.875rem;
+    line-height: 1.7;
+    color: var(--color-text-primary);
+    margin: 0;
+}
+
+.advice-loading {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    color: var(--color-text-muted);
+    font-size: 0.875rem;
+}
+
+.loading-spinner {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border: 2px solid var(--color-border);
+    border-top-color: var(--color-accent-primary);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+@keyframes pulse {
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.5;
+    }
+}
+
+.advice-error {
+    font-size: 0.875rem;
+    color: var(--color-warning);
+    padding: var(--spacing-sm);
+    background: rgba(245, 158, 11, 0.1);
+    border-radius: var(--radius-sm);
+}
+
+/* 识别到的营养标签区域 */
+.labels-section {
+    margin-top: var(--spacing-lg);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    background: var(--color-bg-secondary);
+    overflow: hidden;
+}
+
+.labels-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--spacing-md);
+    cursor: pointer;
+    background: var(--color-bg-tertiary);
+    transition: background 0.15s ease;
+}
+
+.labels-header:hover {
+    background: var(--color-bg-glass);
+}
+
+.labels-header .dishes-title {
+    margin-bottom: 0;
+}
+
+.labels-toggle {
+    font-size: 0.75rem;
+    color: var(--color-text-muted);
+    transition: transform 0.2s ease;
+}
+
+.labels-content {
+    padding: var(--spacing-md);
+}
+
+.labels-content.collapsed {
+    display: none;
+}
+
+.label-card {
+    padding: var(--spacing-md);
+    background: var(--color-bg-tertiary);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    margin-bottom: var(--spacing-sm);
+}
+
+.label-card:last-child {
+    margin-bottom: 0;
+}
+
+.label-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--spacing-sm);
+}
+
+.label-name {
+    font-weight: 600;
+    font-size: 0.875rem;
+}
+
+.label-serving {
+    font-size: 0.75rem;
+    color: var(--color-text-muted);
+    padding: 2px 8px;
+    background: var(--color-bg-secondary);
+    border-radius: var(--radius-sm);
+}
+
+.label-macros {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.label-macro {
+    display: inline-flex;
+    gap: 4px;
+    padding: 4px 8px;
+    background: var(--color-bg-secondary);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-full);
+    font-size: 0.75rem;
+}
+
+.label-macro .k {
+    color: var(--color-text-muted);
+}
+
+.label-macro .v {
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
+.label-note {
+    margin-top: var(--spacing-sm);
+    font-size: 0.8rem;
+    color: var(--color-text-secondary);
+    font-style: italic;
+}
+
+/* 营养标签编辑区域 */
+.label-edit-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--spacing-sm);
+    margin-bottom: var(--spacing-sm);
+}
+
+.label-edit-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.label-edit-field label {
+    font-size: 0.7rem;
+    color: var(--color-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.label-edit-field.label-edit-primary {
+    flex: 1.5;
+}
+
+.label-edit-field.label-edit-full {
+    margin-top: var(--spacing-sm);
+}
+
+.label-input {
+    width: 100%;
+    padding: 6px 10px;
+    background: var(--color-bg-secondary);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    color: var(--color-text-primary);
+    font-size: 0.875rem;
+}
+
+.label-input:focus {
+    border-color: var(--color-accent-primary);
+    outline: none;
+}
+
+.label-input::placeholder {
+    color: var(--color-text-muted);
+    font-size: 0.8rem;
+}
+
+.label-input-sm {
+    max-width: 80px;
+}
+
+.label-macros-display {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: var(--spacing-sm);
+    background: var(--color-bg-secondary);
+    border-radius: var(--radius-sm);
+    margin-bottom: var(--spacing-sm);
 }
 
 /* 可编辑菜品列表 */
