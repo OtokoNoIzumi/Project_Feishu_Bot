@@ -49,6 +49,7 @@ class DietAnalyzeUsecase:
         prompt = build_diet_prompt(
             user_note=user_note, recent_products_str=recent_products_str
         )
+        print('test-prompt', prompt)
 
         llm_result = await self.client.generate_json_async(
             prompt=prompt, images=images_bytes, schema=DIET_LLM_SCHEMA
