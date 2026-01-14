@@ -115,7 +115,23 @@ const NutritionChartModule = {
 
                     // 目标
                     if (info.targetValue > 0) {
-                        html += `<div style="margin-bottom:6px;font-size:12px;color:#94a3b8">目标：${info.targetValue} ${info.unit}</div>`;
+                        const total = (Number(info.todayValue) || 0) + (Number(info.thisMealValue) || 0);
+                        const pct = info.targetValue > 0 ? Math.round((total / info.targetValue) * 100) : 0;
+
+                        // 脂肪、钠：显示“还剩余/已超出”；其余：显示“已摄入”
+                        const isRemainWording = (catName === '脂肪' || catName === '钠');
+                        let pctText = '';
+                        if (isRemainWording) {
+                            if (pct >= 100) {
+                                pctText = `已超出 ${pct - 100}%`;
+                            } else {
+                                pctText = `还剩余 ${100 - pct}%`;
+                            }
+                        } else {
+                            pctText = `已摄入 ${pct}%`;
+                        }
+
+                        html += `<div style="margin-bottom:6px;font-size:12px;color:#94a3b8">目标：${info.targetValue} ${info.unit}（${pctText}）</div>`;
                     }
 
                     // 本次

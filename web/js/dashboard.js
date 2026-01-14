@@ -436,19 +436,13 @@ const Dashboard = {
     if (!section) return;
 
     section.classList.toggle('collapsed');
-
-    // 保存折叠状态到 sessionStorage（同会话保持）
-    const isCollapsed = section.classList.contains('collapsed');
-    sessionStorage.setItem('dk_advice_collapsed', isCollapsed ? '1' : '0');
   },
 
   // 恢复营养点评折叠状态
   restoreAdviceState() {
-    const collapsed = sessionStorage.getItem('dk_advice_collapsed') === '1';
+    // 需求：默认展开；仅用户手动点击时收起，不做持久化记忆
     const section = document.getElementById('advice-section');
-    if (collapsed && section) {
-      section.classList.add('collapsed');
-    }
+    if (section) section.classList.remove('collapsed');
   },
 
   // 营养进度折叠切换（右上角按钮）
