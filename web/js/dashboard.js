@@ -161,22 +161,19 @@ const Dashboard = {
     return u === 'kcal' ? 'kcal' : 'kJ';
   },
 
-  // kcal -> kJ
+  // kcal -> kJ (委托给 EnergyUtils)
   kcalToKJ(kcal) {
-    return (Number(kcal) || 0) * 4.184;
+    return EnergyUtils.kcalToKJ(kcal);
   },
 
-  // kJ -> kcal
+  // kJ -> kcal (委托给 EnergyUtils)
   kJToKcal(kj) {
-    return (Number(kj) || 0) / 4.184;
+    return EnergyUtils.kJToKcal(kj);
   },
 
-  // 宏量 -> kcal（P/C=4,F=9）
+  // 宏量 -> kcal (委托给 EnergyUtils)
   macrosToKcal(proteinG, fatG, carbsG) {
-    const p = Number(proteinG) || 0;
-    const f = Number(fatG) || 0;
-    const c = Number(carbsG) || 0;
-    return p * 4 + f * 9 + c * 4;
+    return EnergyUtils.macrosToKcal(proteinG, fatG, carbsG);
   },
 
   setResultPanelOpen(open) {

@@ -38,11 +38,13 @@ def _demo_context() -> Dict[str, Any]:
             "sodium_mg_target": 2000.0,
         },
         "today_so_far": {
-            "consumed_energy_kj": 2646,
-            "consumed_protein_g": 43.3,
-            "consumed_fat_g": 22.7,
-            "consumed_carbs_g": 67.5,
-            "activity_burn_kj": 500,
+            "consumed_energy_kj": 0,
+            "consumed_protein_g": 0,
+            "consumed_fat_g": 0,
+            "consumed_carbs_g": 0,
+            "consumed_sodium_mg": 0,
+            "consumed_fiber_g": 0,
+            "activity_burn_kj": 0,
         },
         "meta": {"source": "demo_fallback"},
     }
