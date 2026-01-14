@@ -24,26 +24,29 @@ const EnergyUtils = {
         return p * 4 + f * 9 + c * 4;
     },
 
-    // 从宏量计算能量并格式化显示
+    // 从宏量计算能量并格式化显示（返回 String）
     formatEnergyFromMacros(proteinG, fatG, carbsG, unit) {
         const kcal = this.macrosToKcal(proteinG, fatG, carbsG);
         if (unit === 'kcal') {
-            return Math.round(kcal);
+            return String(Math.round(kcal));
         }
-        return Math.round(this.kcalToKJ(kcal));
+        return String(Math.round(this.kcalToKJ(kcal)));
     },
 
     // 计算三大宏量的能量占比
     getMacroEnergyRatio(proteinG, fatG, carbsG) {
-        const pKcal = (Number(proteinG) || 0) * 4;
-        const fKcal = (Number(fatG) || 0) * 9;
-        const cKcal = (Number(carbsG) || 0) * 4;
-        const total = pKcal + fKcal + cKcal;
-        if (total === 0) return { protein: 0, fat: 0, carbs: 0 };
+        const p = (Number(proteinG) || 0) * 4;
+        const f = (Number(fatG) || 0) * 9;
+        const c = (Number(carbsG) || 0) * 4;
+        const t = p + f + c;
+        if (t <= 0) {
+            return { total_kcal: 0, p_pct: 0, f_pct: 0, c_pct: 0 };
+        }
         return {
-            protein: Math.round((pKcal / total) * 100),
-            fat: Math.round((fKcal / total) * 100),
-            carbs: Math.round((cKcal / total) * 100),
+            total_kcal: t,
+            p_pct: Math.round((p / t) * 100),
+            f_pct: Math.round((f / t) * 100),
+            c_pct: Math.round((c / t) * 100),
         };
     },
 };

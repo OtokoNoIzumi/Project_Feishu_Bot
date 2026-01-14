@@ -161,20 +161,10 @@ const Dashboard = {
     return u === 'kcal' ? 'kcal' : 'kJ';
   },
 
-  // kcal -> kJ (委托给 EnergyUtils)
-  kcalToKJ(kcal) {
-    return EnergyUtils.kcalToKJ(kcal);
-  },
-
-  // kJ -> kcal (委托给 EnergyUtils)
-  kJToKcal(kj) {
-    return EnergyUtils.kJToKcal(kj);
-  },
-
-  // 宏量 -> kcal (委托给 EnergyUtils)
-  macrosToKcal(proteinG, fatG, carbsG) {
-    return EnergyUtils.macrosToKcal(proteinG, fatG, carbsG);
-  },
+  // 能量转换函数 - 委托给 EnergyUtils（保持 this.xxx() 调用兼容）
+  kcalToKJ: EnergyUtils.kcalToKJ,
+  kJToKcal: EnergyUtils.kJToKcal,
+  macrosToKcal: EnergyUtils.macrosToKcal,
 
   setResultPanelOpen(open) {
     this.isResultPanelOpen = Boolean(open);
@@ -1320,11 +1310,9 @@ const Dashboard = {
     `;
   },
 
+  // 调用 EnergyUtils，自动传入当前单位
   formatEnergyFromMacros(proteinG, fatG, carbsG) {
-    const kcal = this.macrosToKcal(proteinG, fatG, carbsG);
-    const unit = this.getEnergyUnit();
-    if (unit === 'kcal') return String(Math.round(kcal));
-    return String(Math.round(this.kcalToKJ(kcal)));
+    return EnergyUtils.formatEnergyFromMacros(proteinG, fatG, carbsG, this.getEnergyUnit());
   },
 
   toggleDishEnabled(index, enabled) {
@@ -1728,61 +1716,20 @@ const Dashboard = {
     };
   },
 
-  getMacroEnergyRatio(proteinG, fatG, carbsG) {
-    const p = (Number(proteinG) || 0) * 4;
-    const f = (Number(fatG) || 0) * 9;
-    const c = (Number(carbsG) || 0) * 4;
-    const t = p + f + c;
-    if (t <= 0) {
-      return { total_kcal: 0, p_pct: 0, f_pct: 0, c_pct: 0 };
-    }
-    return {
-      total_kcal: t,
-      p_pct: Math.round((p / t) * 100),
-      f_pct: Math.round((f / t) * 100),
-      c_pct: Math.round((c / t) * 100),
-    };
-  },
+  // 委托给 EnergyUtils
+  getMacroEnergyRatio: EnergyUtils.getMacroEnergyRatio,
 
   // ========== Profile（前端先行） ==========
-
-  getDefaultProfile() {
-    return {
-      timezone: 'Asia/Shanghai',
-      diet: {
-        energy_unit: 'kJ',
-        goal: 'fat_loss',
-        daily_energy_kj_target: 6273,
-        protein_g_target: 110,
-        fat_g_target: 50,
-        carbs_g_target: 150,
-        sodium_mg_target: 2000,
-      },
-      keep: {
-        weight_kg_target: 0,
-        body_fat_pct_target: 0,
-        dimensions_cm_target: {
-          chest_cm: 0,
-          waist_cm: 0,
-          hips_cm: 0,
-        }
-      }
-    };
-  },
+  // 委托给 ProfileUtils（保持 this.xxx() 调用兼容）
+  getDefaultProfile: ProfileUtils.getDefaultProfile,
 
   loadProfile() {
-    try {
-      const raw = localStorage.getItem('dk_profile_v1');
-      if (!raw) return this.getDefaultProfile();
-      const parsed = JSON.parse(raw);
-      return Object.assign(this.getDefaultProfile(), parsed || {});
-    } catch (e) {
-      return this.getDefaultProfile();
-    }
+    this.profile = ProfileUtils.loadFromStorage();
+    return this.profile;
   },
 
   saveProfileLocal(profile) {
-    localStorage.setItem('dk_profile_v1', JSON.stringify(profile));
+    ProfileUtils.saveToStorage(profile);
     this.profile = profile;
   },
 
@@ -2039,31 +1986,9 @@ const Dashboard = {
     `;
   },
 
-  renderTimezoneOptions(selected) {
-    const zones = [
-      { value: 'Asia/Shanghai', label: '中国（Asia/Shanghai）' },
-      { value: 'Asia/Hong_Kong', label: '中国香港（Asia/Hong_Kong）' },
-      { value: 'Asia/Taipei', label: '中国台北（Asia/Taipei）' },
-      { value: 'Asia/Tokyo', label: '日本（Asia/Tokyo）' },
-      { value: 'Asia/Singapore', label: '新加坡（Asia/Singapore）' },
-      { value: 'Europe/London', label: '英国（Europe/London）' },
-      { value: 'Europe/Berlin', label: '德国（Europe/Berlin）' },
-      { value: 'America/Los_Angeles', label: '美国西海岸（America/Los_Angeles）' },
-      { value: 'America/New_York', label: '美国东海岸（America/New_York）' },
-    ];
-    return zones.map(z => `<option value="${z.value}" ${z.value === selected ? 'selected' : ''}>${z.label}</option>`).join('');
-  },
-
-  renderDietGoalOptions(selected) {
-    const goals = [
-      { value: 'fat_loss', label: '减脂' },
-      { value: 'maintain', label: '维持' },
-      { value: 'muscle_gain', label: '增肌' },
-      { value: 'health', label: '健康' },
-    ];
-    const sel = selected || 'fat_loss';
-    return goals.map(g => `<option value="${g.value}" ${g.value === sel ? 'selected' : ''}>${g.label}</option>`).join('');
-  },
+  // 委托给 ProfileUtils
+  renderTimezoneOptions: ProfileUtils.renderTimezoneOptions,
+  renderDietGoalOptions: ProfileUtils.renderDietGoalOptions,
 
   async saveProfile() {
     const getNum = (id) => parseFloat(document.getElementById(id)?.value) || 0;
