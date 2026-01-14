@@ -19,6 +19,7 @@ from apps.common.utils import (
     read_upload_files,
 )
 from apps.deps import get_current_user_id, require_internal_auth
+from apps.diet.context_provider import get_context_bundle
 from apps.diet.usecases.advice import DietAdviceUsecase
 from apps.diet.usecases.analyze import DietAnalyzeUsecase
 from apps.llm_runtime import get_global_semaphore, get_model_limiter
@@ -136,6 +137,10 @@ def build_diet_router(settings: BackendSettings) -> APIRouter:
                 # pylint: disable=broad-exception-caught
                 except Exception as e:
                     saved_status = {"status": "error", "detail": str(e)}
+
+            # 附带 context_bundle（today_so_far + user_target）供前端图表使用
+            context_bundle = get_context_bundle(user_id=user_id)
+            result["context"] = context_bundle
 
             return DietAnalyzeResponse(
                 success=True, result=result, saved_status=saved_status

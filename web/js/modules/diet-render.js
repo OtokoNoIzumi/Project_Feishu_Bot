@@ -1,6 +1,6 @@
 /**
  * Diet 渲染模块
- * 
+ *
  * 负责 Diet 分析结果的 HTML 渲染
  * 包括：桌面端表格、移动端列表、营养标签区域等
  * 挂载到 Dashboard 实例运行
@@ -24,6 +24,12 @@ const DietRenderModule = {
         // 获取当前版本的 user_note
         const currentNote = version.userNote || session.text || '';
 
+        const unit = this.getEnergyUnit();
+        // currentDietTotals.totalEnergy 内部统一为 kcal，这里只做显示换算
+        const displayTotalEnergy = unit === 'kcal'
+            ? (Number(this.currentDietTotals.totalEnergy) || 0)
+            : Math.round(this.kcalToKJ(Number(this.currentDietTotals.totalEnergy) || 0));
+
         this.el.resultContent.innerHTML = `
       <div class="result-card">
         <div class="result-card-header">
@@ -41,46 +47,43 @@ const DietRenderModule = {
           ` : ''}
         </div>
 
-        <div class="nutrition-summary">
+        <div class="nutrition-summary-compact">
           <div class="summary-energy">
             <div class="value">
-              <span id="sum-total-energy">${this.currentDietTotals.totalEnergy}</span>
-              <span id="sum-energy-unit">${this.getEnergyUnit()}</span>
+              <span id="sum-total-energy">${displayTotalEnergy}</span>
+              <span id="sum-energy-unit">${unit}</span>
             </div>
-            <div class="label">总能量（自动加总）</div>
+            <div class="label">本次总能量</div>
           </div>
-          <div class="summary-macros">
-            <div class="summary-macro-item">
-              <div class="value"><span id="sum-total-protein">${this.currentDietTotals.totalProtein}</span> g</div>
-              <div class="label">蛋白质</div>
-            </div>
-            <div class="summary-macro-item">
-              <div class="value"><span id="sum-total-fat">${this.currentDietTotals.totalFat}</span> g</div>
-              <div class="label">脂肪</div>
-            </div>
-            <div class="summary-macro-item">
-              <div class="value"><span id="sum-total-carb">${this.currentDietTotals.totalCarb}</span> g</div>
-              <div class="label">碳水</div>
-            </div>
-            <div class="summary-macro-item">
-              <div class="value"><span id="sum-total-fiber">${this.currentDietTotals.totalFiber}</span> g</div>
-              <div class="label">膳食纤维</div>
-            </div>
-            <div class="summary-macro-item">
-              <div class="value"><span id="sum-total-sodium">${this.currentDietTotals.totalSodiumMg}</span> mg</div>
-              <div class="label">钠</div>
-            </div>
-            <div class="summary-macro-item">
-              <div class="value"><span id="sum-total-weight">${this.currentDietTotals.totalWeightG}</span> g</div>
-              <div class="label">总重量</div>
-            </div>
+          <div class="summary-macros-inline">
+            <span class="macro-chip"><span class="k">蛋白</span><span class="v" id="sum-total-protein">${this.currentDietTotals.totalProtein}</span>g</span>
+            <span class="macro-chip"><span class="k">脂肪</span><span class="v" id="sum-total-fat">${this.currentDietTotals.totalFat}</span>g</span>
+            <span class="macro-chip"><span class="k">碳水</span><span class="v" id="sum-total-carb">${this.currentDietTotals.totalCarb}</span>g</span>
+            <span class="macro-chip"><span class="k">纤维</span><span class="v" id="sum-total-fiber">${this.currentDietTotals.totalFiber}</span>g</span>
+            <span class="macro-chip"><span class="k">钠</span><span class="v" id="sum-total-sodium">${this.currentDietTotals.totalSodiumMg}</span>mg</span>
+            <span class="macro-chip"><span class="k">重量</span><span class="v" id="sum-total-weight">${this.currentDietTotals.totalWeightG}</span>g</span>
           </div>
         </div>
+
+        <div id="nutrition-section" class="nutrition-chart-container">
+          <div class="nutrition-chart-header">
+            <span class="nutrition-chart-title">📊 营养进度</span>
+            <div class="nutrition-chart-actions">
+              <span class="nutrition-chart-hint">点击图例可切换显示</span>
+              <button class="section-toggle-btn" id="nutrition-toggle-btn" onclick="Dashboard.toggleNutritionSection(event)" title="折叠/展开" aria-label="折叠/展开">▼</button>
+            </div>
+          </div>
+          <div id="nutrition-chart" class="nutrition-chart-canvas"></div>
+        </div>
+
 
         <div id="advice-section" class="advice-section">
           <div class="advice-header">
             <div class="dishes-title">💡 AI 营养点评</div>
-            <span id="advice-status" class="advice-status ${version.advice ? '' : 'loading'}"></span>
+            <div class="advice-header-right">
+              <span id="advice-status" class="advice-status ${version.advice ? '' : 'loading'}"></span>
+              <button class="section-toggle-btn" id="advice-toggle-btn" onclick="Dashboard.toggleAdviceSection(event)" title="折叠/展开" aria-label="折叠/展开">▼</button>
+            </div>
           </div>
           <div id="advice-content" class="advice-content">
             ${version.advice
@@ -153,6 +156,27 @@ const DietRenderModule = {
         this.renderDietDishes();
         this.el.resultTitle.textContent = '饮食分析结果';
         this.updateStatus(session.isSaved ? 'saved' : '');
+
+        // 渲染营养图表
+        if (typeof NutritionChartModule !== 'undefined') {
+            // 从解析数据中获取 context（today_so_far + user_target）
+            if (data.context) {
+                NutritionChartModule.setContext(data.context);
+            }
+            NutritionChartModule.render(
+                'nutrition-chart',
+                this.currentDietTotals,
+                this.getEnergyUnit()
+            );
+        }
+
+        // 恢复营养进度折叠状态（需要图表初始化后再折叠，避免容器高度为 0）
+        if (typeof this.restoreNutritionState === 'function') {
+            this.restoreNutritionState();
+        }
+
+        // 恢复营养点评折叠状态
+        this.restoreAdviceState();
     },
 
     renderDietDishes() {
@@ -233,6 +257,9 @@ const DietRenderModule = {
         const totals = this.getDishTotals(d);
         const energyText = this.formatEnergyFromMacros(totals.protein, totals.fat, totals.carb);
 
+        const r1 = (x) => Math.round((Number(x) || 0) * 10) / 10;
+        const r0 = (x) => Math.round(Number(x) || 0);
+
         const ratio = this.getMacroEnergyRatio(totals.protein, totals.fat, totals.carb);
         const ratioHtml = ratio.total_kcal > 0
             ? `<span class="diet-chip">P ${ratio.p_pct}%</span><span class="diet-chip">F ${ratio.f_pct}%</span><span class="diet-chip">C ${ratio.c_pct}%</span>`
@@ -250,12 +277,12 @@ const DietRenderModule = {
         <input type="checkbox" ${enabled ? 'checked' : ''} onchange="Dashboard.toggleDishEnabled(${i}, this.checked)">
         <div class="diet-dish-name">${d.name}</div>
         <span class="diet-stat"><span class="k">能量</span><span class="v">${energyText} ${unit}</span></span>
-        <span class="diet-stat"><span class="k">蛋白</span><span class="v">${totals.protein}g</span></span>
-        <span class="diet-stat"><span class="k">脂肪</span><span class="v">${totals.fat}g</span></span>
-        <span class="diet-stat"><span class="k">碳水</span><span class="v">${totals.carb}g</span></span>
-        <span class="diet-stat"><span class="k">纤维</span><span class="v">${totals.fiber}g</span></span>
-        <span class="diet-stat"><span class="k">钠</span><span class="v">${totals.sodium_mg}mg</span></span>
-        <span class="diet-stat"><span class="k">重量</span><span class="v">${totals.weight}g</span></span>
+        <span class="diet-stat"><span class="k">蛋白</span><span class="v">${r1(totals.protein)}g</span></span>
+        <span class="diet-stat"><span class="k">脂肪</span><span class="v">${r1(totals.fat)}g</span></span>
+        <span class="diet-stat"><span class="k">碳水</span><span class="v">${r1(totals.carb)}g</span></span>
+        <span class="diet-stat"><span class="k">纤维</span><span class="v">${r1(totals.fiber)}g</span></span>
+        <span class="diet-stat"><span class="k">钠</span><span class="v">${r0(totals.sodium_mg)}mg</span></span>
+        <span class="diet-stat"><span class="k">重量</span><span class="v">${r1(totals.weight)}g</span></span>
         <span class="diet-chips">${ratioHtml}</span>
         ${toggleBtnHtml}
       </div>
@@ -328,6 +355,8 @@ const DietRenderModule = {
             const disableInputs = !enabled;
             const canRemove = d.source === 'user';
             const dis = disableInputs ? 'disabled' : '';
+            const r1 = (x) => Math.round((Number(x) || 0) * 10) / 10;
+            const r0 = (x) => Math.round(Number(x) || 0);
 
             // AI：菜式头只读 + ingredients 可编辑
             const collapsed = this.dietIngredientsCollapsed?.[d.id] !== false;
@@ -397,12 +426,12 @@ const DietRenderModule = {
             <div class="keep-item" style="border-bottom:none; padding-bottom: 0;">
               <div class="keep-details" style="gap: 8px;">
                 <span>能量 ${energyText} ${unit}</span>
-                <span>蛋白 ${totals.protein}g</span>
-                <span>脂肪 ${totals.fat}g</span>
-                <span>碳水 ${totals.carb}g</span>
-                <span>纤维 ${totals.fiber}g</span>
-                <span>钠 ${totals.sodium_mg}mg</span>
-                <span>重量 ${totals.weight}g</span>
+                <span>蛋白 ${r1(totals.protein)}g</span>
+                <span>脂肪 ${r1(totals.fat)}g</span>
+                <span>碳水 ${r1(totals.carb)}g</span>
+                <span>纤维 ${r1(totals.fiber)}g</span>
+                <span>钠 ${r0(totals.sodium_mg)}mg</span>
+                <span>重量 ${r1(totals.weight)}g</span>
               </div>
             </div>
 

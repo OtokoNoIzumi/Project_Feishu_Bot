@@ -1,6 +1,6 @@
 /**
  * Diet 编辑模块
- * 
+ *
  * 处理菜品增删改、成分编辑、汇总计算
  * 这些函数会挂载到 Dashboard 上下文执行，this 指向 Dashboard 实例
  */
@@ -190,8 +190,13 @@ const DietEditModule = {
             if (el) el.textContent = v;
         };
 
-        setText('sum-total-energy', this.currentDietTotals.totalEnergy);
-        setText('sum-energy-unit', this.getEnergyUnit());
+        // totalEnergy 内部统一为 kcal，这里按用户选择单位显示
+        const unit = this.getEnergyUnit();
+        const displayTotalEnergy = unit === 'kcal'
+            ? (Number(this.currentDietTotals.totalEnergy) || 0)
+            : Math.round(this.kcalToKJ(Number(this.currentDietTotals.totalEnergy) || 0));
+        setText('sum-total-energy', displayTotalEnergy);
+        setText('sum-energy-unit', unit);
         setText('sum-total-protein', this.currentDietTotals.totalProtein);
         setText('sum-total-fat', this.currentDietTotals.totalFat);
         setText('sum-total-carb', this.currentDietTotals.totalCarb);
@@ -202,6 +207,11 @@ const DietEditModule = {
         const subtitle = document.getElementById('diet-subtitle');
         if (subtitle && this.currentDietMeta) {
             subtitle.textContent = `${dishes.length} 种食物 · ${this.currentDietMeta.dietTime || ''}`;
+        }
+
+        // 同步更新营养图表
+        if (typeof NutritionChartModule !== 'undefined' && NutritionChartModule.chartInstance) {
+            NutritionChartModule.updateCurrentMeal(totals, this.getEnergyUnit());
         }
 
         if (markModified) this.markModified();
@@ -226,10 +236,8 @@ const DietEditModule = {
         const totals = this.currentDietTotals || {};
         const mealName = this.currentDietMeta?.mealName || '饮食记录';
         const dietTime = this.currentDietMeta?.dietTime || '';
-        const unit = this.getEnergyUnit();
-        const totalEnergyKcal = unit === 'kcal'
-            ? (Number(totals.totalEnergy) || 0)
-            : this.kJToKcal(Number(totals.totalEnergy) || 0);
+        // totals.totalEnergy 内部统一为 kcal，不随前端显示单位变化
+        const totalEnergyKcal = Number(totals.totalEnergy) || 0;
 
         const editedDishes = (this.currentDishes || []).filter(d => d.enabled !== false).map(d => {
             // A. AI 识别菜式：保留 ingredients 结构，直接保存“逐成分编辑后的数据”
@@ -324,21 +332,23 @@ const DietEditModule = {
             const fib = sum(x => Number(x.macros?.fiber_g) || 0);
             const na = sum(x => Number(x.macros?.sodium_mg) || 0);
             return {
-                weight: Math.round(w * 10) / 10,
-                protein: Math.round(p * 10) / 10,
-                fat: Math.round(f * 10) / 10,
-                carb: Math.round(c * 10) / 10,
-                fiber: Math.round(fib * 10) / 10,
-                sodium_mg: Math.round(na),
+                // 这里不提前取整：避免“先取整再算能量”导致同一份数据多处显示能量不一致
+                // 取整只在最终渲染/显示时做
+                weight: w,
+                protein: p,
+                fat: f,
+                carb: c,
+                fiber: fib,
+                sodium_mg: na,
             };
         }
         return {
-            weight: Math.round((Number(dish?.weight) || 0) * 10) / 10,
-            protein: Math.round((Number(dish?.protein) || 0) * 10) / 10,
-            fat: Math.round((Number(dish?.fat) || 0) * 10) / 10,
-            carb: Math.round((Number(dish?.carb) || 0) * 10) / 10,
-            fiber: Math.round((Number(dish?.fiber) || 0) * 10) / 10,
-            sodium_mg: Math.round(Number(dish?.sodium_mg) || 0),
+            weight: Number(dish?.weight) || 0,
+            protein: Number(dish?.protein) || 0,
+            fat: Number(dish?.fat) || 0,
+            carb: Number(dish?.carb) || 0,
+            fiber: Number(dish?.fiber) || 0,
+            sodium_mg: Number(dish?.sodium_mg) || 0,
         };
     },
 

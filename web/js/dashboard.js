@@ -425,6 +425,61 @@ const Dashboard = {
       statusEl.className = 'advice-status';
       statusEl.textContent = '';
     }
+    // 恢复折叠状态
+    this.restoreAdviceState();
+  },
+
+  // 营养点评折叠切换
+  toggleAdviceSection(event) {
+    if (event && typeof event.stopPropagation === 'function') event.stopPropagation();
+    const section = document.getElementById('advice-section');
+    if (!section) return;
+
+    section.classList.toggle('collapsed');
+
+    // 保存折叠状态到 sessionStorage（同会话保持）
+    const isCollapsed = section.classList.contains('collapsed');
+    sessionStorage.setItem('dk_advice_collapsed', isCollapsed ? '1' : '0');
+  },
+
+  // 恢复营养点评折叠状态
+  restoreAdviceState() {
+    const collapsed = sessionStorage.getItem('dk_advice_collapsed') === '1';
+    const section = document.getElementById('advice-section');
+    if (collapsed && section) {
+      section.classList.add('collapsed');
+    }
+  },
+
+  // 营养进度折叠切换（右上角按钮）
+  toggleNutritionSection(event) {
+    if (event && typeof event.stopPropagation === 'function') event.stopPropagation();
+    const section = document.getElementById('nutrition-section');
+    if (!section) return;
+
+    section.classList.toggle('collapsed');
+    const isCollapsed = section.classList.contains('collapsed');
+    sessionStorage.setItem('dk_nutrition_collapsed', isCollapsed ? '1' : '0');
+
+    // 展开后 ECharts 需要 resize
+    if (!isCollapsed && typeof NutritionChartModule !== 'undefined' && NutritionChartModule.chartInstance) {
+      setTimeout(() => {
+        try {
+          NutritionChartModule.chartInstance.resize();
+        } catch (e) {
+          // ignore
+        }
+      }, 60);
+    }
+  },
+
+  // 恢复营养进度折叠状态
+  restoreNutritionState() {
+    const collapsed = sessionStorage.getItem('dk_nutrition_collapsed') === '1';
+    const section = document.getElementById('nutrition-section');
+    if (collapsed && section) {
+      section.classList.add('collapsed');
+    }
   },
 
   // 简单的 markdown 转 HTML（支持换行、粗体、列表）

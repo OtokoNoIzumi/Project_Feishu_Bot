@@ -529,6 +529,153 @@
     margin-top: 2px;
 }
 
+/* 紧凑型营养汇总（新设计） */
+.nutrition-summary-compact {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    margin-bottom: var(--spacing-md);
+    flex-wrap: wrap;
+}
+
+.nutrition-summary-compact .summary-energy {
+    flex-shrink: 0;
+}
+
+.summary-macros-inline {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    flex: 1;
+}
+
+.macro-chip {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 6px;
+    padding: 6px 12px;
+    background: var(--color-bg-tertiary, rgba(255, 255, 255, 0.05));
+    border: 1px solid var(--color-border, rgba(255, 255, 255, 0.1));
+    border-radius: 999px;
+    /* 完全圆角 */
+    font-size: 0.8rem;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    transition: all 0.2s ease;
+}
+
+.macro-chip:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: var(--color-accent-primary, #6366f1);
+}
+
+.macro-chip .k {
+    color: var(--color-text-muted);
+    font-size: 0.7rem;
+}
+
+.macro-chip .v {
+    font-weight: 600;
+    color: var(--color-text-primary);
+}
+
+/* 营养图表容器 */
+.nutrition-chart-container {
+    margin-bottom: var(--spacing-lg);
+    padding: var(--spacing-md);
+    background: var(--color-bg-tertiary);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+}
+
+.nutrition-chart-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--spacing-sm);
+}
+
+.nutrition-chart-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.section-toggle-btn {
+    width: 24px;
+    height: 24px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    color: var(--color-text-muted);
+    font-size: 0.75rem;
+    line-height: 1;
+    transition: transform 0.2s ease, background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.section-toggle-btn:hover {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: var(--color-border-hover);
+    color: var(--color-text-secondary);
+}
+
+.nutrition-chart-container.collapsed .section-toggle-btn {
+    transform: rotate(-90deg);
+}
+
+.nutrition-chart-container.collapsed .nutrition-chart-canvas {
+    display: none;
+}
+
+.nutrition-chart-title {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--color-text-secondary);
+}
+
+.nutrition-chart-hint {
+    font-size: 0.7rem;
+    color: var(--color-text-muted);
+}
+
+.nutrition-chart-canvas {
+    width: 100%;
+    height: 200px !important;
+    min-height: 200px;
+}
+
+.nutrition-chart-fallback {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 200px;
+    color: var(--color-text-muted);
+    font-size: 0.875rem;
+}
+
+/* 移动端图表适配 */
+@media (max-width: 768px) {
+    .nutrition-chart-canvas {
+        height: 160px;
+    }
+
+    .nutrition-summary-compact {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .nutrition-summary-compact .summary-energy {
+        text-align: center;
+    }
+
+    .summary-macros-inline {
+        justify-content: center;
+    }
+}
+
 /* 新：菜式表头表格 */
 .dish-table-wrap {
     overflow-x: auto;
@@ -1066,6 +1213,51 @@
     padding: var(--spacing-sm);
     background: rgba(245, 158, 11, 0.1);
     border-radius: var(--radius-sm);
+}
+
+/* 营养点评可折叠交互 */
+.advice-header.collapsible {
+    cursor: pointer;
+    user-select: none;
+    padding: var(--spacing-sm);
+    margin: calc(-1 * var(--spacing-sm));
+    margin-bottom: 0;
+    border-radius: var(--radius-md);
+    transition: background 0.15s ease;
+}
+
+.advice-header.collapsible:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.advice-header-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.advice-section.collapsed .section-toggle-btn {
+    transform: rotate(-90deg);
+}
+
+/* 营养点评可折叠交互 - 修复版 */
+.advice-section .advice-content {
+    /* 设置一个足够大的 max-height 以允许展开内容 */
+    max-height: 3000px;
+    opacity: 1;
+    margin-top: var(--spacing-sm);
+    overflow: hidden;
+    transition: max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+        opacity 0.3s ease,
+        margin 0.3s ease;
+}
+
+.advice-section.collapsed .advice-content {
+    max-height: 0 !important;
+    opacity: 0 !important;
+    margin-top: 0 !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
 }
 
 /* 识别到的营养标签区域 */

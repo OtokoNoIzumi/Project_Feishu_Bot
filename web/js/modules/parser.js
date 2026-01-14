@@ -136,6 +136,8 @@ const ParserModule = {
             })),
             // AI 识别的发生时间
             occurredAt: data.occurred_at || null,
+            // 上下文数据：今日已摄入 + 用户目标（供图表使用）
+            context: data.context || null,
         };
     },
 
