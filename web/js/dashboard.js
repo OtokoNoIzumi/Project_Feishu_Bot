@@ -217,13 +217,8 @@ const Dashboard = {
     this.updateSendButton();
   },
 
-  fileToBase64(file) {
-    return new Promise(resolve => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result.split(',')[1]);
-      reader.readAsDataURL(file);
-    });
-  },
+  // 委托给 ImageUtils
+  fileToBase64: ImageUtils.fileToBase64,
 
   renderPreviews() {
     const container = this.el.previewContainer;
@@ -346,31 +341,8 @@ const Dashboard = {
     return session;
   },
 
-  // 使用 Web Crypto API 计算 SHA-256 哈希
-  async calculateImageHashes(images) {
-    const hashes = [];
-    for (const img of images) {
-      try {
-        // 将 base64 转换为 ArrayBuffer
-        const binary = atob(img.base64);
-        const bytes = new Uint8Array(binary.length);
-        for (let i = 0; i < binary.length; i++) {
-          bytes[i] = binary.charCodeAt(i);
-        }
-
-        // 使用 SHA-256 计算哈希
-        const hashBuffer = await crypto.subtle.digest('SHA-256', bytes);
-        const hashArray = Array.from(new Uint8Array(hashBuffer));
-        const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-        hashes.push(hashHex);
-      } catch (e) {
-        console.error('[Dashboard] Hash calculation failed:', e);
-        // 回退方案：使用长度
-        hashes.push(`fallback_${img.base64.length}`);
-      }
-    }
-    return hashes;
-  },
+  // 委托给 ImageUtils
+  calculateImageHashes: ImageUtils.calculateImageHashes,
 
   selectSession(sessionId) {
     const session = this.sessions.find(s => s.id === sessionId);
@@ -881,7 +853,7 @@ const Dashboard = {
           </div>
           <div id="advice-content" class="advice-content">
             ${version.advice
-        ? `<p class="advice-text">${version.advice}</p>`
+        ? `<div class="advice-text">${this.simpleMarkdownToHtml(version.advice)}</div>`
         : '<div class="advice-loading"><span class="loading-spinner"></span>正在生成点评...</div>'
       }
           </div>
@@ -1338,33 +1310,8 @@ const Dashboard = {
   },
 
   // 简单的 markdown 转 HTML（支持换行、粗体、列表）
-  simpleMarkdownToHtml(text) {
-    if (!text) return '';
-
-    let html = text
-      // 转义 HTML 特殊字符
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      // 粗体 **text** 或 __text__
-      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-      .replace(/__(.+?)__/g, '<strong>$1</strong>')
-      // 斜体 *text* 或 _text_
-      .replace(/\*([^*]+)\*/g, '<em>$1</em>')
-      .replace(/_([^_]+)_/g, '<em>$1</em>')
-      // 无序列表 - item
-      .replace(/^- (.+)$/gm, '<li>$1</li>')
-      // 有序列表 1. item
-      .replace(/^\d+\. (.+)$/gm, '<li>$1</li>');
-
-    // 将连续的 <li> 包装成 <ul>
-    html = html.replace(/(<li>.*?<\/li>\n?)+/g, '<ul>$&</ul>');
-
-    // 换行转 <br>，但不在 </li> 后面加
-    html = html.replace(/\n(?!<)/g, '<br>');
-
-    return html;
-  },
+  // 委托给 TextUtils
+  simpleMarkdownToHtml: TextUtils.simpleMarkdownToHtml,
 
   renderAdviceError(errorMsg) {
     const contentEl = document.getElementById('advice-content');
