@@ -718,6 +718,8 @@ const Dashboard = {
         fiberGPerServing: lb.fiber_g_per_serving || 0,
         customNote: lb.custom_note || '',
       })),
+      // AI 识别的发生时间
+      occurredAt: data.occurred_at || null,
     };
   },
 
@@ -825,6 +827,7 @@ const Dashboard = {
     this.currentDietMeta = {
       mealName: summary.mealName || '饮食记录',
       dietTime: summary.dietTime || '',
+      occurredAt: data.occurredAt || null,  // AI 识别的发生时间
     };
     this.recalculateDietSummary(false);
 
@@ -1339,12 +1342,43 @@ const Dashboard = {
     const contentEl = document.getElementById('advice-content');
     const statusEl = document.getElementById('advice-status');
     if (contentEl) {
-      contentEl.innerHTML = `<p class="advice-text">${adviceText}</p>`;
+      // 简单的 markdown 转 HTML
+      const html = this.simpleMarkdownToHtml(adviceText);
+      contentEl.innerHTML = `<div class="advice-text">${html}</div>`;
     }
     if (statusEl) {
       statusEl.className = 'advice-status';
       statusEl.textContent = '';
     }
+  },
+
+  // 简单的 markdown 转 HTML（支持换行、粗体、列表）
+  simpleMarkdownToHtml(text) {
+    if (!text) return '';
+
+    let html = text
+      // 转义 HTML 特殊字符
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      // 粗体 **text** 或 __text__
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/__(.+?)__/g, '<strong>$1</strong>')
+      // 斜体 *text* 或 _text_
+      .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+      .replace(/_([^_]+)_/g, '<em>$1</em>')
+      // 无序列表 - item
+      .replace(/^- (.+)$/gm, '<li>$1</li>')
+      // 有序列表 1. item
+      .replace(/^\d+\. (.+)$/gm, '<li>$1</li>');
+
+    // 将连续的 <li> 包装成 <ul>
+    html = html.replace(/(<li>.*?<\/li>\n?)+/g, '<ul>$&</ul>');
+
+    // 换行转 <br>，但不在 </li> 后面加
+    html = html.replace(/\n(?!<)/g, '<br>');
+
+    return html;
   },
 
   renderAdviceError(errorMsg) {
@@ -1662,6 +1696,8 @@ const Dashboard = {
       },
       dishes: editedDishes,
       captured_labels: editedLabels,
+      // AI 识别的发生时间
+      occurred_at: this.currentDietMeta?.occurredAt || null,
     };
   },
 

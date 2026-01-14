@@ -1005,6 +1005,25 @@
     margin: 0;
 }
 
+.advice-text ul {
+    margin: 8px 0;
+    padding-left: 20px;
+}
+
+.advice-text li {
+    margin: 4px 0;
+}
+
+.advice-text strong {
+    color: var(--color-accent-primary);
+    font-weight: 600;
+}
+
+.advice-text em {
+    font-style: italic;
+    color: var(--color-text-secondary);
+}
+
 .advice-loading {
     display: flex;
     align-items: center;

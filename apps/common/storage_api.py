@@ -4,6 +4,7 @@ Storage API Router.
 Provides internal endpoints for saving Keep and Diet records directly.
 """
 
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends
@@ -59,6 +60,7 @@ def build_storage_router(settings: BackendSettings) -> APIRouter:
         captured_labels: List[Dict[str, Any]] = []
         image_hashes: List[str] = []
         record_id: Optional[str] = None
+        occurred_at: Optional[str] = Field(default=None, description="ISO format datetime string")
 
     @router.post(
         "/api/storage/diet/save",
@@ -71,6 +73,14 @@ def build_storage_router(settings: BackendSettings) -> APIRouter:
     ):
         """保存饮食记录（会自动拆分存储）"""
         try:
+            # 解析 occurred_at 字符串为 datetime
+            occurred_dt = None
+            if req.occurred_at:
+                try:
+                    occurred_dt = datetime.fromisoformat(req.occurred_at.replace('Z', '+00:00'))
+                except ValueError:
+                    pass  # 格式错误则忽略，后端会用当前时间
+
             result = await RecordService.save_diet_record(
                 user_id=user_id,
                 meal_summary=req.meal_summary,
@@ -78,6 +88,7 @@ def build_storage_router(settings: BackendSettings) -> APIRouter:
                 captured_labels=req.captured_labels,
                 image_hashes=req.image_hashes,
                 record_id=req.record_id,
+                occurred_at=occurred_dt,
             )
             return SaveResponse(success=True, detail="Saved to ledger and library", saved_record=result)
         except Exception as e:
