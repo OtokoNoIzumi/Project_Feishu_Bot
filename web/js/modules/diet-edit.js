@@ -33,8 +33,9 @@ const DietEditModule = {
             }
             this.currentDishes[index][field] = field === 'name' ? value : (parseFloat(value) || 0);
             this.recalculateDietSummary(true);
-            // 重新渲染以更新能量显示
-            this.renderDietDishes();
+
+            // 优化：仅更新当前行 DOM，不重绘整个列表以保持焦点
+            this.updateDishRowDOM(index);
         }
     },
 
@@ -60,6 +61,8 @@ const DietEditModule = {
             ing.macros[field] = parseFloat(value) || 0;
 
             // 如果修改了营养素，更新密度缓存（以便后续等比缩放使用新比例）
+            // 注意：这里逻辑上稍微有点问题，如果用户正在修改营养素，是否应该立即更新密度？
+            // 简单处理：每次修改都更新 density，保证下次切回改重量时比例是最新的
             if (ing.weight_g > 0) {
                 ing._density = ing._density || {};
                 const fieldToDensity = {
@@ -76,7 +79,104 @@ const DietEditModule = {
         }
 
         this.recalculateDietSummary(true);
-        this.renderDietDishes();
+        // 优化：仅更新相关 DOM
+        this.updateDishDOM(dishIndex, ingIndex, field);
+    },
+
+    // 局部更新：AI 菜式块（更新 Header 统计 + 联动更新 Ingredient 行）
+    updateDishDOM(dishIndex, ingIndex, changedField) {
+        const dish = this.currentDishes?.[dishIndex];
+        if (!dish) return;
+
+        // 1. 找到 Dish Block
+        const dishBlock = document.querySelector(`.diet-dish-block[data-dish-index="${dishIndex}"]`);
+        if (!dishBlock) return;
+
+        // 2. 更新 Header 统计数据
+        const totals = this.getDishTotals(dish);
+        const unit = this.getEnergyUnit();
+        const energyText = this.formatEnergyFromMacros(totals.protein, totals.fat, totals.carb);
+
+        const setStat = (type, val) => {
+            const el = dishBlock.querySelector(`.diet-stat[data-stat-type="${type}"] .v`);
+            if (el) el.textContent = val;
+        };
+        const r1 = (x) => Math.round((Number(x) || 0) * 10) / 10;
+        const r0 = (x) => Math.round(Number(x) || 0);
+
+        setStat('energy', `${energyText} ${unit}`);
+        setStat('protein', `${r1(totals.protein)}g`);
+        setStat('fat', `${r1(totals.fat)}g`);
+        setStat('carb', `${r1(totals.carb)}g`);
+        setStat('fiber', `${r1(totals.fiber)}g`);
+        setStat('sodium', `${r0(totals.sodium_mg)}mg`);
+        setStat('weight', `${r1(totals.weight)}g`);
+
+        // 3. 如果触发了联动（修改重量且开启了比例），需要更新该行所有 input
+        const ing = dish.ingredients?.[ingIndex];
+        if (ing && changedField === 'weight_g' && ing._proportionalScale) {
+            const row = dishBlock.querySelector(`tr[data-ing-index="${ingIndex}"]`);
+            if (row) {
+                // 定义映射
+                const map = {
+                    'protein_g': ing.macros.protein_g,
+                    'fat_g': ing.macros.fat_g,
+                    'carbs_g': ing.macros.carbs_g,
+                    'fiber_g': ing.macros.fiber_g,
+                    'sodium_mg': ing.macros.sodium_mg,
+                };
+                // 遍历并更新
+                Object.keys(map).forEach(key => {
+                    const input = row.querySelector(`input[data-field="${key}"]`);
+                    if (input && input !== document.activeElement) {
+                        input.value = map[key];
+                    }
+                });
+
+                // 同时也更新该行的能量显示 (read-only)
+                const energyInput = row.querySelector('.js-energy-display');
+                if (energyInput) {
+                    energyInput.value = this.formatEnergyFromMacros(ing.macros.protein_g, ing.macros.fat_g, ing.macros.carbs_g);
+                }
+            }
+        } else if (ing) {
+            // 普通 update，也许需要更新行内的能量显示 (当修改 P/F/C 时)
+            const row = dishBlock.querySelector(`tr[data-ing-index="${ingIndex}"]`);
+            if (row) {
+                const energyInput = row.querySelector('.js-energy-display');
+                if (energyInput) {
+                    energyInput.value = this.formatEnergyFromMacros(ing.macros?.protein_g, ing.macros?.fat_g, ing.macros?.carbs_g);
+                }
+            }
+        }
+    },
+
+    // 局部更新：用户菜式行
+    updateDishRowDOM(index) {
+        const dish = this.currentDishes?.[index];
+        if (!dish) return;
+
+        // 找到行 (可能是 Desktop Table 或 Mobile List，这里主要针对 Desktop Table 优化，因为 Mobile 一般不显示 huge table)
+        // 注意：Mobile 端结构不同，这里暂时只处理 Desktop Table 的 data-dish-index
+        const row = document.querySelector(`tr[data-dish-index="${index}"]`);
+        if (!row) return;
+
+        // 更新能量 (read-only)
+        const energyText = this.formatEnergyFromMacros(dish.protein, dish.fat, dish.carb);
+        const energyInput = row.querySelector('.js-energy-display');
+        if (energyInput) {
+            energyInput.value = energyText;
+        }
+    },
+
+    // 委托给 EnergyUtils (为了方便内部调用)
+    formatEnergyFromMacros(p, f, c) {
+        return EnergyUtils.formatEnergyFromMacros(p, f, c, this.getEnergyUnit());
+    },
+
+    // 获取当前能量单位
+    getEnergyUnit() {
+        return (this.profile && this.profile.diet && this.profile.diet.energy_unit) || 'kJ';
     },
 
     toggleIngredients(dishId) {

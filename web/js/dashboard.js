@@ -512,6 +512,8 @@ const Dashboard = {
   markModified: DietEditModule.markModified,
   collectEditedData: DietEditModule.collectEditedData,
   getDishTotals: DietEditModule.getDishTotals,
+  updateDishDOM: DietEditModule.updateDishDOM,
+  updateDishRowDOM: DietEditModule.updateDishRowDOM,
 
   // 委托给 EnergyUtils
   getMacroEnergyRatio: EnergyUtils.getMacroEnergyRatio,
@@ -631,40 +633,7 @@ const Dashboard = {
           gap: 12px;
           margin-top: 8px;
         }
-        .profile-btn {
-          padding: 10px 24px;
-          border-radius: 4px; /* More robust shape */
-          font-size: 1rem;
-          font-family: var(--font-handwritten);
-          font-weight: 600;
-          cursor: pointer;
-          transition: all 0.2s ease;
-          display: flex;
-          align-items: center;
-          gap: 6px;
-        }
-        .profile-btn-secondary {
-          background: transparent;
-          border: 2px solid var(--color-border);
-          color: var(--color-text-secondary);
-        }
-        .profile-btn-secondary:hover {
-          background: var(--color-bg-secondary);
-          border-color: var(--color-text-muted);
-          transform: rotate(-1deg);
-        }
-        .profile-btn-primary {
-          background: var(--color-accent-primary);
-          border: 2px solid var(--color-accent-primary);
-          color: white;
-          box-shadow: 2px 2px 4px rgba(0,0,0,0.2);
-        }
-        .profile-btn-primary:hover {
-          transform: translateY(-2px) rotate(1deg);
-          box-shadow: 3px 3px 6px rgba(0,0,0,0.25);
-          background: var(--color-accent-secondary);
-          border-color: var(--color-accent-secondary);
-        }
+
         .profile-macro-grid {
           display: grid;
           grid-template-columns: repeat(4, 1fr);
@@ -816,9 +785,9 @@ const Dashboard = {
 
         <!-- 操作按钮 -->
         <div class="profile-actions">
-          <button class="profile-btn profile-btn-secondary" onclick="Dashboard.switchView('analysis')">取消</button>
-          <button class="profile-btn profile-btn-primary" onclick="Dashboard.saveProfile()">
-            ${window.IconManager ? window.IconManager.render('save', 'sm') : ''} 保存档案
+          <button class="btn btn-secondary" onclick="Dashboard.switchView('analysis')">取消</button>
+          <button class="btn btn-primary" onclick="Dashboard.saveProfile()">
+            ${window.IconManager ? window.IconManager.render('save') : ''} 保存档案
           </button>
         </div>
       </div>

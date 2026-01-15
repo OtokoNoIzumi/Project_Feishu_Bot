@@ -235,9 +235,9 @@ const DietRenderModule = {
       const i = d.originalIndex;
       const energyText = this.formatEnergyFromMacros(d.protein, d.fat, d.carb);
       return `
-                  <tr>
+                  <tr data-dish-index="${i}">
                     <td><input type="text" class="cell-input" value="${d.name}" oninput="Dashboard.updateDish(${i}, 'name', this.value)"></td>
-                    <td><input type="text" class="cell-input num cell-readonly" value="${energyText}" readonly tabindex="-1"></td>
+                    <td><input type="text" class="cell-input num cell-readonly js-energy-display" value="${energyText}" readonly tabindex="-1"></td>
                     <td><input type="number" class="cell-input num" value="${d.protein ?? 0}" min="0" step="0.1" oninput="Dashboard.updateDish(${i}, 'protein', this.value)"></td>
                     <td><input type="number" class="cell-input num" value="${d.fat ?? 0}" min="0" step="0.1" oninput="Dashboard.updateDish(${i}, 'fat', this.value)"></td>
                     <td><input type="number" class="cell-input num" value="${d.carb ?? 0}" min="0" step="0.1" oninput="Dashboard.updateDish(${i}, 'carb', this.value)"></td>
@@ -281,13 +281,13 @@ const DietRenderModule = {
       <div class="diet-dish-header-combined">
         <input type="checkbox" ${enabled ? 'checked' : ''} onchange="Dashboard.toggleDishEnabled(${i}, this.checked)">
         <div class="diet-dish-name">${d.name}</div>
-        <span class="diet-stat"><span class="k">能量</span><span class="v">${energyText} ${unit}</span></span>
-        <span class="diet-stat"><span class="k">蛋白</span><span class="v">${r1(totals.protein)}g</span></span>
-        <span class="diet-stat"><span class="k">脂肪</span><span class="v">${r1(totals.fat)}g</span></span>
-        <span class="diet-stat"><span class="k">碳水</span><span class="v">${r1(totals.carb)}g</span></span>
-        <span class="diet-stat"><span class="k">纤维</span><span class="v">${r1(totals.fiber)}g</span></span>
-        <span class="diet-stat"><span class="k">钠</span><span class="v">${r0(totals.sodium_mg)}mg</span></span>
-        <span class="diet-stat"><span class="k">重量</span><span class="v">${r1(totals.weight)}g</span></span>
+        <span class="diet-stat" data-stat-type="energy"><span class="k">能量</span><span class="v">${energyText} ${unit}</span></span>
+        <span class="diet-stat" data-stat-type="protein"><span class="k">蛋白</span><span class="v">${r1(totals.protein)}g</span></span>
+        <span class="diet-stat" data-stat-type="fat"><span class="k">脂肪</span><span class="v">${r1(totals.fat)}g</span></span>
+        <span class="diet-stat" data-stat-type="carb"><span class="k">碳水</span><span class="v">${r1(totals.carb)}g</span></span>
+        <span class="diet-stat" data-stat-type="fiber"><span class="k">纤维</span><span class="v">${r1(totals.fiber)}g</span></span>
+        <span class="diet-stat" data-stat-type="sodium"><span class="k">钠</span><span class="v">${r0(totals.sodium_mg)}mg</span></span>
+        <span class="diet-stat" data-stat-type="weight"><span class="k">重量</span><span class="v">${r1(totals.weight)}g</span></span>
         <span class="diet-chips">${ratioHtml}</span>
         ${toggleBtnHtml}
       </div>
@@ -321,15 +321,15 @@ const DietRenderModule = {
         const ro = 'readonly tabindex="-1"';
         const dis = disableInputs ? 'disabled' : '';
         return `
-                      <tr>
+                      <tr data-ing-index="${j}">
                         <td><input type="text" class="cell-input cell-readonly" value="${ing.name_zh || ''}" ${ro}></td>
-                        <td><input type="text" class="cell-input num cell-readonly" value="${e}" ${ro}></td>
-                        <td><input type="number" class="cell-input num" value="${ing.macros?.protein_g ?? 0}" min="0" step="0.1" ${dis} oninput="Dashboard.updateIngredient(${i}, ${j}, 'protein_g', this.value)"></td>
-                        <td><input type="number" class="cell-input num" value="${ing.macros?.fat_g ?? 0}" min="0" step="0.1" ${dis} oninput="Dashboard.updateIngredient(${i}, ${j}, 'fat_g', this.value)"></td>
-                        <td><input type="number" class="cell-input num" value="${ing.macros?.carbs_g ?? 0}" min="0" step="0.1" ${dis} oninput="Dashboard.updateIngredient(${i}, ${j}, 'carbs_g', this.value)"></td>
-                        <td><input type="number" class="cell-input num" value="${ing.macros?.fiber_g ?? 0}" min="0" step="0.1" ${dis} oninput="Dashboard.updateIngredient(${i}, ${j}, 'fiber_g', this.value)"></td>
-                        <td><input type="number" class="cell-input num" value="${ing.macros?.sodium_mg ?? 0}" min="0" step="1" ${dis} oninput="Dashboard.updateIngredient(${i}, ${j}, 'sodium_mg', this.value)"></td>
-                        <td><input type="number" class="cell-input num" value="${ing.weight_g ?? 0}" min="0" step="0.1" ${dis} oninput="Dashboard.updateIngredient(${i}, ${j}, 'weight_g', this.value)"></td>
+                        <td><input type="text" class="cell-input num cell-readonly js-energy-display" value="${e}" ${ro}></td>
+                        <td><input type="number" class="cell-input num js-ing-field" data-field="protein_g" value="${ing.macros?.protein_g ?? 0}" min="0" step="0.1" ${dis} oninput="Dashboard.updateIngredient(${i}, ${j}, 'protein_g', this.value)"></td>
+                        <td><input type="number" class="cell-input num js-ing-field" data-field="fat_g" value="${ing.macros?.fat_g ?? 0}" min="0" step="0.1" ${dis} oninput="Dashboard.updateIngredient(${i}, ${j}, 'fat_g', this.value)"></td>
+                        <td><input type="number" class="cell-input num js-ing-field" data-field="carbs_g" value="${ing.macros?.carbs_g ?? 0}" min="0" step="0.1" ${dis} oninput="Dashboard.updateIngredient(${i}, ${j}, 'carbs_g', this.value)"></td>
+                        <td><input type="number" class="cell-input num js-ing-field" data-field="fiber_g" value="${ing.macros?.fiber_g ?? 0}" min="0" step="0.1" ${dis} oninput="Dashboard.updateIngredient(${i}, ${j}, 'fiber_g', this.value)"></td>
+                        <td><input type="number" class="cell-input num js-ing-field" data-field="sodium_mg" value="${ing.macros?.sodium_mg ?? 0}" min="0" step="1" ${dis} oninput="Dashboard.updateIngredient(${i}, ${j}, 'sodium_mg', this.value)"></td>
+                        <td><input type="number" class="cell-input num js-ing-field" data-field="weight_g" value="${ing.weight_g ?? 0}" min="0" step="0.1" ${dis} oninput="Dashboard.updateIngredient(${i}, ${j}, 'weight_g', this.value)"></td>
                         <td><button class="scale-toggle-btn ${ing._proportionalScale ? 'active' : ''}" onclick="Dashboard.toggleProportionalScale(${i}, ${j})" title="${ing._proportionalScale ? '比例模式：修改重量会等比调整营养素' : '独立模式：点击开启比例联动'}">${ing._proportionalScale ? '⚖' : '⚖'}</button></td>
                       </tr>
                     `;
@@ -343,7 +343,7 @@ const DietRenderModule = {
     }
 
     return `
-      <div class="diet-dish-block ${disableInputs ? 'disabled' : ''}">
+      <div class="diet-dish-block ${disableInputs ? 'disabled' : ''}" data-dish-index="${i}">
         ${dishHeaderHtml}
         ${ingredientsHtml}
       </div>

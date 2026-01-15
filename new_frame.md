@@ -108,7 +108,7 @@
 | **S** | BUG-002 | DIET/KEEP：保存未正确沿用 analyze 返回的 `occurred_at`（应缓存并最终写入对应数据与文件） | 前端 `saveRecord` + 后端 storage | 🔴 待修复（已复现） |
 | **B** | BUG-003 | advice 文本未渲染 markdown 格式（换行、粗体等） | 前端 `renderAdvice` | ✅ 已修 (2026-01-13) |
 | **S** | BUG-004 | KEEP：多图场景保存会把多次分析/多张图的结果混在一起（数据串联/污染） | 前端 Session/Version + 保存链路 | 🔴 待修复（已复现） |
-| **A** | BUG-005 | DIET：编辑营养素后自动重算触发重新渲染，输入框焦点丢失，导致无法连续输入（例如 2.1 改 12） | 前端 `updateDish/updateIngredient` → `recalculateDietSummary` → `renderDietDishes` | 🔴 待修复（已复现） |
+| **A** | BUG-005 | DIET：编辑营养素后自动重算触发重新渲染，输入框焦点丢失，导致无法连续输入（例如 2.1 改 12） | 前端 `updateDish/updateIngredient` → `recalculateDietSummary` → `renderDietDishes` | ✅ 已修 (2026-01-15) |
 
 #### 待开发功能
 
@@ -142,6 +142,14 @@
 | FIX | 营养进度图表可读性 | 6条标签全显示、单行标签、进度条更粗、X轴对 >100% 动态扩展、配色优化 |
 | FIX | 图表 Tooltip 提示增强 | 目标后追加百分比；脂肪/钠用“还剩余/已超出”，其余用“已摄入” |
 | FIX | 折叠交互统一 | 营养进度与点评右上角折叠按钮；点评默认展开、仅手动点击收起 |
+
+#### 已完成 (2026-01-15)
+
+| 编号 | 问题/功能 | 解决方案 |
+|------|----------|----------|
+| BUG-005 | 连续输入焦点丢失 | `diet-edit.js` 引入 `updateDishDOM/updateDishRowDOM` 实现 targeted DOM update，避免全量重绘 |
+| UI | Profile 按钮样式不统一 | 将 Profile 界面操作按钮统一为 `.btn .btn-primary` 风格，移除旧的 `.profile-btn` |
+| UI | Save Profile图标对齐 | 移除图标渲染的 `sm` 参数，与 Save Record 保持尺寸一致 |
 
 **重构后模块清单**：
 | 模块 | 行数 | 职责 |
