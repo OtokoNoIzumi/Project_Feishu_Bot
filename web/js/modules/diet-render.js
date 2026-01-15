@@ -87,14 +87,16 @@ const DietRenderModule = {
               <span style="position: relative; top: 1px;">AI 营养点评</span>
             </div>
             <div class="advice-header-right">
-              <span id="advice-status" class="advice-status ${version.advice ? '' : 'loading'}"></span>
+              <span id="advice-status" class="advice-status ${version.advice ? '' : (version.adviceError ? 'error' : 'loading')}"></span>
               <button class="section-toggle-btn" id="advice-toggle-btn" onclick="Dashboard.toggleAdviceSection(event)" title="折叠/展开" aria-label="折叠/展开">▼</button>
             </div>
           </div>
           <div id="advice-content" class="advice-content">
             ${version.advice
         ? `<div class="advice-text">${this.simpleMarkdownToHtml(version.advice)}</div>`
-        : '<div class="advice-loading"><span class="loading-spinner"></span>正在生成点评...</div>'
+        : (version.adviceError
+          ? `<div class="advice-error">⚠️ 建议获取失败：${version.adviceError}</div>`
+          : '<div class="advice-loading"><span class="loading-spinner"></span>正在生成点评...</div>')
       }
           </div>
         </div>

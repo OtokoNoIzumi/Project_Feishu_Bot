@@ -331,7 +331,11 @@ const DietEditModule = {
 
         // 同步更新营养图表
         if (typeof NutritionChartModule !== 'undefined' && NutritionChartModule.chartInstance) {
-            NutritionChartModule.updateCurrentMeal(totals, this.getEnergyUnit());
+            try {
+                NutritionChartModule.updateCurrentMeal(totals, this.getEnergyUnit());
+            } catch (e) {
+                console.warn('[DietEdit] Chart update skipped (view likely hidden)');
+            }
         }
 
         if (markModified) this.markModified();

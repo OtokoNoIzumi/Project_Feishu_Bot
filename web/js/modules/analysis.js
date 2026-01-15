@@ -60,6 +60,7 @@ const AnalysisModule = {
                 rawResult: result.result,
                 parsedData: this.parseResult(result.result, session.mode),
                 advice: null,  // 待调用 advice API 获取
+                adviceError: null, // 新增：记录建议获取失败的原因
             };
             session.versions.push(version);
             session.currentVersion = version.number;
@@ -112,13 +113,16 @@ const AnalysisModule = {
             // 后端返回 {success, result: {advice_text}} 结构
             if (response.success && response.result?.advice_text) {
                 currentVersion.advice = response.result.advice_text;
+                currentVersion.adviceError = null; // 清除错误
                 this.renderAdvice(response.result.advice_text);
                 this.addMessage('建议已更新', 'assistant');
             } else if (response.error) {
+                currentVersion.adviceError = response.error; // 记录错误
                 this.addMessage(`建议生成失败: ${response.error}`, 'assistant');
             }
 
         } catch (error) {
+            currentVersion.adviceError = error.message; // 记录错误
             this.addMessage(`建议更新失败: ${error.message}`, 'assistant');
         } finally {
             this.el.updateAdviceBtn.disabled = false;
@@ -145,14 +149,19 @@ const AnalysisModule = {
             // 后端返回 {success, result: {advice_text}} 结构
             if (response.success && response.result?.advice_text) {
                 currentVersion.advice = response.result.advice_text;
+                currentVersion.adviceError = null; // 清除错误
                 this.renderAdvice(response.result.advice_text);
             } else if (response.error) {
+                currentVersion.adviceError = response.error; // 记录错误
                 this.renderAdviceError(response.error);
             } else {
-                this.renderAdviceError('未获取到建议内容');
+                const msg = '未获取到建议内容';
+                currentVersion.adviceError = msg; // 记录错误
+                this.renderAdviceError(msg);
             }
         } catch (error) {
             console.error('[Dashboard] Auto advice failed:', error);
+            currentVersion.adviceError = error.message; // 记录错误
             this.renderAdviceError(error.message);
         }
     },
