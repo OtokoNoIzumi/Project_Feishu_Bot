@@ -7,6 +7,7 @@ from typing import Any, Dict, Optional
 from libs.api_keys.api_key_manager import get_default_api_key_manager
 from libs.llm_gemini.gemini_client import GeminiClientConfig, GeminiStructuredClient
 
+from apps.common.utils import parse_occurred_at
 from apps.diet.context_provider import get_context_bundle
 from apps.diet.prompt_builder_advice import build_diet_advice_prompt
 
@@ -34,8 +35,16 @@ class DietAdviceUsecase:
         2. facts（analyze 的完整结果）：包含营养成分和构成
         3. 用户直接输入：user_note + extra_image_summary（如果有）
         """
-        # 1. 获取 context（仅由 user_id）
-        context_bundle = get_context_bundle(user_id=user_id)
+        # 0. 尝试从 facts 中提取发生时间，以便获取准确的上下文历史
+        target_date_str = None
+        occurred_at = facts.get("occurred_at")
+        if occurred_at:
+            dt = parse_occurred_at(occurred_at)
+            if dt:
+                target_date_str = dt.strftime("%Y-%m-%d")
+
+        # 1. 获取 context（由 user_id 和可选的日期）
+        context_bundle = get_context_bundle(user_id=user_id, target_date=target_date_str)
 
         # 2. facts 是 analyze 的完整结果（已传入）
 

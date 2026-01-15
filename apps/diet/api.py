@@ -139,7 +139,15 @@ def build_diet_router(settings: BackendSettings) -> APIRouter:
                     saved_status = {"status": "error", "detail": str(e)}
 
             # 附带 context_bundle（today_so_far + user_target）供前端图表使用
-            context_bundle = get_context_bundle(user_id=user_id)
+            # 优先使用识别出的 occurred_at 日期获取当天的上下文
+            target_date_str = None
+            occurred_at_raw = result.get("occurred_at")
+            if occurred_at_raw:
+                dt = parse_occurred_at(occurred_at_raw)
+                if dt:
+                    target_date_str = dt.strftime("%Y-%m-%d")
+
+            context_bundle = get_context_bundle(user_id=user_id, target_date=target_date_str)
             result["context"] = context_bundle
 
             return DietAnalyzeResponse(

@@ -13,6 +13,8 @@ from pydantic import BaseModel, Field
 from apps.deps import get_current_user_id, require_internal_auth
 from apps.settings import BackendSettings
 from apps.common.record_service import RecordService
+from apps.common.utils import parse_occurred_at  # Local import to avoid circular dependency if any
+
 
 
 def build_storage_router(settings: BackendSettings) -> APIRouter:
@@ -41,6 +43,28 @@ def build_storage_router(settings: BackendSettings) -> APIRouter:
         user_id: str = Depends(get_current_user_id),  # 从 Header 注入
     ):
         """保存 Keep 原子事件 或 Unified 混合事件"""
+        def _extract_keep_event_time(d: Dict[str, Any]) -> Optional[datetime]:
+            # Priority 1: Explicit occurred_at
+            if d.get("occurred_at"):
+                dt = parse_occurred_at(d["occurred_at"])
+                if dt: return dt
+            
+            # Priority 2: measured_at_local (Scale)
+            if d.get("measured_at_local"):
+                # Usually "YYYY-MM-DD HH:MM"
+                dt = parse_occurred_at(d["measured_at_local"])
+                if dt: return dt
+            
+            # Priority 3: date_str (Sleep)
+            if d.get("date_str"):
+                ds = d["date_str"]
+                # Try combine with sleep_end_time if available
+                if d.get("sleep_end_time"):
+                    return parse_occurred_at(f"{ds} {d['sleep_end_time']}")
+                return parse_occurred_at(f"{ds} 00:00")
+            
+            return None
+
         try:
             if req.event_type == "unified":
                 # Unified 模式：拆包分别保存
@@ -48,33 +72,37 @@ def build_storage_router(settings: BackendSettings) -> APIRouter:
                 
                 # 1. Scale
                 for item in req.event_data.get("scale_events", []):
+                    dt = _extract_keep_event_time(item)
                     await RecordService.save_keep_event(
                         user_id=user_id,
                         event_type="scale",
                         event_data=item,
                         image_hashes=req.image_hashes, # 共用 Image Hashes
-                        # record_id 不传入，让 Service 为每个子项生成独立的 ID (防止冲突)
-                        # 除非前端明确指定了子项的 record_id (通常没有)
+                        occurred_at=dt,
                     )
                     saved_count += 1
 
                 # 2. Sleep
                 for item in req.event_data.get("sleep_events", []):
+                    dt = _extract_keep_event_time(item)
                     await RecordService.save_keep_event(
                         user_id=user_id,
                         event_type="sleep",
                         event_data=item,
                         image_hashes=req.image_hashes,
+                        occurred_at=dt,
                     )
                     saved_count += 1
                 
                 # 3. Dimensions
                 for item in req.event_data.get("body_measure_events", []):
+                    dt = _extract_keep_event_time(item)
                     await RecordService.save_keep_event(
                         user_id=user_id,
                         event_type="dimensions",
                         event_data=item,
                         image_hashes=req.image_hashes,
+                        occurred_at=dt,
                     )
                     saved_count += 1
                 
@@ -86,12 +114,14 @@ def build_storage_router(settings: BackendSettings) -> APIRouter:
 
             else:
                 # 传统单事件模式
+                dt = _extract_keep_event_time(req.event_data)
                 result = await RecordService.save_keep_event(
                     user_id=user_id,
                     event_type=req.event_type,
                     event_data=req.event_data,
                     image_hashes=req.image_hashes,
                     record_id=req.record_id,
+                    occurred_at=dt,
                 )
                 return SaveResponse(success=True, detail="Saved", saved_record=result)
 

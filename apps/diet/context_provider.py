@@ -50,9 +50,9 @@ def _demo_context() -> Dict[str, Any]:
     }
 
 
-def _calculate_today_so_far(user_id: str) -> Dict[str, Any]:
+def _calculate_today_so_far(user_id: str, target_date: Optional[str] = None) -> Dict[str, Any]:
     """
-    从 RecordService 计算今天已确认的记录汇总。
+    从 RecordService 计算今天(或指定日期)已确认的记录汇总。
     """
     consumed_energy_kj = 0.0
     consumed_protein_g = 0.0
@@ -62,8 +62,11 @@ def _calculate_today_so_far(user_id: str) -> Dict[str, Any]:
     consumed_fiber_g = 0.0
     activity_burn_kj = 0.0
 
-    # 直接获取今日流水，无需再进行日期过滤
-    records = RecordService.get_todays_unified_records(user_id)
+    # 获取流水
+    if target_date:
+        records = RecordService.get_unified_records_by_date(user_id, target_date)
+    else:
+        records = RecordService.get_todays_unified_records(user_id)
 
     for rec in records:
         # 汇总 meal_summary
@@ -98,7 +101,7 @@ def _calculate_today_so_far(user_id: str) -> Dict[str, Any]:
     }
 
 
-def get_context_bundle(user_id: str) -> Dict[str, Any]:
+def get_context_bundle(user_id: str, target_date: Optional[str] = None) -> Dict[str, Any]:
     """
     从 user_data/<user_id>/diet/ 读取背景数据（仅由 user_id 获取）：
     - profile.json -> user_target（用户目标配置）
@@ -108,7 +111,7 @@ def get_context_bundle(user_id: str) -> Dict[str, Any]:
     profile = load_json(base / "profile.json") if base.exists() else {}
 
     # 动态计算 today_so_far
-    today_so_far = _calculate_today_so_far(user_id=user_id)
+    today_so_far = _calculate_today_so_far(user_id=user_id, target_date=target_date)
 
     # 如果 profile 和 today_so_far 都为空，回退 demo
     if not profile and sum(today_so_far.values()) == 0.0:

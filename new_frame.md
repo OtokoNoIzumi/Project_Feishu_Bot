@@ -105,9 +105,9 @@
 | 优先级 | 编号 | 问题描述 | 涉及范围 | 状态 |
 |--------|------|----------|----------|------|
 | **S** | BUG-001 | 点击"重新分析"后保存的数据变空 `{}` | 前端 `collectEditedData` 或状态管理 | 🔴 搁置（未复现，搁置） |
-| **S** | BUG-002 | DIET/KEEP：保存未正确沿用 analyze 返回的 `occurred_at`（应缓存并最终写入对应数据与文件） | 前端 `saveRecord` + 后端 storage | 🔴 待修复（已复现） |
+| **S** | BUG-002 | DIET/KEEP：保存未正确沿用 analyze 返回的 `occurred_at`（应缓存并最终写入对应数据与文件） | 前端 `saveRecord` + 后端 storage | ✅ 已修 (2026-01-15) |
 | **B** | BUG-003 | advice 文本未渲染 markdown 格式（换行、粗体等） | 前端 `renderAdvice` | ✅ 已修 (2026-01-13) |
-| **S** | BUG-004 | KEEP：多图场景保存会把多次分析/多张图的结果混在一起（数据串联/污染） | 前端 Session/Version + 保存链路 | 🔴 待修复（已复现） |
+| **S** | BUG-004 | KEEP：多图场景保存会把多次分析/多张图的结果混在一起（数据串联/污染） | 前端 Session/Version + 保存链路 | ✅ 已修 (2026-01-15) |
 | **A** | BUG-005 | DIET：编辑营养素后自动重算触发重新渲染，输入框焦点丢失，导致无法连续输入（例如 2.1 改 12） | 前端 `updateDish/updateIngredient` → `recalculateDietSummary` → `renderDietDishes` | ✅ 已修 (2026-01-15) |
 
 #### 待开发功能
@@ -152,6 +152,8 @@
 | UI | Save Profile图标对齐 | 移除图标渲染的 `sm` 参数，与 Save Record 保持尺寸一致 |
 | UX | 失败一键重试 | 分析失败页面增加"重试"按钮，保留上下文重新发起请求 |
 | OPT | API超时优化 | API请求默认超时改为120s，增加耗时日志，防止LLM分析超时 |
+| BUG-002 | Diet/Keep保存日期错误 | 修复前端 `saveDiet` 参数透传漏洞；后端 Advice 支持按事件日期获取上下文；Keep 保存自动提取事件时间 |
+| BUG-004 | Keep数据保存异常 | 前端强制启用 `unified` 模式，后端完整实现多事件拆包保存逻辑，修复数据污染问题 |
 
 **重构后模块清单**：
 | 模块 | 行数 | 职责 |

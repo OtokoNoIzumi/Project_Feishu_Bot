@@ -150,6 +150,7 @@ const API = {
             captured_labels: data.captured_labels || [],
             image_hashes: data.image_hashes || [],
             record_id: data.record_id || null,
+            occurred_at: data.occurred_at || null,
         });
     },
 
