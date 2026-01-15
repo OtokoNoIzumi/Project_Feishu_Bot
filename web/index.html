@@ -1,43 +1,288 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Diet & Keep - 登录</title>
+  <title>Diet & Keep - 智能饮食与健康数据分析</title>
+  <meta name="description" content="Diet & Keep 智能饮食与健康数据分析平台，帮助您追踪并优化日常饮食与健康数据。">
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Lora:wght@400;500;600&family=Patrick+Hand&display=swap"
+    rel="stylesheet">
   <link rel="stylesheet" href="css/styles.css">
   <script async crossorigin="anonymous"
     data-clerk-publishable-key="pk_test_YWR2YW5jZWQtcHVtYS01Mi5jbGVyay5hY2NvdW50cy5kZXYk"
     src="https://cdn.jsdelivr.net/npm/@clerk/clerk-js@latest/dist/clerk.browser.js">
-  </script>
+    </script>
+  <style>
+    /* === Login Page Container === */
+    .login-page-wrapper {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      /* CSS-only warm paper background */
+      background-color: #f8f4ec;
+      background-image:
+        radial-gradient(ellipse at 20% 10%, rgba(217, 119, 87, 0.15) 0%, transparent 45%),
+        radial-gradient(ellipse at 80% 90%, rgba(224, 142, 115, 0.12) 0%, transparent 45%),
+        radial-gradient(ellipse at 60% 40%, rgba(200, 180, 160, 0.08) 0%, transparent 50%);
+    }
+
+    /* === Main Login Card === */
+    .login-main-card {
+      position: relative;
+      width: 100%;
+      /* 增加宽度到 480px 以容纳内容和 Badge */
+      max-width: 480px;
+      background: rgba(255, 255, 255, 0.75);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(92, 85, 78, 0.15);
+      border-radius: 20px;
+      /* 统一由容器控制内边距，给 Badge 留出空间 */
+      padding: 48px 40px;
+      box-shadow: 0 12px 40px rgba(74, 62, 53, 0.15);
+    }
+
+    /* Washi Tape 装饰条 */
+    .login-main-card::before {
+      content: '';
+      position: absolute;
+      top: -12px;
+      left: 50%;
+      transform: translateX(-50%) rotate(1deg);
+      width: 90px;
+      height: 26px;
+      background: rgba(217, 119, 87, 0.35);
+      opacity: 0.7;
+      z-index: 10;
+      border-radius: 2px;
+    }
+
+    /* === Branding Section === */
+    .login-branding {
+      text-align: center;
+      padding: 0 24px;
+      margin-bottom: 32px;
+    }
+
+    .login-app-logo {
+      width: 72px;
+      height: 72px;
+      margin: 0 auto 16px;
+      background: linear-gradient(135deg, #d97757 0%, #e08e73 100%);
+      border-radius: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 12px rgba(74, 62, 53, 0.08);
+    }
+
+    .login-app-logo img {
+      width: 48px;
+      height: 48px;
+      filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.1));
+    }
+
+    .login-app-title {
+      font-family: 'Lora', serif;
+      font-size: 1.75rem;
+      font-weight: 600;
+      color: #382e28;
+      margin: 0 0 4px 0;
+    }
+
+    .login-app-tagline {
+      font-family: 'Patrick Hand', cursive;
+      font-size: 1rem;
+      color: #6e5d50;
+      letter-spacing: 0.02em;
+      margin: 0;
+    }
+
+    /* Loading State */
+    .login-loading {
+      padding: 32px 24px;
+      text-align: center;
+    }
+
+    .login-loading .loading-spinner {
+      width: 28px;
+      height: 28px;
+      margin: 0 auto;
+      border: 2px solid rgba(92, 85, 78, 0.15);
+      border-top-color: #d97757;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    .login-loading-text {
+      margin-top: 16px;
+      font-size: 0.9rem;
+      color: #948171;
+    }
+
+    /* === Clerk Style Overrides === */
+    /* 只做最小限度的覆盖，保留 Clerk 的布局 */
+
+    /* 移除 Clerk 卡片的背景和阴影，并强制宽度适配 */
+    #clerk-auth .cl-card,
+    #clerk-auth .cl-rootBox,
+    #clerk-auth .cl-main,
+    #clerk-auth .cl-cardBox {
+      width: 100% !important;
+      align-items: center !important;
+      max-width: none !important;
+      box-shadow: none !important;
+      border: none !important;
+      background: transparent !important;
+      margin: 0 !important;
+      display: flex !important;
+      flex-direction: column !important;
+    }
+
+    /* 隐藏 Clerk 自带的标题（我们有自己的 branding） */
+    #clerk-auth .cl-headerTitle,
+    #clerk-auth .cl-headerSubtitle,
+    #clerk-auth .cl-header {
+      display: none !important;
+    }
+
+    /* 主按钮使用我们的主题色 */
+    #clerk-auth .cl-formButtonPrimary {
+      background: linear-gradient(135deg, #d97757 0%, #e08e73 100%) !important;
+      border-radius: 12px !important;
+    }
+
+    /* 链接颜色 */
+    #clerk-auth a,
+    #clerk-auth .cl-footerActionLink {
+      color: #d97757 !important;
+    }
+
+    #clerk-auth a:hover {
+      color: #c86b4e !important;
+    }
+
+    /* === Responsive === */
+    @media (max-width: 480px) {
+      .login-page-wrapper {
+        padding: 16px;
+      }
+
+      .login-main-card {
+        max-width: 100%;
+        border-radius: 16px;
+      }
+
+      .login-branding {
+        padding: 0 16px;
+      }
+
+      .login-app-logo {
+        width: 60px;
+        height: 60px;
+      }
+
+      .login-app-logo img {
+        width: 40px;
+        height: 40px;
+      }
+
+      .login-app-title {
+        font-size: 1.5rem;
+      }
+    }
+  </style>
 </head>
+
 <body>
-  <div class="login-container">
-    <div class="login-card glass-card">
-      <div class="login-logo">🍎</div>
-      <h1 class="login-title">Diet & Keep</h1>
-      <p class="login-subtitle">智能饮食与健康数据分析</p>
-      <div id="clerk-auth"></div>
-      <div id="loading-state" class="text-center" style="padding: 40px 0;">
-        <div class="loading-spinner" style="margin: 0 auto;"></div>
-        <p class="text-muted" style="margin-top: 16px;">正在加载...</p>
+  <div class="login-page-wrapper">
+    <div class="login-main-card">
+      <!-- Branding Section -->
+      <div class="login-branding">
+        <div class="login-app-logo">
+          <img src="css/icons/apple.png" alt="Diet & Keep Logo">
+        </div>
+        <h1 class="login-app-title">Diet & Keep</h1>
+        <p class="login-app-tagline">智能饮食与健康数据分析</p>
+      </div>
+
+      <!-- Clerk Auth Container -->
+      <div class="login-clerk-wrapper">
+        <div id="clerk-auth"></div>
+        <div id="loading-state" class="login-loading">
+          <div class="loading-spinner"></div>
+          <p class="login-loading-text">正在加载...</p>
+        </div>
       </div>
     </div>
   </div>
+
   <script src="config.js"></script>
   <script src="js/auth.js"></script>
   <script>
     window.addEventListener('load', async () => {
-      await window.Clerk.load();
-      document.getElementById('loading-state').style.display = 'none';
-      if (window.Clerk.user) {
-        window.location.href = 'dashboard.html';
-        return;
+      try {
+        await window.Clerk.load();
+        document.getElementById('loading-state').style.display = 'none';
+
+        if (window.Clerk.user) {
+          window.location.href = 'dashboard.html';
+          return;
+        }
+
+        // Mount SignIn - Clerk 的 appearance API
+        window.Clerk.mountSignIn(document.getElementById('clerk-auth'), {
+          appearance: {
+            elements: {
+              // 移除内部卡片样式并强制宽度适配
+              rootBox: {
+                boxShadow: 'none',
+                width: '100%'
+              },
+              card: {
+                boxShadow: 'none',
+                border: 'none',
+                background: 'transparent',
+                width: '100%',
+                maxWidth: 'none',
+                padding: '0' // 由外部容器控制内边距，避免冲突
+              },
+              // 隐藏 Clerk 标题
+              headerTitle: { display: 'none' },
+              headerSubtitle: { display: 'none' },
+              // 主按钮样式
+              formButtonPrimary: {
+                background: 'linear-gradient(135deg, #d97757 0%, #e08e73 100%)',
+                borderRadius: '12px'
+              },
+              // 社交登录按钮容器增加顶部间距（因为隐藏了 header）
+              socialButtons: {
+                marginTop: '8px'
+              }
+            }
+          }
+        });
+
+        window.Clerk.addListener((r) => {
+          if (r.user) window.location.href = 'dashboard.html';
+        });
+      } catch (error) {
+        console.error('Clerk initialization failed:', error);
+        document.getElementById('loading-state').innerHTML =
+          '<p style="color: #cd5c5c;">登录服务加载失败，请刷新页面重试</p>';
       }
-      window.Clerk.mountSignIn(document.getElementById('clerk-auth'));
-      window.Clerk.addListener((r) => { if (r.user) window.location.href = 'dashboard.html'; });
     });
   </script>
 </body>
+
 </html>
