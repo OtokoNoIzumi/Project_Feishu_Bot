@@ -9,13 +9,12 @@ const NutritionChartModule = {
     todaySummary: null,   // 今日已摄入（从 analyze 响应获取）
     userTarget: null,     // 用户目标（从 analyze 响应或 profile 获取）
 
-    // 颜色定义
+    // 颜色定义 - Warm Notebook Theme
     colors: {
-        // 更克制、对比更舒服（深色背景）
-        thisMeal: '#a78bfa',     // Purple-400
-        todayIntake: '#5eead4',  // Teal-300
-        target: '#fb7185',       // Rose-400（保留备用）
-        background: 'rgba(148, 163, 184, 0.06)',
+        thisMeal: '#d97757',     // Terracotta (Accent)
+        todayIntake: '#6b8e23',  // Olive Green (Natural)
+        target: '#cd853f',       // Peru (Warning/Target)
+        background: 'rgba(92, 85, 78, 0.03)', // Subtle sketch area
     },
 
     /**
@@ -100,10 +99,12 @@ const NutritionChartModule = {
             tooltip: {
                 trigger: 'axis',
                 axisPointer: { type: 'shadow' },
-                backgroundColor: 'rgba(20, 20, 35, 0.95)',
-                borderColor: 'rgba(99, 102, 241, 0.3)',
+                backgroundColor: '#fdfbf7', // Paper background
+                borderColor: '#d97757',     // Accent border
+                borderWidth: 1,
                 padding: [12, 16],
-                textStyle: { color: '#e2e8f0', fontSize: 13 },
+                textStyle: { color: '#4a3e35', fontSize: 13, fontFamily: 'Lora' }, // Ink text
+                extraCssText: 'box-shadow: 0 4px 12px rgba(74, 62, 53, 0.15); border-radius: 8px;',
                 formatter: (params) => {
                     // params[0] 是第一个系列的数据
                     const index = params[0].dataIndex;
@@ -111,7 +112,7 @@ const NutritionChartModule = {
                     const catName = categories[index];
                     const info = data.details[catName] || {};
 
-                    let html = `<div style="font-weight:bold;margin-bottom:8px;color:#fff">${catName}</div>`;
+                    let html = `<div style="font-family:'Patrick Hand';font-size:16px;font-weight:bold;margin-bottom:8px;color:#d97757">${catName}</div>`;
 
                     // 目标
                     if (info.targetValue > 0) {
@@ -131,7 +132,7 @@ const NutritionChartModule = {
                             pctText = `已摄入 ${pct}%`;
                         }
 
-                        html += `<div style="margin-bottom:6px;font-size:12px;color:#94a3b8">目标：${info.targetValue} ${info.unit}（${pctText}）</div>`;
+                        html += `<div style="margin-bottom:6px;font-size:12px;color:#8c7f70">目标：${info.targetValue} ${info.unit}（${pctText}）</div>`;
                     }
 
                     // 本次
@@ -153,7 +154,7 @@ const NutritionChartModule = {
                 show: true,
                 bottom: 0,
                 itemGap: 20,
-                textStyle: { color: '#94a3b8' }
+                textStyle: { color: '#8c7f70', fontFamily: 'Lora' }
             },
             grid: {
                 left: 160, // 左侧留足空间，避免标签被压缩/省略
@@ -165,8 +166,8 @@ const NutritionChartModule = {
             xAxis: {
                 type: 'value',
                 max: axisMax, // 动态：对 >100% 友好
-                splitLine: { lineStyle: { color: 'rgba(255,255,255,0.06)' } },
-                axisLabel: { color: '#64748b', formatter: '{value}%' }
+                splitLine: { lineStyle: { color: 'rgba(92, 85, 78, 0.1)' } }, // Faint pencil line
+                axisLabel: { color: '#b0a69a', formatter: '{value}%', fontFamily: 'Lora' }
             },
             yAxis: {
                 type: 'category',
@@ -183,13 +184,16 @@ const NutritionChartModule = {
                     },
                     rich: {
                         title: {
-                            color: '#e2e8f0',
-                            fontWeight: 600,
+                            color: '#4a3e35', // Dark Ink
+                            fontWeight: 500,
+                            fontFamily: 'Patrick Hand',
+                            fontSize: 14,
                             lineHeight: 18
                         },
                         val: {
-                            color: '#94a3b8',
+                            color: '#8c7f70', // Faded Ink
                             fontSize: 11,
+                            fontFamily: 'Lora',
                             lineHeight: 14
                         }
                     }
@@ -219,7 +223,7 @@ const NutritionChartModule = {
                     markLine: {
                         silent: true,
                         symbol: 'none',
-                        lineStyle: { color: 'rgba(255,255,255,0.15)', type: 'dashed' },
+                        lineStyle: { color: 'rgba(92, 85, 78, 0.2)', type: 'dashed' },
                         data: [{ xAxis: 100 }],
                         label: { show: false }
                     }
@@ -227,6 +231,7 @@ const NutritionChartModule = {
             ]
         };
     },
+
 
     /**
      * 构建百分比数据

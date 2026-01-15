@@ -549,8 +549,9 @@ const Dashboard = {
         .profile-section {
           background: var(--color-bg-secondary);
           border: 1px solid var(--color-border);
-          border-radius: 16px;
+          border-radius: 4px; /* More squared for notebook feel */
           padding: 20px 24px;
+          box-shadow: 2px 2px 5px rgba(0,0,0,0.02); /* Subtle shadow */
         }
         .profile-section-header {
           display: flex;
@@ -558,28 +559,27 @@ const Dashboard = {
           gap: 12px;
           margin-bottom: 20px;
           padding-bottom: 16px;
-          border-bottom: 1px solid var(--color-border);
+          border-bottom: 2px dashed var(--color-border); /* Dashed line for notebook */
         }
         .profile-section-icon {
           width: 40px;
           height: 40px;
-          border-radius: 10px;
           display: flex;
           align-items: center;
           justify-content: center;
-          font-size: 1.25rem;
           flex-shrink: 0;
         }
-        .profile-section-icon.user { background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%); }
-        .profile-section-icon.diet { background: linear-gradient(135deg, #10b981 0%, #34d399 100%); }
-        .profile-section-icon.keep { background: linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%); }
+        /* Removed digital gradients, let the icons speak */
+        
         .profile-section-title {
-          font-size: 1rem;
+          font-size: 1.1rem;
+          font-family: var(--font-handwritten); /* Use handwritten font for headers */
           font-weight: 600;
-          color: var(--color-text-primary);
+          color: var(--color-accent-primary); /* Warm text color */
         }
         .profile-section-subtitle {
-          font-size: 0.75rem;
+          font-size: 0.85rem;
+          font-family: var(--font-body);
           color: var(--color-text-muted);
           margin-top: 2px;
         }
@@ -595,29 +595,32 @@ const Dashboard = {
         }
         .profile-field-label {
           font-size: 0.75rem;
-          font-weight: 500;
-          color: var(--color-text-muted);
+          font-family: var(--font-body);
+          font-weight: 600;
+          color: var(--color-text-secondary);
           text-transform: uppercase;
           letter-spacing: 0.5px;
         }
         .profile-field-input {
-          background: var(--color-bg-tertiary);
+          background: var(--color-bg-tertiary); /* Paper color */
           border: 1px solid var(--color-border);
-          border-radius: 10px;
-          padding: 12px 14px;
-          font-size: 0.9rem;
+          border-radius: 4px;
+          padding: 10px 12px;
+          font-size: 0.95rem;
+          font-family: var(--font-handwritten); /* Handwritten inputs! */
           color: var(--color-text-primary);
           transition: all 0.2s ease;
           width: 100%;
           box-sizing: border-box;
         }
         .profile-field-input:hover {
-          border-color: rgba(99, 102, 241, 0.4);
+          border-color: var(--color-accent-secondary);
         }
         .profile-field-input:focus {
           outline: none;
           border-color: var(--color-accent-primary);
-          box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+          background: #fff;
+          box-shadow: 2px 2px 0px rgba(0,0,0,0.05);
         }
         .profile-field-input[type="number"] {
           font-variant-numeric: tabular-nums;
@@ -629,30 +632,38 @@ const Dashboard = {
           margin-top: 8px;
         }
         .profile-btn {
-          padding: 12px 24px;
-          border-radius: 10px;
-          font-size: 0.875rem;
-          font-weight: 500;
+          padding: 10px 24px;
+          border-radius: 4px; /* More robust shape */
+          font-size: 1rem;
+          font-family: var(--font-handwritten);
+          font-weight: 600;
           cursor: pointer;
           transition: all 0.2s ease;
+          display: flex;
+          align-items: center;
+          gap: 6px;
         }
         .profile-btn-secondary {
-          background: var(--color-bg-tertiary);
-          border: 1px solid var(--color-border);
+          background: transparent;
+          border: 2px solid var(--color-border);
           color: var(--color-text-secondary);
         }
         .profile-btn-secondary:hover {
-          background: var(--color-bg-glass);
+          background: var(--color-bg-secondary);
           border-color: var(--color-text-muted);
+          transform: rotate(-1deg);
         }
         .profile-btn-primary {
-          background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
-          border: none;
+          background: var(--color-accent-primary);
+          border: 2px solid var(--color-accent-primary);
           color: white;
+          box-shadow: 2px 2px 4px rgba(0,0,0,0.2);
         }
         .profile-btn-primary:hover {
-          transform: translateY(-1px);
-          box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
+          transform: translateY(-2px) rotate(1deg);
+          box-shadow: 3px 3px 6px rgba(0,0,0,0.25);
+          background: var(--color-accent-secondary);
+          border-color: var(--color-accent-secondary);
         }
         .profile-macro-grid {
           display: grid;
@@ -663,13 +674,42 @@ const Dashboard = {
           .profile-grid { grid-template-columns: 1fr; }
           .profile-macro-grid { grid-template-columns: repeat(2, 1fr); }
         }
+        
+        /* TAPE EFFECT */
+        .profile-section {
+            position: relative;
+            background: #fff; /* Card is white */
+            margin-top: 25px; /* Spacing for tape */
+            /* Card stays straight! */
+        }
+        
+        .profile-section::before {
+            content: '';
+            position: absolute;
+            top: -12px;
+            right: 50px; /* Position to the right */
+            left: auto; /* Remove centering */
+            width: 100px;
+            height: 28px;
+            /* Washi Tape Style - Warm Beige/Translucent */
+            background-color: rgba(242, 233, 216, 0.9); 
+            background-image: url("data:image/svg+xml,%3Csvg width='4' height='4' viewBox='0 0 4 4' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 0h4v4H0z' fill='%23ffffff' fill-opacity='0.2'/%3E%3C/svg%3E");
+            box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+            z-index: 1;
+            clip-path: polygon(2% 0%, 98% 0%, 100% 100%, 0% 100%);
+        }
+        
+        /* Rotate only the tape, randomly */
+        .profile-section:nth-of-type(1)::before { transform: rotate(2deg); right: 60px; }
+        .profile-section:nth-of-type(2)::before { transform: rotate(-1.5deg); right: 40px; }
+        .profile-section:nth-of-type(3)::before { transform: rotate(1deg); right: 50px; }
       </style>
 
       <div class="profile-container">
         <!-- 用户信息 -->
         <div class="profile-section">
           <div class="profile-section-header">
-            <div class="profile-section-icon user">👤</div>
+            <div class="profile-section-icon">${window.IconManager ? window.IconManager.render('profile', 'xl') : '👤'}</div>
             <div>
               <div class="profile-section-title">${userName} 的档案</div>
               <div class="profile-section-subtitle">个人设置与目标配置</div>
@@ -678,13 +718,13 @@ const Dashboard = {
           <div class="profile-grid">
             <div class="profile-field">
               <label class="profile-field-label">时区</label>
-              <select id="profile-timezone" class="profile-field-input">
+              <select id="profile-timezone" class="profile-field-input" style="font-family: var(--font-body);">
                 ${this.renderTimezoneOptions(p.timezone)}
               </select>
             </div>
             <div class="profile-field">
               <label class="profile-field-label">能量显示单位</label>
-              <select id="energy-unit" class="profile-field-input" onchange="Dashboard.setEnergyUnit(this.value)">
+              <select id="energy-unit" class="profile-field-input" onchange="Dashboard.setEnergyUnit(this.value)" style="font-family: var(--font-body);">
                 <option value="kJ" ${unit === 'kJ' ? 'selected' : ''}>kJ（默认）</option>
                 <option value="kcal" ${unit === 'kcal' ? 'selected' : ''}>kcal</option>
               </select>
@@ -695,7 +735,7 @@ const Dashboard = {
         <!-- Diet 目标 -->
         <div class="profile-section">
           <div class="profile-section-header">
-            <div class="profile-section-icon diet">🍽️</div>
+            <div class="profile-section-icon">${window.IconManager ? window.IconManager.render('meal', 'xl') : '🍽️'}</div>
             <div>
               <div class="profile-section-title">Diet 目标</div>
               <div class="profile-section-subtitle">每日营养摄入目标设置</div>
@@ -704,7 +744,7 @@ const Dashboard = {
           <div class="profile-grid" style="margin-bottom: 16px;">
             <div class="profile-field">
               <label class="profile-field-label">目标类型</label>
-              <select id="diet-goal" class="profile-field-input">
+              <select id="diet-goal" class="profile-field-input" style="font-family: var(--font-body);">
                 ${this.renderDietGoalOptions(p.diet?.goal)}
               </select>
             </div>
@@ -742,7 +782,7 @@ const Dashboard = {
         <!-- Keep 目标 -->
         <div class="profile-section">
           <div class="profile-section-header">
-            <div class="profile-section-icon keep">💪</div>
+            <div class="profile-section-icon">${window.IconManager ? window.IconManager.render('heart', 'xl') : '💪'}</div>
             <div>
               <div class="profile-section-title">Keep 目标</div>
               <div class="profile-section-subtitle">体重与体态目标设置</div>
@@ -776,8 +816,10 @@ const Dashboard = {
 
         <!-- 操作按钮 -->
         <div class="profile-actions">
-          <button class="profile-btn profile-btn-secondary" onclick="Dashboard.switchView('analysis')">返回分析</button>
-          <button class="profile-btn profile-btn-primary" onclick="Dashboard.saveProfile()">💾 保存档案</button>
+          <button class="profile-btn profile-btn-secondary" onclick="Dashboard.switchView('analysis')">取消</button>
+          <button class="profile-btn profile-btn-primary" onclick="Dashboard.saveProfile()">
+            ${window.IconManager ? window.IconManager.render('save', 'sm') : ''} 保存档案
+          </button>
         </div>
       </div>
     `;
@@ -929,15 +971,17 @@ const Dashboard = {
 
     // 保存按钮状态
     if (this.el.saveBtn) {
+      const getIcon = (name) => window.IconManager ? window.IconManager.render(name) : '';
+
       if (session.isSaved && this.isDataUnchanged(session)) {
         this.el.saveBtn.disabled = true;
-        this.el.saveBtn.textContent = '💾 已保存';
+        this.el.saveBtn.innerHTML = `${getIcon('check')} 已保存`;
       } else if (session.isSaved) {
         this.el.saveBtn.disabled = false;
-        this.el.saveBtn.textContent = '💾 更新记录';
+        this.el.saveBtn.innerHTML = `${getIcon('save')} 更新记录`;
       } else {
         this.el.saveBtn.disabled = false;
-        this.el.saveBtn.textContent = '💾 保存记录';
+        this.el.saveBtn.innerHTML = `${getIcon('save')} 保存记录`;
       }
     }
   },

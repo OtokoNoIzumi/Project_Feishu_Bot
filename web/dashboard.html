@@ -5,9 +5,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Diet & Keep - Dashboard</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="css/styles.css">
-    <link rel="stylesheet" href="css/dashboard.css?v=20240115">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,500;0,600;1,400&family=Patrick+Hand&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="css/styles.css?v=warm_07">
+    <link rel="stylesheet" href="css/dashboard.css?v=warm_07">
+    <script type="module" src="js/utils/icons.js"></script>
     <script async crossorigin="anonymous"
         data-clerk-publishable-key="pk_test_YWR2YW5jZWQtcHVtYS01Mi5jbGVyay5hY2NvdW50cy5kZXYk"
         src="https://cdn.jsdelivr.net/npm/@clerk/clerk-js@latest/dist/clerk.browser.js">
@@ -19,13 +22,15 @@
         <!-- 左侧：历史记录栏 -->
         <aside class="history-panel">
             <div class="panel-header">
-                <span class="brand-icon">🍎</span>
+                <span class="brand-icon"><img src="css/icons/apple.png" class="icon-sticker lg" alt="Logo"></span>
                 <span class="brand-name">Diet & Keep</span>
             </div>
 
             <div class="side-menu" id="side-menu">
-                <button class="side-menu-item active" data-view="analysis">📊 分析</button>
-                <button class="side-menu-item" data-view="profile">👤 Profile</button>
+                <button class="side-menu-item active" data-view="analysis"><img src="css/icons/notepad.png"
+                        class="icon-stamp" alt="Analysis"> 分析</button>
+                <button class="side-menu-item" data-view="profile"><img src="css/icons/tag.png" class="icon-stamp"
+                        alt="Profile"> Profile</button>
             </div>
 
             <div class="history-list" id="history-list">
@@ -50,16 +55,20 @@
 
             <div id="result-content" class="result-content">
                 <div class="empty-state">
-                    <div class="empty-icon">📊</div>
+                    <div class="empty-icon"><img src="css/icons/bowl.png" class="icon-stamp xl" alt="Empty"
+                            style="opacity: 0.5;"></div>
                     <h3>等待分析</h3>
                     <p>上传食物图片或输入描述开始分析</p>
                 </div>
             </div>
 
             <div id="result-footer" class="result-footer hidden">
-                <button class="btn btn-secondary" id="re-analyze-btn">🔄 重新分析</button>
-                <button class="btn btn-secondary" id="update-advice-btn">✨ 更新建议</button>
-                <button class="btn btn-primary" id="save-btn">💾 保存记录</button>
+                <button class="btn btn-secondary" id="re-analyze-btn"><img src="css/icons/refresh.png"
+                        class="icon-stamp" alt="Redo"> 重新分析</button>
+                <button class="btn btn-secondary" id="update-advice-btn"><img src="css/icons/sparkle.png"
+                        class="icon-stamp" alt="Update"> 更新建议</button>
+                <button class="btn btn-primary" id="save-btn"><img src="css/icons/pin.png" class="icon-sticker"
+                        alt="Save"> 保存记录</button>
             </div>
         </main>
 
@@ -78,15 +87,16 @@
                     <textarea id="chat-input" placeholder="描述你的饮食..." rows="1"></textarea>
                     <div class="input-toolbar">
                         <div class="toolbar-left">
-                            <button class="tool-btn" id="upload-btn" title="上传图片">➕</button>
+                            <button class="tool-btn" id="upload-btn" title="上传图片"><img src="css/icons/add.png"
+                                    class="icon-stamp" alt="Add"></button>
                             <input type="file" id="file-input" accept="image/*" multiple hidden>
-                            <button class="tool-btn tool-btn-mobile" id="toggle-result-btn"
-                                title="打开/折叠确认面板">📊</button>
-                            <button class="tool-btn tool-btn-mobile" id="open-profile-btn"
-                                title="Profile 设置">⚙️</button>
+                            <button class="tool-btn tool-btn-mobile" id="toggle-result-btn" title="打开/折叠确认面板"><img
+                                    src="css/icons/chart.png" class="icon-stamp" alt="Chart"></button>
+                            <button class="tool-btn tool-btn-mobile" id="open-profile-btn" title="Profile 设置"><img
+                                    src="css/icons/gear.png" class="icon-stamp" alt="Settings"></button>
                             <div class="mode-switch">
-                                <button class="mode-btn active" data-mode="diet">🍽️ 饮食</button>
-                                <button class="mode-btn" data-mode="keep">💪 Keep</button>
+                                <button class="mode-btn active" data-mode="diet">饮食</button>
+                                <button class="mode-btn" data-mode="keep">Keep</button>
                             </div>
                         </div>
                         <button id="send-btn" class="send-btn" disabled>发送</button>

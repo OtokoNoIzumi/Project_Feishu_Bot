@@ -7,33 +7,33 @@
  */
 
 const DietRenderModule = {
-    renderDietResult(session, version) {
-        const data = version.parsedData;
-        const summary = data.summary;
+  renderDietResult(session, version) {
+    const data = version.parsedData;
+    const summary = data.summary;
 
-        // 缓存当前 dishes 用于编辑
-        this.currentDishes = [...data.dishes];
-        this.currentLabels = [...(data.capturedLabels || [])];  // 缓存营养标签用于编辑
-        this.currentDietMeta = {
-            mealName: summary.mealName || '饮食记录',
-            dietTime: summary.dietTime || '',
-            occurredAt: data.occurredAt || null,  // AI 识别的发生时间
-        };
-        this.recalculateDietSummary(false);
+    // 缓存当前 dishes 用于编辑
+    this.currentDishes = [...data.dishes];
+    this.currentLabels = [...(data.capturedLabels || [])];  // 缓存营养标签用于编辑
+    this.currentDietMeta = {
+      mealName: summary.mealName || '饮食记录',
+      dietTime: summary.dietTime || '',
+      occurredAt: data.occurredAt || null,  // AI 识别的发生时间
+    };
+    this.recalculateDietSummary(false);
 
-        // 获取当前版本的 user_note
-        const currentNote = version.userNote || session.text || '';
+    // 获取当前版本的 user_note
+    const currentNote = version.userNote || session.text || '';
 
-        const unit = this.getEnergyUnit();
-        // currentDietTotals.totalEnergy 内部统一为 kcal，这里只做显示换算
-        const displayTotalEnergy = unit === 'kcal'
-            ? (Number(this.currentDietTotals.totalEnergy) || 0)
-            : Math.round(this.kcalToKJ(Number(this.currentDietTotals.totalEnergy) || 0));
+    const unit = this.getEnergyUnit();
+    // currentDietTotals.totalEnergy 内部统一为 kcal，这里只做显示换算
+    const displayTotalEnergy = unit === 'kcal'
+      ? (Number(this.currentDietTotals.totalEnergy) || 0)
+      : Math.round(this.kcalToKJ(Number(this.currentDietTotals.totalEnergy) || 0));
 
-        this.el.resultContent.innerHTML = `
+    this.el.resultContent.innerHTML = `
       <div class="result-card">
         <div class="result-card-header">
-          <div class="result-icon">🍽️</div>
+          <div class="result-icon-container">${window.IconManager ? window.IconManager.render('meal') : '<img src="css/icons/bowl.png" class="hand-icon icon-sticker">'}</div>
           <div>
             <div class="result-card-title">${summary.mealName}</div>
             <div class="result-card-subtitle" id="diet-subtitle">${this.currentDishes.length} 种食物 · ${summary.dietTime || ''}</div>
@@ -66,8 +66,10 @@ const DietRenderModule = {
         </div>
 
         <div id="nutrition-section" class="nutrition-chart-container">
-          <div class="nutrition-chart-header">
-            <span class="nutrition-chart-title">📊 营养进度</span>
+          <div id="nutrition-chart-header" class="nutrition-chart-header">
+            <span class="nutrition-chart-title">
+              ${window.IconManager ? window.IconManager.render('chart', 'sm') : ''} 营养进度
+            </span>
             <div class="nutrition-chart-actions">
               <span class="nutrition-chart-hint">点击图例可切换显示</span>
               <button class="section-toggle-btn" id="nutrition-toggle-btn" onclick="Dashboard.toggleNutritionSection(event)" title="折叠/展开" aria-label="折叠/展开">▼</button>
@@ -79,7 +81,10 @@ const DietRenderModule = {
 
         <div id="advice-section" class="advice-section">
           <div class="advice-header">
-            <div class="dishes-title">💡 AI 营养点评</div>
+            <div class="dishes-title" style="display: flex; align-items: center; gap: 8px;">
+              ${window.IconManager ? window.IconManager.render('lightbulb') : '<img src="css/icons/lightbulb.png" class="hand-icon icon-stamp">'}
+              <span style="position: relative; top: 1px;">AI 营养点评</span>
+            </div>
             <div class="advice-header-right">
               <span id="advice-status" class="advice-status ${version.advice ? '' : 'loading'}"></span>
               <button class="section-toggle-btn" id="advice-toggle-btn" onclick="Dashboard.toggleAdviceSection(event)" title="折叠/展开" aria-label="折叠/展开">▼</button>
@@ -87,9 +92,9 @@ const DietRenderModule = {
           </div>
           <div id="advice-content" class="advice-content">
             ${version.advice
-                ? `<div class="advice-text">${this.simpleMarkdownToHtml(version.advice)}</div>`
-                : '<div class="advice-loading"><span class="loading-spinner"></span>正在生成点评...</div>'
-            }
+        ? `<div class="advice-text">${this.simpleMarkdownToHtml(version.advice)}</div>`
+        : '<div class="advice-loading"><span class="loading-spinner"></span>正在生成点评...</div>'
+      }
           </div>
         </div>
 
@@ -107,7 +112,7 @@ const DietRenderModule = {
         ${data.capturedLabels && data.capturedLabels.length > 0 ? `
         <div class="labels-section">
           <div class="labels-header" onclick="Dashboard.toggleLabelsSection()">
-            <div class="dishes-title">🏷️ 识别到的营养标签 (${data.capturedLabels.length})</div>
+            <div class="dishes-title">营养标签 (${data.capturedLabels.length})</div>
             <span class="labels-toggle" id="labels-toggle-icon">▼</span>
           </div>
           <div id="labels-content" class="labels-content collapsed">
@@ -153,62 +158,62 @@ const DietRenderModule = {
       </div>
     `;
 
-        this.renderDietDishes();
-        this.el.resultTitle.textContent = '饮食分析结果';
-        this.updateStatus(session.isSaved ? 'saved' : '');
+    this.renderDietDishes();
+    this.el.resultTitle.textContent = '饮食分析结果';
+    this.updateStatus(session.isSaved ? 'saved' : '');
 
-        // 渲染营养图表
-        if (typeof NutritionChartModule !== 'undefined') {
-            // 从解析数据中获取 context（today_so_far + user_target）
-            if (data.context) {
-                NutritionChartModule.setContext(data.context);
-            }
-            NutritionChartModule.render(
-                'nutrition-chart',
-                this.currentDietTotals,
-                this.getEnergyUnit()
-            );
-        }
+    // 渲染营养图表
+    if (typeof NutritionChartModule !== 'undefined') {
+      // 从解析数据中获取 context（today_so_far + user_target）
+      if (data.context) {
+        NutritionChartModule.setContext(data.context);
+      }
+      NutritionChartModule.render(
+        'nutrition-chart',
+        this.currentDietTotals,
+        this.getEnergyUnit()
+      );
+    }
 
-        // 恢复营养进度折叠状态（需要图表初始化后再折叠，避免容器高度为 0）
-        if (typeof this.restoreNutritionState === 'function') {
-            this.restoreNutritionState();
-        }
+    // 恢复营养进度折叠状态（需要图表初始化后再折叠，避免容器高度为 0）
+    if (typeof this.restoreNutritionState === 'function') {
+      this.restoreNutritionState();
+    }
 
-        // 恢复营养点评折叠状态
-        this.restoreAdviceState();
-    },
+    // 恢复营养点评折叠状态
+    this.restoreAdviceState();
+  },
 
-    renderDietDishes() {
-        const wrap = document.getElementById('diet-dishes-container');
-        if (!wrap || !this.currentDishes) return;
+  renderDietDishes() {
+    const wrap = document.getElementById('diet-dishes-container');
+    if (!wrap || !this.currentDishes) return;
 
-        if (this.isMobile()) {
-            wrap.innerHTML = this.renderDietDishesMobile();
-            return;
-        }
+    if (this.isMobile()) {
+      wrap.innerHTML = this.renderDietDishesMobile();
+      return;
+    }
 
-        // Desktop: AI 菜式各自渲染为 block，用户菜式共享一个表格
-        const aiDishes = this.currentDishes.map((d, i) => ({ ...d, originalIndex: i })).filter(d => d.source === 'ai');
-        const userDishes = this.currentDishes.map((d, i) => ({ ...d, originalIndex: i })).filter(d => d.source === 'user');
+    // Desktop: AI 菜式各自渲染为 block，用户菜式共享一个表格
+    const aiDishes = this.currentDishes.map((d, i) => ({ ...d, originalIndex: i })).filter(d => d.source === 'ai');
+    const userDishes = this.currentDishes.map((d, i) => ({ ...d, originalIndex: i })).filter(d => d.source === 'user');
 
-        let html = '';
+    let html = '';
 
-        // 渲染 AI 菜式
-        html += aiDishes.map(d => this.renderDietDishBlockDesktop(d, d.originalIndex)).join('');
+    // 渲染 AI 菜式
+    html += aiDishes.map(d => this.renderDietDishBlockDesktop(d, d.originalIndex)).join('');
 
-        // 渲染用户菜式（共享一个表格）
-        if (userDishes.length > 0) {
-            html += this.renderUserDishesTable(userDishes);
-        }
+    // 渲染用户菜式（共享一个表格）
+    if (userDishes.length > 0) {
+      html += this.renderUserDishesTable(userDishes);
+    }
 
-        wrap.innerHTML = html;
-    },
+    wrap.innerHTML = html;
+  },
 
-    // 用户菜式共享表格渲染
-    renderUserDishesTable(userDishes) {
-        const unit = this.getEnergyUnit();
-        return `
+  // 用户菜式共享表格渲染
+  renderUserDishesTable(userDishes) {
+    const unit = this.getEnergyUnit();
+    return `
       <div class="diet-user-dishes-table">
         <div class="dish-table-wrap" style="min-width: 0;">
           <table class="dish-table ingredients-table" style="min-width: 0; table-layout: fixed;">
@@ -227,9 +232,9 @@ const DietRenderModule = {
             </thead>
             <tbody>
               ${userDishes.map(d => {
-            const i = d.originalIndex;
-            const energyText = this.formatEnergyFromMacros(d.protein, d.fat, d.carb);
-            return `
+      const i = d.originalIndex;
+      const energyText = this.formatEnergyFromMacros(d.protein, d.fat, d.carb);
+      return `
                   <tr>
                     <td><input type="text" class="cell-input" value="${d.name}" oninput="Dashboard.updateDish(${i}, 'name', this.value)"></td>
                     <td><input type="text" class="cell-input num cell-readonly" value="${energyText}" readonly tabindex="-1"></td>
@@ -242,37 +247,37 @@ const DietRenderModule = {
                     <td><button class="cell-remove" onclick="Dashboard.removeDish(${i})">×</button></td>
                   </tr>
                 `;
-        }).join('')}
+    }).join('')}
             </tbody>
           </table>
         </div>
       </div>
     `;
-    },
+  },
 
-    renderDietDishBlockDesktop(d, i) {
-        const enabled = d.enabled !== false;
-        const disableInputs = !enabled;
-        const unit = this.getEnergyUnit();
-        const totals = this.getDishTotals(d);
-        const energyText = this.formatEnergyFromMacros(totals.protein, totals.fat, totals.carb);
+  renderDietDishBlockDesktop(d, i) {
+    const enabled = d.enabled !== false;
+    const disableInputs = !enabled;
+    const unit = this.getEnergyUnit();
+    const totals = this.getDishTotals(d);
+    const energyText = this.formatEnergyFromMacros(totals.protein, totals.fat, totals.carb);
 
-        const r1 = (x) => Math.round((Number(x) || 0) * 10) / 10;
-        const r0 = (x) => Math.round(Number(x) || 0);
+    const r1 = (x) => Math.round((Number(x) || 0) * 10) / 10;
+    const r0 = (x) => Math.round(Number(x) || 0);
 
-        const ratio = this.getMacroEnergyRatio(totals.protein, totals.fat, totals.carb);
-        const ratioHtml = ratio.total_kcal > 0
-            ? `<span class="diet-chip">P ${ratio.p_pct}%</span><span class="diet-chip">F ${ratio.f_pct}%</span><span class="diet-chip">C ${ratio.c_pct}%</span>`
-            : '';
+    const ratio = this.getMacroEnergyRatio(totals.protein, totals.fat, totals.carb);
+    const ratioHtml = ratio.total_kcal > 0
+      ? `<span class="diet-chip">P ${ratio.p_pct}%</span><span class="diet-chip">F ${ratio.f_pct}%</span><span class="diet-chip">C ${ratio.c_pct}%</span>`
+      : '';
 
-        // AI 菜式展开/收起按钮
-        const collapsed = d.source === 'ai' ? (this.dietIngredientsCollapsed?.[d.id] !== false) : false;
-        const toggleBtnHtml = d.source === 'ai'
-            ? `<button class="diet-toggle-btn" onclick="Dashboard.toggleIngredients(${d.id})">${collapsed ? '展开' : '收起'}</button>`
-            : '';
+    // AI 菜式展开/收起按钮
+    const collapsed = d.source === 'ai' ? (this.dietIngredientsCollapsed?.[d.id] !== false) : false;
+    const toggleBtnHtml = d.source === 'ai'
+      ? `<button class="diet-toggle-btn" onclick="Dashboard.toggleIngredients(${d.id})">${collapsed ? '展开' : '收起'}</button>`
+      : '';
 
-        // 合并为单行：checkbox + 菜式名称 + 汇总统计 + P/F/C 比例 + 展开按钮
-        const dishHeaderHtml = `
+    // 合并为单行：checkbox + 菜式名称 + 汇总统计 + P/F/C 比例 + 展开按钮
+    const dishHeaderHtml = `
       <div class="diet-dish-header-combined">
         <input type="checkbox" ${enabled ? 'checked' : ''} onchange="Dashboard.toggleDishEnabled(${i}, this.checked)">
         <div class="diet-dish-name">${d.name}</div>
@@ -288,11 +293,11 @@ const DietRenderModule = {
       </div>
     `;
 
-        // Ingredients 表格（末尾列放 AI 标签）
-        let ingredientsHtml = '';
-        if (d.source === 'ai') {
-            const hiddenClass = collapsed ? 'collapsed' : '';
-            ingredientsHtml = `
+    // Ingredients 表格（末尾列放 AI 标签）
+    let ingredientsHtml = '';
+    if (d.source === 'ai') {
+      const hiddenClass = collapsed ? 'collapsed' : '';
+      ingredientsHtml = `
         <div class="diet-ingredients-wrap ${disableInputs ? 'disabled' : ''}">
           <div class="diet-ingredients-body ${hiddenClass}">
             <div class="dish-table-wrap" style="min-width: 0;">
@@ -312,10 +317,10 @@ const DietRenderModule = {
                 </thead>
                 <tbody>
                   ${(d.ingredients || []).map((ing, j) => {
-                const e = this.formatEnergyFromMacros(ing.macros?.protein_g, ing.macros?.fat_g, ing.macros?.carbs_g);
-                const ro = 'readonly tabindex="-1"';
-                const dis = disableInputs ? 'disabled' : '';
-                return `
+        const e = this.formatEnergyFromMacros(ing.macros?.protein_g, ing.macros?.fat_g, ing.macros?.carbs_g);
+        const ro = 'readonly tabindex="-1"';
+        const dis = disableInputs ? 'disabled' : '';
+        return `
                       <tr>
                         <td><input type="text" class="cell-input cell-readonly" value="${ing.name_zh || ''}" ${ro}></td>
                         <td><input type="text" class="cell-input num cell-readonly" value="${e}" ${ro}></td>
@@ -328,47 +333,47 @@ const DietRenderModule = {
                         <td><button class="scale-toggle-btn ${ing._proportionalScale ? 'active' : ''}" onclick="Dashboard.toggleProportionalScale(${i}, ${j})" title="${ing._proportionalScale ? '比例模式：修改重量会等比调整营养素' : '独立模式：点击开启比例联动'}">${ing._proportionalScale ? '⚖' : '⚖'}</button></td>
                       </tr>
                     `;
-            }).join('')}
+      }).join('')}
                 </tbody>
               </table>
             </div>
           </div>
         </div>
       `;
-        }
+    }
 
-        return `
+    return `
       <div class="diet-dish-block ${disableInputs ? 'disabled' : ''}">
         ${dishHeaderHtml}
         ${ingredientsHtml}
       </div>
     `;
-    },
+  },
 
-    renderDietDishesMobile() {
-        return `
+  renderDietDishesMobile() {
+    return `
       ${this.currentDishes.map((d, i) => {
-            const enabled = d.enabled !== false;
-            const totals = this.getDishTotals(d);
-            const unit = this.getEnergyUnit();
-            const energyText = this.formatEnergyFromMacros(totals.protein, totals.fat, totals.carb);
-            const disableInputs = !enabled;
-            const canRemove = d.source === 'user';
-            const dis = disableInputs ? 'disabled' : '';
-            const r1 = (x) => Math.round((Number(x) || 0) * 10) / 10;
-            const r0 = (x) => Math.round(Number(x) || 0);
+      const enabled = d.enabled !== false;
+      const totals = this.getDishTotals(d);
+      const unit = this.getEnergyUnit();
+      const energyText = this.formatEnergyFromMacros(totals.protein, totals.fat, totals.carb);
+      const disableInputs = !enabled;
+      const canRemove = d.source === 'user';
+      const dis = disableInputs ? 'disabled' : '';
+      const r1 = (x) => Math.round((Number(x) || 0) * 10) / 10;
+      const r0 = (x) => Math.round(Number(x) || 0);
 
-            // AI：菜式头只读 + ingredients 可编辑
-            const collapsed = this.dietIngredientsCollapsed?.[d.id] !== false;
-            const toggleText = collapsed ? '展开' : '收起';
-            const aiIngredients = d.source === 'ai'
-                ? `
+      // AI：菜式头只读 + ingredients 可编辑
+      const collapsed = this.dietIngredientsCollapsed?.[d.id] !== false;
+      const toggleText = collapsed ? '展开' : '收起';
+      const aiIngredients = d.source === 'ai'
+        ? `
             <div class="dishes-title" style="margin-top: 10px;">Ingredients（可编辑）</div>
             <button class="diet-toggle-btn" style="margin: 6px 0 10px 0;" onclick="Dashboard.toggleIngredients(${d.id})">${toggleText}</button>
             <div class="${collapsed ? 'diet-ingredients-body collapsed' : 'diet-ingredients-body'}">
             ${(d.ingredients || []).map((ing, j) => {
-                    const ie = this.formatEnergyFromMacros(ing.macros?.protein_g, ing.macros?.fat_g, ing.macros?.carbs_g);
-                    return `
+          const ie = this.formatEnergyFromMacros(ing.macros?.protein_g, ing.macros?.fat_g, ing.macros?.carbs_g);
+          return `
                 <div class="keep-item" style="border-bottom: none; padding: 10px 0 6px 0;">
                   <div class="keep-main" style="gap: 8px; justify-content: space-between;">
                     <div style="display: flex; align-items: center; gap: 8px;">
@@ -389,14 +394,14 @@ const DietRenderModule = {
                   <input type="number" class="dish-input number" placeholder="重量(g)" value="${ing.weight_g ?? 0}" min="0" step="0.1" ${dis} oninput="Dashboard.updateIngredient(${i}, ${j}, 'weight_g', this.value)">
                 </div>
               `;
-                }).join('')}
+        }).join('')}
             </div>
           `
-                : '';
+        : '';
 
-            // 用户新增：保持汇总编辑
-            const userEditor = d.source === 'user'
-                ? `
+      // 用户新增：保持汇总编辑
+      const userEditor = d.source === 'user'
+        ? `
             <div class="dish-row" style="grid-template-columns: repeat(3, 1fr); gap: 8px; border-bottom: none; padding-top: 10px;">
               <input type="number" class="dish-input number" placeholder="蛋白(g)" value="${d.protein ?? 0}" min="0" step="0.1" ${dis} oninput="Dashboard.updateDish(${i}, 'protein', this.value)">
               <input type="number" class="dish-input number" placeholder="脂肪(g)" value="${d.fat ?? 0}" min="0" step="0.1" ${dis} oninput="Dashboard.updateDish(${i}, 'fat', this.value)">
@@ -408,17 +413,17 @@ const DietRenderModule = {
               <input type="number" class="dish-input number" placeholder="重量(g)" value="${d.weight ?? 0}" min="0" step="0.1" ${dis} oninput="Dashboard.updateDish(${i}, 'weight', this.value)">
             </div>
           `
-                : '';
+        : '';
 
-            return `
+      return `
           <div class="keep-section" style="${disableInputs ? 'opacity: 0.55;' : ''}">
             <div style="display:flex; align-items:center; justify-content: space-between; gap: 10px;">
               <div style="display:flex; align-items:center; gap: 10px; min-width: 0;">
                 <input type="checkbox" ${enabled ? 'checked' : ''} onchange="Dashboard.toggleDishEnabled(${i}, this.checked)">
                 ${d.source === 'user'
-                    ? `<input type="text" class="dish-input name" style="flex:1; min-width: 0;" value="${d.name}" ${dis} oninput="Dashboard.updateDish(${i}, 'name', this.value)">`
-                    : `<div style="flex:1; min-width: 0; font-weight: 600; overflow:hidden; text-overflow: ellipsis; white-space: nowrap;">${d.name}</div>`
-                }
+          ? `<input type="text" class="dish-input name" style="flex:1; min-width: 0;" value="${d.name}" ${dis} oninput="Dashboard.updateDish(${i}, 'name', this.value)">`
+          : `<div style="flex:1; min-width: 0; font-weight: 600; overflow:hidden; text-overflow: ellipsis; white-space: nowrap;">${d.name}</div>`
+        }
               </div>
               ${canRemove ? `<button class="cell-remove" onclick="Dashboard.removeDish(${i})">×</button>` : `<span class="text-muted" style="font-size:0.75rem;">AI</span>`}
             </div>
@@ -438,15 +443,15 @@ const DietRenderModule = {
             ${d.source === 'user' ? userEditor : aiIngredients}
           </div>
         `;
-        }).join('')}
+    }).join('')}
     `;
-    },
+  },
 
 
-    // 调用 EnergyUtils，自动传入当前单位
-    formatEnergyFromMacros(proteinG, fatG, carbsG) {
-        return EnergyUtils.formatEnergyFromMacros(proteinG, fatG, carbsG, this.getEnergyUnit());
-    },
+  // 调用 EnergyUtils，自动传入当前单位
+  formatEnergyFromMacros(proteinG, fatG, carbsG) {
+    return EnergyUtils.formatEnergyFromMacros(proteinG, fatG, carbsG, this.getEnergyUnit());
+  },
 };
 
 window.DietRenderModule = DietRenderModule;

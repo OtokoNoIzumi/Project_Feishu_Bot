@@ -5,26 +5,40 @@
 
 /* === CSS Variables === */
 :root {
-  /* Colors */
-  --color-bg-primary: #0a0a0f;
-  --color-bg-secondary: #12121a;
-  --color-bg-tertiary: #1a1a25;
-  --color-bg-glass: rgba(255, 255, 255, 0.03);
-  --color-border: rgba(255, 255, 255, 0.08);
-  --color-border-hover: rgba(255, 255, 255, 0.15);
-  
-  --color-text-primary: #f0f0f5;
-  --color-text-secondary: #a0a0b0;
-  --color-text-muted: #606070;
-  
-  --color-accent-primary: #6366f1;
-  --color-accent-secondary: #8b5cf6;
-  --color-accent-gradient: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
-  
-  --color-success: #22c55e;
-  --color-warning: #f59e0b;
-  --color-error: #ef4444;
-  
+  /* Colors - Warm Notebook Style */
+  --color-bg-primary: #fdfbf7;
+  /* Creamy paper */
+  --color-bg-secondary: #f4f0e6;
+  /* Thick paper/Cardboard */
+  --color-bg-tertiary: #ebe6da;
+  /* Darker paper/Tape */
+  --color-bg-glass: rgba(255, 255, 255, 0.65);
+  /* Frosted tracing paper */
+
+  --color-border: rgba(92, 85, 78, 0.15);
+  /* Pencil grey/brown */
+  --color-border-hover: rgba(92, 85, 78, 0.3);
+
+  --color-text-primary: #382e28;
+  /* Deep Coffee - Darker for contrast */
+  --color-text-secondary: #6e5d50;
+  /* Medium Brown */
+  --color-text-muted: #948171;
+  /* Readable Light Brown */
+
+  /* Accents - Warm & Earthy */
+  --color-accent-primary: #d97757;
+  /* Terracotta Red */
+  --color-accent-secondary: #c86b4e;
+  --color-accent-gradient: linear-gradient(135deg, #d97757 0%, #e08e73 100%);
+
+  --color-success: #6b8e23;
+  /* Olive Green */
+  --color-warning: #cd853f;
+  /* Peru */
+  --color-error: #cd5c5c;
+  /* Indian Red */
+
   /* Spacing */
   --spacing-xs: 4px;
   --spacing-sm: 8px;
@@ -32,25 +46,25 @@
   --spacing-lg: 24px;
   --spacing-xl: 32px;
   --spacing-2xl: 48px;
-  
-  /* Border Radius */
+
+  /* Border Radius - Slightly organic */
   --radius-sm: 6px;
   --radius-md: 12px;
-  --radius-lg: 16px;
-  --radius-xl: 24px;
+  --radius-lg: 18px;
+  --radius-xl: 26px;
   --radius-full: 9999px;
-  
-  /* Shadows */
-  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.4);
-  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.5);
-  --shadow-glow: 0 0 20px rgba(99, 102, 241, 0.3);
-  
+
+  /* Shadows - Soft & Warm */
+  --shadow-sm: 0 2px 4px rgba(74, 62, 53, 0.05);
+  --shadow-md: 0 4px 12px rgba(74, 62, 53, 0.08);
+  --shadow-lg: 0 8px 24px rgba(74, 62, 53, 0.12);
+  --shadow-glow: 0 0 15px rgba(217, 119, 87, 0.3);
+
   /* Transitions */
   --transition-fast: 150ms ease;
   --transition-normal: 250ms ease;
   --transition-slow: 400ms ease;
-  
+
   /* Layout */
   --sidebar-width: 280px;
   --panel-width: 400px;
@@ -58,7 +72,9 @@
 }
 
 /* === Reset & Base === */
-*, *::before, *::after {
+*,
+*::before,
+*::after {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
@@ -71,11 +87,148 @@ html {
 }
 
 body {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: 'Lora', 'Georgia', serif;
   background: var(--color-bg-primary);
+  background-image: url('bg_paper.png');
+  background-repeat: repeat;
+  background-size: 512px;
+  /* Adjustable scale */
   color: var(--color-text-primary);
   line-height: 1.6;
   min-height: 100vh;
+}
+
+/* Global Emoji Ink Filter - REMOVED (Replaced by Sticker/Stamp system) */
+/* .brand-icon etc removed from here to specialized classes below */
+
+/* === Notebook Decoration System (Image Based) === */
+
+/* Base class for all hand-drawn icons */
+.hand-icon {
+  display: inline-block;
+  vertical-align: middle;
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+}
+
+/* 1. Stickers: Colorful, white border feel, shadow, slight chaotic rotation */
+.icon-sticker {
+  width: 24px;
+  height: 24px;
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.15));
+  transform: rotate(-3deg);
+  transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.icon-sticker.lg {
+  width: 32px;
+  height: 32px;
+}
+
+.icon-sticker.xl {
+  width: 48px;
+  height: 48px;
+}
+
+.icon-sticker.xxl {
+  width: 64px;
+  height: 64px;
+}
+
+.icon-sticker:hover {
+  transform: scale(1.15) rotate(4deg);
+  filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.2));
+}
+
+/* 2. Stamps: Clean hand-drawn feel, original colors */
+.icon-stamp {
+  width: 20px;
+  height: 20px;
+  /* Removed heavy filters (sepia, multiply) to avoid 'dirty' look */
+  /* Just slight opacity to blend nicely, but keep original colors */
+  opacity: 0.9;
+  transform: rotate(2deg);
+  transition: all 0.2s ease;
+}
+
+.icon-stamp.lg {
+  width: 24px;
+  height: 24px;
+}
+
+.icon-stamp.xl {
+  width: 64px;
+  height: 64px;
+}
+
+.icon-stamp:hover {
+  opacity: 1;
+  transform: rotate(-2deg) scale(1.1);
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1));
+}
+
+/* Specific Adjustments */
+.brand-icon img {
+  width: 32px;
+  height: 32px;
+}
+
+
+/* Hand-drawn Checkbox */
+input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--color-text-secondary);
+  border-radius: 2px 5px 3px 4px;
+  /* Organic box */
+  background: transparent;
+  cursor: pointer;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+input[type="checkbox"]:hover {
+  border-color: var(--color-accent-primary);
+}
+
+input[type="checkbox"]:checked {
+  border-color: var(--color-accent-primary);
+}
+
+input[type="checkbox"]:checked::after {
+  content: '✓';
+  font-family: 'Patrick Hand', cursive;
+  font-size: 24px;
+  color: var(--color-accent-primary);
+  position: absolute;
+  top: -12px;
+  left: 2px;
+  transform: rotate(-5deg);
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(92, 85, 78, 0.2);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(92, 85, 78, 0.4);
 }
 
 a {
@@ -96,40 +249,120 @@ button {
 }
 
 /* === Typography === */
-h1, h2, h3, h4, h5, h6 {
-  font-weight: 600;
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: 'Patrick Hand', cursive;
+  font-weight: 500;
   line-height: 1.3;
 }
 
-h1 { font-size: 2rem; }
-h2 { font-size: 1.5rem; }
-h3 { font-size: 1.25rem; }
+h1 {
+  font-size: 2rem;
+}
+
+h2 {
+  font-size: 1.5rem;
+}
+
+h3 {
+  font-size: 1.25rem;
+}
 
 /* === Utility Classes === */
-.text-center { text-align: center; }
-.text-muted { color: var(--color-text-muted); }
-.text-secondary { color: var(--color-text-secondary); }
-.text-success { color: var(--color-success); }
-.text-warning { color: var(--color-warning); }
-.text-error { color: var(--color-error); }
+.text-center {
+  text-align: center;
+}
 
-.hidden { display: none !important; }
-.flex { display: flex; }
-.flex-col { flex-direction: column; }
-.items-center { align-items: center; }
-.justify-center { justify-content: center; }
-.justify-between { justify-content: space-between; }
-.gap-sm { gap: var(--spacing-sm); }
-.gap-md { gap: var(--spacing-md); }
+.text-muted {
+  color: var(--color-text-muted);
+}
+
+.text-secondary {
+  color: var(--color-text-secondary);
+}
+
+.text-success {
+  color: var(--color-success);
+}
+
+.text-warning {
+  color: var(--color-warning);
+}
+
+.text-error {
+  color: var(--color-error);
+}
+
+.hidden {
+  display: none !important;
+}
+
+.flex {
+  display: flex;
+}
+
+.flex-col {
+  flex-direction: column;
+}
+
+.items-center {
+  align-items: center;
+}
+
+.justify-center {
+  justify-content: center;
+}
+
+.justify-between {
+  justify-content: space-between;
+}
+
+.gap-sm {
+  gap: var(--spacing-sm);
+}
+
+.gap-md {
+  gap: var(--spacing-md);
+}
 
 /* === Glassmorphism Card === */
+/* === Glassmorphism Card (Paper Note Style) === */
 .glass-card {
   background: var(--color-bg-glass);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
-  transition: border-color var(--transition-normal), box-shadow var(--transition-normal);
+  transition: border-color var(--transition-normal), box-shadow var(--transition-normal), transform var(--transition-normal);
+
+  /* Organic Touch */
+  border-top-left-radius: 2px;
+  border-bottom-right-radius: 2px;
+  box-shadow: 2px 4px 12px rgba(74, 62, 53, 0.08);
+  transform: rotate(-0.3deg);
+  /* Subtle organic tilt */
+}
+
+/* Washi Tape Decoration (Top Center) */
+.glass-card::before {
+  content: '';
+  position: absolute;
+  top: -10px;
+  left: 50%;
+  transform: translateX(-50%) rotate(1.5deg);
+  width: 80px;
+  height: 24px;
+  background: rgba(217, 119, 87, 0.3);
+  /* Terracotta Tape */
+  opacity: 0.6;
+  z-index: 10;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  mask-image: url("data:image/svg+xml,%3Csvg width='100%25' height='100%25' viewBox='0 0 100 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0,0 L100,0 L95,100 L5,100 Z' fill='black'/%3E%3C/svg%3E");
+  /* Rough edge simulation (simple) */
 }
 
 .glass-card:hover {
@@ -201,7 +434,7 @@ h3 { font-size: 1.25rem; }
 
 .input-field:focus {
   border-color: var(--color-accent-primary);
-  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+  box-shadow: 0 0 0 3px rgba(217, 119, 87, 0.2);
   outline: none;
 }
 
@@ -221,9 +454,9 @@ textarea.input-field {
   align-items: center;
   justify-content: center;
   padding: var(--spacing-lg);
-  background: 
-    radial-gradient(ellipse at top, rgba(99, 102, 241, 0.15) 0%, transparent 50%),
-    radial-gradient(ellipse at bottom right, rgba(139, 92, 246, 0.1) 0%, transparent 50%),
+  background:
+    radial-gradient(ellipse at top, rgba(217, 119, 87, 0.15) 0%, transparent 50%),
+    radial-gradient(ellipse at bottom right, rgba(224, 142, 115, 0.1) 0%, transparent 50%),
     var(--color-bg-primary);
 }
 
@@ -336,7 +569,7 @@ textarea.input-field {
 }
 
 .nav-item.active {
-  background: rgba(99, 102, 241, 0.1);
+  background: rgba(217, 119, 87, 0.1);
   color: var(--color-accent-primary);
 }
 
@@ -487,7 +720,7 @@ textarea.input-field {
 .upload-zone:hover,
 .upload-zone.dragover {
   border-color: var(--color-accent-primary);
-  background: rgba(99, 102, 241, 0.05);
+  background: rgba(217, 119, 87, 0.05);
 }
 
 .upload-icon {
@@ -588,24 +821,29 @@ textarea.input-field {
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .skeleton {
-  background: linear-gradient(
-    90deg,
-    var(--color-bg-tertiary) 0%,
-    var(--color-bg-secondary) 50%,
-    var(--color-bg-tertiary) 100%
-  );
+  background: linear-gradient(90deg,
+      var(--color-bg-tertiary) 0%,
+      var(--color-bg-secondary) 50%,
+      var(--color-bg-tertiary) 100%);
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite;
   border-radius: var(--radius-sm);
 }
 
 @keyframes shimmer {
-  0% { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
+  0% {
+    background-position: 200% 0;
+  }
+
+  100% {
+    background-position: -200% 0;
+  }
 }
 
 /* === Responsive === */
@@ -618,11 +856,11 @@ textarea.input-field {
     z-index: 100;
     transition: left var(--transition-normal);
   }
-  
+
   .sidebar.open {
     left: 0;
   }
-  
+
   .side-panel {
     position: fixed;
     right: -100%;
@@ -631,7 +869,7 @@ textarea.input-field {
     z-index: 100;
     transition: right var(--transition-normal);
   }
-  
+
   .side-panel.open {
     right: 0;
   }
@@ -642,11 +880,11 @@ textarea.input-field {
     --panel-width: 100%;
     --sidebar-width: 100%;
   }
-  
+
   .login-card {
     padding: var(--spacing-lg);
   }
-  
+
   .message {
     max-width: 90%;
   }
