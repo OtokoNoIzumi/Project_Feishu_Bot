@@ -776,3 +776,118 @@ restoreAdviceState() {
 - 图例改为横向滚动或换行
 - 点击图例区域加大（便于触控）
 - 营养点评默认折叠（移动端空间有限）
+
+## 7. Keep 模块升级与数据治理方案 (Keep Upgrade)
+
+针对现有 Keep 数据结构简单、新旧数据重叠、以及引入详细围度 (Body Metrics) 后的数据治理挑战，制定本升级方案。
+
+### 7.1 核心挑战
+
+1.  **数据重叠**：`scale` (体脂秤), `dimensions` (基础围度), `metrics` (20+详细围度) 存在字段交叉（如体重、腰围）。
+2.  **Schema 割裂**：Keep 原有 Schema 字段命名 (`chest_cm`) 与新 Schema (`bust`) 不一致。
+3.  **交互限制**：Keep 目前强制要求图片，不支持纯文本/混合输入。
+
+### 7.2 数据治理策略 (Data Governance)
+
+采用 **"Unified Schema, Distributed Storage" (统一模式，分步存储)** 策略：
+
+#### A. 事件类型定义 (Event Types)
+
+保持 Keep 事件类型的语义清晰，各司其职：
+
+| 事件类型 | 职责 | 核心字段示例 | 数据来源 |
+| :--- | :--- | :--- | :--- |
+| `scale` | **成分分析** | `weight_kg`, `body_fat_pct`, `muscle_kg`, `moist_pct` | 智能体脂秤截图 |
+| `dimensions` | **形体测量** | `bust`, `waist`, `hip_circ`, `thigh`, `calf`... | 皮尺测量 (文本/OCR) |
+| `sleep` | **睡眠监测** | `duration_min`, `score`, `deep_sleep_min` | 手环/Keep截图 |
+
+> **关键决策**：新引入的详细数据 (20+项) **不再创建新事件类型**，而是直接扩充 `dimensions` 事件的 Schema。未来的 `dimensions` 事件就是一个包含任意围度字段的字典。
+
+#### B. Schema 统一映射 (Normalization)
+
+在“解析层” (Parse Usecase) 做标准化，存入数据库时必须符合 `METRICS_SCHEMA` 定义的 Key。
+
+| Keep 原字段 (旧) | 标准字段 (新 METRICS_SCHEMA) | 备注 |
+| :--- | :--- | :--- |
+| `chest_cm` | `bust` | 胸围 |
+| `waist_cm` | `waist` | 腰围 |
+| `hips_cm` | `hip_circ` | 臀围 (注意区分 metrics 里的 `hip_width`) |
+| `thigh_cm` | `thigh` | 大腿围 |
+| `arm_cm` | `arm` | 上臂围 |
+| `weight_g` (Scale) | `weight` | 仅在聚合计算时关联，Scale 事件保留原字段名 |
+
+#### C. 冲突解决与聚合计算 (Aggregation Logic)
+
+当 `Calculator` 需要计算 WHR (腰臀比) 或 BMI 时，按以下优先级抓取数据：
+
+1.  **Weight (体重)**:
+    *   Priority 1: 同一天的 `scale` 事件 (机器测量最准)。
+    *   Priority 2: 同一天的 `dimensions` 事件 (如果用户手填了体重)。
+    *   Priority 3: 用户 `Profile` 中的 `latest_weight`。
+2.  **Height (身高)**:
+    *   Priority 1: 用户 `Profile` (成人身高基本不变)。
+    *   Priority 2: `dimensions` 记录。
+3.  **Waist/Hip (腰臀)**:
+    *   Priority 1: `dimensions` 事件。
+
+### 7.3 开发实施方案 (Implementation Plan)
+
+#### Step 1: 后端统一解析 (True Unified Parser)
+
+不拆分接口，而是将 `METRICS_SCHEMA` 的能力完整注入到现有的 `KeepUnifiedParseUsecase` 中。
+
+1.  **改造 `apps/keep/usecases/parse_unified.py`**:
+    *   **Current**: 仅识别 Scale, Sleep, Dimensions(基础)。
+    *   **New**:
+        *   Prompt 包含完整 `METRICS_SCHEMA`。
+        *   指令：*"请识别输入中的所有健康数据，将其归类为 Scale(体脂), Sleep(睡眠), 或 Metrics(围度)。metrics 字段请严格遵循 Schema。"*
+        *   兼容混合输入：例如一张体脂秤照片 + 一段 "腰围70" 的文本，需同时返回 `scale_event` 和 `metrics_event` (包含 waist: 70)。
+
+2.  **API 调整**:
+    *   更新 `/api/keep/analyze`，允许 `images` 为空列表 (支持纯文本输入)。
+
+#### Step 2: 前端统一编辑器 (Unified Editor)
+
+不再区分只读卡片，所有 Keep 解析结果均进入**“综合编辑页”**。
+
+1.  **动态分区渲染**:
+    *   根据 API 返回的 JSON 结构，动态展示存在的模块：
+        *   **[模块 A] 身体成分 (Scale)**: 体重、体脂率、BMI...
+        *   **[模块 B] 睡眠监测 (Sleep)**: 时长、深睡...
+        *   **[模块 C] 身体围度 (Metrics)**: 
+            *   *默认展示*: 胸/腰/臀/大腿/小腿基础字段。
+            *   *权限控制*: 根据 `ENABLE_DETAILED_METRICS` 权限，决定是否渲染“添加更多字段”按钮及显示 Underbust/Arm/LTorso 等高级字段。
+            *   *逻辑*: 即使无权限用户误传了 "LTorso: 30"，前端可选择隐藏或以只读方式展示，但不允许添加新高级字段。
+
+2.  **交互优化**:
+    *   支持一次性修改多类数据。
+    *   保存时，前端将数据拆分为多个 Event (scale/sleep/dimensions) 提交，或提交给 Unified Save 接口由后端拆分。
+
+### 7.4 示例 Unified Prompt (Chinese)
+
+```text
+你是一位全能的健康数据助手。请分析用户的输入（文本/图片），提取并归类所有健康数据。
+
+**分类标准**:
+1. **Scale (体脂/成分)**: 包含体重(weight)、体脂率(body_fat)、肌肉量等。
+2. **Sleep (睡眠)**: 包含睡眠时长(duration)、评分、深睡/浅睡等。
+3. **Metrics (身体围度)**: 包含以下标准字段：
+   - bust(胸围), underbust(下胸围), waist(腰围), hip_circ(臀围)
+   - arm(上臂), forearm(前臂), thigh(大腿), calf(小腿)
+   - shoulder_circ(肩围), etc. (参考 METRICS_SCHEMA)
+
+**输入**:
+{user_note}
+
+**输出 JSON 结构**:
+{
+  "scale_event": { "weight_kg": ..., "body_fat_pct": ... } | null,
+  "sleep_event": { ... } | null,
+  "metrics_event": { "bust": ..., "waist": ..., "metrics": { ... } } | null,
+  "occurred_at": "YYYY-MM-DD HH:MM"
+}
+```
+
+### 7.5 下一步动作
+1. 确认上述方案后，优先开发 `parse_metrics.py` (中文 Prompt) 和 API。
+2. 开发前端 Keep 编辑面板。
