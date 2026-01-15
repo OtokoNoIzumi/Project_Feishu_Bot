@@ -80,16 +80,10 @@ const StorageModule = {
 
     // 确定 Keep 事件类型
     determineKeepEventType(parsedData) {
-        if (parsedData.scaleEvents && parsedData.scaleEvents.length > 0) {
-            return 'scale';
-        }
-        if (parsedData.sleepEvents && parsedData.sleepEvents.length > 0) {
-            return 'sleep';
-        }
-        if (parsedData.bodyMeasureEvents && parsedData.bodyMeasureEvents.length > 0) {
-            return 'dimensions';
-        }
-        return 'scale';  // 默认
+        // 由于现在默认使用 Unified Keep API，返回的数据结构总是包含 scale_events/sleep_events 等列表
+        // 因此统一使用 'unified' 类型进行保存，让后端负责把这些列表拆包存入数据库
+        // 这样可以同时支持单张图里包含多条数据（如同时有体重和睡眠）的情况
+        return 'unified';
     },
 
     loadHistory() {

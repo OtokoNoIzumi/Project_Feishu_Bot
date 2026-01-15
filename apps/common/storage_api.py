@@ -40,16 +40,61 @@ def build_storage_router(settings: BackendSettings) -> APIRouter:
         req: SaveKeepEventRequest,
         user_id: str = Depends(get_current_user_id),  # 从 Header 注入
     ):
-        """保存 Keep 原子事件"""
+        """保存 Keep 原子事件 或 Unified 混合事件"""
         try:
-            result = await RecordService.save_keep_event(
-                user_id=user_id,
-                event_type=req.event_type,
-                event_data=req.event_data,
-                image_hashes=req.image_hashes,
-                record_id=req.record_id,
-            )
-            return SaveResponse(success=True, detail="Saved", saved_record=result)
+            if req.event_type == "unified":
+                # Unified 模式：拆包分别保存
+                saved_count = 0
+                
+                # 1. Scale
+                for item in req.event_data.get("scale_events", []):
+                    await RecordService.save_keep_event(
+                        user_id=user_id,
+                        event_type="scale",
+                        event_data=item,
+                        image_hashes=req.image_hashes, # 共用 Image Hashes
+                        # record_id 不传入，让 Service 为每个子项生成独立的 ID (防止冲突)
+                        # 除非前端明确指定了子项的 record_id (通常没有)
+                    )
+                    saved_count += 1
+
+                # 2. Sleep
+                for item in req.event_data.get("sleep_events", []):
+                    await RecordService.save_keep_event(
+                        user_id=user_id,
+                        event_type="sleep",
+                        event_data=item,
+                        image_hashes=req.image_hashes,
+                    )
+                    saved_count += 1
+                
+                # 3. Dimensions
+                for item in req.event_data.get("body_measure_events", []):
+                    await RecordService.save_keep_event(
+                        user_id=user_id,
+                        event_type="dimensions",
+                        event_data=item,
+                        image_hashes=req.image_hashes,
+                    )
+                    saved_count += 1
+                
+                return SaveResponse(
+                    success=True, 
+                    detail=f"Saved {saved_count} unified events", 
+                    saved_record={"record_id": req.record_id} # 返回主 ID (如果有)
+                )
+
+            else:
+                # 传统单事件模式
+                result = await RecordService.save_keep_event(
+                    user_id=user_id,
+                    event_type=req.event_type,
+                    event_data=req.event_data,
+                    image_hashes=req.image_hashes,
+                    record_id=req.record_id,
+                )
+                return SaveResponse(success=True, detail="Saved", saved_record=result)
+
         except Exception as e:
             return SaveResponse(success=False, detail=str(e))
 
