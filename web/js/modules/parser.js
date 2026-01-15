@@ -16,7 +16,8 @@ const ParserModule = {
     parseDietResult(data) {
         const summary = data.meal_summary || {};
 
-        let totalEnergy = 0;
+        // 使用 KJ 进行高精度累加，确保持续一致性
+        let totalEnergyKJ = 0;
         let totalProtein = 0;
         let totalFat = 0;
         let totalCarb = 0;
@@ -27,7 +28,9 @@ const ParserModule = {
 
         (data.dishes || []).forEach((dish, i) => {
             let dishWeight = 0;
-            let dishEnergy = 0;
+
+            // 临时累加器
+            let dishEnergyKJ = 0;
             let dishProtein = 0;
             let dishFat = 0;
             let dishCarb = 0;
@@ -35,24 +38,36 @@ const ParserModule = {
             let dishFiberG = 0;
 
             (dish.ingredients || []).forEach(ing => {
-                const weight = ing.weight_g || 0;
+                const weight = Number(ing.weight_g) || 0;
                 dishWeight += weight;
 
+                // 累加宏量
                 if (ing.macros) {
-                    dishProtein += ing.macros.protein_g || 0;
-                    dishFat += ing.macros.fat_g || 0;
-                    dishCarb += ing.macros.carbs_g || 0;
-                    dishSodiumMg += ing.macros.sodium_mg || 0;
-                    dishFiberG += ing.macros.fiber_g || 0;
+                    dishProtein += Number(ing.macros.protein_g) || 0;
+                    dishFat += Number(ing.macros.fat_g) || 0;
+                    dishCarb += Number(ing.macros.carbs_g) || 0;
+                    dishSodiumMg += Number(ing.macros.sodium_mg) || 0;
+                    dishFiberG += Number(ing.macros.fiber_g) || 0;
                 }
 
-                // 计算能量
-                if (ing.energy_kj) {
-                    dishEnergy += ing.energy_kj / 4.184;
+                // 计算能量 (统一转为 KJ 累加)
+                // 优先使用后端返回的 energy_kj (Label OCR 或 高精度计算值)
+                let itemEnergyKJ = 0;
+                const backendKJ = Number(ing.energy_kj);
+
+                if (!isNaN(backendKJ) && backendKJ > 0) {
+                    itemEnergyKJ = backendKJ;
                 } else if (ing.macros) {
-                    const m = ing.macros;
-                    dishEnergy += (m.protein_g || 0) * 4 + (m.fat_g || 0) * 9 + (m.carbs_g || 0) * 4;
+                    // Fallback: 使用 EnergyUtils 计算 (Kcal -> KJ)
+                    const kcal = EnergyUtils.macrosToKcal(
+                        ing.macros.protein_g,
+                        ing.macros.fat_g,
+                        ing.macros.carbs_g
+                    );
+                    itemEnergyKJ = EnergyUtils.kcalToKJ(kcal);
                 }
+
+                dishEnergyKJ += itemEnergyKJ;
             });
 
             dishes.push({
@@ -69,7 +84,6 @@ const ParserModule = {
                     const sodiumMg = Number(ing.macros?.sodium_mg) || 0;
                     const fiberG = Number(ing.macros?.fiber_g) || 0;
 
-                    // 缓存原始密度（每克含量），用于等比缩放
                     const density = weightG > 0 ? {
                         protein_per_g: proteinG / weightG,
                         fat_per_g: fatG / weightG,
@@ -83,7 +97,7 @@ const ParserModule = {
                         weight_g: weightG,
                         weight_method: ing.weight_method,
                         data_source: ing.data_source,
-                        energy_kj: Number(ing.energy_kj) || 0,
+                        energy_kj: Number(ing.energy_kj) || 0, // 保持原始精度
                         macros: {
                             protein_g: proteinG,
                             fat_g: fatG,
@@ -91,14 +105,13 @@ const ParserModule = {
                             sodium_mg: sodiumMg,
                             fiber_g: fiberG,
                         },
-                        // 等比缩放相关
                         _density: density,
-                        _proportionalScale: false,  // 默认关闭
+                        _proportionalScale: false,
                     };
                 }),
             });
 
-            totalEnergy += dishEnergy;
+            totalEnergyKJ += dishEnergyKJ;
             totalProtein += dishProtein;
             totalFat += dishFat;
             totalCarb += dishCarb;
@@ -106,12 +119,22 @@ const ParserModule = {
             totalFiberG += dishFiberG;
         });
 
+        // 转换回 Kcal 以通过 parse 接口 (如果前端主要消费 Kcal)
+        // 但这里我们保留高精度，交由前端展示层决定小数位数
+        const totalEnergyKcal = EnergyUtils.kJToKcal(totalEnergyKJ);
+
         return {
             type: 'diet',
             summary: {
                 mealName: summary.meal_name || '饮食记录',
                 dietTime: summary.diet_time || '',
-                totalEnergy: Math.round(totalEnergy),
+                // 返回计算出的总 Kcal (保留一定精度，避免过早取整)
+                // 前端如果需要 KJ，应该使用 EnergyUtils.kcalToKJ(totalEnergy) 或直接显示
+                // 为了兼容旧逻辑 (return Number)，这里不取整
+                totalEnergy: totalEnergyKcal,
+                // 同时也附带 KJ 值供需要时使用
+                totalEnergyKJ: totalEnergyKJ,
+
                 totalProtein: Math.round(totalProtein * 10) / 10,
                 totalFat: Math.round(totalFat * 10) / 10,
                 totalCarb: Math.round(totalCarb * 10) / 10,
@@ -136,7 +159,7 @@ const ParserModule = {
             })),
             // AI 识别的发生时间
             occurredAt: data.occurred_at || null,
-            // 上下文数据：今日已摄入 + 用户目标（供图表使用）
+            // 上下文数据
             context: data.context || null,
         };
     },

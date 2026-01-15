@@ -206,62 +206,103 @@ class GeminiStructuredClient:
         self, prompt: str, images: List[bytes], schema: Dict[str, Any]
     ) -> Dict[str, Any]:
         """
-        Async generation with Files API support.
-        Args:
-            images: List[bytes]. NOW we accept bytes directly, not PIL.Image.
+        Async generation with Files API support and Retry logic.
         """
         if not self.client_ready:
             self._init_client()
             if not self.client_ready:
                 return {"error": "Gemini 客户端不可用（无可用 API Key 或初始化失败）"}
 
-        try:
-            # 1. Prepare Contents
-            contents = [prompt]
+        max_retries = 3
+        last_error = None
 
-            # Upload images concurrently
-            if images:
-                upload_tasks = [self._upload_bytes_if_needed(b) for b in images]
-                uploaded_files = await asyncio.gather(*upload_tasks)
-                contents.extend(uploaded_files)
+        for attempt in range(1, max_retries + 1):
+            try:
+                # 1. Prepare Contents
+                contents = [prompt]
 
-            # 2. Generate
-            # Using new SDK structure: client.aio.models.generate_content
-            start_time = time.time()
-            response = await asyncio.wait_for(
-                self.client.aio.models.generate_content(
-                    model=self.config.model_name,
-                    contents=contents,
-                    config={
-                        "response_mime_type": "application/json",
-                        "response_schema": schema,
-                        "temperature": self.config.temperature,
-                    },
-                ),
-                timeout=40
-            )
-            duration = time.time() - start_time
-            logger.info("[Gemini] generate_json took %.2fs | model=%s", duration, self.config.model_name)
+                # Upload images concurrently (with timeout)
+                if images:
+                    upload_tasks = [self._upload_bytes_if_needed(b) for b in images]
+                    # Guard upload with 40s timeout
+                    uploaded_files = await asyncio.wait_for(
+                        asyncio.gather(*upload_tasks), timeout=40
+                    )
+                    contents.extend(uploaded_files)
 
-            # 3. Parse
-            if hasattr(response, "parsed") and response.parsed:
-                return response.parsed
+                # 2. Generate
+                start_time = time.time()
+                # Guard generation with 40s timeout
+                response = await asyncio.wait_for(
+                    self.client.aio.models.generate_content(
+                        model=self.config.model_name,
+                        contents=contents,
+                        config={
+                            "response_mime_type": "application/json",
+                            "response_schema": schema,
+                            "temperature": self.config.temperature,
+                        },
+                    ),
+                    timeout=40
+                )
+                duration = time.time() - start_time
+                
+                # 3. Parse and Validate
+                if hasattr(response, "parsed") and response.parsed:
+                    # Log success only if we actually got content
+                    logger.info(
+                        "[Gemini] generate_json success (Attempt %d/%d) | Time:%.2fs | Images:%d | Model:%s",
+                        attempt, max_retries, duration, len(images) if images else 0, self.config.model_name,
+                    )
+                    return response.parsed
 
-            text = getattr(response, "text", "")
-            if not text:
-                return {"error": "响应为空"}
+                text = getattr(response, "text", "")
+                if not text:
+                    # Provide more context on why it's empty
+                    debug_info = "Unknown"
+                    if hasattr(response, "finish_reason"):
+                        debug_info = f"FinishReason:{response.finish_reason}"
+                    if hasattr(response, "prompt_feedback"):
+                        debug_info += f" | Feedback:{response.prompt_feedback}"
+                    
+                    raise ValueError(f"响应为空 (可能被安全过滤). Debug: {debug_info}")
 
-            # Basic cleanup if not automatically parsed
-            if text.startswith("```json"):
-                text = text[7:-3].strip()
-            elif text.startswith("```"):
-                text = text[3:-3].strip()
+                # Log success for clear text response
+                logger.info(
+                    "[Gemini] generate_json success (Attempt %d/%d) | Time:%.2fs | Images:%d | Model:%s",
+                    attempt, max_retries, duration, len(images) if images else 0, self.config.model_name,
+                )
 
-            return json.loads(text)
+                # Basic cleanup
+                if text.startswith("```json"):
+                    text = text[7:-3].strip()
+                elif text.startswith("```"):
+                    text = text[3:-3].strip()
 
-        except Exception as e:
-            self._handle_auth_error(e)
-            return {"error": f"Gemini 异步调用失败: {e}"}
+                return json.loads(text)
+
+            except Exception as e:
+                last_error = e
+                # Check for auth error to potentially invalidate key
+                self._handle_auth_error(e)
+                
+                # Enhance error message for Timeout
+                error_msg = str(e)
+                if isinstance(e, asyncio.TimeoutError):
+                    error_msg = "Request Timed Out (40s)"
+                if not error_msg:  # Handle empty string exceptions
+                    error_msg = repr(e)
+
+                if attempt < max_retries:
+                    logger.warning(
+                        "Retrying Gemini request (attempt %d/%d) due to error: %s", 
+                        attempt, max_retries, error_msg
+                    )
+                    await asyncio.sleep(1)  # Brief backoff
+                else:
+                    logger.error("Gemini request failed after %d attempts: %s", max_retries, error_msg)
+
+        return {"error": f"Gemini 调用失败: {last_error}"}
 
     async def generate_text_async(self, prompt: str, images: List[bytes] = None) -> str:
         """
@@ -271,33 +312,57 @@ class GeminiStructuredClient:
             self._init_client()
             if not self.client_ready:
                 return "系统错误：Gemini 客户端无法初始化（请检查 API Key）。"
+        
+        max_retries = 3
+        last_error = None
 
-        try:
-            # 1. Prepare Contents
-            contents = [prompt]
-            if images:
-                upload_tasks = [self._upload_bytes_if_needed(b) for b in images]
-                uploaded_files = await asyncio.gather(*upload_tasks)
-                contents.extend(uploaded_files)
+        for attempt in range(1, max_retries + 1):
+            try:
+                # 1. Prepare Contents
+                contents = [prompt]
+                if images:
+                    upload_tasks = [self._upload_bytes_if_needed(b) for b in images]
+                    # Guard upload with 40s timeout
+                    uploaded_files = await asyncio.wait_for(
+                        asyncio.gather(*upload_tasks), timeout=40
+                    )
+                    contents.extend(uploaded_files)
 
-            # 2. Generate
-            start_time = time.time()
-            response = await asyncio.wait_for(
-                self.client.aio.models.generate_content(
-                    model=self.config.model_name,
-                    contents=contents,
-                    config={
-                        "temperature": self.config.temperature,
-                    },
-                ),
-                timeout=40
-            )
-            duration = time.time() - start_time
-            logger.info("[Gemini] generate_text took %.2fs | model=%s", duration, self.config.model_name)
+                # 2. Generate
+                start_time = time.time()
+                response = await asyncio.wait_for(
+                    self.client.aio.models.generate_content(
+                        model=self.config.model_name,
+                        contents=contents,
+                        config={
+                            "temperature": self.config.temperature,
+                        },
+                    ),
+                    timeout=40
+                )
+                duration = time.time() - start_time
+                logger.info(
+                    "[Gemini] generate_text success (Attempt %d/%d) | Time:%.2fs | Images:%d | Model:%s",
+                    attempt,
+                    max_retries,
+                    duration,
+                    len(images) if images else 0,
+                    self.config.model_name,
+                )
 
-            return response.text if response.text else ""
+                return response.text if response.text else ""
 
-        except Exception as e:
-            self._handle_auth_error(e)
-            logger.error("Generate text failed: %s", e)
-            return f"生成失败: {str(e)}"
+            except Exception as e:
+                last_error = e
+                self._handle_auth_error(e)
+                
+                if attempt < max_retries:
+                    logger.warning(
+                        "Retrying Gemini text request (attempt %d/%d) due to error: %s", 
+                        attempt, max_retries, e
+                    )
+                    await asyncio.sleep(1)
+                else:
+                    logger.error("Gemini text request failed after %d attempts: %s", max_retries, e)
+        
+        return f"生成失败: {str(last_error)}"

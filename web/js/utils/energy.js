@@ -30,7 +30,9 @@ const EnergyUtils = {
         if (unit === 'kcal') {
             return String(Math.round(kcal));
         }
-        return String(Math.round(this.kcalToKJ(kcal)));
+        // KJ 保留1位小数，避免 520+410=930 的视觉误差
+        const kj = this.kcalToKJ(kcal);
+        return (Math.round(kj * 10) / 10).toFixed(1);
     },
 
     // 计算三大宏量的能量占比

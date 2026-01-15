@@ -95,7 +95,19 @@ const DietEditModule = {
         // 2. 更新 Header 统计数据
         const totals = this.getDishTotals(dish);
         const unit = this.getEnergyUnit();
-        const energyText = this.formatEnergyFromMacros(totals.protein, totals.fat, totals.carb);
+
+        let energyText;
+        // 优先使用聚合的高精度 energy_kj
+        if (totals.energy_kj) {
+            if (unit === 'kcal') {
+                energyText = Math.round(totals.energy_kj / 4.184);
+            } else {
+                // KJ 保留 1 位小数
+                energyText = (Math.round(totals.energy_kj * 10) / 10).toFixed(1);
+            }
+        } else {
+            energyText = this.formatEnergyFromMacros(totals.protein, totals.fat, totals.carb);
+        }
 
         const setStat = (type, val) => {
             const el = dishBlock.querySelector(`.diet-stat[data-stat-type="${type}"] .v`);
@@ -252,7 +264,7 @@ const DietEditModule = {
 
         const dishes = this.currentDishes.filter(d => d.enabled !== false);
         const totals = {
-            totalEnergy: 0,
+            totalEnergyKJ: 0, // 新增：高精度总能量 (KJ)
             totalProtein: 0,
             totalFat: 0,
             totalCarb: 0,
@@ -269,18 +281,21 @@ const DietEditModule = {
             totals.totalFiber += dt.fiber;
             totals.totalSodiumMg += dt.sodium_mg;
             totals.totalWeightG += dt.weight;
-            // 能量重新计算 (kcal)
-            totals.totalEnergy += this.macrosToKcal(dt.protein, dt.fat, dt.carb);
+
+            // 优先累加高精度 KJ
+            totals.totalEnergyKJ += dt.energy_kj;
         });
 
-        // 舍入
-        totals.totalEnergy = Math.round(totals.totalEnergy);
+        // 舍入 (宏量保留 1 位小数)
         totals.totalProtein = Math.round(totals.totalProtein * 10) / 10;
         totals.totalFat = Math.round(totals.totalFat * 10) / 10;
         totals.totalCarb = Math.round(totals.totalCarb * 10) / 10;
         totals.totalFiber = Math.round(totals.totalFiber * 10) / 10;
         totals.totalSodiumMg = Math.round(totals.totalSodiumMg);
         totals.totalWeightG = Math.round(totals.totalWeightG);
+
+        // 为了兼容旧逻辑，totalEnergy (Kcal) 也保留，但基于 KJ 计算且不取整
+        totals.totalEnergy = totals.totalEnergyKJ / 4.184;
 
         this.currentDietTotals = totals;
 
@@ -290,11 +305,16 @@ const DietEditModule = {
             if (el) el.textContent = v;
         };
 
-        // totalEnergy 内部统一为 kcal，这里按用户选择单位显示
         const unit = this.getEnergyUnit();
-        const displayTotalEnergy = unit === 'kcal'
-            ? (Number(this.currentDietTotals.totalEnergy) || 0)
-            : Math.round(this.kcalToKJ(Number(this.currentDietTotals.totalEnergy) || 0));
+        let displayTotalEnergy;
+
+        if (unit === 'kcal') {
+            displayTotalEnergy = Math.round(totals.totalEnergy); // Kcal 显示整数
+        } else {
+            // KJ 显示整数 (用户要求)
+            displayTotalEnergy = Math.round(totals.totalEnergyKJ);
+        }
+
         setText('sum-total-energy', displayTotalEnergy);
         setText('sum-energy-unit', unit);
         setText('sum-total-protein', this.currentDietTotals.totalProtein);
@@ -336,11 +356,10 @@ const DietEditModule = {
         const totals = this.currentDietTotals || {};
         const mealName = this.currentDietMeta?.mealName || '饮食记录';
         const dietTime = this.currentDietMeta?.dietTime || '';
-        // totals.totalEnergy 内部统一为 kcal，不随前端显示单位变化
         const totalEnergyKcal = Number(totals.totalEnergy) || 0;
 
         const editedDishes = (this.currentDishes || []).filter(d => d.enabled !== false).map(d => {
-            // A. AI 识别菜式：保留 ingredients 结构，直接保存“逐成分编辑后的数据”
+            // A. AI 识别菜式
             if (d.source === 'ai' && Array.isArray(d.ingredients) && d.ingredients.length > 0) {
                 return {
                     standard_name: d.name,
@@ -349,11 +368,7 @@ const DietEditModule = {
                         weight_g: Number(ing.weight_g) || 0,
                         weight_method: ing.weight_method,
                         data_source: ing.data_source,
-                        energy_kj: Math.round(this.kcalToKJ(this.macrosToKcal(
-                            ing.macros?.protein_g,
-                            ing.macros?.fat_g,
-                            ing.macros?.carbs_g
-                        )) * 1000) / 1000,
+                        energy_kj: Number(ing.energy_kj) || 0, // 保留原始 KJ
                         macros: {
                             protein_g: Number(ing.macros?.protein_g) || 0,
                             fat_g: Number(ing.macros?.fat_g) || 0,
@@ -365,7 +380,7 @@ const DietEditModule = {
                 };
             }
 
-            // B. 用户新增菜式：用单一 ingredient 表示（结构保持一致）
+            // B. 用户新增菜式
             return {
                 standard_name: d.name,
                 ingredients: [
@@ -374,7 +389,8 @@ const DietEditModule = {
                         weight_g: Number(d.weight) || 0,
                         weight_method: "user_edit",
                         data_source: "user_edit",
-                        energy_kj: Math.round(this.kcalToKJ(this.macrosToKcal(d.protein, d.fat, d.carb)) * 1000) / 1000,
+                        // 用户菜式没有 energy_kj，需计算
+                        energy_kj: Math.round(this.kcalToKJ(this.macrosToKcal(d.protein, d.fat, d.carb)) * 10) / 10,
                         macros: {
                             protein_g: Number(d.protein) || 0,
                             fat_g: Number(d.fat) || 0,
@@ -406,7 +422,8 @@ const DietEditModule = {
             meal_summary: {
                 meal_name: mealName,
                 diet_time: dietTime,
-                total_energy_kj: Math.round(this.kcalToKJ(totalEnergyKcal) * 1000) / 1000,
+                // 这里按标准输出：保留一位小数的 KJ
+                total_energy_kj: Math.round(totals.totalEnergyKJ * 10) / 10,
                 total_protein_g: Number(totals.totalProtein) || 0,
                 total_fat_g: Number(totals.totalFat) || 0,
                 total_carbs_g: Number(totals.totalCarb) || 0,
@@ -415,40 +432,70 @@ const DietEditModule = {
             },
             dishes: editedDishes,
             captured_labels: editedLabels,
-            // AI 识别的发生时间
             occurred_at: this.currentDietMeta?.occurredAt || null,
         };
     },
 
     getDishTotals(dish) {
-        // AI：按 ingredients 加总；User：按 dish 汇总字段
+        // AI：按 ingredients 加总
         if (dish?.source === 'ai') {
             const ings = dish.ingredients || [];
-            const sum = (fn) => ings.reduce((a, x) => a + (fn(x) || 0), 0);
-            const w = sum(x => Number(x.weight_g) || 0);
-            const p = sum(x => Number(x.macros?.protein_g) || 0);
-            const f = sum(x => Number(x.macros?.fat_g) || 0);
-            const c = sum(x => Number(x.macros?.carbs_g) || 0);
-            const fib = sum(x => Number(x.macros?.fiber_g) || 0);
-            const na = sum(x => Number(x.macros?.sodium_mg) || 0);
+            let totalKJ = 0;
+            let totalW = 0;
+            let totalP = 0;
+            let totalF = 0;
+            let totalC = 0;
+            let totalFib = 0;
+            let totalNa = 0;
+
+            ings.forEach(ing => {
+                totalW += Number(ing.weight_g) || 0;
+                totalP += Number(ing.macros?.protein_g) || 0;
+                totalF += Number(ing.macros?.fat_g) || 0;
+                totalC += Number(ing.macros?.carbs_g) || 0;
+                totalFib += Number(ing.macros?.fiber_g) || 0;
+                totalNa += Number(ing.macros?.sodium_mg) || 0;
+
+                // 核心：优先使用 energy_kj
+                let e = Number(ing.energy_kj);
+                if (!isNaN(e) && e > 0) {
+                    totalKJ += e;
+                } else {
+                    // Fallback using EnergyUtils logic (via macros)
+                    // Note: accessing macros directly here
+                    const k = (Number(ing.macros?.protein_g) || 0) * 4 +
+                        (Number(ing.macros?.fat_g) || 0) * 9 +
+                        (Number(ing.macros?.carbs_g) || 0) * 4;
+                    totalKJ += k * 4.184;
+                }
+            });
+
             return {
-                // 这里不提前取整：避免“先取整再算能量”导致同一份数据多处显示能量不一致
-                // 取整只在最终渲染/显示时做
-                weight: w,
-                protein: p,
-                fat: f,
-                carb: c,
-                fiber: fib,
-                sodium_mg: na,
+                weight: totalW,
+                protein: totalP,
+                fat: totalF,
+                carb: totalC,
+                fiber: totalFib,
+                sodium_mg: totalNa,
+                energy_kj: totalKJ,
             };
         }
+
+        // User created dish (manual input)
+        const p = Number(dish?.protein) || 0;
+        const f = Number(dish?.fat) || 0;
+        const c = Number(dish?.carb) || 0;
+        // Calc energy for user dish always from macros (standard rule)
+        const e_struct_kj = (p * 4 + f * 9 + c * 4) * 4.184;
+
         return {
             weight: Number(dish?.weight) || 0,
-            protein: Number(dish?.protein) || 0,
-            fat: Number(dish?.fat) || 0,
-            carb: Number(dish?.carb) || 0,
+            protein: p,
+            fat: f,
+            carb: c,
             fiber: Number(dish?.fiber) || 0,
             sodium_mg: Number(dish?.sodium_mg) || 0,
+            energy_kj: e_struct_kj,
         };
     },
 

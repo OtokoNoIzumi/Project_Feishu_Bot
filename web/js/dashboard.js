@@ -362,7 +362,8 @@ const Dashboard = {
       if (latest.parsedData.type === 'diet') {
         const unit = this.getEnergyUnit();
         const energy = latest.parsedData.summary.totalEnergy;
-        const val = unit === 'kcal' ? energy : Math.round(this.kcalToKJ(energy));
+        // 强制取整
+        const val = unit === 'kcal' ? Math.round(energy) : Math.round(this.kcalToKJ(energy));
         title = `${val} ${unit} - ${latest.parsedData.dishes.length}种食物`;
       } else {
         const eventCount = latest.parsedData.scaleEvents.length +

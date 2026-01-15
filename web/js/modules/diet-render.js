@@ -26,8 +26,9 @@ const DietRenderModule = {
 
     const unit = this.getEnergyUnit();
     // currentDietTotals.totalEnergy 内部统一为 kcal，这里只做显示换算
+    // 强制取整：无论是 kcal 还是 kJ，都显示整数
     const displayTotalEnergy = unit === 'kcal'
-      ? (Number(this.currentDietTotals.totalEnergy) || 0)
+      ? Math.round(Number(this.currentDietTotals.totalEnergy) || 0)
       : Math.round(this.kcalToKJ(Number(this.currentDietTotals.totalEnergy) || 0));
 
     this.el.resultContent.innerHTML = `
