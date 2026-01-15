@@ -9,7 +9,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List
-
+import shutil
 
 class JsonlStorage:
     """
@@ -95,6 +95,13 @@ class JsonlStorage:
         """
         dir_path = self._get_user_dir(user_id, category)
         file_path = dir_path / filename
+
+        # [Safety] Backup before overwrite
+        if file_path.exists():
+            try:
+                shutil.copy2(file_path, str(file_path) + ".bak")
+            except Exception:
+                pass
 
         lines = []
         for item in data_list:
