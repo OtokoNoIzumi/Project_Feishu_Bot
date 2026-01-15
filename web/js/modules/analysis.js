@@ -20,7 +20,18 @@ const AnalysisModule = {
         await this.executeAnalysis(session, fullNote);
     },
 
+    async retryLastAnalysis() {
+        const session = this.currentSession;
+        if (!session) return;
+
+        // 使用上次尝试时的输入，如果没有则回退 to session 原始文本
+        const userNote = session._lastUserNote !== undefined ? session._lastUserNote : (session.text || '');
+        this.addMessage('正在重试...', 'assistant');
+        await this.executeAnalysis(session, userNote);
+    },
+
     async executeAnalysis(session, userNote) {
+        session._lastUserNote = userNote; // 保存以备重试
         this.showLoading();
 
         try {

@@ -227,15 +227,21 @@ class GeminiStructuredClient:
 
             # 2. Generate
             # Using new SDK structure: client.aio.models.generate_content
-            response = await self.client.aio.models.generate_content(
-                model=self.config.model_name,
-                contents=contents,
-                config={
-                    "response_mime_type": "application/json",
-                    "response_schema": schema,
-                    "temperature": self.config.temperature,
-                },
+            start_time = time.time()
+            response = await asyncio.wait_for(
+                self.client.aio.models.generate_content(
+                    model=self.config.model_name,
+                    contents=contents,
+                    config={
+                        "response_mime_type": "application/json",
+                        "response_schema": schema,
+                        "temperature": self.config.temperature,
+                    },
+                ),
+                timeout=40
             )
+            duration = time.time() - start_time
+            logger.info("[Gemini] generate_json took %.2fs | model=%s", duration, self.config.model_name)
 
             # 3. Parse
             if hasattr(response, "parsed") and response.parsed:
@@ -275,13 +281,19 @@ class GeminiStructuredClient:
                 contents.extend(uploaded_files)
 
             # 2. Generate
-            response = await self.client.aio.models.generate_content(
-                model=self.config.model_name,
-                contents=contents,
-                config={
-                    "temperature": self.config.temperature,
-                },
+            start_time = time.time()
+            response = await asyncio.wait_for(
+                self.client.aio.models.generate_content(
+                    model=self.config.model_name,
+                    contents=contents,
+                    config={
+                        "temperature": self.config.temperature,
+                    },
+                ),
+                timeout=40
             )
+            duration = time.time() - start_time
+            logger.info("[Gemini] generate_text took %.2fs | model=%s", duration, self.config.model_name)
 
             return response.text if response.text else ""
 

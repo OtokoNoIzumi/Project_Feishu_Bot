@@ -37,11 +37,27 @@ const API = {
             }
         }
 
+        // 超时控制 (默认 120s)
+        const timeout = options.timeout || 120000;
+        const controller = new AbortController();
+        const id = setTimeout(() => controller.abort(), timeout);
+        const startTime = Date.now();
+
         try {
             const response = await fetch(url, {
                 ...options,
                 headers,
+                signal: controller.signal,
             });
+            clearTimeout(id);
+
+            // 记录耗时
+            const duration = Date.now() - startTime;
+            if (duration > 5000) {
+                console.warn(`[API] Slow request: ${endpoint} took ${duration}ms`);
+            } else {
+                console.log(`[API] Request: ${endpoint} took ${duration}ms`);
+            }
 
             // 解析响应
             const data = await response.json();
@@ -56,6 +72,10 @@ const API = {
 
             return data;
         } catch (error) {
+            clearTimeout(id);
+            if (error.name === 'AbortError') {
+                throw new APIError(`请求超时 (${timeout / 1000}s)，请重试`, 408, null);
+            }
             if (error instanceof APIError) throw error;
             throw new APIError(`Network error: ${error.message}`, 0, null);
         }

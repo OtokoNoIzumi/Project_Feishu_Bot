@@ -323,6 +323,7 @@ const Dashboard = {
 
   // 委托给 AnalysisModule
   reAnalyze: AnalysisModule.reAnalyze,
+  retryLastAnalysis: AnalysisModule.retryLastAnalysis,
   executeAnalysis: AnalysisModule.executeAnalysis,
 
   // 版本切换
@@ -892,6 +893,7 @@ const Dashboard = {
         <div class="empty-icon">⚠️</div>
         <h3>分析失败</h3>
         <p>${message}</p>
+        <button class="btn btn-secondary" onclick="Dashboard.retryLastAnalysis()" style="margin-top: 16px;">↻ 重试</button>
       </div>
     `;
     this.el.resultFooter.classList.add('hidden');
