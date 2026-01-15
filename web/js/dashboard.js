@@ -679,7 +679,12 @@ const Dashboard = {
         <!-- 用户信息 -->
         <div class="profile-section">
           <div class="profile-section-header">
-            <div class="profile-section-icon">${window.IconManager ? window.IconManager.render('profile', 'xl') : '👤'}</div>
+            <div class="profile-section-icon">
+              ${window.Clerk?.user?.imageUrl
+        ? `<img src="${window.Clerk.user.imageUrl}?width=160" class="cl-avatarImage" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;" alt="Avatar">`
+        : (window.IconManager ? window.IconManager.render('profile', 'xl') : '👤')
+      }
+            </div>
             <div>
               <div class="profile-section-title">${userName} 的档案</div>
               <div class="profile-section-subtitle">个人设置与目标配置</div>

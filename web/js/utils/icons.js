@@ -14,7 +14,7 @@ const ICONS = {
 
     // Stamps (Monochrome/Ink, functional)
     'analysis': { src: 'notepad.png', type: 'stamp', defaultClass: '' },
-    'profile': { src: 'tag.png', type: 'stamp', defaultClass: '' },
+    'profile': { src: 'gear.png', type: 'stamp', defaultClass: '' },
     'refresh': { src: 'refresh.png', type: 'stamp', defaultClass: '' },
     'update': { src: 'sparkle.png', type: 'stamp', defaultClass: '' },
     'settings': { src: 'gear.png', type: 'stamp', defaultClass: '' },
