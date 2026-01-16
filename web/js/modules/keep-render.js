@@ -1,6 +1,6 @@
 /**
  * Keep 渲染模块
- * 
+ *
  * 负责 Keep 数据（体重、睡眠、围度）的 HTML 渲染
  * 挂载到 Dashboard 实例运行
  */
@@ -74,18 +74,41 @@ const KeepRenderModule = {
 
         // 围度事件
         if (data.bodyMeasureEvents.length > 0) {
+            const metricsFields = [
+                { key: 'bust', label: '胸围', unit: 'cm' },
+                { key: 'bust_padded', label: '带义乳胸围', unit: 'cm' },
+                { key: 'underbust', label: '下胸围', unit: 'cm' },
+                { key: 'waist', label: '腰围', unit: 'cm' },
+                { key: 'upper_hip', label: '上臀围', unit: 'cm' },
+                { key: 'hip_circ', label: '臀围', unit: 'cm' },
+                { key: 'hip_width', label: '胯宽', unit: 'cm' },
+                { key: 'hip_padded', label: '带垫臀围', unit: 'cm' },
+                { key: 'thigh', label: '大腿', unit: 'cm' },
+                { key: 'calf', label: '小腿', unit: 'cm' },
+                { key: 'ankle', label: '脚踝', unit: 'cm' },
+                { key: 'arm', label: '上臂', unit: 'cm' },
+                { key: 'forearm', label: '前臂', unit: 'cm' },
+                { key: 'wrist', label: '手腕', unit: 'cm' },
+                { key: 'shoulder_circ', label: '肩围', unit: 'cm' },
+                { key: 'shoulder_width', label: '肩宽', unit: 'cm' },
+                { key: 'neck', label: '颈围', unit: 'cm' },
+                { key: 'ltorso', label: '坐姿躯干长', unit: 'cm' },
+                { key: 'legs', label: '内腿长', unit: 'cm' },
+                { key: 'feet', label: '脚长', unit: 'cm' },
+                { key: 'height', label: '身高', unit: 'cm' },
+            ];
+
             html += `<div class="keep-section"><div class="dishes-title">📏 围度记录</div>`;
             data.bodyMeasureEvents.forEach(e => {
+                const detailSpans = metricsFields
+                    .filter(field => e[field.key] !== undefined && e[field.key] !== null)
+                    .map(field => `<span>${field.label} ${e[field.key]}${field.unit}</span>`)
+                    .join('');
+
                 html += `
           <div class="keep-item">
             <div class="keep-details">
-              ${e.chest_cm ? `<span>胸围 ${e.chest_cm}cm</span>` : ''}
-              ${e.waist_cm ? `<span>腰围 ${e.waist_cm}cm</span>` : ''}
-              ${e.hips_cm ? `<span>臀围 ${e.hips_cm}cm</span>` : ''}
-              ${e.thigh_cm ? `<span>大腿 ${e.thigh_cm}cm</span>` : ''}
-              ${e.calf_cm ? `<span>小腿 ${e.calf_cm}cm</span>` : ''}
-              ${e.arm_cm ? `<span>上臂 ${e.arm_cm}cm</span>` : ''}
-              ${e.shoulder_cm ? `<span>肩宽 ${e.shoulder_cm}cm</span>` : ''}
+              ${detailSpans}
             </div>
             <span class="keep-meta">${e.measured_at_local || ''}</span>
           </div>

@@ -32,16 +32,16 @@ def _format_diet_records_for_prompt(records: List[Dict]) -> str:
         occurred = rec.get("occurred_at", "")[:10]
         meal_summary = rec.get("meal_summary", {})
         diet_time = meal_summary.get("diet_time", "?")
-        
+
         # Map meal type to short Chinese
         meal_map = {"breakfast": "早", "lunch": "午", "dinner": "晚", "snack": "加"}
         meal_short = meal_map.get(diet_time, diet_time[:1])
 
         dishes = rec.get("dishes", [])
-        
+
         for dish in dishes:
             dish_name = dish.get("standard_name", "?")
-            
+
             # Aggregate dish-level totals from ingredients
             d_weight = 0.0
             d_energy = 0.0
@@ -85,7 +85,7 @@ def _format_scale_records_for_prompt(
 
     lines = ["日期|体重kg|体脂%|骨骼肌%|水分%|内脏脂肪|类型"]
     lines.append("-" * 60)
-    
+
     # Helper to format row
     def fmt_row(rec, label):
         occurred = rec.get("occurred_at", "")[:10]
@@ -112,26 +112,28 @@ def _format_dimension_data_for_prompt(
     if not current and not baseline:
         return "无围度记录"
 
-    lines = ["日期|胸围cm|腰围cm|臀围cm|大腿cm|手臂cm|类型"]
+    lines = ["日期|胸围cm|腰围cm|臀围cm|大腿cm|小腿cm|手臂cm|类型"]
     lines.append("-" * 60)
 
     if baseline:
         d = baseline.get("occurred_at", "")[:10]
-        chest = baseline.get("chest_cm", "-")
-        waist = baseline.get("waist_cm", "-")
-        hips = baseline.get("hips_cm", "-")
-        thigh = baseline.get("thigh_cm", "-")
-        arm = baseline.get("arm_cm", "-")
-        lines.append(f"{d}|{chest}|{waist}|{hips}|{thigh}|{arm}|基线")
+        chest = baseline.get("bust", "-")
+        waist = baseline.get("waist", "-")
+        hips = baseline.get("hip_circ", "-")
+        thigh = baseline.get("thigh", "-")
+        calf = baseline.get("calf", "-")
+        arm = baseline.get("arm", "-")
+        lines.append(f"{d}|{chest}|{waist}|{hips}|{thigh}|{calf}|{arm}|基线")
 
     for rec in current:
         d = rec.get("occurred_at", "")[:10]
-        chest = rec.get("chest_cm", "-")
-        waist = rec.get("waist_cm", "-")
-        hips = rec.get("hips_cm", "-")
-        thigh = rec.get("thigh_cm", "-")
-        arm = rec.get("arm_cm", "-")
-        lines.append(f"{d}|{chest}|{waist}|{hips}|{thigh}|{arm}|本周")
+        chest = rec.get("bust", "-")
+        waist = rec.get("waist", "-")
+        hips = rec.get("hip_circ", "-")
+        thigh = rec.get("thigh", "-")
+        calf = rec.get("calf", "-")
+        arm = rec.get("arm", "-")
+        lines.append(f"{d}|{chest}|{waist}|{hips}|{thigh}|{calf}|{arm}|本周")
 
     return "\n".join(lines)
 
@@ -155,7 +157,7 @@ def _format_dish_library_for_prompt(dishes: List[Dict], limit: int = 30) -> str:
         if name in seen_names:
             continue
         seen_names.add(name)
-        
+
         if len(seen_names) > limit:
             break
 
@@ -184,26 +186,26 @@ def _calculate_daily_sodium_totals(records: List[Dict]) -> str:
     """计算每日钠摄入汇总，用于交叉分析"""
     if not records:
         return "无数据"
-    
+
     daily_sodium = {}
     for rec in records:
         occurred = rec.get("occurred_at", "")[:10]
         if not occurred:
             continue
-        
+
         if occurred not in daily_sodium:
             daily_sodium[occurred] = 0.0
-        
+
         for dish in rec.get("dishes", []):
             for ing in dish.get("ingredients", []):
                 macros = ing.get("macros", {})
                 daily_sodium[occurred] += float(macros.get("sodium_mg", 0) or 0)
-    
+
     lines = []
     for d, na in sorted(daily_sodium.items()):
         warning = " ⚠️高" if na > 2300 else ""
         lines.append(f"{d}: {na:.0f}mg{warning}")
-    
+
     return "\n".join(lines)
 
 
@@ -229,7 +231,7 @@ def build_weekly_analysis_prompt(bundle: WeeklyDataBundle) -> str:
         bundle.current_week_dimensions, bundle.baseline_dimension
     )
     dish_library = _format_dish_library_for_prompt(bundle.dish_library)
-    
+
     # 新增：钠摄入汇总（用于交叉分析）
     sodium_summary = _calculate_daily_sodium_totals(bundle.diet_records)
 

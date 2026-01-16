@@ -5,30 +5,41 @@ Keep 统一解析 Schema (Multi-Modal / Multi-Image)
 
 from apps.keep.llm_schema_scale import KEEP_SCALE_LLM_SCHEMA
 from apps.keep.llm_schema_sleep import KEEP_SLEEP_LLM_SCHEMA
-from apps.keep.llm_schema_dimensions import KEEP_DIMENSIONS_LLM_SCHEMA
+from apps.keep.body_metrics_schema import (
+    build_metrics_event_schema_full,
+    build_metrics_event_schema_limited,
+)
 
-KEEP_UNIFIED_LLM_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "scale_events": {
-            "type": "array",
-            "description": "检测到的所有体重/体脂事件",
-            "items": KEEP_SCALE_LLM_SCHEMA["properties"]["scale_event"],
+
+def build_keep_unified_llm_schema(use_limited: bool = False) -> dict:
+    return {
+        "type": "object",
+        "properties": {
+            "scale_events": {
+                "type": "array",
+                "description": "检测到的所有体重/体脂事件",
+                "items": KEEP_SCALE_LLM_SCHEMA["properties"]["scale_event"],
+            },
+            "sleep_events": {
+                "type": "array",
+                "description": "检测到的所有睡眠事件",
+                "items": KEEP_SLEEP_LLM_SCHEMA["properties"]["sleep_event"],
+            },
+            "body_measure_events": {
+                "type": "array",
+                "description": "检测到的所有身体围度测量事件",
+                "items": (
+                    build_metrics_event_schema_limited() if use_limited
+                    else build_metrics_event_schema_full()
+                ),
+            },
+            "occurred_at": {
+                "type": "string",
+                "description": "如果用户在 User Note 中明确指定了数据的时间（如'1月1日的数据'），请转换为 'YYYY-MM-DD HH:MM:SS'。否则留空。",
+            },
         },
-        "sleep_events": {
-            "type": "array",
-            "description": "检测到的所有睡眠事件",
-            "items": KEEP_SLEEP_LLM_SCHEMA["properties"]["sleep_event"],
-        },
-        "body_measure_events": {
-            "type": "array",
-            "description": "检测到的所有身体围度测量事件",
-            "items": KEEP_DIMENSIONS_LLM_SCHEMA["properties"]["body_measure_event"],
-        },
-        "occurred_at": {
-            "type": "string",
-            "description": "如果用户在 User Note 中明确指定了数据的时间（如'1月1日的数据'），请转换为 'YYYY-MM-DD HH:MM:SS'。否则留空。",
-        },
-    },
-    "required": [],  # 允许为空，因为可能只传了某一种图片
-}
+        "required": [],  # 允许为空，因为可能只传了某一种图片
+    }
+
+
+KEEP_UNIFIED_LLM_SCHEMA = build_keep_unified_llm_schema()

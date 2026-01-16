@@ -21,10 +21,12 @@ from apps.common.utils import (
     read_upload_files,
 )
 from apps.deps import get_current_user_id, require_internal_auth
+from apps.keep.body_metrics_schema import filter_metrics_event
 from apps.keep.usecases.parse_dimensions import KeepDimensionsParseUsecase
 from apps.keep.usecases.parse_scale import KeepScaleParseUsecase
 from apps.keep.usecases.parse_sleep import KeepSleepParseUsecase
 from apps.keep.usecases.parse_unified import KeepUnifiedParseUsecase
+from libs.auth_internal.user_mapper import user_mapper
 from apps.llm_runtime import get_global_semaphore, get_model_limiter
 from apps.settings import BackendSettings
 from libs.utils.rate_limiter import AsyncRateLimiter
@@ -177,12 +179,35 @@ def build_keep_router(settings: BackendSettings) -> APIRouter:
 
         async with semaphore:
             await limiter.check_and_wait()
-            result = await usecase.execute_with_image_bytes_async(
-                user_note=user_note, images_bytes=images_bytes
-            )
+            use_limited = False
+            if event_type_for_save in ("dimensions", "unified"):
+                use_limited = not user_mapper.has_feature(user_id, "detail_dimension")
+
+            if event_type_for_save in ("dimensions", "unified"):
+                result = await usecase.execute_with_image_bytes_async(
+                    user_note=user_note,
+                    images_bytes=images_bytes,
+                    use_limited=use_limited,
+                )
+            else:
+                result = await usecase.execute_with_image_bytes_async(
+                    user_note=user_note, images_bytes=images_bytes
+                )
 
             if isinstance(result, dict) and result.get("error"):
                 return response_model(success=False, error=str(result.get("error")))
+
+            if use_limited:
+                if event_type_for_save == "dimensions":
+                    event = result.get("body_measure_event")
+                    if isinstance(event, dict):
+                        filter_metrics_event(event, use_limited=True)
+                elif event_type_for_save == "unified":
+                    events = result.get("body_measure_events", [])
+                    if isinstance(events, list):
+                        for item in events:
+                            if isinstance(item, dict):
+                                filter_metrics_event(item, use_limited=True)
 
             saved_status = None
             if auto_save:

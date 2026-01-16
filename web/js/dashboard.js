@@ -574,7 +574,7 @@ const Dashboard = {
           flex-shrink: 0;
         }
         /* Removed digital gradients, let the icons speak */
-        
+
         .profile-section-title {
           font-size: 1.1rem;
           font-family: var(--font-handwritten); /* Use handwritten font for headers */
@@ -645,7 +645,7 @@ const Dashboard = {
           .profile-grid { grid-template-columns: 1fr; }
           .profile-macro-grid { grid-template-columns: repeat(2, 1fr); }
         }
-        
+
         /* TAPE EFFECT */
         .profile-section {
             position: relative;
@@ -653,7 +653,7 @@ const Dashboard = {
             margin-top: 25px; /* Spacing for tape */
             /* Card stays straight! */
         }
-        
+
         .profile-section::before {
             content: '';
             position: absolute;
@@ -663,13 +663,13 @@ const Dashboard = {
             width: 100px;
             height: 28px;
             /* Washi Tape Style - Warm Beige/Translucent */
-            background-color: rgba(242, 233, 216, 0.9); 
+            background-color: rgba(242, 233, 216, 0.9);
             background-image: url("data:image/svg+xml,%3Csvg width='4' height='4' viewBox='0 0 4 4' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 0h4v4H0z' fill='%23ffffff' fill-opacity='0.2'/%3E%3C/svg%3E");
             box-shadow: 0 1px 3px rgba(0,0,0,0.15);
             z-index: 1;
             clip-path: polygon(2% 0%, 98% 0%, 100% 100%, 0% 100%);
         }
-        
+
         /* Rotate only the tape, randomly */
         .profile-section:nth-of-type(1)::before { transform: rotate(2deg); right: 60px; }
         .profile-section:nth-of-type(2)::before { transform: rotate(-1.5deg); right: 40px; }
@@ -777,15 +777,15 @@ const Dashboard = {
           <div class="profile-macro-grid" style="grid-template-columns: repeat(3, 1fr);">
             <div class="profile-field">
               <label class="profile-field-label">胸围 (cm)</label>
-              <input id="keep-chest-cm" type="number" class="profile-field-input" value="${p.keep?.dimensions_cm_target?.chest_cm ?? 0}" step="0.1">
+              <input id="keep-bust" type="number" class="profile-field-input" value="${p.keep?.dimensions_target?.bust ?? 0}" step="0.1">
             </div>
             <div class="profile-field">
               <label class="profile-field-label">腰围 (cm)</label>
-              <input id="keep-waist-cm" type="number" class="profile-field-input" value="${p.keep?.dimensions_cm_target?.waist_cm ?? 0}" step="0.1">
+              <input id="keep-waist" type="number" class="profile-field-input" value="${p.keep?.dimensions_target?.waist ?? 0}" step="0.1">
             </div>
             <div class="profile-field">
               <label class="profile-field-label">臀围 (cm)</label>
-              <input id="keep-hips-cm" type="number" class="profile-field-input" value="${p.keep?.dimensions_cm_target?.hips_cm ?? 0}" step="0.1">
+              <input id="keep-hip-circ" type="number" class="profile-field-input" value="${p.keep?.dimensions_target?.hip_circ ?? 0}" step="0.1">
             </div>
           </div>
         </div>
@@ -828,10 +828,10 @@ const Dashboard = {
       keep: {
         weight_kg_target: getNum('keep-weight-kg'),
         body_fat_pct_target: getNum('keep-bodyfat-pct'),
-        dimensions_cm_target: {
-          chest_cm: getNum('keep-chest-cm'),
-          waist_cm: getNum('keep-waist-cm'),
-          hips_cm: getNum('keep-hips-cm'),
+        dimensions_target: {
+          bust: getNum('keep-bust'),
+          waist: getNum('keep-waist'),
+          hip_circ: getNum('keep-hip-circ'),
         }
       }
     };

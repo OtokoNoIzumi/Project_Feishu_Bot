@@ -4,7 +4,7 @@ Keep Unified Parse Usecase.
 
 from typing import Any, Dict, List
 
-from apps.keep.llm_schema_unified import KEEP_UNIFIED_LLM_SCHEMA
+from apps.keep.llm_schema_unified import build_keep_unified_llm_schema
 from apps.keep.prompt_builder_unified import build_keep_unified_prompt
 from apps.keep.usecases.base import KeepBaseParseUsecase
 
@@ -16,16 +16,22 @@ class KeepUnifiedParseUsecase(KeepBaseParseUsecase):
         super().__init__(gemini_model_name, temperature=0.1)
 
     async def execute_with_image_bytes_async(
-        self, user_note: str, images_bytes: List[bytes]
+        self,
+        user_note: str,
+        images_bytes: List[bytes],
+        use_limited: bool = False,
     ) -> Dict[str, Any]:
-        if not images_bytes:
-            return {"error": "No images provided"}
+        if not user_note and not images_bytes:
+            return {"error": "No input provided (text or images required)."}
 
-        prompt = build_keep_unified_prompt(user_note=user_note)
+        prompt = build_keep_unified_prompt(
+            user_note=user_note, use_limited=use_limited
+        )
+        schema = build_keep_unified_llm_schema(use_limited=use_limited)
 
         # 使用统一 Schema 进行混合解析
         llm_result = await self.client.generate_json_async(
-            prompt=prompt, images=images_bytes, schema=KEEP_UNIFIED_LLM_SCHEMA
+            prompt=prompt, images=images_bytes or [], schema=schema
         )
 
         if isinstance(llm_result, dict) and llm_result.get("error"):

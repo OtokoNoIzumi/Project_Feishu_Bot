@@ -22,10 +22,10 @@ const ProfileUtils = {
             keep: {
                 weight_kg_target: 0,
                 body_fat_pct_target: 0,
-                dimensions_cm_target: {
-                    chest_cm: 0,
-                    waist_cm: 0,
-                    hips_cm: 0,
+                dimensions_target: {
+                    bust: 0,
+                    waist: 0,
+                    hip_circ: 0,
                 }
             }
         };

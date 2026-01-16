@@ -4,17 +4,31 @@ Keep Unified Prompt Builder.
 
 from datetime import datetime
 
+from apps.keep.body_metrics_schema import (
+    build_metrics_schema_text_full,
+    build_metrics_schema_text_limited,
+)
 
-def build_keep_unified_prompt(user_note: str) -> str:
+
+def build_keep_unified_prompt(
+    user_note: str, use_limited: bool = False
+) -> str:
     """Build the prompt for parsing unified Keep screenshots."""
     current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    metrics_schema_text = (
+        build_metrics_schema_text_limited() if use_limited
+        else build_metrics_schema_text_full()
+    )
     return f"""
-你是一个专业的 Keep 健康数据解析助手。用户上传了一张或多张图片（可能是体重体脂报告、睡眠报告、或身体数据中心截图）。
+你是一个专业的 Keep 健康数据解析助手。用户上传了文本或图片（可能是体重体脂报告、睡眠报告、或身体数据中心截图）。
 
-请分析所有图片，尽可能提取出以下三类数据（如果存在）：
+请分析所有输入内容，尽可能提取出以下三类数据（如果存在）：
 1. 体重/体脂数据 (Scale Event)
 2. 睡眠数据 (Sleep Event)
-3. 身体围度数据 (Body Dimensions Event)
+3. 身体围度数据 (Metrics Event)
+
+Metrics Schema (字段需严格遵循):
+{metrics_schema_text}
 
 用户备注: {user_note}
 

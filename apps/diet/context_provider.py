@@ -7,7 +7,7 @@ Aggregates user context (profile, today's intake) for diet advice.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 # Pylint: standard imports before third party.
 # But 'libs' is first party in this repo, effectively.

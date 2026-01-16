@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 class UserMapper:
     """
     Handles user ID mapping and resolution.
-    Reads from user_data/user_mapping.json to map external IDs (e.g., Clerk) 
+    Reads from user_data/user_mapping.json to map external IDs (e.g., Clerk)
     to internal Master IDs (e.g., Feishu OpenID).
     """
 
@@ -21,7 +21,7 @@ class UserMapper:
         else:
             # Default to user_data/user_mapping.json if not provided
             self.mapping_file = get_project_root() / "user_data" / "user_mapping.json"
-        
+
         self._mappings: Dict[str, str] = {}
         self._whitelist: Dict[str, dict] = {}
         self.load()
@@ -42,7 +42,7 @@ class UserMapper:
         except Exception as e:
             logger.error(f"Failed to load user mapping file: {e}")
             self._mappings = {}
-    
+
     def _create_empty_mapping_file(self):
         """Creates an empty mapping file structure."""
         try:
@@ -62,7 +62,7 @@ class UserMapper:
             mapped_id = self._mappings[external_id]
             logger.info(f"Resolved User: {external_id} -> {mapped_id}")
             return mapped_id
-        
+
         # 2. Return original ID if no mapping found
         return external_id
 
@@ -75,13 +75,32 @@ class UserMapper:
         # For now, let's assume if whitelist exists, it enforces access.
         # But if whitelist is empty in config, maybe we allow all for dev convenience?
         # Let's stick to: if whitelist defined, must be in it. If whitelist block empty, allow all?
-        # Simpler: This is minimal access control. 
+        # Simpler: This is minimal access control.
         if not self._whitelist:
             return True # Open access if no whitelist configured
-            
+
         return user_id in self._whitelist
 
+    def has_feature(self, user_id: str, feature_name: str) -> bool:
+        """
+        Checks if a user has a feature flag enabled in whitelist.
+        """
+        if not self._whitelist:
+            return False
+
+        features = self._whitelist.get(user_id)
+        if not features:
+            return False
+
+        if isinstance(features, dict):
+            return bool(features.get(feature_name))
+
+        if isinstance(features, (list, tuple, set)):
+            return feature_name in features
+
+        return False
+
 # Singleton instance for easy import
-# Note: In a real app with reload, this might need lifecycle management, 
+# Note: In a real app with reload, this might need lifecycle management,
 # but for file-based config, reloading on init or demand is fine.
 user_mapper = UserMapper()
