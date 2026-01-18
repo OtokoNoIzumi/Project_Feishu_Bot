@@ -1,0 +1,51 @@
+from pydantic import BaseModel, Field
+from typing import Optional, Dict
+
+class DietTarget(BaseModel):
+    """饮食目标设定。所有字段可空，表示用户未设置。"""
+    energy_unit: str = "kJ"  # UI 偏好设置，有默认值
+    goal: str = "fat_loss"  # fat_loss, maintain, muscle_gain, health - 默认减脂
+    daily_energy_kj_target: Optional[int] = None
+    protein_g_target: Optional[int] = None
+    fat_g_target: Optional[int] = None
+    carbs_g_target: Optional[int] = None
+    sodium_mg_target: Optional[int] = None
+
+class KeepTarget(BaseModel):
+    """Keep 目标设定。所有字段可空，表示用户未设置。"""
+    weight_kg_target: Optional[float] = None
+    body_fat_pct_target: Optional[float] = None
+    # 围度目标：key 为维度名（waist/bust/hip_circ 等），value 为目标值 (cm)
+    dimensions_target: Optional[Dict[str, float]] = Field(default_factory=dict)
+
+class UserProfile(BaseModel):
+    """
+    用户 Profile 配置。
+    基础信息 (gender/age) 为空表示新用户，未填写过基础信息。
+    """
+    # 基础信息：有默认值
+    gender: str = "female"
+    age: int = 25
+    activity_level: str = "sedentary"  # 默认久坐
+    
+    timezone: str = "Asia/Shanghai"
+    diet: DietTarget = Field(default_factory=DietTarget)
+    keep: KeepTarget = Field(default_factory=KeepTarget)
+    
+    # 用户关键主张：存储用户提出的影响分析的重要信息
+    # 例如："虽然是 male 但想要 female 的身材围度"
+    user_info: Optional[str] = None
+    
+    # 预估达成目标的月数（LLM 推算）
+    estimated_months: Optional[int] = None
+
+class ProfileAnalyzeRequest(BaseModel):
+    user_note: str
+    target_months: Optional[int] = None  # 用户期望的达成时间（月），可选输入
+    auto_save: bool = False
+
+class ProfileAnalyzeResponse(BaseModel):
+    advice: str
+    suggested_profile: UserProfile
+    estimated_months: Optional[int] = None  # LLM 推算的达成时间（月）
+    saved: bool

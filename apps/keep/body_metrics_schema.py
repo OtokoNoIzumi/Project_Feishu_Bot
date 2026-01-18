@@ -72,19 +72,19 @@ METRICS_SCHEMA = {
         "description": "Upper arm circumference (Biceps).",
         "description_zh": "上臂（大臂）肱二头肌最粗处的围度。"
     },
-    "wrist": {
-        "name": "Wrist",
-        "name_zh": "手腕围",
-        "unit": "cm",
-        "description": "Circumference.",
-        "description_zh": "手腕骨茎突处的围度。"
-    },
     "forearm": {
         "name": "Forearm",
         "name_zh": "前臂围",
         "unit": "cm",
         "description": "Lower arm circumference below elbow.",
         "description_zh": "前臂（小臂）最粗处的围度。"
+    },
+    "wrist": {
+        "name": "Wrist",
+        "name_zh": "手腕围",
+        "unit": "cm",
+        "description": "Circumference.",
+        "description_zh": "手腕骨茎突处的围度。"
     },
 
     # --- Torso ---

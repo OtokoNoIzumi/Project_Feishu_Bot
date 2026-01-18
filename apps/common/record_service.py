@@ -1,5 +1,5 @@
 import hashlib
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from typing import Any, Dict, List
 from pydantic import BaseModel, Field
 
@@ -461,3 +461,54 @@ class RecordService:
 
         # 5. Return only records
         return [x[1] for x in valid_entries]
+
+    @staticmethod
+    def get_latest_body_metrics(user_id: str) -> Dict[str, Any]:
+        """
+        获取用户最新的身体数据 (Source of Truth).
+        - weight_kg: from latest scale_event (via keep/scale_YYYY_MM)
+        - height_cm: from latest body_measure_event (via keep/metrics_YYYY_MM)
+        """
+        today = date.today()
+        # Look back up to 30 days for efficient searching? 
+        # Or just read the latest months?
+        # Since files are monthly, we check current and previous month.
+        months_to_check = [today]
+        if today.month == 1:
+             months_to_check.append(today.replace(year=today.year-1, month=12, day=1))
+        else:
+             months_to_check.append(today.replace(month=today.month-1, day=1))
+        
+        latest_weight = None
+        latest_height = None
+        
+        # Helper to scan files
+        def scan_category(category, filenames):
+            data = []
+            for fname in filenames:
+                recs = global_storage.read_dataset(user_id, category, fname, limit=50) # newest first
+                data.extend(recs)
+            return sorted(data, key=lambda x: x.get("occurred_at", ""), reverse=True)
+
+        # 1. Scan Weight (latest first)
+        scale_files = [f"scale_{d.strftime('%Y_%m')}.jsonl" for d in months_to_check]
+        scale_recs = scan_category("keep", scale_files)
+        
+        for r in scale_recs:
+            if r.get("weight_kg"):
+                latest_weight = r.get("weight_kg")
+                break
+
+        # 2. Scan Height (latest first)
+        dimensions_files = [f"dimensions_{d.strftime('%Y_%m')}.jsonl" for d in months_to_check]
+        dimensions_recs = scan_category("keep", dimensions_files)
+        
+        for r in dimensions_recs:
+            if r.get("height"):
+                latest_height = r.get("height")
+                break
+        
+        return {
+            "weight_kg": latest_weight,
+            "height_cm": latest_height
+        }

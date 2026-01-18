@@ -150,15 +150,6 @@ Project_Feishu_Bot/
 #### Profile
 - [x] **基础配置**: 支持设置 Diet/Keep 目标、能量单位 (kJ/kcal)。
 
-### 3.3 剩余 Web TODOs
-
-| 优先级 | 编号 | 功能描述 | 状态 | 备注 |
-|---|---|---|---|---|
-| **A** | FEAT-002 | 营养标签产品名下拉选择 | ⬜ 待开发 | 需调用 Product Library API |
-| **B** | FEAT-005 | Label Snapshot 快照保存 | ⬜ 待开发 | 将编辑后的自定义Label存回库 |
-| **B** | REFACTOR-002 | get_product_memories 逻辑与数据结构重构 | 后端 Logic | ⬜ 待规划 |
-| **C** | UI-001 | 移动端交互精细化 | 🔄 持续优化 | 滚动穿透、键盘遮挡等细节 |
-| **C** | UX-001 | “演示模式” (Demo Mode) | ⬜ 待开发 | 见 Roadmap |
 
 ---
 
@@ -404,25 +395,106 @@ apps/weekly_analysis/
 
 ---
 
-## 7. 未来规划与灵感 (Future Roadmap & Ideas)
+## 7. 实施路线图 (Execution Roadmap)
 
-> *Last Updated: 2026-01-16*
-> 本节记录 User 的想法与 Todo，以及 Agent 的技术补充建议。
+> *Last Updated: 2026-01-17*
+> 按照“发布到生产环境”的优先级进行排序。请按顺序执行。
 
-**TODO 列表 (待排期)**
+### Phase 1: 核心基石 (Foundation)
+*目标：确保数据不丢失，服务可部署，访问有门禁。*
 
-1.  **清理 `KEEP_DIMENSIONS_LLM_SCHEMA`**
-    *   *User Idea*: 清理废弃的 Schema 定义。
-    *   *Agent Note*: 全局搜索引用，确认 `KeepAnalysisResult` 已完全切换到 Unified Schema 后安全移除。
-
-2.  **Profile 增强：保存/读取/快速选择/独立 UI**
+1.  **[High] Profile 云端持久化 (Profile Persistence)**
+    *   *Task*: 开发 `GET/POST /api/user/profile` 接口，前端 `profile.js` 改为从后端读写。
+    *   *Value*: 用户刷新/换设备配置不丢失，是所有个性化分析的基础。
     *   *User Idea*: 增加 profile 的保存，读取，快速选择，以及单独运转利用右侧llm对话的 profile 编辑模式。
     *   *Agent Note*: 当前 `profile.js` 已有基础结构。需要：
-        *   后端增加 API 支持多 Profile 存档 (如 "减脂期", "增肌期")。
+        *   后端增加 API 支持 Profile 预设 (如 "减脂期", "增肌期")。
         *   前端增加 Profile 下拉切换器。
-        *   右侧面板完全复用 Profile 编辑器组件，支持脱离 Chat 上下文的独立路由。
+        *   右侧面板完全复用 Profile 编辑器组件，支持脱离 Chat 上下文的独立路由。    
 
-3.  **快速演示模式 (Demo Mode)**
+2.  **[High] 简易邀请码与权限控制 (Auth & Gatekeeping)**
+    *   *Task*: 后端增加 `invitation_codes.json` 白名单机制。无码用户仅能试用 3 天或 5 条。
+    *   *Value*: 保护 API Token，为后续收费做准备。
+2.1. **登录方式扩展 (Clerk Alternatives/Codes)**
+    *   *User Idea*: 了解 clerk 的一些备选登陆方式，考虑前期的用户注册用邀请码或者 code 做必备的功能激活，没有 code 的账号就只能试用 3 天。
+    *   *Agent Note*:
+        *   Clerk 支持 "Allowlist" 或 Custom Flow。
+        *   更简单的做法：App 逻辑层限制。User 登录后，检查 DB 中是否有 Active Subscription 或 Valid Invitation Code。如果没有，限制 Usage Count 或 Time。
+3.  **[High] 生产环境部署架构 (Deployment Setup)**
+    *   *Task*: 配置 `docker-compose` 或 Nginx，统一反代 前端静态文件 (`/`) 和 后端 API (`/api`)。
+    *   *Value*: 解决跨域与 HTTPS 问题，摆脱本地运行限制。
+    *   *User Idea*: 为啥不尝试做github上试试？总之我虽然弄过ssl的api证书，但确实没直接弄过网站……
+
+
+
+### Phase 2: 交互重构 (Interaction & IA)
+*目标：像一个成熟的 Chatbot，而非文件编辑器。*
+
+4.  **[High] 左侧双层导航 (Sidebar Tree View)**
+    *   *Task*: 重构 Sidebar。
+        *   Level 1: **Sessions** (以时间/话题命名的会话)。
+        *   Level 2: **Cards** (展开显示该会话内的“早餐”、“Keep记录”等卡片快捷入口)。
+    *   *Value*: 解决“找记录难”的问题。
+        *   **两级结构 (Tree View)**: 一级是 Session (对话)，二级是 Session 内生成的 Analysis Cards (分析结果)。
+        *   **卡片状态**: 二级菜单中的卡片应显示状态（如：✅ 已保存, ⏳ 待处理, 📝 草稿），不仅仅是标题。
+        *   **目的**: 方便不翻阅冗长的 Chat History 就能快速定位到具体的“mm-dd早饭”、“午饭”卡片进行编辑。
+5.  **[Medium] 独立 Advice 模式 (Independent Mode)**
+    *   *Task*: 右侧面板增加“顾问模式”开关，允许脱离特定卡片进行自由问答。
+    *   *Value*: 增强 AI 的陪伴感和顾问属性。
+    *   *User Idea*: 增加独立的 advice 模式并调优 advice 的上下文，现在默认的 advice 组装的信息太少了，要向 weekly 看齐。另外analyze的部分信息也没传递到advice中，比如image info。
+    每天早上的日报（如果有权限）额外做一个简易的weekly的全天分析和规划，要考虑昨天的进食，有血糖数据还要提取血糖数据对比分析。
+    *   *Agent Note*:
+        *   需要从 Backend 拉取更长周期的 History (e.g., past 7 days) 注入 Prompt。
+        *   Frontend 增加 "Ask Advice" 独立入口——具体来说目前就是没有选中diet/keep的时候，不依赖特定 Image Card。    
+
+
+6.  **[Medium] 图片缩略图策略 (Thumbnail Strategy)**
+    *   *Task*: 后端接收图片生成 300px 缩略图持久化，原图依赖 Gemini 48h 有效期。Chat History 仅加载缩略图。
+    *   *Value*: 降低服务器存储成本，提升加载速度。
+
+7.  **[Medium] 错误状态恢复 (Error Recovery)**
+    *   *Task*: 分析失败时保留用户上传的图和文字，允许修改 Note 后重试。
+    *   *Value*: 避免用户挫败感。
+    *   *User Idea*: 分析失败的时候不要展示空页面，至少把用户输入信息列出来：图片略缩图+可编辑的 user note。
+    *   *Agent Note*: 优化前端错误处理流程。当 API 返回错误时，保留并显示用户已输入的 Image/Text，允许用户修改 Note 后发起 Retry，防止数据丢失。    
+
+### Phase 3: Keep 模块闭环 (Keep Integration)
+*目标：让运动数据可视化，形成正反馈。*
+
+8.  **[High] Keep 统一编辑器 (Unified Editor)**
+    *   *Task*: 实现动态切换 Scale/Dimensions/Sleep 的编辑面板 (对应 Section 6)。
+    *   *Value*: 解决数据分类混乱问题。
+    对围度记录要支持后端传参用户权限和数据量来区分详细数据和简略数据的不同编辑排版，详略当然要支持额外不打字才行，现在输入文字还是太麻烦。
+    emoji表情的修改可以适度看看，没改也不影响MVP
+
+9.  **[High] 数据可视化趋势卡片 (Trend Visualization)**
+    *   *Task*: 在 Keep 分析结果中增加 ECharts 趋势图 (体重/体脂近7天变化)。
+    *   *Value*: 提供核心情绪价值。
+    *   *User Idea*: KEEP 模式也要有一个类似的 advice 步骤，不过暂时不调用 LLM，只是做一下近期数据的 echarts 图例，再另外强调一下核心变化值。
+    *   *Agent Note*:
+        *   编写 `keep-render.js` 扩展，增加 "Trend Card"。
+        *   复用 `nutrition-chart.js` 逻辑绘制体重/围度折线图。    
+
+10. **[Low] 历史数据批量录入 (Batch Import)**
+    *   *Task*: 日历视图批量补录旧数据。
+    *   *Value*: 方便老用户迁移。
+
+### Phase 4: 体验打磨 (Polishing)
+*目标：增加“高级感”和微交互。*
+
+11. **[Medium] Loading 动态效果** (CSS Wobble/Pulse 动画)。
+    *   *User Idea*: 在初始界面分析过程 loading 时，中间的 bowl 图标也要有个动态动画。可能需要拆分出 4 个图标类似 `...` 一样轮换，或者就是左右摇动那就只需要一个图。
+    *   *Agent Note*: CSS Keyframe Animation 即可实现左右摇动 (`wobble`) 或 呼吸效果 (`pulse`)。不需要额外图片资源。优先尝试 CSS 动画。
+12. **[Low] 贴纸交互 (Sticker Interactivity)** (点击变色/旋转)。
+    *   *User Idea*: before 的 css 贴纸可以点，点了会变样式——随机？或者可以先从改倾斜开始？
+    *   *Agent Note*: 实现点击事件监听，切换 CSS class (e.g., `.sticker-rotate-1`, `.sticker-color-2`) 增加趣味性。
+13. **[Low] 开屏情绪价值 (Splash Screen)** (随机展示 Daily Wisdom)。
+    *   *User Idea*: 开屏的基础信息，增加一些情绪价值，小标题，小哲理啥的，因为是AI收费所以直接是按账户来，先不用广告？还是说广告可以买掉？
+    *   *Agent Note*: 前端 Splash Screen 增加随机文案库 ("Daily Wisdom")。付费模式可作为去广告或解锁高级文案的逻辑。
+14. **[Low] 移动端细节优化** (滚动穿透/键盘遮挡修复)。
+
+### Phase 5: 进阶功能 (Future Features)
+15. **[Low] 演示模式 (Demo Mode)** (Mock Data 快速体验)。
     *   *User Idea*: 增加一个快速示例，立即用一个准备好的 diet case 来模拟生成内容。第一次生成的内容不调用 LLM 而是预设好的。如果不麻烦也要过一下等待的感觉比如各 10 秒，重新分析或生成建议再真的调用。
     *   *Agent Note*:
         *   在 `js/modules/analysis.js` 中增加 `mockAnalysis` flag。
@@ -430,43 +502,26 @@ apps/weekly_analysis/
         *   使用 `setTimeout` 模拟网络延迟和 Step 动画。
         *   对新用户（无 History）显示 "Try Demo" 按钮。
 
-4.  **Loading 动画优化**
-    *   *User Idea*: 在初始界面分析过程 loading 时，中间的 bowl 图标也要有个动态动画。可能需要拆分出 4 个图标类似 `...` 一样轮换，或者就是左右摇动那就只需要一个图。
-    *   *Agent Note*: CSS Keyframe Animation 即可实现左右摇动 (`wobble`) 或 呼吸效果 (`pulse`)。不需要额外图片资源。优先尝试 CSS 动画。
-
-5.  **时区 (Timezone) 深度集成**
+16. **[Low] 热量校准算法 (Calorie Calibration)** (Weekly Analysis MVP3)。
+17. **[Low] 营养标签库 (Product Library Dropdown)**。
+18. **营养标签产品名下拉选择 (FEAT-002)**
+    *   *User Idea*: 在编辑营养标签时，产品名称支持下拉选择 (Product Library)。
+    *   *Agent Note*: 需调用 API 获取产品库数据，支持模糊搜索，提升录入效率。
+19. **get_product_memories 重构 (REFACTOR-002)**
+    *   *User Idea*: 优化产品记忆的读取逻辑与数据结构。
+    *   *Agent Note*: 后端 Logic 层重构，确保数据结构的一致性和扩展性。    
+20. **[Low] 快照保存 (Label Snapshot)**。
+21.  **时区 (Timezone) 深度集成**
     *   *User Idea*: 根据 profile 的时区修改后端的属性，但这个似乎有后遗症，只是先记录一下。
     *   *Agent Note*: 复杂点在于 `datetime` 对象在 Python 中的 `tzinfo` 处理。建议：后端统一存储 UTC，仅在 Context 组装给 LLM 时、以及前端渲染时转换为 User Timezone。
-
-6.  **左侧导航重构：Chat History 模式**
-    *   *User Idea*: 左侧改成并非保存分析结果，而就是一次次的聊天记录的标题，聊天记录内的卡片再打开分析结果。
-    *   *Agent Note*: 这也是主流 Chat 交互（如 ChatGPT）。
-        *   Backend: 需要存储 Session 概念 (Session ID -> List[Messages])。 Currently heavily relying on "Result Files".
-        *   Frontend: `history-list` 改为渲染 Session Title。点击后恢复整个 Chat Context。
-
-7.  **独立 Advice 模式与上下文优化**
-    *   *User Idea*: 增加独立的 advice 模式并调优 advice 的上下文，现在默认的 advice 组装的信息太少了，要向 weekly 看齐。
-    *   *Agent Note*:
-        *   需要从 Backend 拉取更长周期的 History (e.g., past 7 days) 注入 Prompt。
-        *   Frontend 增加 "Ask Advice" 独立入口——具体来说目前就是没有选中diet/keep的时候，不依赖特定 Image Card。
-
-8.  **Keep 模式 Advice 增强**
-    *   *User Idea*: KEEP 模式也要有一个类似的 advice 步骤，不过暂时不调用 LLM，只是做一下近期数据的 echarts 图例，再另外强调一下核心变化值。
-    *   *Agent Note*:
-        *   编写 `keep-render.js` 扩展，增加 "Trend Card"。
-        *   复用 `nutrition-chart.js` 逻辑绘制体重/围度折线图。
-
-9.  **血糖记录与文件上传**
+22.  **血糖记录与文件上传**
     *   *User Idea*: 增加血糖记录的上传功能，xlsx 直接传和覆盖，后续整合到 advice 的分析中——血糖分析模式或许可以做一个额外的收费 feature。
     *   *Agent Note*:
         *   Backend: 增加 Excel Parser (`pandas` or `openpyxl`)。
         *   Storage: 存为 `blood_glucose_{month}.jsonl`。
         *   Analysis: 将血糖波动数据 feed 给 LLM 寻找与 Diet 的关联。
-
-10. **登录方式扩展 (Clerk Alternatives/Codes)**
-    *   *User Idea*: 了解 clerk 的一些备选登陆方式，考虑前期的用户注册用邀请码或者 code 做必备的功能激活，没有 code 的账号就只能试用 3 天。
-    *   *Agent Note*:
-        *   Clerk 支持 "Allowlist" 或 Custom Flow。
-        *   更简单的做法：App 逻辑层限制。User 登录后，检查 DB 中是否有 Active Subscription 或 Valid Invitation Code。如果没有，限制 Usage Count 或 Time。
-
-11. 开屏的基础信息，增加一些情绪价值，小标题，小哲理啥的，因为是AI收费所以直接是按账户来，先不用广告？还是说广告可以买掉？
+23. **热量校准与代谢反推 (Calorie Calibration Algorithm)**
+    *   *User Idea*: 回归算法计算体重变化和热量差值反推基本值？
+    *   *Agent Note*: 属于 Weekly Analysis 的 MVP3 (Calorie Calibration) 核心功能。
+        *   算法: `(Intake - TDEE) / 7700 ≈ Weight Change`。
+        *   进阶: 使用线性回归 (Linear Regression) 分析近 2-4 周的数据，动态计算用户的实际代谢适应系数 (Adaptive TDEE)，而非死板套用公式。

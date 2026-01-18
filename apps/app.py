@@ -15,6 +15,7 @@ from apps.diet.api import build_diet_router
 from apps.keep.api import build_keep_router
 from apps.common.storage_api import build_storage_router
 from apps.weekly_analysis.api import build_weekly_analysis_router
+from apps.profile.api import build_profile_router
 
 
 def create_app() -> FastAPI:
@@ -58,6 +59,7 @@ def create_app() -> FastAPI:
     fastapi_app.include_router(build_keep_router(settings))
     fastapi_app.include_router(build_storage_router(settings))
     fastapi_app.include_router(build_weekly_analysis_router(settings))
+    fastapi_app.include_router(build_profile_router(settings))
     return fastapi_app
 
 
