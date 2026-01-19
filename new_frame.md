@@ -403,7 +403,7 @@ apps/weekly_analysis/
 ### Phase 1: 核心基石 (Foundation)
 *目标：确保数据不丢失，服务可部署，访问有门禁。*
 
-1.  **[High] Profile 云端持久化 (Profile Persistence)**
+1.  **[High] Profile 云端持久化 (Profile Persistence)** ✅ 已完成 (前端)
     *   *Task*: 开发 `GET/POST /api/user/profile` 接口，前端 `profile.js` 改为从后端读写。
     *   *Value*: 用户刷新/换设备配置不丢失，是所有个性化分析的基础。
     *   *User Idea*: 增加 profile 的保存，读取，快速选择，以及单独运转利用右侧llm对话的 profile 编辑模式。
