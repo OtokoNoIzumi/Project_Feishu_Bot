@@ -9,6 +9,7 @@ class DietTarget(BaseModel):
     protein_g_target: Optional[int] = None
     fat_g_target: Optional[int] = None
     carbs_g_target: Optional[int] = None
+    fiber_g_target: Optional[int] = None
     sodium_mg_target: Optional[int] = None
 
 class KeepTarget(BaseModel):
@@ -23,8 +24,8 @@ class UserProfile(BaseModel):
     用户 Profile 配置。
     基础信息 (gender/age) 为空表示新用户，未填写过基础信息。
     """
-    # 基础信息：有默认值
-    gender: str = "female"
+    # 基础信息：默认为空，需用户填写
+    gender: Optional[str] = None
     age: int = 25
     activity_level: str = "sedentary"  # 默认久坐
     
@@ -39,10 +40,17 @@ class UserProfile(BaseModel):
     # 预估达成目标的月数（LLM 推算）
     estimated_months: Optional[int] = None
 
+class MetricsOverride(BaseModel):
+    """身体指标覆盖（前端编辑的身高/体重）"""
+    height_cm: Optional[float] = None
+    weight_kg: Optional[float] = None
+
 class ProfileAnalyzeRequest(BaseModel):
     user_note: str
     target_months: Optional[int] = None  # 用户期望的达成时间（月），可选输入
     auto_save: bool = False
+    profile_override: Optional[UserProfile] = None  # 前端当前编辑的 Profile（优先使用）
+    metrics_override: Optional[MetricsOverride] = None  # 前端编辑的身高/体重
 
 class ProfileAnalyzeResponse(BaseModel):
     advice: str

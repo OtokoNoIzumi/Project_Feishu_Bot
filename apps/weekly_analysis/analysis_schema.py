@@ -21,7 +21,7 @@ EXECUTIVE_SUMMARY_SCHEMA = {
         },
         "summary": {
             "type": "string",
-            "description": "100字以内的综述，串联饮食与身体变化的因果关系，点出关键发现",
+            "description": "200字以内的综述，串联饮食与身体变化的因果关系，点出关键发现",
         },
     },
     "required": ["title", "summary"],

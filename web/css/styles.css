@@ -87,7 +87,7 @@ html {
 }
 
 body {
-  font-family: 'Lora', 'Georgia', serif;
+  font-family: 'Lora', 'Georgia', 'Microsoft YaHei', '微软雅黑', sans-serif;
   background: var(--color-bg-primary);
   background-image: url('bg_paper.png');
   background-repeat: repeat;
@@ -428,8 +428,9 @@ h3 {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   color: var(--color-text-primary);
-  font-family: 'Inter', system-ui, sans-serif;
-  font-size: 0.875rem;
+  /* Ensure consistent font rendering */
+  font-family: inherit;
+  font-size: 1rem;
   transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
 }
 
@@ -441,6 +442,8 @@ h3 {
 
 .input-field::placeholder {
   color: var(--color-text-muted);
+  opacity: 0.7;
+  /* Make placeholder visually lighter than input text */
 }
 
 textarea.input-field {
@@ -889,4 +892,16 @@ textarea.input-field {
   .message {
     max-width: 90%;
   }
+}
+
+/* Profile specific inputs */
+.profile-field-input {
+  font-family: inherit;
+  /* Critical for consistency */
+  color: var(--color-text-primary);
+}
+
+/* Ensure select elements also inherit font */
+select {
+  font-family: inherit;
 }

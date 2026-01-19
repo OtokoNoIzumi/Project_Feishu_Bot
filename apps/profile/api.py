@@ -36,6 +36,13 @@ def build_profile_router(settings: BackendSettings) -> APIRouter:
         如果 auto_save=True，则自动应用建议。
         """
         usecase = AnalyzeProfileUsecase(settings)
-        return await usecase.execute(user_id, req.user_note, req.target_months, req.auto_save)
+        return await usecase.execute(
+            user_id, 
+            req.user_note, 
+            req.target_months, 
+            req.auto_save,
+            req.profile_override,
+            req.metrics_override
+        )
 
     return router

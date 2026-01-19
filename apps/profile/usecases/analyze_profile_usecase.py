@@ -28,14 +28,30 @@ class AnalyzeProfileUsecase:
             config=GeminiClientConfig(model_name=settings.gemini_model_name, temperature=0.5)
         )
 
-    async def execute(self, user_id: str, user_note: str, target_months: int = None, auto_save: bool = False) -> ProfileAnalyzeResponse:
-        # 1. 加载当前 Profile 设定
-        current_profile = ProfileService.load_profile(user_id)
+    async def execute(
+        self, 
+        user_id: str, 
+        user_note: str, 
+        target_months: int = None, 
+        auto_save: bool = False,
+        profile_override: "UserProfile" = None,
+        metrics_override: "MetricsOverride" = None
+    ) -> ProfileAnalyzeResponse:
+        # 1. 加载当前 Profile 设定（优先使用前端传入的数据）
+        if profile_override:
+            current_profile = profile_override
+        else:
+            current_profile = ProfileService.load_profile(user_id)
 
         # 2. 获取最新身体状态（体重/身高）
-        latest_metrics = RecordService.get_latest_body_metrics(user_id)
-        current_weight = latest_metrics.get("weight_kg")
-        current_height = latest_metrics.get("height_cm")
+        # 优先使用前端传入的数据
+        if metrics_override:
+            current_weight = metrics_override.weight_kg
+            current_height = metrics_override.height_cm
+        else:
+            latest_metrics = RecordService.get_latest_body_metrics(user_id)
+            current_weight = latest_metrics.get("weight_kg")
+            current_height = latest_metrics.get("height_cm")
 
         # 3. 前置校验：检查是否有足够的基础信息进行分析（体重/身高来自 Keep 数据）
         missing_info = []
@@ -109,17 +125,16 @@ class AnalyzeProfileUsecase:
         # 合并 Diet Targets（保留用户的 goal/energy_unit，只更新数值）
         updated_diet = current_profile.diet.model_copy(update=suggested_diet)
 
-        # 合并 Keep Targets（只更新 LLM 推算的，用户已设定的不覆盖）
+        # 合并 Keep Targets（允许 LLM 覆盖现有值，前端有二次确认）
         updated_keep_data = current_profile.keep.model_dump()
         for key, val in suggested_keep.items():
             if key == "dimensions_target" and val:
-                # 合并围度目标，不覆盖用户已设定的
+                # 合并围度目标
                 current_dims = updated_keep_data.get("dimensions_target") or {}
                 for dim_key, dim_val in val.items():
-                    if dim_key not in user_set_keep_targets.get("dimensions", []):
-                        current_dims[dim_key] = dim_val
+                    current_dims[dim_key] = dim_val
                 updated_keep_data["dimensions_target"] = current_dims
-            elif key not in user_set_keep_targets.get("scalars", []):
+            else:
                 updated_keep_data[key] = val
 
         updated_keep = KeepTarget.model_validate(updated_keep_data)
@@ -226,15 +241,21 @@ class AnalyzeProfileUsecase:
         return records[:limit]
 
     def _format_scale_data(self, records: List[Dict]) -> str:
-        """复用 weekly 模块的表格格式"""
+        """复用 weekly 模块的表格格式，同一天只保留最新一条"""
         if not records:
             return "无体重记录"
 
         lines = ["日期|体重kg|体脂%|骨骼肌%|水分%|内脏脂肪"]
         lines.append("-" * 60)
 
+        seen_dates = set()
         for rec in records:
             occurred = rec.get("occurred_at", "")[:10]
+            # 同一天只保留最新一条（records 已按降序排列）
+            if occurred in seen_dates:
+                continue
+            seen_dates.add(occurred)
+            
             weight = rec.get("weight_kg", "-")
             fat = rec.get("body_fat_pct", "-")
             skeletal_muscle = rec.get("skeletal_muscle_pct", "-")
@@ -245,15 +266,21 @@ class AnalyzeProfileUsecase:
         return "\n".join(lines)
 
     def _format_dimension_data(self, records: List[Dict]) -> str:
-        """复用 weekly 模块的表格格式"""
+        """复用 weekly 模块的表格格式，同一天只保留最新一条"""
         if not records:
             return "无围度记录"
 
         lines = ["日期|胸围cm|腰围cm|臀围cm|大腿cm|小腿cm|手臂cm"]
         lines.append("-" * 60)
 
+        seen_dates = set()
         for rec in records:
             d = rec.get("occurred_at", "")[:10]
+            # 同一天只保留最新一条（records 已按降序排列）
+            if d in seen_dates:
+                continue
+            seen_dates.add(d)
+            
             chest = rec.get("bust", "-")
             waist = rec.get("waist", "-")
             hips = rec.get("hip_circ", "-")
@@ -313,6 +340,7 @@ Profile 设定:
 
 ---
 ## 历史数据
+注意：历史数据可能存在录入错误的异常值（如身高 1cm、体重 2kg），分析时请自行筛选合理数据。
 
 ### 体重记录
 {scale_table}
@@ -321,7 +349,7 @@ Profile 设定:
 {dimension_table}
 
 ---
-## 用户已手动设定的 Keep 目标（不要重新输出这些）:
+## 用户已设定的 Keep 目标（作为参考）:
 {user_set_json}
 
 ---
@@ -352,13 +380,13 @@ Profile 设定:
 - protein_g_target
 - fat_g_target
 - carbs_g_target
+- fiber_g_target
 - sodium_mg_target
 
-### 2. 推算 Keep 目标 (可选)
-{"如果有历史围度数据，可根据趋势推算合理的目标围度/体重/体脂。" if has_dimension_history else "无历史围度数据，跳过 Keep 目标推算。"}
+### 2. 推算 Keep 目标
+综合根据用户备注、历史数据、用户已设定的目标，推算合理的 Keep 目标。
 
-注意：用户已手动设定的目标 (见上方) 不要重新输出，只推算用户未设定的。
-注意：参考用户的关键主张进行分析（如特殊的身材目标偏好）。
+参考用户的关键主张进行分析（如特殊的身材目标偏好）。
 
 可推算的围度目标字段：waist, bust, hip_circ, thigh, calf, arm
 
@@ -368,11 +396,17 @@ Profile 设定:
 输出 `estimated_months` (整数)。
 
 ### 4. 维护用户关键主张
-从用户备注中识别影响分析的重要信息（如：特殊目标、偏好、约束）。
+从用户备注中识别影响分析的**非结构化**关键信息（如：特殊目标、偏好、约束）。
 例如："想要 female 的身材围度" "需要考虑姨妈期" "有糖尿病需控糖"
 
-如果有新主张或需要修改现有内容，输出 `suggested_user_info` (字符串) —— 这是完整的、更新后的版本。
-综合现有 user_info 和新内容，删除过时/矛盾的信息，保持简洁。
+**注意**：不要在 user_info 中重复已有结构化字段的信息：
+- 身高/体重/围度 → 已在历史数据中
+- 目标体重/体脂/围度 → 已在 Keep 目标中
+- 饮食目标 → 已在 Diet 目标中
+- 预期时间 → 已在 estimated_months 中
+
+只记录无法结构化的关键信息，保持简洁。
+如果有新主张或需修改，输出 `suggested_user_info` —— 完整更新版本。
 如果没有变化，不输出此字段。
 
 ### 5. 输出格式

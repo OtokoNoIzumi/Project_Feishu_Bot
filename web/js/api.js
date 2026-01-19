@@ -192,6 +192,48 @@ const API = {
             record_id: data.record_id || null,
         });
     },
+
+    // ========== Profile API ==========
+
+    /**
+     * 获取用户 Profile（设置 + 动态指标）
+     */
+    async getProfile() {
+        return this.get('/user/profile');
+    },
+
+    /**
+     * 保存用户 Profile
+     * @param {object} profile - Profile 数据
+     */
+    async saveProfile(profile) {
+        return this.post('/user/profile', profile);
+    },
+
+    /**
+     * Profile AI 分析
+     * @param {string} userNote - 用户输入
+     * @param {number} targetMonths - 目标月份（可选）
+     * @param {boolean} autoSave - 是否自动保存
+     * @param {object} profileOverride - 前端当前编辑的 Profile（优先使用）
+     * @param {object} metricsOverride - 前端编辑的身高/体重
+     */
+    async analyzeProfile(userNote, targetMonths = null, autoSave = false, profileOverride = null, metricsOverride = null) {
+        const data = {
+            user_note: userNote,
+            auto_save: autoSave,
+        };
+        if (targetMonths) {
+            data.target_months = targetMonths;
+        }
+        if (profileOverride) {
+            data.profile_override = profileOverride;
+        }
+        if (metricsOverride) {
+            data.metrics_override = metricsOverride;
+        }
+        return this.post('/user/profile/analyze', data);
+    },
 };
 
 /**

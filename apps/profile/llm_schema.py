@@ -64,6 +64,10 @@ PROFILE_LLM_SCHEMA = {
                     "type": "integer",
                     "description": "每日碳水目标 (g)",
                 },
+                "fiber_g_target": {
+                    "type": "integer",
+                    "description": "每日膳食纤维目标 (g)",
+                },
                 "sodium_mg_target": {
                     "type": "integer",
                     "description": "每日钠目标 (mg)",
@@ -74,6 +78,7 @@ PROFILE_LLM_SCHEMA = {
                 "protein_g_target",
                 "fat_g_target",
                 "carbs_g_target",
+                "fiber_g_target",
                 "sodium_mg_target",
             ],
         },

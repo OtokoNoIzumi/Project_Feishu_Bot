@@ -1,0 +1,782 @@
+/**
+ * Profile 渲染模块
+ * 
+ * 负责 Profile 视图的 HTML 渲染
+ */
+
+const ProfileRenderModule = {
+    // ========== 字段配置 ==========
+
+    // 下拉选项映射（用于显示修改前的值）
+    optionLabels: {
+        gender: { female: '女', male: '男' },
+        'diet.goal': { fat_loss: '减脂', maintain: '维持', muscle_gain: '增肌', health: '健康' },
+        activity_level: {
+            sedentary: '久坐',
+            light: '轻度活动',
+            moderate: '中度活动',
+            active: '高度活动',
+            very_active: '非常活跃',
+        },
+        timezone: {
+            'Asia/Shanghai': '中国',
+            'Asia/Tokyo': '日本',
+            'Asia/Singapore': '新加坡',
+            'Europe/London': '英国',
+            'America/Los_Angeles': '美国西海岸',
+            'America/New_York': '美国东海岸',
+        },
+    },
+
+    // 获取选项的显示标签
+    getOptionLabel(fieldKey, value) {
+        const map = this.optionLabels[fieldKey];
+        if (map && map[value]) return map[value];
+        return value ?? '-';
+    },
+
+    // ========== 主渲染 ==========
+
+    render() {
+        const p = ProfileModule.getCurrentProfile();
+        const dm = ProfileModule.pendingMetrics || ProfileModule.dynamicMetrics || {};
+        const { canAnalyze, missing } = ProfileModule.canAnalyze();
+
+        const userName = Auth.user?.firstName || Auth.user?.fullName || Auth.user?.username || '用户';
+        const unit = p.diet?.energy_unit || 'kJ';
+
+        // 计算显示的能量目标值
+        const rawEnergyTarget = p.diet?.daily_energy_kj_target;
+        const displayEnergyTarget = rawEnergyTarget
+            ? (unit === 'kcal' ? Math.round(rawEnergyTarget / 4.184) : rawEnergyTarget)
+            : '';
+
+        return `
+            ${this.renderStyles()}
+            <style>
+                .profile-field-input, .profile-field textarea, .profile-field select {
+                    font-family: inherit !important;
+                }
+            </style>
+            <div class="profile-container">
+                ${!canAnalyze ? this.renderMissingInfoBanner(missing) : ''}
+                
+                <!-- 档案信息 -->
+                ${this.renderProfileSection(p, dm, userName, unit)}
+                
+                <!-- Diet 目标 -->
+                ${this.renderDietSection(p, unit, displayEnergyTarget)}
+                
+                <!-- Keep 目标 -->
+                ${this.renderKeepSection(p)}
+                
+                <!-- 用户关键主张 -->
+                ${this.renderUserInfoSection(p)}
+            </div>
+        `;
+    },
+
+    /**
+     * 只渲染内容区域（不含操作按钮）
+     */
+    renderContent() {
+        return this.render();
+    },
+
+    /**
+     * 渲染底部操作按钮（用于 result-footer）
+     */
+    renderFooterButtons() {
+        const hasChanges = ProfileModule.hasChanges();
+
+        return `
+            ${hasChanges ? `
+                <button class="btn btn-ghost" onclick="ProfileRenderModule.revertAll()">
+                    ↩ 还原全部
+                </button>
+            ` : ''}
+            <button class="btn btn-secondary" onclick="Dashboard.switchView('analysis')">
+                返回
+            </button>
+            <button class="btn btn-primary" onclick="ProfileRenderModule.saveProfile()" ${!hasChanges ? 'disabled' : ''}>
+                ${window.IconManager ? window.IconManager.render('save') : ''} 保存档案
+            </button>
+        `;
+    },
+
+    renderMissingInfoBanner(missing) {
+        return `
+            <div class="profile-banner profile-banner-warning">
+                <div class="profile-banner-icon">⚠️</div>
+                <div class="profile-banner-content">
+                    <div class="profile-banner-title">请完善基础信息</div>
+                    <div class="profile-banner-text">
+                        缺少：${missing.join('、')}。完善后可使用 AI 对话优化 Profile 功能。
+                    </div>
+                </div>
+            </div>
+        `;
+    },
+
+    // ========== 档案信息 ==========
+
+    renderProfileSection(p, dm, userName, unit) {
+        return `
+            <div class="profile-section">
+                <div class="profile-section-header">
+                    <div class="profile-section-icon">
+                        ${window.Clerk?.user?.imageUrl
+                ? `<img src="${window.Clerk.user.imageUrl}?width=160" class="cl-avatarImage" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;" alt="Avatar">`
+                : (window.IconManager ? window.IconManager.render('profile', 'xl') : '👤')
+            }
+                    </div>
+                    <div>
+                        <div class="profile-section-title">${userName} 的档案</div>
+                        <div class="profile-section-subtitle">个人基础信息</div>
+                    </div>
+                </div>
+                <div class="profile-grid profile-grid-4">
+                    ${this.renderSelectField('gender', '性别', [
+                { value: '', label: '请选择' },
+                { value: 'female', label: '女' },
+                { value: 'male', label: '男' },
+            ], p.gender)}
+                    ${this.renderNumberField('age', '年龄', p.age, 1)}
+                    ${this.renderNumberField('_metrics.height_cm', '身高 (cm)', dm.height_cm)}
+                    ${this.renderNumberField('_metrics.weight_kg', '体重 (kg)', dm.weight_kg)}
+                    ${this.renderSelectField('diet.goal', '目标', [
+                { value: 'fat_loss', label: '减脂' },
+                { value: 'maintain', label: '维持' },
+                { value: 'muscle_gain', label: '增肌' },
+                { value: 'health', label: '健康' },
+            ], p.diet?.goal)}
+                    ${this.renderSelectField('activity_level', '活动水平', [
+                { value: 'sedentary', label: '久坐' },
+                { value: 'light', label: '轻度活动' },
+                { value: 'moderate', label: '中度活动' },
+                { value: 'active', label: '高度活动' },
+                { value: 'very_active', label: '非常活跃' },
+            ], p.activity_level)}
+                    ${this.renderNumberField('estimated_months', '预期达成 (月)', p.estimated_months, 1)}
+                    ${this.renderSelectField('timezone', '时区', [
+                { value: 'Asia/Shanghai', label: '中国' },
+                { value: 'Asia/Tokyo', label: '日本' },
+                { value: 'Asia/Singapore', label: '新加坡' },
+                { value: 'Europe/London', label: '英国' },
+                { value: 'America/Los_Angeles', label: '美国西海岸' },
+                { value: 'America/New_York', label: '美国东海岸' },
+            ], p.timezone)}
+                </div>
+            </div>
+        `;
+    },
+
+    // ========== Diet 目标 ==========
+
+    renderDietSection(p, unit, displayEnergyTarget) {
+        const diet = p.diet || {};
+
+        return `
+            <div class="profile-section">
+                <div class="profile-section-header">
+                    <div class="profile-section-icon">${window.IconManager ? window.IconManager.render('meal', 'xl') : '🍽️'}</div>
+                    <div>
+                        <div class="profile-section-title">Diet 目标</div>
+                        <div class="profile-section-subtitle">每日营养摄入目标</div>
+                    </div>
+                </div>
+                <div class="profile-grid profile-grid-3">
+                    ${this.renderNumberField('diet.protein_g_target', '蛋白质 (g)', diet.protein_g_target)}
+                    ${this.renderNumberField('diet.fat_g_target', '脂肪 (g)', diet.fat_g_target)}
+                    ${this.renderNumberField('diet.carbs_g_target', '碳水 (g)', diet.carbs_g_target)}
+                </div>
+                <div class="profile-grid profile-grid-3" style="margin-top: 12px;">
+                    ${this.renderNumberField('diet.daily_energy_kj_target', `能量 (${unit})`, displayEnergyTarget)}
+                    ${this.renderNumberField('diet.fiber_g_target', '纤维 (g)', diet.fiber_g_target)}
+                    ${this.renderNumberField('diet.sodium_mg_target', '钠 (mg)', diet.sodium_mg_target, 1)}
+                </div>
+            </div>
+        `;
+    },
+
+    // ========== Keep 目标 ==========
+
+    renderKeepSection(p) {
+        const keep = p.keep || {};
+        const dims = keep.dimensions_target || {};
+
+        return `
+            <div class="profile-section">
+                <div class="profile-section-header">
+                    <div class="profile-section-icon">${window.IconManager ? window.IconManager.render('heart', 'xl') : '💪'}</div>
+                    <div>
+                        <div class="profile-section-title">Keep 目标</div>
+                        <div class="profile-section-subtitle">体重与体态目标</div>
+                    </div>
+                </div>
+                <div class="profile-grid profile-grid-4">
+                    ${this.renderNumberField('keep.weight_kg_target', '目标体重 (kg)', keep.weight_kg_target)}
+                    ${this.renderNumberField('keep.body_fat_pct_target', '目标体脂 (%)', keep.body_fat_pct_target)}
+                    ${this.renderNumberField('keep.dimensions_target.bust', '胸围 (cm)', dims.bust)}
+                    ${this.renderNumberField('keep.dimensions_target.waist', '腰围 (cm)', dims.waist)}
+                    ${this.renderNumberField('keep.dimensions_target.hip_circ', '臀围 (cm)', dims.hip_circ)}
+                    ${this.renderNumberField('keep.dimensions_target.thigh', '大腿围 (cm)', dims.thigh)}
+                    ${this.renderNumberField('keep.dimensions_target.calf', '小腿围 (cm)', dims.calf)}
+                    ${this.renderNumberField('keep.dimensions_target.arm', '上臂围 (cm)', dims.arm)}
+                </div>
+            </div>
+        `;
+    },
+
+    // ========== 用户关键主张 ==========
+
+    renderUserInfoSection(p) {
+        const diffResult = ProfileModule.getUserInfoDiff();
+        const userInfo = p.user_info || '';
+
+        return `
+            <div class="profile-section">
+                <div class="profile-section-header">
+                    <div class="profile-section-icon">${window.IconManager ? window.IconManager.render('comment', 'xl') : '💬'}</div>
+                    <div>
+                        <div class="profile-section-title">关键主张</div>
+                        <div class="profile-section-subtitle">
+                            影响分析的重要信息
+                            ${diffResult.hasDiff ? '<span class="change-indicator" title="有变化">●</span>' : ''}
+                        </div>
+                    </div>
+                    ${diffResult.hasDiff ? `
+                        <button class="btn btn-xs btn-ghost" onclick="ProfileRenderModule.showUserInfoDiff()" title="查看变化">
+                            Diff
+                        </button>
+                        <button class="btn btn-xs btn-ghost" onclick="ProfileRenderModule.revertField('user_info')" title="还原">
+                            ↩
+                        </button>
+                    ` : ''}
+                </div>
+                ${this.renderTextField('user_info', userInfo, '这里的记录也会作为优化的上下文提交给AI')}
+                ${diffResult.hasDiff ? `
+                    <div id="user-info-diff" class="user-info-diff hidden">
+                        ${this.renderUserInfoDiffContent(diffResult.diff)}
+                    </div>
+                ` : ''}
+            </div>
+        `;
+    },
+
+    renderUserInfoDiffContent(diff) {
+        if (!diff || diff.length === 0) return '无变化';
+        return `
+            <div class="diff-lines">
+                ${diff.map(d => `
+                    <div class="diff-line diff-${d.type}">
+                        <span class="diff-prefix">${d.type === 'added' ? '+' : d.type === 'removed' ? '-' : ' '}</span>
+                        ${d.text}
+                    </div>
+                `).join('')}
+            </div>
+        `;
+    },
+
+    // ========== 组件化表单元素 ==========
+
+    /**
+     * 渲染数字输入框
+     * @param {number} step - 步长 (默认 0.1)
+     */
+    renderNumberField(fieldKey, label, value, step = 0.1) {
+        const change = ProfileModule.getFieldChange(fieldKey);
+        const hasChange = change.hasChange;
+        const inputId = fieldKey.replace(/\./g, '-');
+        const displayValue = value ?? '';
+
+        const originalDisplay = hasChange
+            ? `<span class="field-original-inline">修改前: ${change.original ?? '-'}</span>`
+            : '';
+
+        // 如果步长是 1，则强制解析为整数
+        const parseFn = step === 1 ? 'parseInt' : 'parseFloat';
+
+        return `
+            <div class="profile-field ${hasChange ? 'has-change' : ''}">
+                <label class="profile-field-label">
+                    ${label}
+                    ${originalDisplay}
+                    ${hasChange ? this.renderRevertBtn(fieldKey) : ''}
+                </label>
+                <input id="${inputId}" type="number" class="profile-field-input" 
+                    value="${displayValue}" step="${step}" placeholder="-"
+                    onchange="ProfileRenderModule.onFieldChange('${fieldKey}', ${parseFn}(this.value) || null)">
+            </div>
+        `;
+    },
+
+    /**
+     * 渲染下拉选择框
+     */
+    renderSelectField(fieldKey, label, options, selectedValue) {
+        const change = ProfileModule.getFieldChange(fieldKey);
+        const hasChange = change.hasChange;
+        const inputId = fieldKey.replace(/\./g, '-');
+
+        // 使用标签而非原始值显示修改前
+        const originalLabel = this.getOptionLabel(fieldKey, change.original);
+        const originalDisplay = hasChange
+            ? `<span class="field-original-inline">修改前: ${originalLabel}</span>`
+            : '';
+
+        const optionsHtml = options.map(o =>
+            `<option value="${o.value}" ${o.value === (selectedValue || '') ? 'selected' : ''}>${o.label}</option>`
+        ).join('');
+
+        return `
+            <div class="profile-field ${hasChange ? 'has-change' : ''}">
+                <label class="profile-field-label">
+                    ${label}
+                    ${originalDisplay}
+                    ${hasChange ? this.renderRevertBtn(fieldKey) : ''}
+                </label>
+                <select id="${inputId}" class="profile-field-input" 
+                    onchange="ProfileRenderModule.onFieldChange('${fieldKey}', this.value)">
+                    ${optionsHtml}
+                </select>
+            </div>
+        `;
+    },
+
+    /**
+     * 渲染文本域
+     */
+    renderTextField(fieldKey, value, placeholder = '') {
+        const inputId = fieldKey.replace(/\./g, '-');
+
+        return `
+            <div class="profile-field">
+                <textarea id="${inputId}" class="profile-field-input profile-textarea" 
+                    placeholder="${placeholder}"
+                    onchange="ProfileRenderModule.onFieldChange('${fieldKey}', this.value)">${value || ''}</textarea>
+            </div>
+        `;
+    },
+
+    renderRevertBtn(fieldPath) {
+        return `<button class="btn-revert" onclick="ProfileRenderModule.revertField('${fieldPath}')" title="还原">↩</button>`;
+    },
+
+    // ========== 操作按钮 ==========
+
+    renderActionButtons() {
+        const hasChanges = ProfileModule.hasChanges();
+
+        return `
+            <div class="profile-actions">
+                ${hasChanges ? `
+                    <button class="btn btn-ghost" onclick="ProfileRenderModule.revertAll()">
+                        ↩ 还原全部
+                    </button>
+                ` : ''}
+                <button class="btn btn-secondary" onclick="Dashboard.switchView('analysis')">
+                    返回
+                </button>
+                <button class="btn btn-primary" onclick="ProfileRenderModule.saveProfile()" ${!hasChanges ? 'disabled' : ''}>
+                    ${window.IconManager ? window.IconManager.render('save') : ''} 保存档案
+                </button>
+            </div>
+        `;
+    },
+
+    renderStyles() {
+        return `
+            <style>
+                .profile-container { display: flex; flex-direction: column; gap: 20px; }
+                
+                .profile-banner {
+                    display: flex;
+                    align-items: center;
+                    gap: 12px;
+                    padding: 16px;
+                    border-radius: 8px;
+                    background: var(--color-warning-bg, #fff3cd);
+                    border: 1px solid var(--color-warning-border, #ffc107);
+                }
+                .profile-banner-warning { background: #fef3e2; border-color: #f5a623; }
+                .profile-banner-icon { font-size: 1.5rem; }
+                .profile-banner-title { font-weight: 600; color: var(--color-text-primary); }
+                .profile-banner-text { font-size: 0.875rem; color: var(--color-text-secondary); margin-top: 4px; }
+                
+                .profile-section {
+                    position: relative;
+                    background: var(--color-bg-secondary, #fff);
+                    border: 1px solid var(--color-border);
+                    border-radius: 4px;
+                    padding: 20px 24px;
+                    margin-top: 20px;
+                    box-shadow: 0 1px 2px rgba(0,0,0,0.02);
+                }
+                
+                /* TAPE STICKER (Real Element) */
+                .tape-sticker {
+                    position: absolute;
+                    top: -12px;
+                    width: 80px;
+                    height: 24px;
+                    background: rgba(242, 233, 216, 0.9);
+                    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+                    cursor: pointer;
+                    transition: transform 0.2s ease;
+                    z-index: 10;
+                    backdrop-filter: blur(1px);
+                }
+                /* Default rotations (overridden by inline styles for randomness) */
+                .tape-sticker:hover { filter: brightness(0.98); }
+
+                .profile-section-header {
+                    display: flex;
+                    align-items: center;
+                    gap: 12px;
+                    margin-bottom: 16px;
+                    padding-bottom: 12px;
+                    border-bottom: 2px dashed var(--color-border);
+                }
+                .profile-section-icon { width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; }
+                .profile-section-title { font-size: 1.1rem; font-weight: 600; color: var(--color-accent-primary); font-family: var(--font-handwritten); }
+                .profile-section-subtitle { font-size: 0.85rem; color: var(--color-text-muted); margin-top: 2px; }
+                
+                /* 网格布局 */
+                .profile-grid { display: grid; gap: 12px; }
+                .profile-grid-2 { grid-template-columns: repeat(2, 1fr); }
+                .profile-grid-3 { grid-template-columns: repeat(3, 1fr); }
+                .profile-grid-4 { grid-template-columns: repeat(4, 1fr); }
+                
+                /* Full width override */
+                .profile-grid-full { grid-column: 1 / -1; }
+                
+                .profile-field { display: flex; flex-direction: column; gap: 6px; position: relative; }
+                .profile-field.has-change { background: rgba(59, 130, 246, 0.08); border-radius: 6px; padding: 8px; margin: -8px; }
+                
+                .profile-field-label { 
+                    font-size: 0.8rem; font-weight: 600; color: var(--color-text-secondary); 
+                    display: flex; align-items: center; gap: 6px;
+                    flex-wrap: wrap;
+                }
+                
+                /* 原值显示 */
+                .field-original-inline {
+                    font-size: 0.7rem;
+                    color: var(--color-text-muted);
+                    font-style: italic;
+                    background: rgba(0,0,0,0.05);
+                    padding: 1px 6px;
+                    border-radius: 3px;
+                }
+                
+                .profile-field-input {
+                    background: var(--color-bg-tertiary);
+                    border: 1px solid var(--color-border);
+                    border-radius: 4px;
+                    padding: 10px 12px;
+                    font-size: 0.95rem;
+                    font-family: var(--font-handwritten);
+                    color: var(--color-text-primary);
+                    width: 100%;
+                    box-sizing: border-box;
+                }
+                .profile-field-input:focus { outline: none; border-color: var(--color-accent-primary); background: #fff; }
+                .profile-field-input select { font-family: var(--font-body); }
+                .profile-textarea { min-height: 80px; resize: vertical; font-family: var(--font-body); }
+                
+                .btn-revert {
+                    background: none; border: none; cursor: pointer; 
+                    color: var(--color-accent-secondary); font-size: 0.8rem;
+                    padding: 2px 4px; border-radius: 3px;
+                    margin-left: auto;
+                }
+                .btn-revert:hover { background: rgba(0,0,0,0.05); }
+                
+                .change-indicator { color: var(--color-accent-primary); font-size: 0.6rem; margin-left: 4px; }
+                
+                /* Unsaved Status in Title */
+                .unsaved-status {
+                    display: inline-block;
+                    font-size: 0.75rem;
+                    font-weight: normal;
+                    color: #d97706; /* amber-600 */
+                    background: #fef3c7;
+                    padding: 2px 8px;
+                    border-radius: 12px;
+                    margin-left: 8px;
+                    vertical-align: middle;
+                    animation: pulse-opacity 2s infinite;
+                }
+                @keyframes pulse-opacity {
+                    0% { opacity: 0.7; }
+                    50% { opacity: 1; }
+                    100% { opacity: 0.7; }
+                }
+
+                /* Character Diff Styles */
+                .user-info-diff { margin-top: 8px; padding: 12px; background: #fff; border: 1px dashed var(--color-border); border-radius: 4px; font-family: monospace; font-size: 0.85rem; white-space: pre-wrap; word-break: break-all; }
+                .diff-char-add { background: #bbf7d0; color: #14532d; text-decoration: none; }
+                .diff-char-remove { background: #fecaca; color: #991b1b; text-decoration: line-through; }
+                
+                .profile-actions { 
+                    display: flex; 
+                    justify-content: flex-end; 
+                    gap: 12px; 
+                }
+                
+                .btn-xs { padding: 4px 8px; font-size: 0.75rem; }
+                .btn-ghost { background: none; border: 1px solid var(--color-border); color: var(--color-text-secondary); }
+                .btn-ghost:hover { background: var(--color-bg-tertiary); }
+                
+                .hidden { display: none !important; }
+                
+                @media (max-width: 768px) {
+                    .profile-grid-3, .profile-grid-4 { grid-template-columns: repeat(2, 1fr); }
+                }
+            </style>
+        `;
+    },
+
+    /**
+     * 生成随机角度的胶带
+     */
+    renderTape(right = '50px', rotation = null) {
+        // 如果没有指定角度，随机生成 -3 到 3 度
+        const deg = rotation !== null ? rotation : (Math.random() * 6 - 3).toFixed(1);
+        return `<div class="tape-sticker" style="right: ${right}; transform: rotate(${deg}deg);" onclick="ProfileRenderModule.rotateTape(this)"></div>`;
+    },
+
+    // ========== 档案信息 (Merged User Info) ==========
+
+    renderProfileSection(p, dm, userName, unit) {
+        // User Info Diff Logic
+        const diffResult = ProfileModule.getUserInfoDiff();
+        const userInfo = p.user_info || '';
+
+        return `
+            <div class="profile-section">
+                ${this.renderTape('60px', 2)}
+                <div class="profile-section-header">
+                    <div class="profile-section-icon">
+                        ${window.Clerk?.user?.imageUrl
+                ? `<img src="${window.Clerk.user.imageUrl}?width=160" class="cl-avatarImage" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;" alt="Avatar">`
+                : (window.IconManager ? window.IconManager.render('profile', 'xl') : '👤')
+            }
+                    </div>
+                    <div>
+                        <div class="profile-section-title">${userName} 的档案</div>
+                        <div class="profile-section-subtitle">个人基础信息</div>
+                    </div>
+                </div>
+                <div class="profile-grid profile-grid-4">
+                    ${this.renderSelectField('gender', '性别', [
+                { value: '', label: '请选择' },
+                { value: 'female', label: '女' },
+                { value: 'male', label: '男' },
+            ], p.gender)}
+                    ${this.renderNumberField('age', '年龄', p.age, 1)}
+                    ${this.renderNumberField('_metrics.height_cm', '身高 (cm)', dm.height_cm, 0.1)}
+                    ${this.renderNumberField('_metrics.weight_kg', '体重 (kg)', dm.weight_kg, 0.1)}
+                    ${this.renderSelectField('diet.goal', '目标', [
+                { value: 'fat_loss', label: '减脂' },
+                { value: 'maintain', label: '维持' },
+                { value: 'muscle_gain', label: '增肌' },
+                { value: 'health', label: '健康' },
+            ], p.diet?.goal)}
+                    ${this.renderSelectField('activity_level', '活动水平', [
+                { value: 'sedentary', label: '久坐' },
+                { value: 'light', label: '轻度活动' },
+                { value: 'moderate', label: '中度活动' },
+                { value: 'active', label: '高度活动' },
+                { value: 'very_active', label: '非常活跃' },
+            ], p.activity_level)}
+                    ${this.renderNumberField('estimated_months', '预期达成 (月)', p.estimated_months, 1)}
+                    ${this.renderSelectField('timezone', '时区', [
+                { value: 'Asia/Shanghai', label: '中国' },
+                { value: 'Asia/Tokyo', label: '日本' },
+                { value: 'Asia/Singapore', label: '新加坡' },
+                { value: 'Europe/London', label: '英国' },
+                { value: 'America/Los_Angeles', label: '美国西海岸' },
+                { value: 'America/New_York', label: '美国东海岸' },
+            ], p.timezone)}
+
+                    <!-- User Info (Key Claims) merged here -->
+                    <div class="profile-grid-full" style="margin-top: 12px; border-top: 1px dashed var(--color-border); padding-top: 12px;">
+                        <label class="profile-field-label" style="justify-content: space-between; margin-bottom: 8px;">
+                            <span>
+                                关键主张 
+                                <span style="font-weight: normal; color: var(--color-text-muted); font-size: 0.75rem;">(将会作为 AI 分析和优化档案的上下文)</span>
+                                ${diffResult.hasDiff ? '<span class="change-indicator" title="有变化">●</span>' : ''}
+                            </span>
+                            ${diffResult.hasDiff ? `
+                                <div>
+                                    <button class="btn btn-xs btn-ghost" onclick="ProfileRenderModule.showUserInfoDiff()" title="查看精确差异">Diff</button>
+                                    <button class="btn btn-xs btn-ghost" onclick="ProfileRenderModule.revertField('user_info')" title="还原">↩</button>
+                                </div>
+                            ` : ''}
+                        </label>
+                        ${this.renderTextField('user_info', userInfo, '这里的摘要AI也会更新，但未必完全代表你的意思，请及时维护。')}
+                        ${diffResult.hasDiff ? `
+                            <div id="user-info-diff" class="user-info-diff hidden">
+                                ${this.renderUserInfoDiffContent(diffResult.diff)}
+                            </div>
+                        ` : ''}
+                    </div>
+                </div>
+            </div>
+        `;
+    },
+
+    // ========== Diet 目标 ==========
+
+    renderDietSection(p, unit, displayEnergyTarget) {
+        const diet = p.diet || {};
+        return `
+            <div class="profile-section">
+                ${this.renderTape('45px', -1.5)}
+                <div class="profile-section-header">
+                    <div class="profile-section-icon">${window.IconManager ? window.IconManager.render('meal', 'xl') : '🍽️'}</div>
+                    <div>
+                        <div class="profile-section-title">Diet 目标</div>
+                        <div class="profile-section-subtitle">每日营养摄入目标</div>
+                    </div>
+                </div>
+                <div class="profile-grid profile-grid-3">
+                    ${this.renderNumberField('diet.protein_g_target', '蛋白质 (g)', diet.protein_g_target, 0.1)}
+                    ${this.renderNumberField('diet.fat_g_target', '脂肪 (g)', diet.fat_g_target, 0.1)}
+                    ${this.renderNumberField('diet.carbs_g_target', '碳水 (g)', diet.carbs_g_target, 0.1)}
+                </div>
+                <div class="profile-grid profile-grid-3" style="margin-top: 12px;">
+                    ${this.renderNumberField('diet.daily_energy_kj_target', `能量 (${unit})`, displayEnergyTarget, 1)}
+                    ${this.renderNumberField('diet.fiber_g_target', '膳食纤维 (g)', diet.fiber_g_target, 0.1)}
+                    ${this.renderNumberField('diet.sodium_mg_target', '钠 (mg)', diet.sodium_mg_target, 1)}
+                </div>
+            </div>
+        `;
+    },
+
+    // ========== Keep 目标 ==========
+
+    renderKeepSection(p) {
+        const keep = p.keep || {};
+        const dims = keep.dimensions_target || {};
+        return `
+            <div class="profile-section">
+                ${this.renderTape('55px', 1)}
+                <div class="profile-section-header">
+                    <div class="profile-section-icon">${window.IconManager ? window.IconManager.render('heart', 'xl') : '💪'}</div>
+                    <div>
+                        <div class="profile-section-title">Keep 目标</div>
+                        <div class="profile-section-subtitle">体重与体态目标</div>
+                    </div>
+                </div>
+                <div class="profile-grid profile-grid-4">
+                    ${this.renderNumberField('keep.weight_kg_target', '目标体重 (kg)', keep.weight_kg_target)}
+                    ${this.renderNumberField('keep.body_fat_pct_target', '目标体脂 (%)', keep.body_fat_pct_target)}
+                    ${this.renderNumberField('keep.dimensions_target.bust', '胸围 (cm)', dims.bust)}
+                    ${this.renderNumberField('keep.dimensions_target.waist', '腰围 (cm)', dims.waist)}
+                    ${this.renderNumberField('keep.dimensions_target.hip_circ', '臀围 (cm)', dims.hip_circ)}
+                    ${this.renderNumberField('keep.dimensions_target.thigh', '大腿围 (cm)', dims.thigh)}
+                    ${this.renderNumberField('keep.dimensions_target.calf', '小腿围 (cm)', dims.calf)}
+                    ${this.renderNumberField('keep.dimensions_target.arm', '上臂围 (cm)', dims.arm)}
+                </div>
+            </div>
+        `;
+    },
+
+    // ========== Users Info (Removed Separate Section) ==========
+
+    renderUserInfoSection(p) {
+        return ''; // Integrated into renderProfileSection
+    },
+
+    /**
+     * 渲染 Diff 内容 (Character Level)
+     * Diff structure: [{ type: 'equal'|'add'|'remove', value: '...' }]
+     */
+    renderUserInfoDiffContent(diff) {
+        if (!diff || diff.length === 0) return '无变化';
+
+        return diff.map(part => {
+            if (part.type === 'add') {
+                return `<span class="diff-char-add">${this.escapeHtml(part.value)}</span>`;
+            } else if (part.type === 'remove') {
+                return `<span class="diff-char-remove">${this.escapeHtml(part.value)}</span>`;
+            } else {
+                return this.escapeHtml(part.value);
+            }
+        }).join('');
+    },
+
+    escapeHtml(text) {
+        if (!text) return '';
+        return text
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    },
+
+    rotateTape(el) {
+        // 随机微调角度 (-6 ~ 6 度)
+        const newDeg = (Math.random() * 12 - 6).toFixed(1);
+        el.style.transform = `rotate(${newDeg}deg) scale(1.1)`;
+        setTimeout(() => {
+            el.style.transform = `rotate(${newDeg}deg) scale(1)`;
+        }, 200);
+    },
+
+    // ========== 事件处理 ==========
+
+    onFieldChange(fieldPath, value) {
+        // 处理身体指标字段（保存到 Keep）
+        if (fieldPath.startsWith('_metrics.')) {
+            const key = fieldPath.replace('_metrics.', '');
+            ProfileModule.updateMetric(key, value);
+        } else {
+            ProfileModule.updateField(fieldPath, value);
+        }
+        this.refreshView();
+    },
+
+    revertField(fieldPath) {
+        if (fieldPath.startsWith('_metrics.')) {
+            const key = fieldPath.replace('_metrics.', '');
+            ProfileModule.revertMetric(key);
+        } else {
+            ProfileModule.revertField(fieldPath);
+        }
+        this.refreshView();
+    },
+
+    revertAll() {
+        ProfileModule.revertAll();
+        this.refreshView();
+    },
+
+    showUserInfoDiff() {
+        const el = document.getElementById('user-info-diff');
+        if (el) el.classList.toggle('hidden');
+    },
+
+    async saveProfile() {
+        const result = await ProfileModule.saveToServer();
+        if (result.success) {
+            Dashboard.addMessage('✓ Profile 已保存', 'assistant');
+            this.refreshView();
+        } else {
+            Dashboard.addMessage(`保存失败: ${result.error}`, 'assistant');
+        }
+    },
+
+    refreshView() {
+        if (Dashboard.view === 'profile') {
+            Dashboard.renderProfileView();
+        }
+    },
+};
+
+// 挂载到全局
+window.ProfileRenderModule = ProfileRenderModule;

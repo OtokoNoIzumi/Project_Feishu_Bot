@@ -100,15 +100,23 @@ const AnalysisModule = {
             return;
         }
 
+        let loadingMsg = null;
+        const btn = document.getElementById('update-advice-btn');
+
         try {
-            this.el.updateAdviceBtn.disabled = true;
-            this.el.updateAdviceBtn.textContent = '⏳ 生成中...';
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = `⏳ 生成中...`;
+            }
+            loadingMsg = this.addMessage('正在根据最新数据更新建议...', 'assistant', { isLoading: true });
 
             // 收集当前编辑的数据作为 facts
             const facts = this.collectEditedData();
             const userNote = document.getElementById('additional-note')?.value.trim() || '';
 
             const response = await API.getDietAdvice(facts, userNote);
+
+            if (loadingMsg) loadingMsg.remove();
 
             // 后端返回 {success, result: {advice_text}} 结构
             if (response.success && response.result?.advice_text) {
@@ -125,8 +133,11 @@ const AnalysisModule = {
             currentVersion.adviceError = error.message; // 记录错误
             this.addMessage(`建议更新失败: ${error.message}`, 'assistant');
         } finally {
-            this.el.updateAdviceBtn.disabled = false;
-            this.el.updateAdviceBtn.textContent = '✨ 更新建议';
+            if (btn) {
+                btn.disabled = false;
+                // 恢复原始图标
+                btn.innerHTML = `<img src="css/icons/sparkle.png" class="icon-stamp" alt="Update"> 更新建议`;
+            }
         }
     },
 

@@ -36,17 +36,45 @@ const Dashboard = {
   el: {},
 
   async init() {
+    const getLogTime = () => {
+      const now = new Date();
+      const pad = (n) => n.toString().padStart(2, '0');
+      return `[AI_second_me ${pad(now.getMonth() + 1)}/${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}]`;
+    };
+
+    console.log(`${getLogTime()} [Dashboard] init started`);
+
     this.cacheElements();
     this.bindEvents();
 
-    await Auth.init();
-    if (!Auth.isSignedIn()) {
-      window.location.href = 'index.html';
-      return;
-    }
-    Auth.mountUserButton('#user-button');
-    this.loadHistory();
-    console.log('[Dashboard] Initialized');
+    // 保存原始 footer HTML（用于从 Profile 切回时恢复）
+    this._originalFooterHtml = this.el.resultFooter?.innerHTML || '';
+
+    // 初始化 Auth（非阻塞）
+    console.log(`${getLogTime()} calling Auth.init()`);
+    Auth.init();
+
+    // 注册 Auth 就绪后的回调
+    Auth.onInit(() => {
+      console.log(`${getLogTime()} Auth.onInit callback triggered`);
+      if (!Auth.isSignedIn()) {
+        console.log(`${getLogTime()} User not signed in, redirecting...`);
+        window.location.href = 'index.html';
+        return;
+      }
+      Auth.mountUserButton('#user-button');
+
+      console.log(`${getLogTime()} Loading history...`);
+      this.loadHistory();
+
+      // 如果当前停留在 Profile 视图且显示的是加载态，则刷新
+      if (this.view === 'profile' && this.el.resultContent.querySelector('.auth-loading-state')) {
+        console.log(`${getLogTime()} Updating Profile view from loading state`);
+        this.renderProfileView();
+      }
+    });
+
+    console.log(`${getLogTime()} Initialized (Auth pending)`);
 
     window.Dashboard = this;
   },
@@ -178,7 +206,14 @@ const Dashboard = {
   },
 
   switchView(view) {
+    // 确保 Auth 已初始化
+    if (!Auth.isSignedIn()) {
+      // 不直接阻断，而是显示加载中或登录提示 (响应用户需求4)
+      console.warn('[Dashboard] Auth not ready, but allowing view switch to show status');
+    }
+
     const next = view === 'profile' ? 'profile' : 'analysis';
+    const prev = this.view;
     this.view = next;
 
     // 左侧菜单高亮
@@ -186,10 +221,28 @@ const Dashboard = {
       btn.classList.toggle('active', btn.dataset.view === next);
     });
 
+    // 聊天模式切换
+    const modeSwitch = document.querySelector('.mode-switch');
     if (next === 'profile') {
+      // Profile 模式：隐藏 diet/keep 切换，显示"档案沟通"
+      if (modeSwitch) {
+        this._savedModeSwitch = modeSwitch.innerHTML;
+        modeSwitch.innerHTML = '<button class="mode-btn active" style="cursor: default; pointer-events: none;">档案沟通</button>';
+      }
       this.renderProfileView();
       if (this.isMobile()) this.setResultPanelOpen(true);
       return;
+    }
+
+    // 切出 Profile 模式：还原聊天窗口状态
+    if (prev === 'profile' && modeSwitch && this._savedModeSwitch) {
+      modeSwitch.innerHTML = this._savedModeSwitch;
+      this.bindModeSwitch(); // 重新绑定事件
+    }
+
+    // 切出 Profile 时隐藏其 footer 按钮
+    if (prev === 'profile') {
+      this.el.resultFooter.classList.add('hidden');
     }
 
     // 回到分析视图
@@ -199,6 +252,17 @@ const Dashboard = {
       this.clearResult();
     }
     if (this.isMobile()) this.setResultPanelOpen(true);
+  },
+
+  // 绑定模式切换按钮事件
+  bindModeSwitch() {
+    document.querySelectorAll('.mode-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        this.mode = btn.dataset.mode;
+      });
+    });
   },
 
   // ========== 图片处理 ==========
@@ -297,6 +361,12 @@ const Dashboard = {
     const text = this.el.chatInput?.value.trim() || '';
     if (!text && this.pendingImages.length === 0) return;
 
+    // Profile 模式：调用 ProfileModule.analyze
+    if (this.view === 'profile') {
+      await this.startProfileAnalysis(text);
+      return;
+    }
+
     // 创建新 Session
     const session = this.createSession(text, [...this.pendingImages]);
     this.currentSession = session;
@@ -319,6 +389,53 @@ const Dashboard = {
 
     // 执行分析
     await this.executeAnalysis(session, text);
+  },
+
+  /**
+   * Profile 模式下的分析
+   */
+  async startProfileAnalysis(userNote) {
+    // 添加用户消息
+    this.addMessage(userNote, 'user');
+
+    // 清空输入
+    this.el.chatInput.value = '';
+    this.pendingImages = [];
+    this.renderPreviews();
+    this.updateSendButton();
+
+    // 显示加载状态
+    const loadingMsg = this.addMessage('正在分析...', 'assistant', { isLoading: true });
+
+    // 从当前 Profile 读取预期达成时间（优先从 DOM 读取最新值）
+    const monthsInput = document.getElementById('estimated_months');
+    let targetMonths = monthsInput ? parseInt(monthsInput.value) : null;
+    if (!targetMonths || isNaN(targetMonths)) {
+      const currentProfile = ProfileModule.getCurrentProfile();
+      targetMonths = currentProfile.estimated_months || null;
+    }
+
+    // 调用 Profile 分析（传入 targetMonths）
+    const result = await ProfileModule.analyze(userNote, targetMonths);
+
+    // 移除加载消息
+    if (loadingMsg) loadingMsg.remove();
+
+    if (result.success) {
+      // 显示分析建议（使用 marked 解析 markdown）
+      let adviceHtml = result.advice || '分析完成';
+      if (typeof marked !== 'undefined' && marked.parse) {
+        adviceHtml = marked.parse(adviceHtml);
+      } else {
+        adviceHtml = TextUtils.simpleMarkdownToHtml(adviceHtml);
+      }
+      this.addMessage(adviceHtml, 'assistant', { isHtml: true });
+
+      // 刷新 Profile 视图（显示暂存值）
+      this.renderProfileView();
+    } else {
+      this.addMessage(`分析失败: ${result.error}`, 'assistant');
+    }
   },
 
   // 委托给 AnalysisModule
@@ -395,8 +512,30 @@ const Dashboard = {
       this.renderKeepResult(session, version);
     }
 
+    // 恢复原始 footer 内容（Diet/Keep 按钮）
+    this.restoreOriginalFooter();
     this.el.resultFooter.classList.remove('hidden');
     this.updateButtonStates(session);
+  },
+
+  /**
+   * 恢复原始 footer 内容（init 时已缓存）
+   */
+  restoreOriginalFooter() {
+    if (this._originalFooterHtml) {
+      this.el.resultFooter.innerHTML = this._originalFooterHtml;
+      // 重新绑定按钮事件
+      this.bindFooterButtons();
+    }
+  },
+
+  /**
+   * 绑定 footer 按钮事件
+   */
+  bindFooterButtons() {
+    document.getElementById('re-analyze-btn')?.addEventListener('click', () => Dashboard.reAnalyze());
+    document.getElementById('update-advice-btn')?.addEventListener('click', () => Dashboard.updateAdvice());
+    document.getElementById('save-btn')?.addEventListener('click', () => Dashboard.saveRecord());
   },
 
   // 委托给 DietRenderModule
@@ -534,271 +673,43 @@ const Dashboard = {
     this.profile = profile;
   },
 
-  renderProfileView() {
-    const p = this.profile || this.getDefaultProfile();
-    this.el.resultTitle.textContent = 'Profile 设置';
+  async renderProfileView() {
+    const hasChanges = ProfileModule.hasChanges();
+    this.el.resultTitle.innerHTML = hasChanges
+      ? 'Profile 设置 <span class="unsaved-status">● 更新未保存</span>'
+      : 'Profile 设置';
     this.updateStatus('');
-    this.el.resultFooter.classList.add('hidden');
 
-    const unit = this.getEnergyUnit();
-    // 计算显示的能量目标值
-    const rawEnergyTarget = p.diet?.daily_energy_kj_target ?? 0;
-    const displayEnergyTarget = unit === 'kcal' ? Math.round(this.kJToKcal(rawEnergyTarget)) : rawEnergyTarget;
-
-    const userName = Auth.user?.firstName || Auth.user?.fullName || Auth.user?.username || '用户';
-
-    this.el.resultContent.innerHTML = `
-      <style>
-        .profile-container { display: flex; flex-direction: column; gap: 20px; }
-        .profile-section {
-          background: var(--color-bg-secondary);
-          border: 1px solid var(--color-border);
-          border-radius: 4px; /* More squared for notebook feel */
-          padding: 20px 24px;
-          box-shadow: 2px 2px 5px rgba(0,0,0,0.02); /* Subtle shadow */
-        }
-        .profile-section-header {
-          display: flex;
-          align-items: center;
-          gap: 12px;
-          margin-bottom: 20px;
-          padding-bottom: 16px;
-          border-bottom: 2px dashed var(--color-border); /* Dashed line for notebook */
-        }
-        .profile-section-icon {
-          width: 40px;
-          height: 40px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          flex-shrink: 0;
-        }
-        /* Removed digital gradients, let the icons speak */
-
-        .profile-section-title {
-          font-size: 1.1rem;
-          font-family: var(--font-handwritten); /* Use handwritten font for headers */
-          font-weight: 600;
-          color: var(--color-accent-primary); /* Warm text color */
-        }
-        .profile-section-subtitle {
-          font-size: 0.85rem;
-          font-family: var(--font-body);
-          color: var(--color-text-muted);
-          margin-top: 2px;
-        }
-        .profile-grid {
-          display: grid;
-          grid-template-columns: repeat(2, 1fr);
-          gap: 16px;
-        }
-        .profile-field {
-          display: flex;
-          flex-direction: column;
-          gap: 6px;
-        }
-        .profile-field-label {
-          font-size: 0.75rem;
-          font-family: var(--font-body);
-          font-weight: 600;
-          color: var(--color-text-secondary);
-          text-transform: uppercase;
-          letter-spacing: 0.5px;
-        }
-        .profile-field-input {
-          background: var(--color-bg-tertiary); /* Paper color */
-          border: 1px solid var(--color-border);
-          border-radius: 4px;
-          padding: 10px 12px;
-          font-size: 0.95rem;
-          font-family: var(--font-handwritten); /* Handwritten inputs! */
-          color: var(--color-text-primary);
-          transition: all 0.2s ease;
-          width: 100%;
-          box-sizing: border-box;
-        }
-        .profile-field-input:hover {
-          border-color: var(--color-accent-secondary);
-        }
-        .profile-field-input:focus {
-          outline: none;
-          border-color: var(--color-accent-primary);
-          background: #fff;
-          box-shadow: 2px 2px 0px rgba(0,0,0,0.05);
-        }
-        .profile-field-input[type="number"] {
-          font-variant-numeric: tabular-nums;
-        }
-        .profile-actions {
-          display: flex;
-          justify-content: flex-end;
-          gap: 12px;
-          margin-top: 8px;
-        }
-
-        .profile-macro-grid {
-          display: grid;
-          grid-template-columns: repeat(4, 1fr);
-          gap: 12px;
-        }
-        @media (max-width: 768px) {
-          .profile-grid { grid-template-columns: 1fr; }
-          .profile-macro-grid { grid-template-columns: repeat(2, 1fr); }
-        }
-
-        /* TAPE EFFECT */
-        .profile-section {
-            position: relative;
-            background: #fff; /* Card is white */
-            margin-top: 25px; /* Spacing for tape */
-            /* Card stays straight! */
-        }
-
-        .profile-section::before {
-            content: '';
-            position: absolute;
-            top: -12px;
-            right: 50px; /* Position to the right */
-            left: auto; /* Remove centering */
-            width: 100px;
-            height: 28px;
-            /* Washi Tape Style - Warm Beige/Translucent */
-            background-color: rgba(242, 233, 216, 0.9);
-            background-image: url("data:image/svg+xml,%3Csvg width='4' height='4' viewBox='0 0 4 4' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 0h4v4H0z' fill='%23ffffff' fill-opacity='0.2'/%3E%3C/svg%3E");
-            box-shadow: 0 1px 3px rgba(0,0,0,0.15);
-            z-index: 1;
-            clip-path: polygon(2% 0%, 98% 0%, 100% 100%, 0% 100%);
-        }
-
-        /* Rotate only the tape, randomly */
-        .profile-section:nth-of-type(1)::before { transform: rotate(2deg); right: 60px; }
-        .profile-section:nth-of-type(2)::before { transform: rotate(-1.5deg); right: 40px; }
-        .profile-section:nth-of-type(3)::before { transform: rotate(1deg); right: 50px; }
-      </style>
-
-      <div class="profile-container">
-        <!-- 用户信息 -->
-        <div class="profile-section">
-          <div class="profile-section-header">
-            <div class="profile-section-icon">
-              ${window.Clerk?.user?.imageUrl
-        ? `<img src="${window.Clerk.user.imageUrl}?width=160" class="cl-avatarImage" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;" alt="Avatar">`
-        : (window.IconManager ? window.IconManager.render('profile', 'xl') : '👤')
-      }
+    // 如果 Auth 尚未初始化完成，显示加载占位
+    if (!Auth.initialized) {
+      this.el.resultContent.innerHTML = `
+            <div class="empty-state auth-loading-state">
+              <div class="loading-spinner"></div>
+              <p>正在同步账户信息...</p>
             </div>
-            <div>
-              <div class="profile-section-title">${userName} 的档案</div>
-              <div class="profile-section-subtitle">个人设置与目标配置</div>
-            </div>
-          </div>
-          <div class="profile-grid">
-            <div class="profile-field">
-              <label class="profile-field-label">时区</label>
-              <select id="profile-timezone" class="profile-field-input" style="font-family: var(--font-body);">
-                ${this.renderTimezoneOptions(p.timezone)}
-              </select>
-            </div>
-            <div class="profile-field">
-              <label class="profile-field-label">能量显示单位</label>
-              <select id="energy-unit" class="profile-field-input" onchange="Dashboard.setEnergyUnit(this.value)" style="font-family: var(--font-body);">
-                <option value="kJ" ${unit === 'kJ' ? 'selected' : ''}>kJ（默认）</option>
-                <option value="kcal" ${unit === 'kcal' ? 'selected' : ''}>kcal</option>
-              </select>
-            </div>
-          </div>
+        `;
+      this.el.resultFooter.classList.add('hidden');
+      return;
+    }
+
+    // 首次加载时从后端获取数据
+    if (!ProfileModule.serverProfile) {
+      this.el.resultContent.innerHTML = `
+        <div class="empty-state">
+          <div class="loading-spinner"></div>
+          <p>加载中...</p>
         </div>
+      `;
+      this.el.resultFooter.classList.add('hidden');
+      await ProfileModule.loadFromServer();
+    }
 
-        <!-- Diet 目标 -->
-        <div class="profile-section">
-          <div class="profile-section-header">
-            <div class="profile-section-icon">${window.IconManager ? window.IconManager.render('meal', 'xl') : '🍽️'}</div>
-            <div>
-              <div class="profile-section-title">Diet 目标</div>
-              <div class="profile-section-subtitle">每日营养摄入目标设置</div>
-            </div>
-          </div>
-          <div class="profile-grid" style="margin-bottom: 16px;">
-            <div class="profile-field">
-              <label class="profile-field-label">目标类型</label>
-              <select id="diet-goal" class="profile-field-input" style="font-family: var(--font-body);">
-                ${this.renderDietGoalOptions(p.diet?.goal)}
-              </select>
-            </div>
-            <div class="profile-field">
-              <label class="profile-field-label">每日能量目标 (${unit})</label>
-              <input id="diet-energy-kj" type="number" class="profile-field-input" value="${displayEnergyTarget}">
-            </div>
-          </div>
-          <div class="profile-macro-grid">
-            <div class="profile-field">
-              <label class="profile-field-label">蛋白质 (g)</label>
-              <input id="diet-protein-g" type="number" class="profile-field-input" value="${p.diet?.protein_g_target ?? 0}" step="0.1">
-            </div>
-            <div class="profile-field">
-              <label class="profile-field-label">脂肪 (g)</label>
-              <input id="diet-fat-g" type="number" class="profile-field-input" value="${p.diet?.fat_g_target ?? 0}" step="0.1">
-            </div>
-            <div class="profile-field">
-              <label class="profile-field-label">碳水 (g)</label>
-              <input id="diet-carbs-g" type="number" class="profile-field-input" value="${p.diet?.carbs_g_target ?? 0}" step="0.1">
-            </div>
-            <div class="profile-field">
-              <label class="profile-field-label">纤维 (g)</label>
-              <input id="diet-fiber-g" type="number" class="profile-field-input" value="${p.diet?.fiber_g_target ?? 0}" step="0.1">
-            </div>
-          </div>
-          <div class="profile-grid" style="margin-top: 16px;">
-            <div class="profile-field">
-              <label class="profile-field-label">钠 (mg)</label>
-              <input id="diet-sodium-mg" type="number" class="profile-field-input" value="${p.diet?.sodium_mg_target ?? 0}" step="1">
-            </div>
-          </div>
-        </div>
+    // 使用新的渲染模块（不含操作按钮）
+    this.el.resultContent.innerHTML = ProfileRenderModule.renderContent();
 
-        <!-- Keep 目标 -->
-        <div class="profile-section">
-          <div class="profile-section-header">
-            <div class="profile-section-icon">${window.IconManager ? window.IconManager.render('heart', 'xl') : '💪'}</div>
-            <div>
-              <div class="profile-section-title">Keep 目标</div>
-              <div class="profile-section-subtitle">体重与体态目标设置</div>
-            </div>
-          </div>
-          <div class="profile-grid" style="margin-bottom: 16px;">
-            <div class="profile-field">
-              <label class="profile-field-label">目标体重 (kg)</label>
-              <input id="keep-weight-kg" type="number" class="profile-field-input" value="${p.keep?.weight_kg_target ?? 0}" step="0.1">
-            </div>
-            <div class="profile-field">
-              <label class="profile-field-label">目标体脂率 (%)</label>
-              <input id="keep-bodyfat-pct" type="number" class="profile-field-input" value="${p.keep?.body_fat_pct_target ?? 0}" step="0.1">
-            </div>
-          </div>
-          <div class="profile-macro-grid" style="grid-template-columns: repeat(3, 1fr);">
-            <div class="profile-field">
-              <label class="profile-field-label">胸围 (cm)</label>
-              <input id="keep-bust" type="number" class="profile-field-input" value="${p.keep?.dimensions_target?.bust ?? 0}" step="0.1">
-            </div>
-            <div class="profile-field">
-              <label class="profile-field-label">腰围 (cm)</label>
-              <input id="keep-waist" type="number" class="profile-field-input" value="${p.keep?.dimensions_target?.waist ?? 0}" step="0.1">
-            </div>
-            <div class="profile-field">
-              <label class="profile-field-label">臀围 (cm)</label>
-              <input id="keep-hip-circ" type="number" class="profile-field-input" value="${p.keep?.dimensions_target?.hip_circ ?? 0}" step="0.1">
-            </div>
-          </div>
-        </div>
-
-        <!-- 操作按钮 -->
-        <div class="profile-actions">
-          <button class="btn btn-secondary" onclick="Dashboard.switchView('analysis')">取消</button>
-          <button class="btn btn-primary" onclick="Dashboard.saveProfile()">
-            ${window.IconManager ? window.IconManager.render('save') : ''} 保存档案
-          </button>
-        </div>
-      </div>
-    `;
+    // 在 footer 显示操作按钮
+    this.el.resultFooter.classList.remove('hidden');
+    this.el.resultFooter.innerHTML = ProfileRenderModule.renderFooterButtons();
   },
 
   // 委托给 ProfileUtils

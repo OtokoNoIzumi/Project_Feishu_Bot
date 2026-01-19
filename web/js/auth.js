@@ -17,27 +17,58 @@ const Auth = {
     async init() {
         if (this.initialized) return;
 
+        const getLogTime = () => {
+            const now = new Date();
+            const pad = (n) => n.toString().padStart(2, '0');
+            return `[AI_second_me ${pad(now.getMonth() + 1)}/${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}]`;
+        };
+
+        console.log(`${getLogTime()} [Auth] init started`);
+
         try {
             // 等待 Clerk SDK 脚本加载完成
+            console.log(`${getLogTime()} [Auth] waiting for Clerk SDK...`);
             await this.waitForClerk();
+            console.log(`${getLogTime()} [Auth] Clerk SDK found. Starting load()...`);
 
-            // 等待 Clerk 加载完成
-            await window.Clerk.load();
-            this.initialized = true;
+            // 异步加载 Clerk，不阻断主流程
+            window.Clerk.load().then(() => {
+                const initTime = getLogTime();
+                console.log(`${initTime} [Auth] window.Clerk.load() completed`);
 
-            // 监听认证状态变化
-            window.Clerk.addListener((resources) => {
-                this.user = resources.user;
-                this.onAuthStateChange(resources);
+                this.initialized = true;
+                this.user = window.Clerk.user;
+
+                // 触发延迟的回调
+                if (this._onInitCallbacks) {
+                    console.log(`${initTime} [Auth] Triggering ${this._onInitCallbacks.length} callbacks`);
+                    this._onInitCallbacks.forEach(cb => cb());
+                    this._onInitCallbacks = [];
+                }
+
+                // 监听认证状态变化
+                window.Clerk.addListener((resources) => {
+                    this.user = resources.user;
+                    this.onAuthStateChange(resources);
+                });
+
+                console.log(`${initTime} [Auth] Clerk fully initialized asynchronously`);
+            }).catch(err => {
+                console.error('[Auth] Failed to load Clerk:', err);
             });
 
-            // 设置初始用户状态
-            this.user = window.Clerk.user;
-
-            console.log('[Auth] Clerk initialized successfully');
         } catch (error) {
-            console.error('[Auth] Failed to initialize Clerk:', error);
-            throw error;
+            console.error('[Auth] Failed to wait for Clerk SDK:', error);
+        }
+    },
+
+    // 增加一个注册初始化回调的方法
+    onInit(callback) {
+        if (this.initialized) {
+            callback();
+        } else {
+            if (!this._onInitCallbacks) this._onInitCallbacks = [];
+            this._onInitCallbacks.push(callback);
         }
     },
 

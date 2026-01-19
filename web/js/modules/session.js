@@ -28,6 +28,11 @@ const SessionModule = {
         const msg = document.createElement('div');
         msg.className = `message ${role}`;
 
+        // 加载状态
+        if (options.isLoading) {
+            msg.classList.add('loading');
+        }
+
         if (options.sessionId) {
             msg.dataset.sessionId = options.sessionId;
             msg.classList.add('session-card');
@@ -77,7 +82,12 @@ const SessionModule = {
         if (content) {
             const textEl = document.createElement('div');
             textEl.className = 'message-text';
-            textEl.textContent = content;
+            // 支持 HTML 内容（用于渲染 markdown）
+            if (options.isHtml) {
+                textEl.innerHTML = content;
+            } else {
+                textEl.textContent = content;
+            }
             msg.appendChild(textEl);
         }
 
