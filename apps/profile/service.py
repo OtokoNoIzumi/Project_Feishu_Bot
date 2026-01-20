@@ -1,11 +1,33 @@
 import json
 import shutil
 from pathlib import Path
+from datetime import date
 from typing import Optional, Dict, Any
 from apps.profile.schemas import UserProfile
 from apps.common.record_service import RecordService
 
 BASE_DIR = Path("user_data")
+
+
+def _calculate_age_from_birth_date(birth_date_str: Optional[str]) -> Optional[int]:
+    """从 birth_date (yyyy-mm-dd) 计算足岁"""
+    if not birth_date_str:
+        return None
+    try:
+        birth = date.fromisoformat(birth_date_str)
+        today = date.today()
+        age = today.year - birth.year - ((today.month, today.day) < (birth.month, birth.day))
+        return age
+    except ValueError:
+        return None
+
+
+def _birth_date_from_age(age: int) -> str:
+    """从年龄反推 birth_date (假设今天是生日)"""
+    today = date.today()
+    birth_year = today.year - age
+    return f"{birth_year}-{today.month:02d}-{today.day:02d}"
+
 
 class ProfileService:
     @staticmethod
@@ -38,6 +60,7 @@ class ProfileService:
         Combines:
         1. Stored Settings (UserProfile)
         2. Latest Observed Metrics (Weight/Height from Keep Records)
+        3. Computed Age (from birth_date)
         """
         # 1. Load Settings
         profile = ProfileService.load_profile(user_id)
@@ -52,10 +75,21 @@ class ProfileService:
         profile_dict["height_cm"] = metrics.get("height_cm")
         profile_dict["current_weight_kg"] = metrics.get("weight_kg")
         
+        # 4. Compute Age (centralized logic)
+        profile_dict["age"] = _calculate_age_from_birth_date(profile.birth_date)
+        
         return profile_dict
 
     @staticmethod
     def save_profile(user_id: str, profile: UserProfile):
+        """
+        保存 Profile。
+        如果 profile.age 有值，则自动转换为 birth_date 存储。
+        """
+        # 如果传入了 age，转换为 birth_date
+        if profile.age is not None:
+            profile.birth_date = _birth_date_from_age(profile.age)
+        
         path = ProfileService.get_profile_path(user_id)
         # Backup existing
         if path.exists():

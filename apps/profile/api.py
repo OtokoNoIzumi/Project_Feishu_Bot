@@ -22,7 +22,7 @@ def build_profile_router(settings: BackendSettings) -> APIRouter:
         profile: UserProfile, 
         user_id: str = Depends(get_current_user_id)
     ):
-        """保存用户 Profile 配置"""
+        """保存用户 Profile 配置。age 会自动转换为 birth_date 存储。"""
         ProfileService.save_profile(user_id, profile)
         return profile
 

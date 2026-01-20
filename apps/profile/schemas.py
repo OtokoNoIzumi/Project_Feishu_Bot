@@ -26,7 +26,10 @@ class UserProfile(BaseModel):
     """
     # 基础信息：默认为空，需用户填写
     gender: Optional[str] = None
+    # age 用于 API 传输，前端直接读写；后端存储时转为 birth_date
     age: int = 25
+    # 存储生日 yyyy-mm-dd，后端计算 BMR 时动态推算真实年龄
+    birth_date: Optional[str] = None
     activity_level: str = "sedentary"  # 默认久坐
     
     timezone: str = "Asia/Shanghai"

@@ -150,6 +150,15 @@ Project_Feishu_Bot/
 #### Profile
 - [x] **基础配置**: 支持设置 Diet/Keep 目标、能量单位 (kJ/kcal)。
 
+#### 最近优化 (Recent Polish) - *2026-01-20*
+- [x] **性能优化**: 全局脚本增加 `defer` 属性，解决白屏阻塞问题。
+- [x] **视觉微调**: 
+  - 字体栈优化：西文 Lora + 中文微软雅黑，平衡美感与可读性。
+  - 输入框样式修复：强制继承字体，解决默认 sans-serif 突兀问题。
+  - 营养图表：增加 NRV 参考值 (默认 2000kcal/60g蛋白等)，解决无目标时的空图显示问题。
+- [x] **逻辑修正**:
+  - **Profile Prompt**: 严禁 AI 在 `user_info` 中夹带建议，仅记录事实。
+  - **Context Provider**: 修复饮食建议 (Advice) 读取旧 profile.json 的问题，正确挂钩真实用户配置。
 
 ---
 

@@ -178,11 +178,26 @@ class AnalyzeProfileUsecase:
             "tdee": None
         }
 
-        if weight and height and profile.age:
+        if weight and height:
             # Mifflin-St Jeor 公式
             w = float(weight)
             h = float(height)
-            a = int(profile.age)
+            
+            # 计算年龄：优先使用 profile.age（前端直接传入），否则从 birth_date 推算
+            if profile.age:
+                age = profile.age
+            elif profile.birth_date:
+                try:
+                    birth = date.fromisoformat(profile.birth_date)
+                    today = date.today()
+                    age = today.year - birth.year - ((today.month, today.day) < (birth.month, birth.day))
+                except ValueError:
+                    age = 25
+            else:
+                age = 25  # 默认
+
+            stats["age"] = age
+            a = int(age)
 
             val = 10 * w + 6.25 * h - 5 * a
             if profile.gender == "male":
