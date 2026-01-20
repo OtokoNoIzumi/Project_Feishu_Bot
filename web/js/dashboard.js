@@ -184,8 +184,10 @@ const Dashboard = {
   },
 
   // 统一的能量显示单位：kJ / kcal（默认 kJ）
+  // 【重构】统一使用 ProfileModule 作为唯一数据源
   getEnergyUnit() {
-    const u = this.profile?.diet?.energy_unit;
+    const p = typeof ProfileModule !== 'undefined' ? ProfileModule.getCurrentProfile() : null;
+    const u = p?.diet?.energy_unit;
     return u === 'kcal' ? 'kcal' : 'kJ';
   },
 
@@ -251,6 +253,8 @@ const Dashboard = {
     } else {
       this.clearResult();
     }
+    // 刷新所有会话卡片标题（确保能量单位等设置生效）
+    this.sessions.forEach(s => this.updateSessionCard(s));
     if (this.isMobile()) this.setResultPanelOpen(true);
   },
 
@@ -764,12 +768,13 @@ const Dashboard = {
 
   setEnergyUnit(unit) {
     const u = unit === 'kcal' ? 'kcal' : 'kJ';
-    const next = this.profile || this.getDefaultProfile();
-    next.diet = next.diet || {};
-    next.diet.energy_unit = u;
-    this.saveProfileLocal(next);
 
-    // 立即生效
+    // 【重构】通过 ProfileModule 更新，立即生效（无需保存）
+    if (typeof ProfileModule !== 'undefined') {
+      ProfileModule.updateField('diet.energy_unit', u);
+    }
+
+    // 立即刷新视图
     if (this.view === 'profile') {
       this.renderProfileView();
     }

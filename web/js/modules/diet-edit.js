@@ -100,7 +100,7 @@ const DietEditModule = {
         // 优先使用聚合的高精度 energy_kj
         if (totals.energy_kj) {
             if (unit === 'kcal') {
-                energyText = Math.round(totals.energy_kj / 4.184);
+                energyText = Math.round(EnergyUtils.kJToKcal(totals.energy_kj));
             } else {
                 // KJ 保留 1 位小数
                 energyText = (Math.round(totals.energy_kj * 10) / 10).toFixed(1);
@@ -186,9 +186,10 @@ const DietEditModule = {
         return EnergyUtils.formatEnergyFromMacros(p, f, c, this.getEnergyUnit());
     },
 
-    // 获取当前能量单位
+    // 获取当前能量单位 - 【重构】统一使用 ProfileModule 作为唯一数据源
     getEnergyUnit() {
-        return (this.profile && this.profile.diet && this.profile.diet.energy_unit) || 'kJ';
+        const p = typeof ProfileModule !== 'undefined' ? ProfileModule.getCurrentProfile() : null;
+        return (p?.diet?.energy_unit) || 'kJ';
     },
 
     toggleIngredients(dishId) {
@@ -295,7 +296,7 @@ const DietEditModule = {
         totals.totalWeightG = Math.round(totals.totalWeightG);
 
         // 为了兼容旧逻辑，totalEnergy (Kcal) 也保留，但基于 KJ 计算且不取整
-        totals.totalEnergy = totals.totalEnergyKJ / 4.184;
+        totals.totalEnergy = EnergyUtils.kJToKcal(totals.totalEnergyKJ);
 
         this.currentDietTotals = totals;
 
@@ -394,7 +395,7 @@ const DietEditModule = {
                         weight_method: "user_edit",
                         data_source: "user_edit",
                         // 用户菜式没有 energy_kj，需计算
-                        energy_kj: Math.round(this.kcalToKJ(this.macrosToKcal(d.protein, d.fat, d.carb)) * 10) / 10,
+                        energy_kj: Math.round(EnergyUtils.kcalToKJ(EnergyUtils.macrosToKcal(d.protein, d.fat, d.carb)) * 10) / 10,
                         macros: {
                             protein_g: Number(d.protein) || 0,
                             fat_g: Number(d.fat) || 0,
@@ -466,11 +467,12 @@ const DietEditModule = {
                     totalKJ += e;
                 } else {
                     // Fallback using EnergyUtils logic (via macros)
-                    // Note: accessing macros directly here
-                    const k = (Number(ing.macros?.protein_g) || 0) * 4 +
-                        (Number(ing.macros?.fat_g) || 0) * 9 +
-                        (Number(ing.macros?.carbs_g) || 0) * 4;
-                    totalKJ += k * 4.184;
+                    const kcal = EnergyUtils.macrosToKcal(
+                        ing.macros?.protein_g,
+                        ing.macros?.fat_g,
+                        ing.macros?.carbs_g
+                    );
+                    totalKJ += EnergyUtils.kcalToKJ(kcal);
                 }
             });
 
@@ -490,7 +492,7 @@ const DietEditModule = {
         const f = Number(dish?.fat) || 0;
         const c = Number(dish?.carb) || 0;
         // Calc energy for user dish always from macros (standard rule)
-        const e_struct_kj = (p * 4 + f * 9 + c * 4) * 4.184;
+        const e_struct_kj = EnergyUtils.kcalToKJ(EnergyUtils.macrosToKcal(p, f, c));
 
         return {
             weight: Number(dish?.weight) || 0,

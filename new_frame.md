@@ -160,6 +160,45 @@ Project_Feishu_Bot/
   - **Profile Prompt**: 严禁 AI 在 `user_info` 中夹带建议，仅记录事实。
   - **Context Provider**: 修复饮食建议 (Advice) 读取旧 profile.json 的问题，正确挂钩真实用户配置。
 
+### 3.3 部署架构 (Deployment Architecture) - Hybrid Cloud
+
+> *Updated: 2026-01-20*
+
+采用 **前端托管 + 自有服务器后端** 的混合云模式，兼顾开发效率和成本控制。
+
+#### 核心组件选型
+
+| 组件 | 推荐服务 | 核心理由 | Demo 阶段适用性 |
+|------|----------|----------|-----------------|
+| **前端托管** | **Vercel** | Git 集成 + 全球 CDN + 自动 HTTPS。`git push` 即部署。 | ⭐⭐⭐⭐⭐ (免费版足够) |
+| **身份认证** | **Clerk** | Drop-in UI 组件，Profile/多端登录/Session 完全托管。 | ⭐⭐⭐⭐⭐ (已集成) |
+| **后端 API** | **Windows Server** | 现有资产利用。FastAPI + Uvicorn + NSSM 注册为服务。 | ⭐⭐⭐⭐⭐ |
+| **支付/税务** | **LemonSqueezy** | MoR 模式处理全球税务合规，开发者只管收钱。 | ⭐⭐⭐ (后期接入) |
+| **数据库** | **文件系统 (JSONL)** / Supabase | 前期用文件存储，用户超 100 人再考虑迁移托管 Postgres。 | ⭐⭐⭐⭐⭐ / ⭐⭐ |
+
+#### 部署配置
+
+**前端 (Vercel)**:
+- 将 `web/` 目录作为独立仓库或 monorepo 的子目录部署
+- 环境变量: `VITE_API_BASE_URL`, `VITE_CLERK_PUBLISHABLE_KEY`
+
+**后端 (Windows Server)**:
+1. 安装 Python 3.10+ 和依赖 (`pip install -r requirements.txt`)
+2. 使用 **NSSM** 注册服务: `nssm install DietKeepAPI "python" "-m uvicorn apps.app:app --host 0.0.0.0 --port 8000"`
+3. 使用 **Nginx for Windows** 反向代理 + SSL 终止
+4. CORS 配置允许 Vercel 域名
+
+**支付 (LemonSqueezy vs Stripe)**:
+- **Stripe**: 费率低 (2.9% + 30¢)，但你是商家，需自行处理全球税务合规
+- **LemonSqueezy**: 费率稍高 (5% + 50¢)，但作为 MoR 处理所有税务发票，适合独立开发者
+
+#### Phase 1 快速上线清单 (Demo)
+- [x] Clerk 身份认证集成
+- [ ] **Vercel 部署前端**
+- [ ] **Windows 服务器部署后端 (NSSM + Nginx)**
+- [ ] **简易邀请码系统** (保护公网 API)
+- [ ] 域名 DNS 配置 (A 记录指向服务器)
+
 ---
 
 ## 4. 废弃或已合并章节 (Merged/Deprecated)

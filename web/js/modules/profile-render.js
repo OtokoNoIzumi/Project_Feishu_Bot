@@ -48,7 +48,7 @@ const ProfileRenderModule = {
         // 计算显示的能量目标值
         const rawEnergyTarget = p.diet?.daily_energy_kj_target;
         const displayEnergyTarget = rawEnergyTarget
-            ? (unit === 'kcal' ? Math.round(rawEnergyTarget / 4.184) : rawEnergyTarget)
+            ? (unit === 'kcal' ? Math.round(EnergyUtils.kJToKcal(rawEnergyTarget)) : rawEnergyTarget)
             : '';
 
         return `
@@ -290,8 +290,17 @@ const ProfileRenderModule = {
         const inputId = fieldKey.replace(/\./g, '-');
         const displayValue = value ?? '';
 
+        // 能量目标的原始值需要按当前单位转换显示
+        let originalDisplayValue = change.original ?? '-';
+        if (fieldKey === 'diet.daily_energy_kj_target' && change.original) {
+            const unit = ProfileModule.getCurrentProfile()?.diet?.energy_unit || 'kJ';
+            originalDisplayValue = (unit === 'kcal')
+                ? Math.round(EnergyUtils.kJToKcal(change.original))
+                : change.original;
+        }
+
         const originalDisplay = hasChange
-            ? `<span class="field-original-inline">修改前: ${change.original ?? '-'}</span>`
+            ? `<span class="field-original-inline">修改前: ${originalDisplayValue}</span>`
             : '';
 
         // 如果步长是 1，则强制解析为整数
@@ -339,6 +348,37 @@ const ProfileRenderModule = {
                 <select id="${inputId}" class="profile-field-input" 
                     onchange="ProfileRenderModule.onFieldChange('${fieldKey}', this.value)">
                     ${optionsHtml}
+                </select>
+            </div>
+        `;
+    },
+
+    /**
+     * 渲染能量单位选择器 - 特殊处理
+     * 调用 Dashboard.setEnergyUnit() 立即刷新所有视图
+     */
+    renderEnergyUnitField(currentUnit) {
+        const change = ProfileModule.getFieldChange('diet.energy_unit');
+        const hasChange = change.hasChange;
+
+        const kJSelected = currentUnit === 'kJ' ? 'selected' : '';
+        const kcalSelected = currentUnit === 'kcal' ? 'selected' : '';
+
+        const originalDisplay = hasChange
+            ? `<span class="field-original-inline">修改前: ${change.original === 'kcal' ? 'kcal (大卡)' : 'kJ (千焦)'}</span>`
+            : '';
+
+        return `
+            <div class="profile-field ${hasChange ? 'has-change' : ''}">
+                <label class="profile-field-label">
+                    能量单位
+                    ${originalDisplay}
+                    ${hasChange ? this.renderRevertBtn('diet.energy_unit') : ''}
+                </label>
+                <select id="diet-energy_unit" class="profile-field-input" 
+                    onchange="Dashboard.setEnergyUnit(this.value)">
+                    <option value="kJ" ${kJSelected}>kJ (千焦)</option>
+                    <option value="kcal" ${kcalSelected}>kcal (大卡)</option>
                 </select>
             </div>
         `;
@@ -569,15 +609,28 @@ const ProfileRenderModule = {
                         <div class="profile-section-subtitle">个人基础信息</div>
                     </div>
                 </div>
-                <div class="profile-grid profile-grid-4">
+                <div class="profile-grid profile-grid-3">
                     ${this.renderSelectField('gender', '性别', [
                 { value: '', label: '请选择' },
                 { value: 'female', label: '女' },
                 { value: 'male', label: '男' },
             ], p.gender)}
+                    ${this.renderSelectField('timezone', '时区', [
+                { value: 'Asia/Shanghai', label: '中国' },
+                { value: 'Asia/Tokyo', label: '日本' },
+                { value: 'Asia/Singapore', label: '新加坡' },
+                { value: 'Europe/London', label: '英国' },
+                { value: 'America/Los_Angeles', label: '美国西海岸' },
+                { value: 'America/New_York', label: '美国东海岸' },
+            ], p.timezone)}
+                    ${this.renderEnergyUnitField(unit)}
+                </div>
+                <div class="profile-grid profile-grid-3" style="margin-top: 12px;">
                     ${this.renderNumberField('age', '年龄', p.age, 1)}
                     ${this.renderNumberField('_metrics.height_cm', '身高 (cm)', dm.height_cm, 0.1)}
                     ${this.renderNumberField('_metrics.weight_kg', '体重 (kg)', dm.weight_kg, 0.1)}
+                </div>
+                <div class="profile-grid profile-grid-3" style="margin-top: 12px;">
                     ${this.renderSelectField('diet.goal', '目标', [
                 { value: 'fat_loss', label: '减脂' },
                 { value: 'maintain', label: '维持' },
@@ -592,14 +645,7 @@ const ProfileRenderModule = {
                 { value: 'very_active', label: '非常活跃' },
             ], p.activity_level)}
                     ${this.renderNumberField('estimated_months', '预期达成 (月)', p.estimated_months, 1)}
-                    ${this.renderSelectField('timezone', '时区', [
-                { value: 'Asia/Shanghai', label: '中国' },
-                { value: 'Asia/Tokyo', label: '日本' },
-                { value: 'Asia/Singapore', label: '新加坡' },
-                { value: 'Europe/London', label: '英国' },
-                { value: 'America/Los_Angeles', label: '美国西海岸' },
-                { value: 'America/New_York', label: '美国东海岸' },
-            ], p.timezone)}
+                </div>
 
                     <!-- User Info (Key Claims) merged here -->
                     <div class="profile-grid-full" style="margin-top: 12px; border-top: 1px dashed var(--color-border); padding-top: 12px;">
@@ -735,6 +781,12 @@ const ProfileRenderModule = {
         if (fieldPath.startsWith('_metrics.')) {
             const key = fieldPath.replace('_metrics.', '');
             ProfileModule.updateMetric(key, value);
+        } else if (fieldPath === 'diet.daily_energy_kj_target') {
+            // 能量目标特殊处理：根据当前单位转换
+            // 显示时是按单位展示的，保存时需要转回 kJ
+            const unit = ProfileModule.getCurrentProfile()?.diet?.energy_unit || 'kJ';
+            const valueInKJ = (unit === 'kcal' && value) ? Math.round(EnergyUtils.kcalToKJ(value)) : value;
+            ProfileModule.updateField(fieldPath, valueInKJ);
         } else {
             ProfileModule.updateField(fieldPath, value);
         }
@@ -748,7 +800,14 @@ const ProfileRenderModule = {
         } else {
             ProfileModule.revertField(fieldPath);
         }
-        this.refreshView();
+
+        // 能量单位特殊处理：需要刷新所有视图
+        if (fieldPath === 'diet.energy_unit') {
+            const p = ProfileModule.getCurrentProfile();
+            Dashboard.setEnergyUnit(p?.diet?.energy_unit || 'kJ');
+        } else {
+            this.refreshView();
+        }
     },
 
     revertAll() {

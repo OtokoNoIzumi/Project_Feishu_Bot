@@ -101,7 +101,8 @@ const SessionModule = {
 
     // 更新 Session 卡片的视觉状态（标题、版本标）
     updateCardVisuals(sessionId, title, versionInfo = null) {
-        const card = document.querySelector(`[data-session-id="${sessionId}"]`);
+        // 增加 .session-card 限定，防止选中左侧 history-item (它们共享 sessionId)
+        const card = document.querySelector(`.session-card[data-session-id="${sessionId}"]`);
         if (!card) return;
 
         // 1. 更新标题

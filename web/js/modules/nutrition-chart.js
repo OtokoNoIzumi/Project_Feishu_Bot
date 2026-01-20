@@ -240,7 +240,8 @@ const NutritionChartModule = {
     buildPercentageData(currentTotals, energyUnit) {
         const today = this.todaySummary || {};
         const target = this.userTarget || {};
-        const profile = Dashboard.profile?.diet || {};
+        // 【重构】统一使用 ProfileModule 作为唯一数据源
+        const profile = (typeof ProfileModule !== 'undefined' ? ProfileModule.getCurrentProfile()?.diet : null) || {};
 
         const getTarget = (k1, k2) => target[k1] || profile[k2] || 0;
 
@@ -250,8 +251,8 @@ const NutritionChartModule = {
             {
                 key: '能量',
                 this: (currentTotals.totalEnergy || 0),
-                today: (today.consumed_energy_kj || 0) / 4.184, // stored as kj, convert to kcal for ratio
-                target: (getTarget('daily_energy_kj_target', 'daily_energy_kj_target') || 0) / 4.184,
+                today: EnergyUtils.kJToKcal(today.consumed_energy_kj || 0),
+                target: EnergyUtils.kJToKcal(getTarget('daily_energy_kj_target', 'daily_energy_kj_target') || 0),
                 defaultTarget: 2000,
                 unit: 'kcal'
             },
@@ -312,7 +313,7 @@ const NutritionChartModule = {
             }
 
             // 确保显示数值使用了正确的单位转换 (如果是 kJ 模式)
-            const displayFactor = (n.key === '能量' && energyUnit === 'kJ') ? 4.184 : 1;
+            const displayFactor = (n.key === '能量' && energyUnit === 'kJ') ? 4.184 : 1; // 保留: 这里是显示系数，非转换
             const displayUnit = (n.key === '能量') ? energyUnit : n.unit;
 
             thisMealPercent.push(t > 0 ? (n.this / t) * 100 : 0);
