@@ -17,37 +17,13 @@ from typing import Any, Dict, Optional
 from libs.core.config_loader import load_json
 from libs.core.project_paths import get_project_root
 from apps.common.record_service import RecordService
-
+from apps.profile.service import ProfileService
 
 def _diet_user_dir(user_id: str) -> Path:
 
     root = get_project_root()
     safe_user = user_id.strip() if user_id and user_id.strip() else "no_user_id"
     return root / "user_data" / safe_user / "diet"
-
-
-def _demo_context() -> Dict[str, Any]:
-    # Demo 值仅用于阶段3跑通两段式链路；后续用真实 profile/today_summary 替换即可
-    return {
-        "user_target": {
-            "goal": "fat_loss",
-            "daily_energy_kj_target": 6273.0,
-            "protein_g_target": 110.0,
-            "fat_g_target": 50.0,
-            "carbs_g_target": 150.0,
-            "sodium_mg_target": 2000.0,
-        },
-        "today_so_far": {
-            "consumed_energy_kj": 0,
-            "consumed_protein_g": 0,
-            "consumed_fat_g": 0,
-            "consumed_carbs_g": 0,
-            "consumed_sodium_mg": 0,
-            "consumed_fiber_g": 0,
-            "activity_burn_kj": 0,
-        },
-        "meta": {"source": "demo_fallback"},
-    }
 
 
 def _calculate_today_so_far(user_id: str, target_date: Optional[str] = None) -> Dict[str, Any]:
@@ -103,34 +79,29 @@ def _calculate_today_so_far(user_id: str, target_date: Optional[str] = None) -> 
 
 def get_context_bundle(user_id: str, target_date: Optional[str] = None) -> Dict[str, Any]:
     """
-    从 user_data/<user_id>/diet/ 读取背景数据（仅由 user_id 获取）：
-    - profile.json -> user_target（用户目标配置）
+    从 user_data/<user_id>/ 读取背景数据：
+    - ProfileService -> user_target（用户目标配置）
     - RecordService -> today_so_far
     """
-    base = _diet_user_dir(user_id)
-    profile = load_json(base / "profile.json") if base.exists() else {}
-
-    # 动态计算 today_so_far
+    # 1. 获取 Profile (Target)
+    profile = ProfileService.load_profile(user_id)
+    
+    user_target = {}
+    if profile.diet:
+        # 展平 diet target 结构
+        user_target = profile.diet.model_dump()
+        # 移除不需要的字段（如 energy_unit）
+        user_target.pop("energy_unit", None)
+    
+    # 2. 动态计算 today_so_far
     today_so_far = _calculate_today_so_far(user_id=user_id, target_date=target_date)
 
-    # 如果 profile 和 today_so_far 都为空，回退 demo
-    if not profile and sum(today_so_far.values()) == 0.0:
-        demo = _demo_context()
-        out = {
-            "user_target": demo.get("user_target", {}),
-            "today_so_far": demo.get("today_so_far", {}),
-            "meta": {"source": "demo_fallback"},
-        }
-    else:
-        demo = _demo_context()
-        out = {
-            "user_target": profile or demo.get("user_target", {}),
-            "today_so_far": (
-                today_so_far
-                if sum(today_so_far.values()) > 0
-                else demo.get("today_so_far", {})
-            ),
-            "meta": {"source": "user_data"},
-        }
+    # 3. 构造返回结果
+    # 这里不做 demo fallback，如果 user_target 为空，Prompt 会看到空对象，LLM 应自行处理（按通用健康原则建议）
+    out = {
+        "user_target": user_target,
+        "today_so_far": today_so_far,
+        "meta": {"source": "user_data"},
+    }
 
     return out

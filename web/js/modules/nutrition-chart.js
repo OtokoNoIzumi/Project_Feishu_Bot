@@ -132,7 +132,8 @@ const NutritionChartModule = {
                             pctText = `已摄入 ${pct}%`;
                         }
 
-                        html += `<div style="margin-bottom:6px;font-size:12px;color:#8c7f70">目标：${info.targetValue} ${info.unit}（${pctText}）</div>`;
+                        const defaultLabel = info.isDefault ? ' <span style="font-size:10px;color:#aaa">(NRV参考值)</span>' : '';
+                        html += `<div style="margin-bottom:6px;font-size:12px;color:#8c7f70">目标：${info.targetValue} ${info.unit}${defaultLabel}（${pctText}）</div>`;
                     }
 
                     // 本次
@@ -244,12 +245,14 @@ const NutritionChartModule = {
         const getTarget = (k1, k2) => target[k1] || profile[k2] || 0;
 
         // 定义数据源，注意这里的顺序！与 buildOption 中的翻转逻辑对应
+        // 如果 target 为 0/null，使用通用参考值做分母，避免除以零或进度条消失
         const nutrients = [
             {
                 key: '能量',
                 this: (currentTotals.totalEnergy || 0),
                 today: (today.consumed_energy_kj || 0) / 4.184, // stored as kj, convert to kcal for ratio
                 target: (getTarget('daily_energy_kj_target', 'daily_energy_kj_target') || 0) / 4.184,
+                defaultTarget: 2000,
                 unit: 'kcal'
             },
             {
@@ -257,6 +260,7 @@ const NutritionChartModule = {
                 this: currentTotals.totalProtein || 0,
                 today: today.consumed_protein_g || 0,
                 target: getTarget('protein_g_target', 'protein_g_target'),
+                defaultTarget: 60,
                 unit: 'g'
             },
             {
@@ -264,6 +268,7 @@ const NutritionChartModule = {
                 this: currentTotals.totalFat || 0,
                 today: today.consumed_fat_g || 0,
                 target: getTarget('fat_g_target', 'fat_g_target'),
+                defaultTarget: 60,
                 unit: 'g'
             },
             {
@@ -271,20 +276,23 @@ const NutritionChartModule = {
                 this: currentTotals.totalCarb || 0,
                 today: today.consumed_carbs_g || 0,
                 target: getTarget('carbs_g_target', 'carbs_g_target'),
+                defaultTarget: 300,
                 unit: 'g'
             },
             {
                 key: '纤维',
                 this: currentTotals.totalFiber || 0,
                 today: today.consumed_fiber_g || 0,
-                target: getTarget('fiber_g_target', 'fiber_g_target') || 25,
+                target: getTarget('fiber_g_target', 'fiber_g_target'),
+                defaultTarget: 25,
                 unit: 'g'
             },
             {
                 key: '钠',
                 this: currentTotals.totalSodiumMg || 0,
                 today: today.consumed_sodium_mg || 0,
-                target: getTarget('sodium_mg_target', 'sodium_mg_target') || 2000,
+                target: getTarget('sodium_mg_target', 'sodium_mg_target'),
+                defaultTarget: 2000,
                 unit: 'mg'
             }
         ];
@@ -294,19 +302,28 @@ const NutritionChartModule = {
         const details = {};
 
         nutrients.forEach(n => {
-            const t = n.target || 1;
+            let t = n.target;
+            let isDefault = false;
+
+            // 如果没有用户目标，使用默认参考值作为分母
+            if (!t || t <= 0) {
+                t = n.defaultTarget;
+                isDefault = true;
+            }
+
             // 确保显示数值使用了正确的单位转换 (如果是 kJ 模式)
             const displayFactor = (n.key === '能量' && energyUnit === 'kJ') ? 4.184 : 1;
             const displayUnit = (n.key === '能量') ? energyUnit : n.unit;
 
-            thisMealPercent.push(n.target > 0 ? (n.this / t) * 100 : 0);
-            todayPercent.push(n.target > 0 ? (n.today / t) * 100 : 0);
+            thisMealPercent.push(t > 0 ? (n.this / t) * 100 : 0);
+            todayPercent.push(t > 0 ? (n.today / t) * 100 : 0);
 
             details[n.key] = {
                 thisMealValue: Math.round(n.this * displayFactor * 10) / 10,
                 todayValue: Math.round(n.today * displayFactor * 10) / 10,
-                targetValue: Math.round(n.target * displayFactor * 10) / 10,
-                unit: displayUnit
+                targetValue: Math.round(t * displayFactor * 10) / 10,
+                unit: displayUnit,
+                isDefault: isDefault // 标记是否使用了默认值
             };
         });
 
