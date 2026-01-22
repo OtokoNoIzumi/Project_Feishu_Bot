@@ -8,7 +8,7 @@ const CONFIG = {
     CLERK_PUBLISHABLE_KEY: 'pk_test_YWR2YW5jZWQtcHVtYS01Mi5jbGVyay5hY2NvdW50cy5kZXYk',
 
     // 后端 API 地址（需要根据实际部署情况修改）
-    API_BASE_URL: 'http://127.0.0.1:8001/api',
+    API_BASE_URL: 'https://izumiai.site:7701/api',
 
     // 应用名称
     APP_NAME: 'Diet & Keep Analyzer',
