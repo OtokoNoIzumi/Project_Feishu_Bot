@@ -19,7 +19,7 @@ from apps.common.utils import (
     parse_occurred_at,
     read_upload_files,
 )
-from apps.deps import get_current_user_id, require_internal_auth
+from apps.deps import get_current_user_id, require_auth
 from apps.diet.context_provider import get_context_bundle
 from apps.diet.usecases.advice import DietAdviceUsecase
 from apps.diet.usecases.analyze import DietAnalyzeUsecase
@@ -75,7 +75,7 @@ class DietHistoryResponse(BaseModel):
 def build_diet_router(settings: BackendSettings) -> APIRouter:
     """Build and return the diet API router."""
     router = APIRouter()
-    auth_dep = require_internal_auth(settings)
+    auth_dep = require_auth(settings)
 
     analyze_uc = DietAnalyzeUsecase(gemini_model_name=settings.gemini_model_name)
     advice_uc = DietAdviceUsecase(gemini_model_name=settings.gemini_model_name)

@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
-from apps.deps import get_current_user_id, require_internal_auth
+from apps.deps import get_current_user_id, require_auth
 from apps.settings import BackendSettings
 from apps.common.record_service import RecordService
 from apps.common.utils import parse_occurred_at  # Local import to avoid circular dependency if any
@@ -19,7 +19,7 @@ from apps.common.utils import parse_occurred_at  # Local import to avoid circula
 
 def build_storage_router(settings: BackendSettings) -> APIRouter:
     router = APIRouter()
-    auth_dep = require_internal_auth(settings)
+    auth_dep = require_auth(settings)
 
     # --- Keep Storage Request (user_id 已移除，改用 Header 注入) ---
     class SaveKeepEventRequest(BaseModel):

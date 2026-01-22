@@ -9,6 +9,7 @@ const CONFIG = {
 
     // 后端 API 地址（需要根据实际部署情况修改）
     API_BASE_URL: 'https://izumiai.site:7701/api',
+    // API_BASE_URL: 'http://127.0.0.1:7701/api',
 
     // 应用名称
     APP_NAME: 'Diet & Keep Analyzer',

@@ -7,8 +7,8 @@ aggregating settings from environment variables and config files.
 
 import os
 import re
-from dataclasses import dataclass
-from typing import Dict
+from dataclasses import dataclass, field
+from typing import Dict, List
 
 from libs.core.config_loader import load_root_config
 from libs.core.project_paths import get_project_root
@@ -22,6 +22,10 @@ class BackendSettings:
     port: int
     internal_token: str
     gemini_model_name: str
+    
+    # Clerk JWT 认证配置
+    clerk_jwks_url: str = ""  # e.g., https://xxx.clerk.accounts.dev/.well-known/jwks.json
+    clerk_authorized_parties: tuple = ()  # Allowed origins for azp claim
 
 
 _DOTENV_CACHE: Dict[str, str] = {}
@@ -40,7 +44,7 @@ def _load_dotenv_vars() -> Dict[str, str]:
 
     content = env_path.read_text(encoding="utf-8", errors="ignore")
     pattern = re.compile(
-        r'^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?:["\'](.*?)["\']|([^#\r\n]*))'
+        r'^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?:["\'](.+?)["\']|([^#\r\n]*))'
     )
 
     for line in content.splitlines():
@@ -80,10 +84,23 @@ def load_settings() -> BackendSettings:
 
     default_model = str(root_cfg.get("GEMINI_MODEL_NAME") or "gemini-2.5-flash")
     gemini_model_name = _get_env_value("GEMINI_MODEL_NAME", default_model)
+    
+    # Clerk JWT 配置
+    clerk_jwks_url = _get_env_value("CLERK_JWKS_URL", "")
+    
+    # 允许的 authorized parties (逗号分隔)
+    # 例如: "https://izumilife.site,http://localhost:8080"
+    authorized_parties_str = _get_env_value("CLERK_AUTHORIZED_PARTIES", "")
+    clerk_authorized_parties = tuple(
+        p.strip() for p in authorized_parties_str.split(",") if p.strip()
+    )
 
     return BackendSettings(
         host=host,
         port=port,
         internal_token=internal_token,
         gemini_model_name=gemini_model_name,
+        clerk_jwks_url=clerk_jwks_url,
+        clerk_authorized_parties=clerk_authorized_parties,
     )
+

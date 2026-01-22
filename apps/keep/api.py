@@ -19,7 +19,7 @@ from apps.common.utils import (
     parse_occurred_at,
     read_upload_files,
 )
-from apps.deps import get_current_user_id, require_internal_auth
+from apps.deps import get_current_user_id, require_auth
 from apps.keep.body_metrics_schema import filter_metrics_event
 from apps.keep.usecases.parse_dimensions import KeepDimensionsParseUsecase
 from apps.keep.usecases.parse_scale import KeepScaleParseUsecase
@@ -81,7 +81,7 @@ class KeepUnifiedParseResponse(KeepParseResponseBase):
 
 def build_keep_router(settings: BackendSettings) -> APIRouter:
     router = APIRouter()
-    auth_dep = require_internal_auth(settings)
+    auth_dep = require_auth(settings)
 
     # Initialize Usecases
     scale_uc = KeepScaleParseUsecase(gemini_model_name=settings.gemini_model_name)

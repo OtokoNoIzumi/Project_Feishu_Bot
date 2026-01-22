@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, Body, HTTPException
-from apps.deps import get_current_user_id, require_internal_auth
+from apps.deps import get_current_user_id, require_auth
 from apps.settings import BackendSettings
 from apps.profile.schemas import UserProfile, ProfileAnalyzeRequest, ProfileAnalyzeResponse
 from apps.profile.service import ProfileService
@@ -11,7 +11,7 @@ from apps.profile.gatekeeper import Gatekeeper
 
 def build_profile_router(settings: BackendSettings) -> APIRouter:
     router = APIRouter()
-    auth_dep = require_internal_auth(settings)
+    auth_dep = require_auth(settings)
 
     @router.get("/api/user/profile", dependencies=[Depends(auth_dep)])
     async def get_profile(user_id: str = Depends(get_current_user_id)):

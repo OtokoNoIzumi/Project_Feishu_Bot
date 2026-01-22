@@ -4,6 +4,7 @@ Dependencies for FastAPI.
 Provides dependency injection for authentication and other shared resources.
 """
 
+import logging
 from typing import Optional
 
 from fastapi import Header, HTTPException, status, Depends
@@ -11,7 +12,10 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 from libs.auth_internal.token_auth import InternalTokenAuth
 from libs.auth_internal.user_mapper import user_mapper
+from libs.auth_clerk.clerk_jwt_auth import ClerkJWTAuth, ClerkJWTConfig
 from apps.settings import BackendSettings
+
+logger = logging.getLogger(__name__)
 
 # 定义 HTTPBearer Security Scheme，让 Swagger UI 显示 Authorize 按钮
 # auto_error=False 允许未认证时继续（由我们手动检查）
@@ -20,16 +24,10 @@ http_bearer = HTTPBearer(auto_error=False)
 
 def require_internal_auth(settings: BackendSettings):
     """
-    Dependency generator for internal token authentication.
-
-    Uses HTTPBearer security scheme so Swagger UI shows the Authorize button
-    and includes Authorization header in requests.
-
-    Args:
-        settings: The backend settings containing the internal token.
-
-    Returns:
-        A dependency function that validates the Authorization header.
+    Dependency generator for internal token authentication ONLY.
+    
+    This is the original simple auth, kept for backward compatibility.
+    For new code, use require_auth() which supports both Internal Token and Clerk JWT.
     """
     auth = InternalTokenAuth(token=settings.internal_token)
 
@@ -51,6 +49,65 @@ def require_internal_auth(settings: BackendSettings):
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Unauthorized: missing/invalid internal token",
             )
+
+    return _dep
+
+
+def require_auth(settings: BackendSettings):
+    """
+    Dependency generator for dual authentication: Internal Token OR Clerk JWT.
+    
+    认证逻辑顺序：
+    1. 如果 Internal Token 已配置且匹配 → 通过 (管理员/调试用途)
+    2. 如果 Internal Token 未配置或不匹配 → 尝试 Clerk JWT 验证
+    3. 如果 Clerk JWT 也不通过 → 拒绝请求
+    
+    Args:
+        settings: The backend settings containing auth configuration.
+    
+    Returns:
+        A dependency function that validates authentication.
+    """
+    internal_auth = InternalTokenAuth(token=settings.internal_token)
+    
+    # 初始化 Clerk JWT 认证（如果配置了）
+    clerk_auth = None
+    if settings.clerk_jwks_url:
+        clerk_config = ClerkJWTConfig(
+            jwks_url=settings.clerk_jwks_url,
+            authorized_parties=list(settings.clerk_authorized_parties),
+        )
+        clerk_auth = ClerkJWTAuth(config=clerk_config)
+
+    async def _dep(
+        credentials: Optional[HTTPAuthorizationCredentials] = Depends(http_bearer)
+    ):
+        token = credentials.credentials if credentials else None
+        
+        # 如果没有任何认证方式配置，跳过认证
+        if not internal_auth.is_enabled() and (clerk_auth is None or not clerk_auth.is_enabled()):
+            logger.warning("No authentication configured, allowing request")
+            return
+        
+        # 1. 尝试 Internal Token 验证
+        if internal_auth.is_enabled() and token:
+            authorization = f"Bearer {token}"
+            if internal_auth.verify_authorization_header(authorization):
+                logger.debug("Request authenticated via Internal Token")
+                return  # 验证通过
+        
+        # 2. 尝试 Clerk JWT 验证
+        if clerk_auth and clerk_auth.is_enabled() and token:
+            payload = clerk_auth.verify_token(token)
+            if payload:
+                logger.debug("Request authenticated via Clerk JWT: user=%s", payload.get("sub"))
+                return  # 验证通过
+        
+        # 3. 都不通过，拒绝请求
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Unauthorized: invalid token or not logged in",
+        )
 
     return _dep
 
@@ -87,3 +144,4 @@ async def get_current_user_id(
         pass  # MVP 阶段：仅映射，不阻断
     
     return resolved_id
+

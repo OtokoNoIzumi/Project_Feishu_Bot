@@ -11,7 +11,7 @@ from typing import Any, Dict, Optional
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 
-from apps.deps import get_current_user_id, require_internal_auth
+from apps.deps import get_current_user_id, require_auth
 from apps.llm_runtime import get_global_semaphore, get_model_limiter
 from apps.settings import BackendSettings
 from apps.weekly_analysis.data_collector import (
@@ -65,7 +65,7 @@ def _parse_week_start(week_start_str: Optional[str], week_offset: int) -> date:
 def build_weekly_analysis_router(settings: BackendSettings) -> APIRouter:
     """Build and return the weekly analysis API router."""
     router = APIRouter()
-    auth_dep = require_internal_auth(settings)
+    auth_dep = require_auth(settings)
 
     # Initialize usecase
     analysis_uc = WeeklyAnalysisUsecase(gemini_model_name=settings.gemini_model_name)
