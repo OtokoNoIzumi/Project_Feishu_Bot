@@ -11,9 +11,7 @@
     rel="stylesheet">
   <link rel="icon" type="image/x-icon" href="favicon.ico">
   <link rel="stylesheet" href="css/styles.css">
-  <script async crossorigin="anonymous" data-clerk-publishable-key="pk_live_Y2xlcmsuaXp1bWlsaWZlLnNpdGUk"
-    src="https://cdn.jsdelivr.net/npm/@clerk/clerk-js@latest/dist/clerk.browser.js">
-    </script>
+
   <style>
     /* === Login Page Container === */
     .login-page-wrapper {
@@ -230,9 +228,35 @@
   <script src="config.js"></script>
   <script src="js/auth.js"></script>
   <script>
+    const CLERK_TEST_KEY = 'pk_test_YWR2YW5jZWQtcHVtYS01Mi5jbGVyay5hY2NvdW50cy5kZXYk';
+    const CLERK_LIVE_KEY = 'pk_live_Y2xlcmsuaXp1bWlsaWZlLnNpdGUk';
+
+    // 动态加载 Clerk
+    function loadClerk() {
+      return new Promise((resolve, reject) => {
+        const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        const clerkKey = isLocal ? CLERK_TEST_KEY : CLERK_LIVE_KEY;
+
+        console.log(`Clerk loading in ${isLocal ? 'Development' : 'Production'} mode`);
+
+        const script = document.createElement('script');
+        script.setAttribute('data-clerk-publishable-key', clerkKey);
+        script.src = 'https://cdn.jsdelivr.net/npm/@clerk/clerk-js@latest/dist/clerk.browser.js';
+        script.async = true;
+        script.crossOrigin = 'anonymous';
+
+        script.onload = resolve;
+        script.onerror = reject;
+
+        document.head.appendChild(script);
+      });
+    }
+
     window.addEventListener('load', async () => {
       try {
+        await loadClerk();
         await window.Clerk.load();
+
         document.getElementById('loading-state').style.display = 'none';
 
         if (window.Clerk.user) {
@@ -241,45 +265,50 @@
         }
 
         // Mount SignIn - Clerk 的 appearance API
-        window.Clerk.mountSignIn(document.getElementById('clerk-auth'), {
-          appearance: {
-            elements: {
-              // 移除内部卡片样式并强制宽度适配
-              rootBox: {
-                boxShadow: 'none',
-                width: '100%'
-              },
-              card: {
-                boxShadow: 'none',
-                border: 'none',
-                background: 'transparent',
-                width: '100%',
-                maxWidth: 'none',
-                padding: '0' // 由外部容器控制内边距，避免冲突
-              },
-              // 隐藏 Clerk 标题
-              headerTitle: { display: 'none' },
-              headerSubtitle: { display: 'none' },
-              // 主按钮样式
-              formButtonPrimary: {
-                background: 'linear-gradient(135deg, #d97757 0%, #e08e73 100%)',
-                borderRadius: '12px'
-              },
-              // 社交登录按钮容器增加顶部间距（因为隐藏了 header）
-              socialButtons: {
-                marginTop: '8px'
+        const signInDiv = document.getElementById('clerk-auth');
+        if (signInDiv) { // 确保元素存在
+          window.Clerk.mountSignIn(signInDiv, {
+            appearance: {
+              elements: {
+                // 移除内部卡片样式并强制宽度适配
+                rootBox: {
+                  boxShadow: 'none',
+                  width: '100%'
+                },
+                card: {
+                  boxShadow: 'none',
+                  border: 'none',
+                  background: 'transparent',
+                  width: '100%',
+                  maxWidth: 'none',
+                  padding: '0' // 由外部容器控制内边距，避免冲突
+                },
+                // 隐藏 Clerk 标题
+                headerTitle: { display: 'none' },
+                headerSubtitle: { display: 'none' },
+                // 主按钮样式
+                formButtonPrimary: {
+                  background: 'linear-gradient(135deg, #d97757 0%, #e08e73 100%)',
+                  borderRadius: '12px'
+                },
+                // 社交登录按钮容器增加顶部间距（因为隐藏了 header）
+                socialButtons: {
+                  marginTop: '8px'
+                }
               }
             }
-          }
-        });
+          });
+        }
 
         window.Clerk.addListener((r) => {
           if (r.user) window.location.href = 'dashboard.html';
         });
       } catch (error) {
         console.error('Clerk initialization failed:', error);
-        document.getElementById('loading-state').innerHTML =
-          '<p style="color: #cd5c5c;">登录服务加载失败，请刷新页面重试</p>';
+        const loadingState = document.getElementById('loading-state');
+        if (loadingState) {
+          loadingState.innerHTML = '<p style="color: #cd5c5c;">登录服务加载失败，请刷新页面重试</p>';
+        }
       }
     });
   </script>

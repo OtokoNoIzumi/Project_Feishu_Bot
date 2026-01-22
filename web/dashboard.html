@@ -12,9 +12,24 @@
     <link rel="stylesheet" href="css/styles.css?v=warm_07">
     <link rel="stylesheet" href="css/dashboard.css?v=warm_07">
     <script type="module" src="js/utils/icons.js"></script>
-    <script async crossorigin="anonymous" data-clerk-publishable-key="pk_live_Y2xlcmsuaXp1bWlsaWZlLnNpdGUk"
-        src="https://cdn.jsdelivr.net/npm/@clerk/clerk-js@latest/dist/clerk.browser.js">
-        </script>
+    <script>
+        (function () {
+            const CLERK_TEST_KEY = 'pk_test_YWR2YW5jZWQtcHVtYS01Mi5jbGVyay5hY2NvdW50cy5kZXYk';
+            const CLERK_LIVE_KEY = 'pk_live_Y2xlcmsuaXp1bWlsaWZlLnNpdGUk';
+
+            const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+            const clerkKey = isLocal ? CLERK_TEST_KEY : CLERK_LIVE_KEY;
+
+            console.log(`Clerk loading in ${isLocal ? 'Development' : 'Production'} mode`);
+
+            const script = document.createElement('script');
+            script.setAttribute('data-clerk-publishable-key', clerkKey);
+            script.src = 'https://cdn.jsdelivr.net/npm/@clerk/clerk-js@latest/dist/clerk.browser.js';
+            script.async = true;
+            script.crossOrigin = 'anonymous';
+            document.head.appendChild(script);
+        })();
+    </script>
 </head>
 
 <body>
