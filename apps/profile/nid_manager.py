@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-GLOBAL_STATE_FILE = Path("user_data/system/global_state.json")
+GLOBAL_STATE_FILE = Path("user_data/global_state.json")
 
 class NIDManager:
     @staticmethod

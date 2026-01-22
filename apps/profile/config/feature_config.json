@@ -1,0 +1,41 @@
+{
+    "limits": {
+        "analyze": {
+            "basic": 10,
+            "pro": 20,
+            "ultra": -1
+        },
+        "advice": {
+            "basic": 8,
+            "pro": 15,
+            "ultra": -1
+        },
+        "profile": {
+            "basic": 4,
+            "pro": 6,
+            "ultra": -1
+        }
+    },
+    "locked_features": [
+        "detail_dimension"
+    ],
+    "levels": [
+        "basic",
+        "pro",
+        "ultra"
+    ],
+    "level_names": {
+        "basic": {
+            "zh": "基础会员",
+            "en": "Basic"
+        },
+        "pro": {
+            "zh": "Pro会员",
+            "en": "Pro"
+        },
+        "ultra": {
+            "zh": "Ultra会员",
+            "en": "Ultra"
+        }
+    }
+}

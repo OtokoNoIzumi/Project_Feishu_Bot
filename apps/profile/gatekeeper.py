@@ -1,10 +1,10 @@
 import json
-import os
+from pathlib import Path
 from datetime import datetime
 from apps.profile.service import ProfileService
 from apps.common.usage_tracker import UsageTracker
 
-CONFIG_PATH = os.path.join("user_data", "system", "feature_config.json")
+CONFIG_PATH = Path(__file__).parent / "config" / "feature_config.json"
 
 class Gatekeeper:
     _config = None
@@ -13,7 +13,7 @@ class Gatekeeper:
     def load_config(cls):
         if cls._config:
             return cls._config
-        if os.path.exists(CONFIG_PATH):
+        if CONFIG_PATH.exists():
             try:
                 with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
                     cls._config = json.load(f)

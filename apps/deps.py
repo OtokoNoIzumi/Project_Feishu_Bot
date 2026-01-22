@@ -53,6 +53,25 @@ def require_internal_auth(settings: BackendSettings):
     return _dep
 
 
+# 全局单例缓存
+_clerk_auth_instance: Optional[ClerkJWTAuth] = None
+
+def get_clerk_auth_instance(settings: BackendSettings) -> Optional[ClerkJWTAuth]:
+    """Get or create the singleton ClerkJWTAuth instance."""
+    global _clerk_auth_instance
+    
+    if not settings.clerk_jwks_url:
+        return None
+        
+    if _clerk_auth_instance is None:
+        clerk_config = ClerkJWTConfig(
+            jwks_url=settings.clerk_jwks_url,
+            authorized_parties=list(settings.clerk_authorized_parties),
+        )
+        _clerk_auth_instance = ClerkJWTAuth(config=clerk_config)
+        
+    return _clerk_auth_instance
+
 def require_auth(settings: BackendSettings):
     """
     Dependency generator for dual authentication: Internal Token OR Clerk JWT.
@@ -70,14 +89,8 @@ def require_auth(settings: BackendSettings):
     """
     internal_auth = InternalTokenAuth(token=settings.internal_token)
     
-    # 初始化 Clerk JWT 认证（如果配置了）
-    clerk_auth = None
-    if settings.clerk_jwks_url:
-        clerk_config = ClerkJWTConfig(
-            jwks_url=settings.clerk_jwks_url,
-            authorized_parties=list(settings.clerk_authorized_parties),
-        )
-        clerk_auth = ClerkJWTAuth(config=clerk_config)
+    # 获取 Clerk JWT 认证实例（单例）
+    clerk_auth = get_clerk_auth_instance(settings)
 
     async def _dep(
         credentials: Optional[HTTPAuthorizationCredentials] = Depends(http_bearer)

@@ -7,7 +7,7 @@ from apps.profile.service import ProfileService
 from apps.profile.gatekeeper import Gatekeeper
 from apps.profile.nid_manager import NIDManager
 
-INVITATION_FILE = Path("user_data/system/invitation_codes.json")
+INVITATION_FILE = Path(__file__).parent / "config" / "invitation_codes.json"
 
 class InvitationManager:
     @staticmethod
