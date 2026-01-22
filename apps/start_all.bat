@@ -1,6 +1,6 @@
 @echo off
 chcp 65001 >nul
-CALL "%USERPROFILE%\anaconda3\Scripts\activate.bat" WorkSpace
+CALL "%USERPROFILE%\anaconda3\Scripts\activate.bat" solara-develop
 
 REM 说明：此脚本需要以 UTF-8-BOM 编码保存
 
