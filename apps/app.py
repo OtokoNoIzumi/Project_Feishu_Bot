@@ -32,7 +32,7 @@ def create_app() -> FastAPI:
     logging.getLogger("google.genai").setLevel(logging.WARNING)
 
     fastapi_app = FastAPI(title="Backend", version="0.1.0")
-    
+
     # CORS 配置 - 允许前端跨域访问
     fastapi_app.add_middleware(
         CORSMiddleware,
@@ -40,6 +40,9 @@ def create_app() -> FastAPI:
             "http://localhost:8080",
             "http://127.0.0.1:8080",
             "https://*.github.io",  # GitHub Pages
+            "https://izumilife.site",  # Vercel 前端域名
+            "https://www.izumilife.site",  # Vercel 前端域名 (www)
+            "https://project-feishu-bot.vercel.app",  # Vercel 默认域名
         ],
         allow_credentials=True,
         allow_methods=["*"],
