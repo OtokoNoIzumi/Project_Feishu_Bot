@@ -9,9 +9,10 @@ import hashlib
 import logging
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, File, Form, Header, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Header, UploadFile, HTTPException
 from pydantic import BaseModel, Field
 
+from apps.profile.gatekeeper import Gatekeeper
 from apps.common.record_service import RecordService
 from apps.common.utils import (
     decode_images_b64,
@@ -101,6 +102,18 @@ def build_diet_router(settings: BackendSettings) -> APIRouter:
                 success=False, error="user_note 与 images 不能同时为空"
             )
 
+        # [Access Check]
+        access = Gatekeeper.check_access(user_id, "analyze")
+        if not access["allowed"]:
+             raise HTTPException(
+                 status_code=403, 
+                 detail={
+                     "code": access.get("code", "FORBIDDEN"),
+                     "message": access["reason"],
+                     "metadata": {k: v for k, v in access.items() if k not in ["allowed", "reason", "code"]}
+                 }
+             )
+
         # [Usage Log] Request Entrance
         access_log = (
             f"[Request] User:{user_id} | Images:{len(images_bytes)} | "
@@ -113,6 +126,10 @@ def build_diet_router(settings: BackendSettings) -> APIRouter:
             result = await analyze_uc.execute_with_image_bytes_async(
                 user_note=user_note, images_bytes=images_bytes, user_id=user_id
             )
+            
+            # Record Usage on Success
+            if isinstance(result, dict) and not result.get("error"):
+                 Gatekeeper.record_usage(user_id, "analyze")
 
             if isinstance(result, dict) and result.get("error"):
                 return DietAnalyzeResponse(
@@ -217,6 +234,18 @@ def build_diet_router(settings: BackendSettings) -> APIRouter:
         limiter: AsyncRateLimiter = Depends(_get_model_limiter),
     ):
         """获取饮食建议"""
+        # [Access Check]
+        access = Gatekeeper.check_access(user_id, "advice")
+        if not access["allowed"]:
+             raise HTTPException(
+                 status_code=403, 
+                 detail={
+                     "code": access.get("code", "FORBIDDEN"),
+                     "message": access["reason"],
+                     "metadata": {k: v for k, v in access.items() if k not in ["allowed", "reason", "code"]}
+                 }
+             )
+
         async with semaphore:
             await limiter.check_and_wait()
             advice = await advice_uc.execute_async(
@@ -224,6 +253,8 @@ def build_diet_router(settings: BackendSettings) -> APIRouter:
             )
             if isinstance(advice, dict) and advice.get("error"):
                 return DietAdviceResponse(success=False, error=str(advice.get("error")))
+            
+            Gatekeeper.record_usage(user_id, "advice")
             return DietAdviceResponse(success=True, result=advice)
 
     @router.get(

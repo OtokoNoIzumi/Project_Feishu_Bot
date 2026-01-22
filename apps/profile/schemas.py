@@ -43,6 +43,16 @@ class UserProfile(BaseModel):
     # 预估达成目标的月数（LLM 推算）
     estimated_months: Optional[int] = None
 
+    # ========== 账户管理字段 ==========
+    registered_at: Optional[str] = None  # ISO format datetime
+    nid: Optional[int] = None  # Display ID (e.g. 10001)
+    
+    # 新版：多级订阅系统
+    # 格式: {"basic": "2025-12-31T23:59:59", "pro": "2025-06-01T..."}
+    subscriptions: Dict[str, str] = Field(default_factory=dict)
+
+    whitelist_features: list[str] = Field(default_factory=list)
+
 class MetricsOverride(BaseModel):
     """身体指标覆盖（前端编辑的身高/体重）"""
     height_cm: Optional[float] = None

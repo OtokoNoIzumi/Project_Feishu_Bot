@@ -10,8 +10,7 @@ import hashlib
 import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional
-
-from fastapi import APIRouter, Depends, File, Form, UploadFile
+from fastapi import APIRouter, Depends, File, Form, UploadFile, HTTPException
 from pydantic import BaseModel, Field
 
 from apps.common.record_service import RecordService
@@ -30,6 +29,7 @@ from libs.auth_internal.user_mapper import user_mapper
 from apps.llm_runtime import get_global_semaphore, get_model_limiter
 from apps.settings import BackendSettings
 from libs.utils.rate_limiter import AsyncRateLimiter
+from apps.profile.gatekeeper import Gatekeeper
 
 logger = logging.getLogger(__name__)
 
@@ -169,6 +169,19 @@ def build_keep_router(settings: BackendSettings) -> APIRouter:
     ):
         """Generic processing logic for all Keep parsing endpoints."""
         # pylint: disable=too-many-arguments, too-many-locals
+        
+        # [Access Check]
+        access = Gatekeeper.check_access(user_id, "analyze")
+        if not access["allowed"]:
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "code": access.get("code", "FORBIDDEN"),
+                    "message": access["reason"],
+                    "metadata": {k: v for k, v in access.items() if k not in ["allowed", "reason", "code"]}
+                }
+            )
+        
         # [Usage Log] Request Entrance
         access_log = (
             f"[Request] User:{user_id} | Action:keep_{event_type_for_save} | "
@@ -181,7 +194,9 @@ def build_keep_router(settings: BackendSettings) -> APIRouter:
             await limiter.check_and_wait()
             use_limited = False
             if event_type_for_save in ("dimensions", "unified"):
-                use_limited = not user_mapper.has_feature(user_id, "detail_dimension")
+                # Check if user has detail_dimension feature unlocked
+                access = Gatekeeper.check_access(user_id, "detail_dimension")
+                use_limited = not access.get("allowed", False)
 
             if event_type_for_save in ("dimensions", "unified"):
                 result = await usecase.execute_with_image_bytes_async(
@@ -222,6 +237,9 @@ def build_keep_router(settings: BackendSettings) -> APIRouter:
                     saved_status = await _auto_save_result(
                         user_id, event_type_for_save, result, image_hashes, occurred_dt
                     )
+
+            # Record usage for analyze feature
+            Gatekeeper.record_usage(user_id, "analyze")
 
             return response_model(
                 success=True, result=result, saved_status=saved_status

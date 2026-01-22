@@ -80,10 +80,79 @@ const AnalysisModule = {
                 this.autoFetchAdvice();
             }
 
+
         } catch (error) {
-            console.error('[Dashboard] Analysis failed:', error);
-            this.addMessage(`分析失败: ${error.message}`, 'assistant');
-            this.showError(error.message);
+            this.updateStatus('');  // 停止加载状态
+            // 从 APIError 获取结构化数据
+            const errorCode = error.data?.detail?.code;
+            const metadata = error.data?.detail?.metadata || {};
+            const errorMsg = error.message || '未知错误';
+
+            // 本地化提示
+            let userTip = `分析失败: ${errorMsg}`;
+            let actions = [];
+
+            if (errorCode === 'DAILY_LIMIT_REACHED') {
+                const limit = metadata.limit || 5;
+                userTip = `每日分析次数已耗尽 (${limit}/${limit})。请升级会员继续使用。`;
+                actions.push({
+                    text: '🔑 去输入激活码',
+                    class: 'btn-primary',
+                    onClick: () => Dashboard.switchView('profile')
+                });
+            } else if (errorCode === 'SUBSCRIPTION_EXPIRED') {
+                userTip = `订阅已过期，请续费。`;
+                actions.push({
+                    text: '🔑 去输入激活码',
+                    class: 'btn-primary',
+                    onClick: () => Dashboard.switchView('profile')
+                });
+            } else {
+                // 普通错误，提供重试
+                actions.push({
+                    text: '🔄 重试',
+                    class: 'btn-ghost',
+                    onClick: () => this.retryLastAnalysis()
+                });
+            }
+
+            const messagesContainer = document.getElementById('chat-messages');
+
+            // Check for duplicate message content against the LAST ASSISTANT message
+            if (messagesContainer) {
+                const assistantMsgs = messagesContainer.querySelectorAll('.message.assistant');
+                const lastMsg = assistantMsgs.length > 0 ? assistantMsgs[assistantMsgs.length - 1] : null;
+
+                const lastContentRaw = lastMsg?.querySelector('.message-text')?.innerText || '';
+                const cleanLast = lastContentRaw.replace(/\s+/g, '');
+                const cleanNew = userTip.replace(/<br\s*\/?>/gi, '').replace(/\s+/g, '');
+
+                if (lastMsg && cleanLast === cleanNew) {
+                    if (window.ToastUtils) {
+                        const shortMsg = userTip.replace(/<br\s*\/?>/gi, '').split(/[\n。]/)[0] + '。';
+                        ToastUtils.show(shortMsg, 'info');
+                        return;
+                    }
+                }
+            }
+
+            // Hide previous "Go to Profile" buttons to avoid clutter
+            if (errorCode === 'DAILY_LIMIT_REACHED' || errorCode === 'SUBSCRIPTION_EXPIRED') {
+                const buttons = messagesContainer?.querySelectorAll('button');
+                buttons?.forEach(btn => {
+                    if (btn.innerText.includes('去输入激活码')) {
+                        btn.style.display = 'none';
+                    }
+                });
+            }
+
+            // 发送错误消息卡片
+            this.addMessage(userTip, 'assistant', { actions });
+
+            // 仅在非引导类错误时弹窗，避免打断
+            if (!errorCode || !['DAILY_LIMIT_REACHED', 'SUBSCRIPTION_EXPIRED'].includes(errorCode)) {
+                if (window.ToastUtils) ToastUtils.show(errorMsg, 'error');
+            }
         }
     },
 
@@ -129,13 +198,80 @@ const AnalysisModule = {
                 this.addMessage(`建议生成失败: ${response.error}`, 'assistant');
             }
 
+
         } catch (error) {
-            currentVersion.adviceError = error.message; // 记录错误
-            this.addMessage(`建议更新失败: ${error.message}`, 'assistant');
+            if (loadingMsg) loadingMsg.remove();
+
+            currentVersion.adviceError = error.message;
+
+            // 从 APIError 获取结构化数据
+            const errorCode = error.data?.detail?.code;
+            const metadata = error.data?.detail?.metadata || {};
+
+            // 本地化提示
+            let userTip = `建议更新失败: ${error.message}`;
+            let actions = [];
+
+            if (errorCode === 'DAILY_LIMIT_REACHED') {
+                const limit = metadata.limit || 5;
+                userTip = `每日建议生成次数已耗尽 (${limit}/${limit})。请升级会员继续使用。`;
+                actions.push({
+                    text: '🔑 去输入激活码',
+                    class: 'btn-primary',
+                    onClick: () => Dashboard.switchView('profile')
+                });
+            } else if (errorCode === 'SUBSCRIPTION_EXPIRED') {
+                userTip = `订阅已过期，请续费。`;
+                actions.push({
+                    text: '🔑 去输入激活码',
+                    class: 'btn-primary',
+                    onClick: () => Dashboard.switchView('profile')
+                });
+            } else {
+                actions.push({
+                    text: '🔄 重试',
+                    class: 'btn-ghost',
+                    onClick: () => this.updateAdvice()
+                });
+            }
+
+
+
+            const messagesContainer = document.getElementById('chat-messages');
+
+            // Check for duplicate message content against the LAST ASSISTANT message
+            if (messagesContainer) {
+                const assistantMsgs = messagesContainer.querySelectorAll('.message.assistant');
+                const lastMsg = assistantMsgs.length > 0 ? assistantMsgs[assistantMsgs.length - 1] : null;
+
+                const lastContentRaw = lastMsg?.querySelector('.message-text')?.innerText || '';
+                const cleanLast = lastContentRaw.replace(/\s+/g, '');
+                const cleanNew = userTip.replace(/<br\s*\/?>/gi, '').replace(/\s+/g, '');
+
+                if (lastMsg && cleanLast === cleanNew) {
+                    if (window.ToastUtils) {
+                        const shortMsg = userTip.replace(/<br\s*\/?>/gi, '').split(/[\n。]/)[0] + '。';
+                        ToastUtils.show(shortMsg, 'info');
+                        return;
+                    }
+                }
+            }
+
+            // Hide previous "Go to Profile" buttons
+            if (errorCode === 'DAILY_LIMIT_REACHED' || errorCode === 'SUBSCRIPTION_EXPIRED') {
+                const buttons = messagesContainer?.querySelectorAll('button');
+                buttons?.forEach(btn => {
+                    if (btn.innerText.includes('去输入激活码')) {
+                        btn.style.display = 'none';
+                    }
+                });
+            }
+
+            this.addMessage(userTip, 'assistant', { actions });
+
         } finally {
             if (btn) {
                 btn.disabled = false;
-                // 恢复原始图标
                 btn.innerHTML = `<img src="css/icons/sparkle.png" class="icon-stamp" alt="Update"> 更新建议`;
             }
         }
@@ -171,7 +307,6 @@ const AnalysisModule = {
                 this.renderAdviceError(msg);
             }
         } catch (error) {
-            console.error('[Dashboard] Auto advice failed:', error);
             currentVersion.adviceError = error.message; // 记录错误
             this.renderAdviceError(error.message);
         }

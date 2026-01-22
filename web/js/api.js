@@ -63,11 +63,20 @@ const API = {
             const data = await response.json();
 
             if (!response.ok) {
-                throw new APIError(
-                    data.detail || data.error || 'Request failed',
-                    response.status,
-                    data
-                );
+                // Handle structured error detail from backend
+                let errorMessage = 'Request failed';
+                if (typeof data.detail === 'object' && data.detail !== null) {
+                    errorMessage = data.detail.message || data.detail.code || JSON.stringify(data.detail);
+                } else if (data.detail) {
+                    errorMessage = data.detail;
+                } else if (data.error) {
+                    errorMessage = data.error;
+                }
+
+                const error = new APIError(errorMessage, response.status, data);
+                // Preserve structured detail for catch handlers
+                error.response = { data };
+                throw error;
             }
 
             return data;

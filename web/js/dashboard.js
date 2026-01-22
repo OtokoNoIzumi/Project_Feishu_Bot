@@ -438,7 +438,38 @@ const Dashboard = {
       // 刷新 Profile 视图（显示暂存值）
       this.renderProfileView();
     } else {
-      this.addMessage(`分析失败: ${result.error}`, 'assistant');
+      // 结构化错误处理
+      let userTip = `分析失败: ${result.error}`;
+      let options = {};
+
+      if (result.errorCode === 'DAILY_LIMIT_REACHED') {
+        const limit = result.metadata?.limit || 5;
+        userTip = `每日档案建议次数已耗尽 (${limit}/${limit})。<br>请在左侧输入激活码升级会员继续使用，或等待次日重置。`;
+        options.isHtml = true;
+      } else if (result.errorCode === 'SUBSCRIPTION_EXPIRED') {
+        userTip = `订阅已过期，请在下方输入激活码续费。`;
+      }
+
+      // Check for duplicate content against the LAST ASSISTANT message
+      const assistantMsgs = this.el.chatMessages.querySelectorAll('.message.assistant');
+      const lastMsg = assistantMsgs.length > 0 ? assistantMsgs[assistantMsgs.length - 1] : null;
+
+      const lastContentRaw = lastMsg?.querySelector('.message-text')?.innerText || '';
+      const cleanLast = lastContentRaw.replace(/\s+/g, '');
+      const cleanNew = userTip.replace(/<br\s*\/?>/gi, '').replace(/\s+/g, '');
+
+      if (lastMsg && cleanLast === cleanNew) {
+        if (window.ToastUtils) {
+          // Normalize new message content for comparison (handle HTML breaks)
+          const normalizedTip = userTip.replace(/<br\s*\/?>/gi, '\n').trim();
+          // Toast a simplified version (first sentence)
+          const shortMsg = normalizedTip.split('\n')[0].replace(/\(\d+\/\d+\)/, '');
+          ToastUtils.show(shortMsg, 'info');
+          return;
+        }
+      }
+
+      this.addMessage(userTip, 'assistant', options);
     }
   },
 

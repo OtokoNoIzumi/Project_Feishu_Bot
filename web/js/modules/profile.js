@@ -37,6 +37,10 @@ const ProfileModule = {
                 height_cm: response.height_cm,
             };
             this.pendingProfile = null; // 清空暂存
+
+            // 自动同步浏览器时区（首次注册或时区为空时）
+            await this._autoSyncTimezone();
+
             return this.serverProfile;
         } catch (e) {
             console.warn('[Profile] Failed to load from server:', e);
@@ -49,12 +53,54 @@ const ProfileModule = {
         }
     },
 
+    /**
+     * 自动同步浏览器时区到服务器（仅首次注册时）
+     */
+    async _autoSyncTimezone() {
+        if (!this.serverProfile) return;
+
+        // 获取浏览器时区
+        let browserTz;
+        try {
+            browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        } catch (e) {
+            return; // 无法获取，跳过
+        }
+
+        // 检查是否需要同步：
+        // 1. 服务器时区为空或默认值
+        // 2. 用户刚注册（可通过 registered_at 判断是否是新用户，但这里简化处理）
+        const serverTz = this.serverProfile.timezone;
+
+        // 如果服务器时区是默认值且与浏览器不同，自动更新
+        if ((!serverTz || serverTz === 'Asia/Shanghai') && browserTz && browserTz !== 'Asia/Shanghai') {
+            console.log(`[Profile] Auto-syncing timezone: ${browserTz}`);
+            this.serverProfile.timezone = browserTz;
+
+            // 静默保存，不阻塞 UI
+            try {
+                await API.saveProfile(this.serverProfile);
+            } catch (e) {
+                console.warn('[Profile] Failed to auto-sync timezone:', e);
+            }
+        }
+    },
+
     getDefaultProfile() {
+        // 自动获取浏览器本地时区作为默认值
+        const browserTimezone = (() => {
+            try {
+                return Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Shanghai';
+            } catch (e) {
+                return 'Asia/Shanghai';
+            }
+        })();
+
         return {
             gender: null,  // 前端不使用后端默认值
             age: 25,
             activity_level: 'sedentary',
-            timezone: 'Asia/Shanghai',
+            timezone: browserTimezone,
             diet: {
                 energy_unit: 'kJ',
                 goal: 'fat_loss',
@@ -145,9 +191,12 @@ const ProfileModule = {
                 profile: response.suggested_profile,
             };
         } catch (e) {
+            // 保留结构化错误信息
             return {
                 success: false,
                 error: e.message || '分析失败',
+                errorCode: e.data?.detail?.code,
+                metadata: e.data?.detail?.metadata || {},
             };
         }
     },
@@ -411,12 +460,26 @@ const ProfileModule = {
 
     renderTimezoneOptions(selected) {
         const zones = [
-            { value: 'Asia/Shanghai', label: '中国' },
-            { value: 'Asia/Tokyo', label: '日本' },
-            { value: 'Asia/Singapore', label: '新加坡' },
-            { value: 'Europe/London', label: '英国' },
-            { value: 'America/Los_Angeles', label: '美国西海岸' },
-            { value: 'America/New_York', label: '美国东海岸' },
+            // 东亚/东南亚
+            { value: 'Asia/Shanghai', label: 'UTC+8 (北京/上海/台北/香港)' },
+            { value: 'Asia/Tokyo', label: 'UTC+9 (东京/首尔)' },
+            { value: 'Asia/Singapore', label: 'UTC+8 (新加坡/吉隆坡)' },
+            { value: 'Asia/Bangkok', label: 'UTC+7 (曼谷/雅加达)' },
+            { value: 'Asia/Kolkata', label: 'UTC+5:30 (印度)' },
+            { value: 'Asia/Dubai', label: 'UTC+4 (迪拜)' },
+            // 欧洲
+            { value: 'Europe/London', label: 'UTC+0/+1 (伦敦)' },
+            { value: 'Europe/Paris', label: 'UTC+1/+2 (巴黎/柏林)' },
+            { value: 'Europe/Moscow', label: 'UTC+3 (莫斯科)' },
+            // 美洲
+            { value: 'America/New_York', label: 'UTC-5/-4 (纽约/多伦多)' },
+            { value: 'America/Chicago', label: 'UTC-6/-5 (芝加哥)' },
+            { value: 'America/Denver', label: 'UTC-7/-6 (丹佛)' },
+            { value: 'America/Los_Angeles', label: 'UTC-8/-7 (洛杉矶/西雅图)' },
+            { value: 'America/Sao_Paulo', label: 'UTC-3 (圣保罗)' },
+            // 大洋洲
+            { value: 'Australia/Sydney', label: 'UTC+10/+11 (悉尼)' },
+            { value: 'Pacific/Auckland', label: 'UTC+12/+13 (奥克兰)' },
         ];
         return zones.map(z =>
             `<option value="${z.value}" ${z.value === selected ? 'selected' : ''}>${z.label}</option>`

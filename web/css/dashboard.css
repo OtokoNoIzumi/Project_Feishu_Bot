@@ -787,6 +787,7 @@
         text-align: center;
     }
 
+
     .summary-macros-inline {
         justify-content: center;
     }
@@ -798,6 +799,100 @@
     border: 1px solid var(--color-border);
     border-radius: var(--radius-lg);
     background: var(--color-bg-secondary);
+}
+
+/* Toast Notification Styles */
+#toast-container {
+    position: fixed;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    pointer-events: none;
+}
+
+.toast {
+    background: var(--color-bg-primary, #ffffff);
+    color: var(--color-text-primary, #333);
+    padding: 10px 16px;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.9rem;
+    pointer-events: auto;
+    opacity: 0;
+    transform: translateY(-20px);
+    transition: all 0.3s ease;
+    border: 1px solid var(--color-border, #eee);
+    min-width: 200px;
+    justify-content: center;
+}
+
+.toast.show {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.toast-success {
+    border-left: 4px solid var(--color-success, #22c55e);
+}
+
+.toast-error {
+    border-left: 4px solid var(--color-danger, #ef4444);
+}
+
+.toast-info {
+    border-left: 4px solid var(--color-accent-primary, #d97757);
+}
+
+.toast-icon {
+    font-size: 1.1rem;
+}
+
+/* Level Badge with Instant Tooltip */
+.level-badge-wrap {
+    position: relative;
+    display: inline;
+    margin-left: 4px;
+    vertical-align: baseline;
+}
+
+.level-badge {
+    font-size: 0.7em;
+    padding: 1px 6px;
+    border-radius: 4px;
+    cursor: help;
+    white-space: nowrap;
+}
+
+.level-badge-tooltip {
+    visibility: hidden;
+    opacity: 0;
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    margin-top: 6px;
+    padding: 8px 12px;
+    background: var(--color-bg-primary, #fff);
+    border: 1px solid var(--color-border, #e5e7eb);
+    border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    font-size: 0.75rem;
+    line-height: 1.5;
+    white-space: nowrap;
+    z-index: 100;
+    transition: opacity 0.1s ease, visibility 0.1s ease;
+}
+
+.level-badge-wrap:hover .level-badge-tooltip {
+    visibility: visible;
+    opacity: 1;
 }
 
 .dish-table {

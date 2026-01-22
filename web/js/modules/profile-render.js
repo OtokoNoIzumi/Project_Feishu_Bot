@@ -1,6 +1,6 @@
 /**
  * Profile 渲染模块
- * 
+ *
  * 负责 Profile 视图的 HTML 渲染
  */
 
@@ -19,12 +19,22 @@ const ProfileRenderModule = {
             very_active: '非常活跃',
         },
         timezone: {
-            'Asia/Shanghai': '中国',
-            'Asia/Tokyo': '日本',
-            'Asia/Singapore': '新加坡',
-            'Europe/London': '英国',
-            'America/Los_Angeles': '美国西海岸',
-            'America/New_York': '美国东海岸',
+            'Asia/Shanghai': 'UTC+8 (北京/上海)',
+            'Asia/Tokyo': 'UTC+9 (东京/首尔)',
+            'Asia/Singapore': 'UTC+8 (新加坡)',
+            'Asia/Bangkok': 'UTC+7 (曼谷)',
+            'Asia/Kolkata': 'UTC+5:30 (印度)',
+            'Asia/Dubai': 'UTC+4 (迪拜)',
+            'Europe/London': 'UTC+0/+1 (伦敦)',
+            'Europe/Paris': 'UTC+1/+2 (巴黎)',
+            'Europe/Moscow': 'UTC+3 (莫斯科)',
+            'America/New_York': 'UTC-5/-4 (纽约)',
+            'America/Chicago': 'UTC-6/-5 (芝加哥)',
+            'America/Denver': 'UTC-7/-6 (丹佛)',
+            'America/Los_Angeles': 'UTC-8/-7 (洛杉矶)',
+            'America/Sao_Paulo': 'UTC-3 (圣保罗)',
+            'Australia/Sydney': 'UTC+10/+11 (悉尼)',
+            'Pacific/Auckland': 'UTC+12/+13 (奥克兰)',
         },
     },
 
@@ -33,6 +43,12 @@ const ProfileRenderModule = {
         const map = this.optionLabels[fieldKey];
         if (map && map[value]) return map[value];
         return value ?? '-';
+    },
+
+    // 获取时区选项列表（单一数据源）
+    getTimezoneOptions() {
+        const tzMap = this.optionLabels.timezone;
+        return Object.entries(tzMap).map(([value, label]) => ({ value, label }));
     },
 
     // ========== 主渲染 ==========
@@ -60,16 +76,16 @@ const ProfileRenderModule = {
             </style>
             <div class="profile-container">
                 ${!canAnalyze ? this.renderMissingInfoBanner(missing) : ''}
-                
+
                 <!-- 档案信息 -->
                 ${this.renderProfileSection(p, dm, userName, unit)}
-                
+
                 <!-- Diet 目标 -->
                 ${this.renderDietSection(p, unit, displayEnergyTarget)}
-                
+
                 <!-- Keep 目标 -->
                 ${this.renderKeepSection(p)}
-                
+
                 <!-- 用户关键主张 -->
                 ${this.renderUserInfoSection(p)}
             </div>
@@ -158,14 +174,7 @@ const ProfileRenderModule = {
                 { value: 'very_active', label: '非常活跃' },
             ], p.activity_level)}
                     ${this.renderNumberField('estimated_months', '预期达成 (月)', p.estimated_months, 1)}
-                    ${this.renderSelectField('timezone', '时区', [
-                { value: 'Asia/Shanghai', label: '中国' },
-                { value: 'Asia/Tokyo', label: '日本' },
-                { value: 'Asia/Singapore', label: '新加坡' },
-                { value: 'Europe/London', label: '英国' },
-                { value: 'America/Los_Angeles', label: '美国西海岸' },
-                { value: 'America/New_York', label: '美国东海岸' },
-            ], p.timezone)}
+                    ${this.renderSelectField('timezone', '时区', this.getTimezoneOptions(), p.timezone)}
                 </div>
             </div>
         `;
@@ -313,7 +322,7 @@ const ProfileRenderModule = {
                     ${originalDisplay}
                     ${hasChange ? this.renderRevertBtn(fieldKey) : ''}
                 </label>
-                <input id="${inputId}" type="number" class="profile-field-input" 
+                <input id="${inputId}" type="number" class="profile-field-input"
                     value="${displayValue}" step="${step}" placeholder="-"
                     onchange="ProfileRenderModule.onFieldChange('${fieldKey}', ${parseFn}(this.value) || null)">
             </div>
@@ -345,7 +354,7 @@ const ProfileRenderModule = {
                     ${originalDisplay}
                     ${hasChange ? this.renderRevertBtn(fieldKey) : ''}
                 </label>
-                <select id="${inputId}" class="profile-field-input" 
+                <select id="${inputId}" class="profile-field-input"
                     onchange="ProfileRenderModule.onFieldChange('${fieldKey}', this.value)">
                     ${optionsHtml}
                 </select>
@@ -375,7 +384,7 @@ const ProfileRenderModule = {
                     ${originalDisplay}
                     ${hasChange ? this.renderRevertBtn('diet.energy_unit') : ''}
                 </label>
-                <select id="diet-energy_unit" class="profile-field-input" 
+                <select id="diet-energy_unit" class="profile-field-input"
                     onchange="Dashboard.setEnergyUnit(this.value)">
                     <option value="kJ" ${kJSelected}>kJ (千焦)</option>
                     <option value="kcal" ${kcalSelected}>kcal (大卡)</option>
@@ -392,7 +401,7 @@ const ProfileRenderModule = {
 
         return `
             <div class="profile-field">
-                <textarea id="${inputId}" class="profile-field-input profile-textarea" 
+                <textarea id="${inputId}" class="profile-field-input profile-textarea"
                     placeholder="${placeholder}"
                     onchange="ProfileRenderModule.onFieldChange('${fieldKey}', this.value)">${value || ''}</textarea>
             </div>
@@ -429,7 +438,7 @@ const ProfileRenderModule = {
         return `
             <style>
                 .profile-container { display: flex; flex-direction: column; gap: 20px; }
-                
+
                 .profile-banner {
                     display: flex;
                     align-items: center;
@@ -443,7 +452,7 @@ const ProfileRenderModule = {
                 .profile-banner-icon { font-size: 1.5rem; }
                 .profile-banner-title { font-weight: 600; color: var(--color-text-primary); }
                 .profile-banner-text { font-size: 0.875rem; color: var(--color-text-secondary); margin-top: 4px; }
-                
+
                 .profile-section {
                     position: relative;
                     background: var(--color-bg-secondary, #fff);
@@ -453,7 +462,7 @@ const ProfileRenderModule = {
                     margin-top: 20px;
                     box-shadow: 0 1px 2px rgba(0,0,0,0.02);
                 }
-                
+
                 /* TAPE STICKER (Real Element) */
                 .tape-sticker {
                     position: absolute;
@@ -481,25 +490,25 @@ const ProfileRenderModule = {
                 .profile-section-icon { width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; }
                 .profile-section-title { font-size: 1.1rem; font-weight: 600; color: var(--color-accent-primary); font-family: var(--font-handwritten); }
                 .profile-section-subtitle { font-size: 0.85rem; color: var(--color-text-muted); margin-top: 2px; }
-                
+
                 /* 网格布局 */
                 .profile-grid { display: grid; gap: 12px; }
                 .profile-grid-2 { grid-template-columns: repeat(2, 1fr); }
                 .profile-grid-3 { grid-template-columns: repeat(3, 1fr); }
                 .profile-grid-4 { grid-template-columns: repeat(4, 1fr); }
-                
+
                 /* Full width override */
                 .profile-grid-full { grid-column: 1 / -1; }
-                
+
                 .profile-field { display: flex; flex-direction: column; gap: 6px; position: relative; }
                 .profile-field.has-change { background: rgba(59, 130, 246, 0.08); border-radius: 6px; padding: 8px; margin: -8px; }
-                
-                .profile-field-label { 
-                    font-size: 0.8rem; font-weight: 600; color: var(--color-text-secondary); 
+
+                .profile-field-label {
+                    font-size: 0.8rem; font-weight: 600; color: var(--color-text-secondary);
                     display: flex; align-items: center; gap: 6px;
                     flex-wrap: wrap;
                 }
-                
+
                 /* 原值显示 */
                 .field-original-inline {
                     font-size: 0.7rem;
@@ -509,7 +518,7 @@ const ProfileRenderModule = {
                     padding: 1px 6px;
                     border-radius: 3px;
                 }
-                
+
                 .profile-field-input {
                     background: var(--color-bg-tertiary);
                     border: 1px solid var(--color-border);
@@ -524,17 +533,17 @@ const ProfileRenderModule = {
                 .profile-field-input:focus { outline: none; border-color: var(--color-accent-primary); background: #fff; }
                 .profile-field-input select { font-family: var(--font-body); }
                 .profile-textarea { min-height: 80px; resize: vertical; font-family: var(--font-body); }
-                
+
                 .btn-revert {
-                    background: none; border: none; cursor: pointer; 
+                    background: none; border: none; cursor: pointer;
                     color: var(--color-accent-secondary); font-size: 0.8rem;
                     padding: 2px 4px; border-radius: 3px;
                     margin-left: auto;
                 }
                 .btn-revert:hover { background: rgba(0,0,0,0.05); }
-                
+
                 .change-indicator { color: var(--color-accent-primary); font-size: 0.6rem; margin-left: 4px; }
-                
+
                 /* Unsaved Status in Title */
                 .unsaved-status {
                     display: inline-block;
@@ -558,19 +567,19 @@ const ProfileRenderModule = {
                 .user-info-diff { margin-top: 8px; padding: 12px; background: #fff; border: 1px dashed var(--color-border); border-radius: 4px; font-family: monospace; font-size: 0.85rem; white-space: pre-wrap; word-break: break-all; }
                 .diff-char-add { background: #bbf7d0; color: #14532d; text-decoration: none; }
                 .diff-char-remove { background: #fecaca; color: #991b1b; text-decoration: line-through; }
-                
-                .profile-actions { 
-                    display: flex; 
-                    justify-content: flex-end; 
-                    gap: 12px; 
+
+                .profile-actions {
+                    display: flex;
+                    justify-content: flex-end;
+                    gap: 12px;
                 }
-                
+
                 .btn-xs { padding: 4px 8px; font-size: 0.75rem; }
                 .btn-ghost { background: none; border: 1px solid var(--color-border); color: var(--color-text-secondary); }
                 .btn-ghost:hover { background: var(--color-bg-tertiary); }
-                
+
                 .hidden { display: none !important; }
-                
+
                 @media (max-width: 768px) {
                     .profile-grid-3, .profile-grid-4 { grid-template-columns: repeat(2, 1fr); }
                 }
@@ -605,7 +614,131 @@ const ProfileRenderModule = {
             }
                     </div>
                     <div>
-                        <div class="profile-section-title">${userName} 的档案</div>
+                        <div class="profile-section-title">
+                            ${userName} 的档案
+                            ${(() => {
+                if (!p.nid) return '';
+                const nid = Number(p.nid);
+                const isPremium = Number.isFinite(nid) && nid < 10000;
+                if (!isPremium) {
+                    return `<span style="font-size:0.8em; color:#9ca3af; margin-left:8px; font-weight:normal;">id ${p.nid}</span>`;
+                }
+                return `<span style="font-size:0.8em; margin-left:8px; font-weight:600; color:#d4b36a; background:rgba(212,179,106,0.12); border:1px solid rgba(212,179,106,0.4); padding:1px 6px; border-radius:10px; letter-spacing:0.3px;">id ${p.nid}</span>`;
+            })()}
+                            ${(() => {
+                // 前端计算当前最高有效等级
+                const levels = ['basic', 'pro', 'ultra']; // 低 -> 高
+                const levelNames = {
+                    'basic': '基础会员',
+                    'pro': 'PRO',
+                    'ultra': 'ULTRA'
+                };
+                const subs = p.subscriptions || {};
+                const now = new Date();
+                let currentLvl = 'expired';
+
+                // 日期格式化函数 (使用 Profile 时区)
+                const userTz = p.timezone || 'Asia/Shanghai';
+                const formatDateTime = (dt) => {
+                    try {
+                        return dt.toLocaleString('zh-CN', {
+                            timeZone: userTz,
+                            year: 'numeric',
+                            month: '2-digit',
+                            day: '2-digit',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            hour12: false
+                        }).replace(/\//g, '-');
+                    } catch (e) {
+                        // Fallback if timezone invalid
+                        const y = dt.getFullYear();
+                        const mo = String(dt.getMonth() + 1).padStart(2, '0');
+                        const d = String(dt.getDate()).padStart(2, '0');
+                        const h = String(dt.getHours()).padStart(2, '0');
+                        const mi = String(dt.getMinutes()).padStart(2, '0');
+                        return `${y}-${mo}-${d} ${h}:${mi}`;
+                    }
+                };
+
+                // 收集所有等级的过期时间 (从高到低)
+                const subData = [];
+                for (let i = levels.length - 1; i >= 0; i--) {
+                    const lvl = levels[i];
+                    const expStr = subs[lvl];
+                    if (expStr) {
+                        const dt = new Date(expStr);
+                        subData.push({ lvl, dt, isActive: dt > now });
+                        if (dt > now && currentLvl === 'expired') {
+                            currentLvl = lvl;
+                        }
+                    }
+                }
+
+                // 构建时间线折叠显示
+                const tooltipLines = [];
+                let prevEndDate = null;
+
+                for (const item of subData) {
+                    const { lvl, dt, isActive } = item;
+
+                    if (prevEndDate === null) {
+                        // 最高等级，直接显示结束日期
+                        tooltipLines.push(`${levelNames[lvl]}: ${formatDateTime(dt)}${isActive ? '' : ' (已过期)'}`);
+                    } else {
+                        // 检查是否被上级覆盖
+                        if (dt <= prevEndDate) {
+                            // 完全被覆盖，不显示
+                        } else {
+                            // 显示增量时间段
+                            tooltipLines.push(`${levelNames[lvl]}: ${formatDateTime(prevEndDate)} ~ ${formatDateTime(dt)}${isActive ? '' : ' (已过期)'}`);
+                        }
+                    }
+                    // 更新 prevEndDate 为当前等级和之前的最大值
+                    if (prevEndDate === null || dt > prevEndDate) {
+                        prevEndDate = dt;
+                    }
+                }
+
+                if (tooltipLines.length === 0) {
+                    tooltipLines.push('无订阅信息');
+                }
+
+                const badgeColor = {
+                    'basic': '#0369a1',
+                    'pro': '#7c3aed',
+                    'ultra': '#be123c',
+                    'expired': '#dc2626'
+                }[currentLvl] || '#9ca3af';
+
+                const badgeBg = {
+                    'basic': '#e0f2fe',
+                    'pro': '#ede9fe',
+                    'ultra': '#ffe4e6',
+                    'expired': '#fef2f2'
+                }[currentLvl] || '#f3f4f6';
+
+                // 检测是否为试用状态: basic 且到期时间 ≈ 注册时间 + 3天
+                let isTrial = false;
+                if (currentLvl === 'basic' && p.registered_at && subs.basic) {
+                    const regDate = new Date(p.registered_at);
+                    const basicExpiry = new Date(subs.basic);
+                    const expectedTrialEnd = new Date(regDate.getTime() + 3 * 24 * 60 * 60 * 1000);
+                    // 差距小于 1 分钟则认为是试用
+                    if (Math.abs(basicExpiry - expectedTrialEnd) < 60 * 1000) {
+                        isTrial = true;
+                    }
+                }
+
+                let displayName = currentLvl === 'expired' ? '已过期' : (levelNames[currentLvl] || currentLvl.toUpperCase());
+                if (isTrial) {
+                    displayName += ' (试用)';
+                }
+
+                // 使用自定义 CSS tooltip
+                return `<span class="level-badge-wrap"><span class="level-badge" style="background:${badgeBg}; color:${badgeColor};">${displayName}</span><span class="level-badge-tooltip">${tooltipLines.join('<br>')}</span></span>`;
+            })()}
+                        </div>
                         <div class="profile-section-subtitle">个人基础信息</div>
                     </div>
                 </div>
@@ -615,14 +748,7 @@ const ProfileRenderModule = {
                 { value: 'female', label: '女' },
                 { value: 'male', label: '男' },
             ], p.gender)}
-                    ${this.renderSelectField('timezone', '时区', [
-                { value: 'Asia/Shanghai', label: '中国' },
-                { value: 'Asia/Tokyo', label: '日本' },
-                { value: 'Asia/Singapore', label: '新加坡' },
-                { value: 'Europe/London', label: '英国' },
-                { value: 'America/Los_Angeles', label: '美国西海岸' },
-                { value: 'America/New_York', label: '美国东海岸' },
-            ], p.timezone)}
+                    ${this.renderSelectField('timezone', '时区', this.getTimezoneOptions(), p.timezone)}
                     ${this.renderEnergyUnitField(unit)}
                 </div>
                 <div class="profile-grid profile-grid-3" style="margin-top: 12px;">
@@ -647,11 +773,21 @@ const ProfileRenderModule = {
                     ${this.renderNumberField('estimated_months', '预期达成 (月)', p.estimated_months, 1)}
                 </div>
 
+                <!-- Invitation Code -->
+                <div class="profile-invite-area" style="margin-top: 16px; border-top: 1px dashed var(--color-border); padding-top: 12px;">
+                    <label class="profile-field-label">激活码兑换 / Invitation Code</label>
+                    <div style="display:flex; gap:8px; margin-top:4px;">
+                        <input type="text" id="invite-code-input" class="profile-field-input" placeholder="输入激活码 (Account / NID)..." style="flex:1;">
+                        <button class="btn btn-secondary" onclick="ProfileRenderModule.redeemCode()">兑换</button>
+                    </div>
+                </div>
+
+
                     <!-- User Info (Key Claims) merged here -->
                     <div class="profile-grid-full" style="margin-top: 12px; border-top: 1px dashed var(--color-border); padding-top: 12px;">
                         <label class="profile-field-label" style="justify-content: space-between; margin-bottom: 8px;">
                             <span>
-                                关键主张 
+                                关键主张
                                 <span style="font-weight: normal; color: var(--color-text-muted); font-size: 0.75rem;">(将会作为 AI 分析和优化档案的上下文)</span>
                                 ${diffResult.hasDiff ? '<span class="change-indicator" title="有变化">●</span>' : ''}
                             </span>
@@ -810,6 +946,49 @@ const ProfileRenderModule = {
         }
     },
 
+    async redeemCode() {
+        const input = document.getElementById('invite-code-input');
+        const code = input?.value?.trim();
+        if (!code) {
+            if (window.ToastUtils) ToastUtils.show('请输入激活码', 'info');
+            else alert('请输入激活码');
+            return;
+        }
+
+        const btn = document.querySelector('.profile-invite-area button');
+        const originalText = btn ? btn.innerText : '兑换';
+        if (btn) {
+            btn.innerText = '...';
+            btn.disabled = true;
+        }
+
+        try {
+            const resp = await API.post('/user/invitation/redeem', { code });
+            if (window.ToastUtils) ToastUtils.show('兑换成功！' + (resp.message || '已应用'), 'success');
+            else alert('兑换成功！\n' + (resp.message || '已应用'));
+
+            await ProfileModule.loadFromServer();
+            Dashboard.renderProfileView();
+        } catch (e) {
+            console.error(e);
+            let msg = e.message || '未知错误';
+            if (e.detail) {
+                if (typeof e.detail === 'object') msg = e.detail.message || JSON.stringify(e.detail);
+                else msg = e.detail;
+            } else if (e.response && e.response.data && e.response.data.detail) {
+                msg = e.response.data.detail;
+            }
+
+            if (window.ToastUtils) ToastUtils.show('兑换失败: ' + msg, 'error');
+            else alert('兑换失败: ' + msg);
+        } finally {
+            if (btn) {
+                btn.innerText = originalText;
+                btn.disabled = false;
+            }
+        }
+    },
+
     revertAll() {
         ProfileModule.revertAll();
         this.refreshView();
@@ -823,7 +1002,7 @@ const ProfileRenderModule = {
     async saveProfile() {
         const result = await ProfileModule.saveToServer();
         if (result.success) {
-            Dashboard.addMessage('✓ Profile 已保存', 'assistant');
+            Dashboard.addMessage('✓ 个人档案已保存', 'assistant');
             this.refreshView();
         } else {
             Dashboard.addMessage(`保存失败: ${result.error}`, 'assistant');

@@ -91,6 +91,26 @@ const SessionModule = {
             msg.appendChild(textEl);
         }
 
+        // Action Buttons (Actionable Message)
+        if (options.actions && Array.isArray(options.actions) && options.actions.length > 0) {
+            const actionsEl = document.createElement('div');
+            actionsEl.className = 'message-actions';
+            actionsEl.style.marginTop = '8px';
+            actionsEl.style.display = 'flex';
+            actionsEl.style.gap = '8px';
+
+            options.actions.forEach(action => {
+                const btn = document.createElement('button');
+                btn.className = `btn btn-sm ${action.class || 'btn-secondary'}`;
+                btn.textContent = action.text;
+                btn.style.fontSize = '0.8rem';
+                btn.style.padding = '4px 8px';
+                if (action.onClick) btn.onclick = action.onClick;
+                actionsEl.appendChild(btn);
+            });
+            msg.appendChild(actionsEl);
+        }
+
         if (container) {
             container.appendChild(msg);
             container.scrollTop = container.scrollHeight;

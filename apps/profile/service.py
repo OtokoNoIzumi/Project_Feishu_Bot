@@ -1,10 +1,11 @@
 import json
 import shutil
 from pathlib import Path
-from datetime import date
+from datetime import date, datetime
 from typing import Optional, Dict, Any
 from apps.profile.schemas import UserProfile
 from apps.common.record_service import RecordService
+from apps.profile.nid_manager import NIDManager
 
 BASE_DIR = Path("user_data")
 
@@ -39,15 +40,51 @@ class ProfileService:
         return path
 
     @staticmethod
+    def _ensure_account_info(user_id: str, profile: UserProfile) -> bool:
+        """Ensure critical account info exists. Returns True if modified."""
+        from datetime import timedelta
+        
+        modified = False
+        
+        # 1. 设置注册时间
+        if not profile.registered_at:
+            profile.registered_at = datetime.now().isoformat()
+            modified = True
+        
+        # 2. 分配 NID
+        if not profile.nid:
+            profile.nid = NIDManager.allocate_next_nid()
+            modified = True
+        
+        # 3. 自动赠送 3 天 Basic 试用（新用户 or 迁移用户）
+        if not profile.subscriptions or "basic" not in profile.subscriptions:
+            trial_end = datetime.fromisoformat(profile.registered_at) + timedelta(days=3)
+            if not profile.subscriptions:
+                profile.subscriptions = {}
+            profile.subscriptions["basic"] = trial_end.isoformat()
+            modified = True
+            
+        return modified
+
+    @staticmethod
     def load_profile(user_id: str) -> UserProfile:
         path = ProfileService.get_profile_path(user_id)
         if not path.exists():
-            return UserProfile()  # Return default profile
+            # New user entry point
+            p = UserProfile()
+            if ProfileService._ensure_account_info(user_id, p):
+                 ProfileService.save_profile(user_id, p)
+            return p
         
         try:
             with open(path, "r", encoding="utf-8") as f:
                 data = json.load(f)
-            return UserProfile.model_validate(data)
+            p = UserProfile.model_validate(data)
+
+            # Migration for existing users
+            if ProfileService._ensure_account_info(user_id, p):
+                ProfileService.save_profile(user_id, p)
+            return p
         except Exception as e:
             # Fallback to default if corrupted
             print(f"Error loading profile for {user_id}: {e}")
