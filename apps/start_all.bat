@@ -15,15 +15,17 @@ REM If not set in the environment, keep it empty (auth disabled).
 if not defined BACKEND_INTERNAL_TOKEN set BACKEND_INTERNAL_TOKEN=
 
 REM Optional: SSL (HTTPS) for direct uvicorn. Certs are in project root.
+REM IMPORTANT: Do NOT use SSL_CERT_FILE as variable name - it conflicts with
+REM Python httpx library which uses it for CA certificate verification!
 set SSL_ENABLE=true
-set "SSL_KEY_FILE=%CD%\izumiai.site.key"
-set "SSL_CERT_FILE=%CD%\izumiai.site.pem"
+set "UVICORN_KEY_FILE=%CD%\izumiai.site.key"
+set "UVICORN_CERT_FILE=%CD%\izumiai.site.pem"
 
 set "UVICORN_SSL_ARGS="
 if /I "%SSL_ENABLE%"=="true" (
-    if exist "%SSL_KEY_FILE%" if exist "%SSL_CERT_FILE%" (
-        set "UVICORN_SSL_ARGS=--ssl-keyfile ""%SSL_KEY_FILE%"" --ssl-certfile ""%SSL_CERT_FILE%"""
-        echo HTTPS enabled: %SSL_CERT_FILE%
+    if exist "%UVICORN_KEY_FILE%" if exist "%UVICORN_CERT_FILE%" (
+        set "UVICORN_SSL_ARGS=--ssl-keyfile ""%UVICORN_KEY_FILE%"" --ssl-certfile ""%UVICORN_CERT_FILE%"""
+        echo HTTPS enabled: %UVICORN_CERT_FILE%
     ) else (
         echo WARN: SSL enabled but certs not found. Falling back to HTTP.
     )

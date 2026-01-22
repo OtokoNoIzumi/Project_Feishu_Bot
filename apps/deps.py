@@ -6,16 +6,24 @@ Provides dependency injection for authentication and other shared resources.
 
 from typing import Optional
 
-from fastapi import Header, HTTPException, status
+from fastapi import Header, HTTPException, status, Depends
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 from libs.auth_internal.token_auth import InternalTokenAuth
 from libs.auth_internal.user_mapper import user_mapper
 from apps.settings import BackendSettings
 
+# 定义 HTTPBearer Security Scheme，让 Swagger UI 显示 Authorize 按钮
+# auto_error=False 允许未认证时继续（由我们手动检查）
+http_bearer = HTTPBearer(auto_error=False)
+
 
 def require_internal_auth(settings: BackendSettings):
     """
     Dependency generator for internal token authentication.
+
+    Uses HTTPBearer security scheme so Swagger UI shows the Authorize button
+    and includes Authorization header in requests.
 
     Args:
         settings: The backend settings containing the internal token.
@@ -25,9 +33,18 @@ def require_internal_auth(settings: BackendSettings):
     """
     auth = InternalTokenAuth(token=settings.internal_token)
 
-    async def _dep(authorization: Optional[str] = Header(default=None)):
+    async def _dep(
+        credentials: Optional[HTTPAuthorizationCredentials] = Depends(http_bearer)
+    ):
+        # 如果未配置 token，跳过认证
         if not auth.is_enabled():
             return
+        
+        # 构造 Authorization header 字符串
+        authorization = None
+        if credentials:
+            authorization = f"Bearer {credentials.credentials}"
+        
         ok = auth.verify_authorization_header(authorization)
         if not ok:
             raise HTTPException(

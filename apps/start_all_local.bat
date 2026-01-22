@@ -11,7 +11,7 @@ set BACKEND_HOST=127.0.0.1
 set BACKEND_PORT=7701
 REM Optional: enable internal auth by setting a token, then call with:
 REM Authorization: Bearer <token>
-set BACKEND_INTERNAL_TOKEN=izumi_second_me
+set BACKEND_INTERNAL_TOKEN=
 
 python -m uvicorn apps.app:app --host %BACKEND_HOST% --port %BACKEND_PORT%
 pause
