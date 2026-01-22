@@ -6,9 +6,12 @@ aggregating settings from environment variables and config files.
 """
 
 import os
+import re
 from dataclasses import dataclass
+from typing import Dict
 
 from libs.core.config_loader import load_root_config
+from libs.core.project_paths import get_project_root
 
 
 @dataclass(frozen=True)
@@ -21,6 +24,48 @@ class BackendSettings:
     gemini_model_name: str
 
 
+_DOTENV_CACHE: Dict[str, str] = {}
+
+
+def _load_dotenv_vars() -> Dict[str, str]:
+    """
+    Load key/value pairs from project root .env without third-party deps.
+    """
+    if _DOTENV_CACHE:
+        return _DOTENV_CACHE
+
+    env_path = get_project_root() / ".env"
+    if not env_path.exists():
+        return _DOTENV_CACHE
+
+    content = env_path.read_text(encoding="utf-8", errors="ignore")
+    pattern = re.compile(
+        r'^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?:["\'](.*?)["\']|([^#\r\n]*))'
+    )
+
+    for line in content.splitlines():
+        match = pattern.match(line)
+        if not match:
+            continue
+        key = match.group(1)
+        val = match.group(2) if match.group(2) is not None else match.group(3)
+        if val is not None:
+            _DOTENV_CACHE[key] = val.strip()
+
+    return _DOTENV_CACHE
+
+
+def _get_env_value(name: str, default: str = "") -> str:
+    """
+    Read from real env first, then .env, then fallback.
+    """
+    value = os.getenv(name)
+    if value is not None and value.strip():
+        return value.strip()
+    dotenv_val = _load_dotenv_vars().get(name, "").strip()
+    return dotenv_val if dotenv_val else default
+
+
 def load_settings() -> BackendSettings:
     """
     后端配置（单进程入口）
@@ -29,12 +74,12 @@ def load_settings() -> BackendSettings:
     """
     root_cfg = load_root_config()
 
-    host = os.getenv("BACKEND_HOST", "127.0.0.1")
-    port = int(os.getenv("BACKEND_PORT", "8001"))
-    internal_token = os.getenv("BACKEND_INTERNAL_TOKEN", "").strip()
+    host = _get_env_value("BACKEND_HOST", "127.0.0.1")
+    port = int(_get_env_value("BACKEND_PORT", "8001"))
+    internal_token = _get_env_value("BACKEND_INTERNAL_TOKEN", "").strip()
 
     default_model = str(root_cfg.get("GEMINI_MODEL_NAME") or "gemini-2.5-flash")
-    gemini_model_name = os.getenv("GEMINI_MODEL_NAME", default_model)
+    gemini_model_name = _get_env_value("GEMINI_MODEL_NAME", default_model)
 
     return BackendSettings(
         host=host,
