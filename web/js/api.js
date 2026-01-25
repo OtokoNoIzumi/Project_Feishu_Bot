@@ -37,8 +37,8 @@ const API = {
             }
         }
 
-        // 超时控制 (默认 120s)
-        const timeout = options.timeout || 120000;
+        // 超时控制 (默认 150s)
+        const timeout = options.timeout || 150000;
         const controller = new AbortController();
         const id = setTimeout(() => controller.abort(), timeout);
         const startTime = Date.now();
@@ -53,23 +53,42 @@ const API = {
 
             // 记录耗时
             const duration = Date.now() - startTime;
-            if (duration > 5000) {
-                console.warn(`[API] Slow request: ${endpoint} took ${duration}ms`);
-            } else {
-                console.log(`[API] Request: ${endpoint} took ${duration}ms`);
-            }
 
             // 解析响应
-            const data = await response.json();
+            let data;
+            let bodyText = "";
+            try {
+                bodyText = await response.text();
+                data = JSON.parse(bodyText);
+            } catch (jsonError) {
+                console.warn('[API] Response is not valid JSON:', bodyText.substring(0, 200));
+                // 如果不是 JSON，尝试包装一下或抛出
+                if (response.ok) {
+                    data = { message: "Success (Non-JSON response)", raw: bodyText };
+                } else {
+                    throw new APIError(`Invalid JSON Response: ${response.status}`, response.status, null);
+                }
+            }
 
-            if (!response.ok) {
+            // 日志预览 (前100字符)
+            const bodyPreview = bodyText.substring(0, 100).replace(/\n/g, ' ');
+
+            if (response.ok) {
+                if (duration > 5000) {
+                    console.warn(`[API] Slow request: ${endpoint} took ${duration}ms | ${response.status} | ${bodyPreview}...`);
+                } else {
+                    console.log(`[API] Request: ${endpoint} took ${duration}ms | ${response.status} | ${bodyPreview}...`);
+                }
+                return data;
+            } else {
+                console.error(`[API] Error request: ${endpoint} | ${response.status} | ${bodyPreview}...`);
                 // Handle structured error detail from backend
                 let errorMessage = 'Request failed';
-                if (typeof data.detail === 'object' && data.detail !== null) {
+                if (data && typeof data.detail === 'object' && data.detail !== null) {
                     errorMessage = data.detail.message || data.detail.code || JSON.stringify(data.detail);
-                } else if (data.detail) {
+                } else if (data && data.detail) {
                     errorMessage = data.detail;
-                } else if (data.error) {
+                } else if (data && data.error) {
                     errorMessage = data.error;
                 }
 
@@ -78,8 +97,6 @@ const API = {
                 error.response = { data };
                 throw error;
             }
-
-            return data;
         } catch (error) {
             clearTimeout(id);
             if (error.name === 'AbortError') {
@@ -102,20 +119,22 @@ const API = {
     /**
      * POST 请求 (JSON)
      */
-    async post(endpoint, data = {}) {
+    async post(endpoint, data = {}, options = {}) {
         return this.request(endpoint, {
             method: 'POST',
             body: JSON.stringify(data),
+            ...options,
         });
     },
 
     /**
      * POST 请求 (FormData, 用于文件上传)
      */
-    async postForm(endpoint, formData) {
+    async postForm(endpoint, formData, options = {}) {
         return this.request(endpoint, {
             method: 'POST',
             body: formData,
+            ...options,
         });
     },
 
@@ -129,11 +148,12 @@ const API = {
      */
     async analyzeDiet(userNote, imagesB64, autoSave = false) {
         // user_id 已移至 Header，body 不再包含
+        // 将超时设置延长至 180s 以适应大图上传
         return this.post('/diet/analyze', {
             user_note: userNote,
             images_b64: imagesB64,
             auto_save: autoSave,
-        });
+        }, { timeout: 150000 });
     },
 
     /**
@@ -181,11 +201,12 @@ const API = {
      * @param {boolean} autoSave - 是否自动保存
      */
     async analyzeKeep(userNote, imagesB64, autoSave = false) {
+        // 将超时设置延长至 180s
         return this.post('/keep/analyze', {
             user_note: userNote,
             images_b64: imagesB64,
             auto_save: autoSave,
-        });
+        }, { timeout: 150000 });
     },
 
     /**

@@ -63,7 +63,12 @@ class DietAdviceUsecase:
         print("test-prompt", prompt)
         # 使用不带 schema 的文本生成
         # advice_text = ""
-        advice_text = await self.client.generate_text_async(prompt=prompt, images=[])
+        advice_text = await self.client.generate_text_async(
+            prompt=prompt, 
+            images=[], 
+            scene="diet_advice", 
+            user_id=user_id
+        )
         if advice_text.startswith("Gemini") and "失败" in advice_text:
             return {"error": advice_text}
 

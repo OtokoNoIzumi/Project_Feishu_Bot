@@ -17,12 +17,20 @@ class KeepScaleParseUsecase(KeepBaseParseUsecase):
         super().__init__(gemini_model_name, temperature=0.1)
 
     async def execute_with_image_bytes_async(
-        self, user_note: str, images_bytes: List[bytes]
+        self, 
+        user_note: str, 
+        images_bytes: List[bytes],
+        scene: str = "unknown", 
+        user_id: str = "unknown"
     ) -> Dict[str, Any]:
 
         prompt = build_keep_scale_prompt(user_note=user_note)
         llm_result = await self.client.generate_json_async(
-            prompt=prompt, images=images_bytes, schema=KEEP_SCALE_LLM_SCHEMA
+            prompt=prompt, 
+            images=images_bytes, 
+            schema=KEEP_SCALE_LLM_SCHEMA,
+            scene=scene,
+            user_id=user_id
         )
         if isinstance(llm_result, dict) and llm_result.get("error"):
             return {"error": llm_result.get("error")}

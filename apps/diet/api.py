@@ -251,6 +251,7 @@ def build_diet_router(settings: BackendSettings) -> APIRouter:
             advice = await advice_uc.execute_async(
                 user_id=user_id, facts=req.facts, user_note=req.user_note
             )
+            print('test-advice', advice)
             if isinstance(advice, dict) and advice.get("error"):
                 return DietAdviceResponse(success=False, error=str(advice.get("error")))
             

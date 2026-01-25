@@ -52,7 +52,11 @@ class DietAnalyzeUsecase:
         print('test-prompt', prompt)
 
         llm_result = await self.client.generate_json_async(
-            prompt=prompt, images=images_bytes, schema=DIET_LLM_SCHEMA
+            prompt=prompt, 
+            images=images_bytes, 
+            schema=DIET_LLM_SCHEMA,
+            scene="diet_analyze",
+            user_id=user_id or "unknown"
         )
         if isinstance(llm_result, dict) and llm_result.get("error"):
             return {"error": llm_result.get("error")}

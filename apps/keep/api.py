@@ -198,15 +198,21 @@ def build_keep_router(settings: BackendSettings) -> APIRouter:
                 access = Gatekeeper.check_access(user_id, "detail_dimension")
                 use_limited = not access.get("allowed", False)
 
+            scene = f"keep_{event_type_for_save}"
             if event_type_for_save in ("dimensions", "unified"):
                 result = await usecase.execute_with_image_bytes_async(
                     user_note=user_note,
                     images_bytes=images_bytes,
                     use_limited=use_limited,
+                    scene=scene,
+                    user_id=user_id,
                 )
             else:
                 result = await usecase.execute_with_image_bytes_async(
-                    user_note=user_note, images_bytes=images_bytes
+                    user_note=user_note, 
+                    images_bytes=images_bytes,
+                    scene=scene,
+                    user_id=user_id,
                 )
 
             if isinstance(result, dict) and result.get("error"):

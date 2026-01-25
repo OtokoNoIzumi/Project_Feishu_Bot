@@ -81,10 +81,13 @@ class ClerkJWTAuth:
             signing_key = self._jwks_client.get_signing_key_from_jwt(token)
             
             # 2. Decode and verify token
+            # Add 60s leeway for clock skew issues (essential for distributed systems)
+            leeway = 60
             payload = jwt.decode(
                 token,
                 signing_key.key,
                 algorithms=["RS256"],
+                leeway=leeway,
                 options={
                     "verify_exp": True,
                     "verify_nbf": True,
@@ -97,12 +100,12 @@ class ClerkJWTAuth:
             exp = payload.get("exp", 0)
             nbf = payload.get("nbf", 0)
             
-            if exp < current_time:
-                logger.warning("Clerk JWT expired: exp=%s, now=%s", exp, current_time)
+            if exp < current_time - leeway:
+                logger.warning("Clerk JWT expired: exp=%s, now=%s (leeway=%ss)", exp, current_time, leeway)
                 return None
             
-            if nbf > current_time:
-                logger.warning("Clerk JWT not yet valid: nbf=%s, now=%s", nbf, current_time)
+            if nbf > current_time + leeway:
+                logger.warning("Clerk JWT not yet valid: nbf=%s, now=%s (leeway=%ss)", nbf, current_time, leeway)
                 return None
             
             # 4. Validate authorized party (azp claim) if present

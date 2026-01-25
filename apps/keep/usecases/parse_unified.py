@@ -20,6 +20,8 @@ class KeepUnifiedParseUsecase(KeepBaseParseUsecase):
         user_note: str,
         images_bytes: List[bytes],
         use_limited: bool = False,
+        scene: str = "unknown", 
+        user_id: str = "unknown"
     ) -> Dict[str, Any]:
         if not user_note and not images_bytes:
             return {"error": "No input provided (text or images required)."}
@@ -31,7 +33,11 @@ class KeepUnifiedParseUsecase(KeepBaseParseUsecase):
 
         # 使用统一 Schema 进行混合解析
         llm_result = await self.client.generate_json_async(
-            prompt=prompt, images=images_bytes or [], schema=schema
+            prompt=prompt, 
+            images=images_bytes or [], 
+            schema=schema,
+            scene=scene,
+            user_id=user_id
         )
 
         if isinstance(llm_result, dict) and llm_result.get("error"):

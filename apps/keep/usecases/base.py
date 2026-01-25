@@ -24,16 +24,27 @@ class KeepBaseParseUsecase:
         )
 
     async def execute_async(
-        self, user_note: str, images_b64: List[str]
+        self, 
+        user_note: str, 
+        images_b64: List[str], 
+        scene: str = "unknown", 
+        user_id: str = "unknown"
     ) -> Dict[str, Any]:
         """Async execution with Base64 images."""
         images_bytes = decode_images_b64(images_b64)
         return await self.execute_with_image_bytes_async(
-            user_note=user_note, images_bytes=images_bytes
+            user_note=user_note, 
+            images_bytes=images_bytes, 
+            scene=scene, 
+            user_id=user_id
         )
 
     async def execute_with_image_bytes_async(
-        self, user_note: str, images_bytes: List[bytes]
+        self, 
+        user_note: str, 
+        images_bytes: List[bytes], 
+        scene: str = "unknown", 
+        user_id: str = "unknown"
     ) -> Dict[str, Any]:
         """
         Execute parsing with image bytes.

@@ -20,6 +20,8 @@ class KeepDimensionsParseUsecase(KeepBaseParseUsecase):
         user_note: str,
         images_bytes: List[bytes],
         use_limited: bool = False,
+        scene: str = "unknown", 
+        user_id: str = "unknown"
     ) -> Dict[str, Any]:
 
         prompt = build_keep_dimensions_prompt(
@@ -29,7 +31,11 @@ class KeepDimensionsParseUsecase(KeepBaseParseUsecase):
 
         # 暂时不进行复杂的后处理
         llm_result = await self.client.generate_json_async(
-            prompt=prompt, images=images_bytes, schema=schema
+            prompt=prompt, 
+            images=images_bytes, 
+            schema=schema,
+            scene=scene,
+            user_id=user_id
         )
 
         if isinstance(llm_result, dict) and llm_result.get("error"):

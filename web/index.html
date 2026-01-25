@@ -228,19 +228,11 @@
   <script src="config.js"></script>
   <script src="js/auth.js"></script>
   <script>
-    const CLERK_TEST_KEY = 'pk_test_YWR2YW5jZWQtcHVtYS01Mi5jbGVyay5hY2NvdW50cy5kZXYk';
-    const CLERK_LIVE_KEY = 'pk_live_Y2xlcmsuaXp1bWlsaWZlLnNpdGUk';
-
-    // 动态加载 Clerk
+    // 动态加载 Clerk - 使用 CONFIG 中的 Key
     function loadClerk() {
       return new Promise((resolve, reject) => {
-        const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-        const clerkKey = isLocal ? CLERK_TEST_KEY : CLERK_LIVE_KEY;
-
-        console.log(`Clerk loading in ${isLocal ? 'Development' : 'Production'} mode`);
-
         const script = document.createElement('script');
-        script.setAttribute('data-clerk-publishable-key', clerkKey);
+        script.setAttribute('data-clerk-publishable-key', CONFIG.CLERK_PUBLISHABLE_KEY);
         script.src = 'https://cdn.jsdelivr.net/npm/@clerk/clerk-js@latest/dist/clerk.browser.js';
         script.async = true;
         script.crossOrigin = 'anonymous';
