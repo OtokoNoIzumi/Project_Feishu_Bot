@@ -264,6 +264,103 @@ const API = {
         }
         return this.post('/user/profile/analyze', data);
     },
+
+    // ========== Dialogue API (MVP 2.1) ==========
+
+    /**
+     * 获取对话列表
+     */
+    async getDialogues(limit = 20, offset = 0) {
+        return this.get('/dialogues', { limit, offset });
+    },
+
+    /**
+     * 创建新对话
+     * @param {string} title 
+     */
+    async createDialogue(title) {
+        return this.post('/dialogues', { title });
+    },
+
+    /**
+     * 获取对话详情
+     */
+    async getDialogue(id) {
+        return this.get(`/dialogues/${id}`);
+    },
+
+    /**
+     * 追加消息到对话
+     */
+    async appendMessage(dialogueId, message) {
+        return this.request(`/dialogues/${dialogueId}/message`, {
+            method: 'PATCH',
+            body: JSON.stringify(message)
+        });
+    },
+
+    /**
+     * 更新对话消息
+     */
+    async updateMessage(dialogueId, message) {
+        return this.request(`/dialogues/${dialogueId}/messages/${message.id}`, {
+            method: 'PATCH',
+            body: JSON.stringify(message)
+        });
+    },
+
+    /**
+     * 更新对话（如重命名）
+     */
+    async updateDialogue(dialogueId, title) {
+        return this.request(`/dialogues/${dialogueId}`, {
+            method: 'PATCH',
+            body: JSON.stringify({ title })
+        });
+    },
+
+    /**
+     * 删除对话
+     */
+    async deleteDialogue(dialogueId) {
+        return this.request(`/dialogues/${dialogueId}`, { method: 'DELETE' });
+    },
+
+    // ========== Result Card API (MVP 2.1) ==========
+
+    /**
+     * 获取卡片列表
+     * @param {string} dialogueId (可选)
+     */
+    async getCards(dialogueId = null) {
+        const params = {};
+        if (dialogueId) params.dialogue_id = dialogueId;
+        return this.get('/cards', params);
+    },
+
+    /**
+     * 获取卡片详情
+     */
+    async getCard(cardId) {
+        return this.get(`/cards/${cardId}`);
+    },
+
+    /**
+     * 创建卡片 (分析完成后立即调用)
+     */
+    async createCard(cardData) {
+        return this.post('/cards', cardData);
+    },
+
+    /**
+     * 更新卡片状态/内容
+     */
+    async updateCard(cardId, cardData) {
+        return this.request(`/cards/${cardId}`, {
+            method: 'PATCH',
+            body: JSON.stringify(cardData)
+        });
+    },
 };
 
 /**

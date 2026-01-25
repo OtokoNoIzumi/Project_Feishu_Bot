@@ -75,3 +75,70 @@ export const IconManager = {
 
 // Make it globally available for legacy non-module scripts if needed
 window.IconManager = IconManager;
+
+
+/**
+ * Placeholder Emoji Icons
+ * 临时使用 Emoji，后续可替换为手绘图标
+ * 具体图标待设计，这里只做语义映射
+ */
+const EMOJI_ICONS = {
+    // Sidebar 状态
+    'status-saved': '✅',
+    'status-draft': '📝',
+    'status-analyzing': '⏳',
+    'status-error': '❌',
+
+    // 类型标识
+    'type-diet': '🍽️',
+    'type-keep': '🏋️',
+    'type-dialogue': '💬',
+
+    // 操作
+    'action-expand': '▼',
+    'action-collapse': '►',
+    'action-more': '...',
+    'action-search': '🔍',
+
+    // Demo
+    'demo-badge': '🎯',
+};
+
+// 映射表：Emoji Icon Name -> Hand-Drawn Icon Name
+const EMOJI_TO_HAND_DRAWN = {
+    'status-saved': 'check',
+    'status-draft': 'pencil',
+    // ... 后续填充
+};
+
+export const EmojiIcon = {
+    /**
+     * 渲染 Emoji (未来可替换为 IconManager.render)
+     */
+    render: (name) => {
+        const emoji = EMOJI_ICONS[name];
+        if (!emoji) {
+            console.warn(`Emoji icon not found: ${name}`);
+            return '<span>?</span>';
+        }
+        // 用 span 包裹，便于后续用 CSS 隐藏或替换
+        return `<span class="emoji-icon" data-icon="${name}">${emoji}</span>`;
+    },
+
+    /**
+     * 批量替换：将所有 [data-icon] 的 emoji 换成手绘图标
+     * 后续实现时调用
+     */
+    replaceAll: () => {
+        document.querySelectorAll('.emoji-icon[data-icon]').forEach(el => {
+            const name = el.dataset.icon;
+            // 检查是否有对应的手绘图标
+            const mappedIcon = EMOJI_TO_HAND_DRAWN[name];
+            if (mappedIcon && ICONS[mappedIcon]) {
+                el.outerHTML = IconManager.render(mappedIcon);
+            }
+        });
+    }
+};
+
+window.EmojiIcon = EmojiIcon;

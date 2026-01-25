@@ -136,10 +136,14 @@ def build_diet_router(settings: BackendSettings) -> APIRouter:
                     success=False, error=str(result.get("error"))
                 )
 
+            # 计算 image_hashes（始终返回给前端，用于 Card 持久化）
+            image_hashes = [hashlib.sha256(b).hexdigest() for b in images_bytes]
+            result["image_hashes"] = image_hashes
+            result["image_count"] = len(images_bytes)
+
             # 自动保存逻辑
             saved_status = None
             if auto_save:
-                image_hashes = [hashlib.sha256(b).hexdigest() for b in images_bytes]
                 occurred_dt = parse_occurred_at(result.get("occurred_at"))
 
                 try:

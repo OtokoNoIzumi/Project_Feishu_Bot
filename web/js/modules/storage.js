@@ -58,6 +58,19 @@ const StorageModule = {
                 session.savedData = JSON.parse(JSON.stringify(this.collectEditedData()));
             }
 
+            // 将保存状态回写到 Card，避免重复保存
+            if (session.persistentCardId && typeof this._buildCardData === 'function') {
+                const cardData = this._buildCardData(session);
+                if (cardData) {
+                    cardData.status = 'saved';
+                    cardData.saved_record_id = session.savedRecordId || null;
+                    cardData.updated_at = new Date().toISOString();
+                    await API.updateCard(session.persistentCardId, cardData).catch(e => {
+                        console.warn('Update card save status failed:', e);
+                    });
+                }
+            }
+
             this.updateStatus('saved');
             this.addMessage(isUpdate ? '✓ 记录已更新' : '✓ 记录已保存', 'assistant');
             this.updateButtonStates(session);

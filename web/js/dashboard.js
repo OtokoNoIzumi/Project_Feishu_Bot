@@ -23,6 +23,9 @@ const Dashboard = {
   // 当前选中的 session
   currentSession: null,
 
+  // 当前关联的后端 Dialogue ID (Phase 2)
+  currentDialogueId: null,
+
   // 移动端：确认面板（结果面板）是否打开
   isResultPanelOpen: false,
 
@@ -65,7 +68,12 @@ const Dashboard = {
       Auth.mountUserButton('#user-button');
 
       console.log(`${getLogTime()} Loading history...`);
-      this.loadHistory();
+      // Phase 2: Use SidebarModule instead of old StorageModule
+      if (window.SidebarModule) {
+        SidebarModule.init();
+      } else {
+        this.loadHistory();
+      }
 
       // 如果当前停留在 Profile 视图且显示的是加载态，则刷新
       if (this.view === 'profile' && this.el.resultContent.querySelector('.auth-loading-state')) {
@@ -170,6 +178,7 @@ const Dashboard = {
 
   switchMode(mode) {
     this.mode = mode;
+    this.currentDialogueId = null; // 切换模式时重置对话
     document.querySelectorAll('.mode-btn').forEach(btn => {
       btn.classList.toggle('active', btn.dataset.mode === mode);
     });
@@ -359,6 +368,132 @@ const Dashboard = {
     }
   },
 
+  /**
+   * 加载后端卡片 (Phase 2)
+   */
+  async loadCard(cardId) {
+    try {
+      if (this.el.resultStatus) this.el.resultStatus.textContent = '加载中...';
+
+      const cardData = await API.getCard(cardId);
+
+      // 尝试并在本地 sessions 查找，避免重复创建
+      let session = this.sessions.find(s => s.id === cardData.id);
+
+      if (!session) {
+        // 构造 Session 对象
+        // 注意: 后端 ResultCard.versions 结构需与前端对齐
+        // 这里假设 version item 就是 parsedData 的超集
+        const versions = (cardData.versions || []).map(v => ({
+          createdAt: new Date(v.created_at || new Date()),
+          userNote: v.user_note || '',
+          rawResult: v.raw_result || {},
+          parsedData: this.parseResult(v.raw_result || {}, cardData.mode),
+          advice: v.advice,
+          adviceError: v.adviceError,
+          adviceLoading: false
+        }));
+        const sourceUserNote = cardData.source_user_note || versions[0]?.userNote || '';
+        const imageUrls = cardData.image_uris || [];
+
+        session = {
+          id: cardData.id,
+          persistentCardId: cardData.id, // 重要：确保再次分析时复用 Card ID
+          dialogueId: cardData.dialogue_id, // 关联 Dialogue
+          mode: cardData.mode,
+          createdAt: new Date(cardData.created_at),
+          text: sourceUserNote,
+          sourceUserNote: sourceUserNote,
+          sourceImagesB64: [],
+          cardCreated: true,
+          images: [],
+          imageUrls: imageUrls,
+          imageHashes: cardData.image_hashes || [],
+          versions: versions,
+          currentVersion: cardData.current_version || versions.length,
+          isSaved: cardData.status === 'saved',
+          savedRecordId: cardData.saved_record_id,
+          savedData: null
+        };
+        this.sessions.push(session);
+      }
+
+      this.selectSession(session.id);
+      if (this.el.resultStatus) this.el.resultStatus.textContent = '';
+
+    } catch (e) {
+      console.error("Failed to load card", e);
+      this.addMessage(`加载卡片失败: ${e.message}`, 'assistant');
+    }
+  },
+
+  /**
+   * 加载对话并还原消息列表
+   */
+  async loadDialogue(dialogueId) {
+    if (!dialogueId) return;
+    try {
+      const dialogue = await API.getDialogue(dialogueId);
+      this.currentDialogueId = dialogue.id;
+      this.currentSession = null;
+
+      if (this.el.chatMessages) {
+        this.el.chatMessages.innerHTML = '';
+      }
+
+      const messages = (dialogue.messages || []).slice().sort((a, b) => {
+        return new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
+      });
+
+      if (messages.length === 0) {
+        this.addMessage('暂无对话内容', 'assistant');
+        return;
+      }
+
+      messages.forEach(msg => {
+        const hasCard = Boolean(msg.linked_card_id);
+        const titleHint = msg.title || ((!msg.content && (msg.attachments || []).length > 0)
+          ? `${msg.attachments.length}张图片`
+          : '');
+        const options = {
+          title: titleHint
+        };
+        if (hasCard) {
+          options.sessionId = msg.linked_card_id;
+          options.onClick = () => this.loadCard(msg.linked_card_id);
+        }
+
+        SessionModule.renderMessage(
+          this.el.chatMessages,
+          msg.content || '',
+          msg.role || 'user',
+          options
+        );
+      });
+    } catch (e) {
+      console.error('Load dialogue failed:', e);
+      this.addMessage(`加载对话失败: ${e.message}`, 'assistant');
+    }
+  },
+
+  /**
+   * 创建新对话 (Phase 2)
+   */
+  async createNewDialogue() {
+    try {
+      // 默认标题，后端会处理
+      const dialogue = await API.createDialogue("新对话");
+      // 刷新 Sidebar
+      if (window.SidebarModule) {
+        SidebarModule.loadDialogues();
+        // TODO: 选中该 dialogue
+      }
+      this.addMessage('已创建新对话', 'assistant');
+    } catch (e) {
+      console.error("Create dialogue failed", e);
+    }
+  },
+
   // ========== 分析流程 ==========
 
   async startNewAnalysis() {
@@ -371,14 +506,76 @@ const Dashboard = {
       return;
     }
 
-    // 创建新 Session
+    // 1. 确保有后端 Dialogue (Phase 2)
+    if (!this.currentDialogueId) {
+      try {
+        // 自动标题：文本前15字 或 图片提示
+        const title = text.slice(0, 15) || (this.pendingImages.length ? `${this.pendingImages.length}张图片` : '新对话');
+        const dialogue = await API.createDialogue(title);
+        this.currentDialogueId = dialogue.id;
+
+        // 刷新左侧栏
+        if (window.SidebarModule) window.SidebarModule.loadDialogues();
+      } catch (e) {
+        console.error("Failed to create dialogue", e);
+      }
+    }
+
+    // 创建新 Session (前端展示用)
     const session = this.createSession(text, [...this.pendingImages]);
+    session.dialogueId = this.currentDialogueId; // 关联 ID
     this.currentSession = session;
+    if (!session.persistentCardId) {
+      session.persistentCardId = crypto.randomUUID ? crypto.randomUUID() : `card-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    }
 
-    // 添加消息卡片
-    // 逻辑：如果有文字，标题留空（后续更新）；如果只有图片无文字，标题显示图片数量
+    // 2. 持久化用户消息 (异步)
+    if (this.currentDialogueId) {
+      const msgId = Date.now().toString();
+      const msgPayload = {
+        id: msgId,
+        role: 'user',
+        content: text || (this.pendingImages.length > 0 ? '[图片]' : ''),
+        timestamp: new Date().toISOString(),
+        attachments: [],
+        linked_card_id: session.persistentCardId
+      };
+      session.lastUserMessage = msgPayload; // 记录以便后续更新
+
+      API.appendMessage(this.currentDialogueId, msgPayload).catch(e => console.warn('Msg save failed', e));
+    }
+
+    // 3. Raw Input 阶段先创建 Card（严格解耦）
+    if (this.currentDialogueId) {
+      try {
+        const nowIso = new Date().toISOString();
+        const initialTitle = text ? text.slice(0, 15) : (this.pendingImages.length ? `${this.pendingImages.length}张图片` : '分析中');
+        const cardData = {
+          id: session.persistentCardId,
+          dialogue_id: session.dialogueId,
+          mode: session.mode,
+          title: initialTitle,
+          user_id: 'placeholder',
+          source_user_note: text || '',
+          image_uris: [],
+          image_hashes: [],
+          versions: [],
+          current_version: 0,
+          status: 'analyzing',
+          created_at: nowIso,
+          updated_at: nowIso
+        };
+        await API.createCard(cardData);
+        session.cardCreated = true;
+      } catch (e) {
+        console.error('Create card failed:', e);
+        this.addMessage(`创建卡片失败: ${e.message}`, 'assistant');
+        return;
+      }
+    }
+
+    // 添加消息卡片到 UI
     const initialTitle = text ? '' : (this.pendingImages.length > 0 ? `${this.pendingImages.length}张图片` : '');
-
     this.addMessage(text || '', 'user', {
       sessionId: session.id,
       images: session.imageUrls,
@@ -393,6 +590,9 @@ const Dashboard = {
 
     // 执行分析
     await this.executeAnalysis(session, text);
+
+    // 3. 持久化逻辑已移至 executeAnalysis 中 (Draft First Strategy)
+    // if (this.currentDialogueId) { ... }
   },
 
   /**
@@ -477,6 +677,11 @@ const Dashboard = {
   reAnalyze: AnalysisModule.reAnalyze,
   retryLastAnalysis: AnalysisModule.retryLastAnalysis,
   executeAnalysis: AnalysisModule.executeAnalysis,
+  _generateCardTitle: AnalysisModule._generateCardTitle,
+  _generateCardSummary: AnalysisModule._generateCardSummary,
+  _generateMessageTitle: AnalysisModule._generateMessageTitle,
+  _setAdviceLoading: AnalysisModule._setAdviceLoading,
+  _buildCardData: AnalysisModule._buildCardData,
 
   // 版本切换
   switchVersion(delta) {

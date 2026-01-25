@@ -96,7 +96,9 @@ const DietRenderModule = {
         ? `<div class="advice-text">${this.simpleMarkdownToHtml(version.advice)}</div>`
         : (version.adviceError
           ? `<div class="advice-error">⚠️ 建议获取失败：${version.adviceError}</div>`
-          : '<div class="advice-loading"><span class="loading-spinner"></span>正在生成点评...</div>')
+          : (version.adviceLoading
+            ? '<div class="advice-loading"><span class="loading-spinner"></span>正在生成点评...</div>'
+            : '<div class="advice-empty">暂无建议</div>'))
       }
           </div>
         </div>

@@ -1,6 +1,6 @@
 /**
  * Session 管理模块
- * 
+ *
  * 负责左侧聊天/会话列表的渲染和 DOM 管理
  * 不包含具体的业务逻辑（如能量计算、API调用）
  */
@@ -12,6 +12,9 @@ const SessionModule = {
             mode: mode,
             createdAt: new Date(),
             text: text,
+            sourceUserNote: text,
+            sourceImagesB64: images.map(img => img.base64),
+            cardCreated: false,
             images: images, // { file, base64, preview }
             imageUrls: images.map(img => img.preview),
             imageHashes: [],

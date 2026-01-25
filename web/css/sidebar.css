@@ -1,0 +1,129 @@
+/* ========== Phase 2 Sidebar Styles ========== */
+
+.sidebar-container {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+.dialogue-section-title {
+    font-size: 0.75rem;
+    color: var(--color-text-muted);
+    padding: var(--spacing-sm) var(--spacing-sm);
+    text-transform: uppercase;
+    font-weight: 600;
+    margin-top: 8px;
+}
+
+/* 一级：对话项 */
+.dialogue-item {
+    margin-bottom: 2px;
+}
+
+.dialogue-header {
+    display: flex;
+    align-items: center;
+    padding: 8px 12px;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    color: var(--color-text-primary);
+    font-size: 0.875rem;
+    transition: background 0.15s ease;
+    gap: 8px;
+}
+
+.dialogue-header:hover {
+    background: var(--color-bg-glass);
+}
+
+.dialogue-item.active .dialogue-header {
+    background: rgba(217, 119, 87, 0.08);
+}
+
+.expand-icon {
+    font-size: 0.7rem;
+    color: var(--color-text-muted);
+    width: 12px;
+    text-align: center;
+}
+
+.dialogue-title {
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* 二级：卡片容器 */
+.dialogue-cards-container {
+    padding-left: 20px;
+    /* Indent */
+    overflow: hidden;
+}
+
+.dialogue-item.collapsed .dialogue-cards-container {
+    display: none;
+}
+
+/* 二级：卡片项 */
+.card-item-nested {
+    display: flex;
+    align-items: center;
+    padding: 6px 8px;
+    border-radius: var(--radius-sm);
+    font-size: 0.8rem;
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    margin: 2px 0;
+    border-left: 2px solid transparent;
+    gap: 6px;
+}
+
+.card-item-nested:hover {
+    background: var(--color-bg-glass);
+}
+
+.card-item-nested.active {
+    background: rgba(217, 119, 87, 0.12);
+    color: var(--color-accent-primary);
+    border-left-color: var(--color-accent-primary);
+}
+
+.card-status-indicator {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    margin-right: 2px;
+}
+
+.card-status-indicator.saved {
+    background: var(--color-success);
+}
+
+.card-status-indicator.draft {
+    background: var(--color-warning);
+}
+
+.card-status-indicator.error {
+    background: var(--color-error);
+}
+
+.card-title {
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.card-status-icon {
+    font-size: 0.8rem;
+    opacity: 0.8;
+}
+
+.cards-loading,
+.no-cards-hint {
+    padding: 4px 8px;
+    font-size: 0.75rem;
+    color: var(--color-text-muted);
+    font-style: italic;
+}

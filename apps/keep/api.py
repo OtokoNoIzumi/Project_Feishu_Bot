@@ -231,8 +231,12 @@ def build_keep_router(settings: BackendSettings) -> APIRouter:
                                 filter_metrics_event(item, use_limited=True)
 
             saved_status = None
+            # 计算 image_hashes（始终返回给前端，用于 Card 持久化）
+            image_hashes = [hashlib.sha256(b).hexdigest() for b in images_bytes]
+            result["image_hashes"] = image_hashes
+            result["image_count"] = len(images_bytes)
+
             if auto_save:
-                image_hashes = [hashlib.sha256(b).hexdigest() for b in images_bytes]
                 occurred_dt = parse_occurred_at(result.get("occurred_at"))
 
                 if event_type_for_save == "unified":
