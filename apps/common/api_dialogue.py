@@ -72,14 +72,20 @@ def build_dialogue_router(settings: BackendSettings) -> APIRouter:
     @router.patch("/api/dialogues/{dialogue_id}", response_model=Dialogue, dependencies=[Depends(auth_dep)])
     async def update_dialogue(
         dialogue_id: str,
-        title: str = Body(..., embed=True),
+        title: str = Body(None, embed=True),
+        user_title: str = Body(None, embed=True),
         service: DialogueService = Depends(get_service)
     ):
         """Rename a dialogue."""
         dialogue = service.get_dialogue(dialogue_id)
         if not dialogue:
              raise HTTPException(status_code=404, detail="Dialogue not found")
-        dialogue.title = title
+        
+        if title is not None:
+            dialogue.title = title
+        if user_title is not None:
+            dialogue.user_title = user_title
+            
         return service.update_dialogue(dialogue)
 
     @router.delete("/api/dialogues/{dialogue_id}", dependencies=[Depends(auth_dep)])
@@ -101,6 +107,13 @@ def build_dialogue_router(settings: BackendSettings) -> APIRouter:
     ):
         """List result cards, optionally filtered by dialogue ID."""
         return service.list_cards(dialogue_id)
+
+    @router.get("/api/cards/recent", response_model=List[ResultCard], dependencies=[Depends(auth_dep)])
+    async def get_recent_cards(
+        service: DialogueService = Depends(get_service)
+    ):
+        """Get recent cards for sidebar display."""
+        return service.get_sidebar_recent_cards()
     
     @router.post("/api/cards", response_model=ResultCard, dependencies=[Depends(auth_dep)])
     async def create_card(

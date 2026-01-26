@@ -96,7 +96,7 @@ const AnalysisModule = {
             // 只有当有 dialogueId 时才进行持久化
             if (session.dialogueId) {
                 if (!session.cardCreated) {
-                    this.addMessage('卡片尚未建立，无法更新分析结果。', 'assistant');
+                    this.addMessage('分析结果卡片尚未建立，无法更新。', 'assistant');
                     return;
                 }
                 // 1. 生成或使用现有的 Card ID (如果是新 Session，生成 UUID; 如果已存在，沿用)
@@ -428,18 +428,38 @@ const AnalysisModule = {
     },
 
     _generateCardTitle(parsedData) {
-        if (!parsedData) return '未命名卡片';
+        if (!parsedData) return '未命名分析结果';
+
+        // Helper to get helper methods from Dashboard context if valid
+        const getUnit = () => (this.getEnergyUnit ? this.getEnergyUnit() : 'kJ');
+        const toKcal = (v) => (this.kJToKcal ? this.kJToKcal(v) : v / 4.184);
+
+        const dateStr = window.DateFormatter ? window.DateFormatter.formatSmart(new Date()) : '';
 
         if (parsedData.type === 'diet') {
-            const time = parsedData.summary.dietTime ?
-                (parsedData.summary.dietTime === 'snack' ? '加餐' :
-                    parsedData.summary.dietTime === 'breakfast' ? '早餐' :
-                        parsedData.summary.dietTime === 'lunch' ? '午餐' :
-                            parsedData.summary.dietTime === 'dinner' ? '晚餐' : '饮食记录')
-                : '饮食记录';
-            return `${time}分析`;
+            const timeMap = {
+                'snack': '加餐', 'breakfast': '早餐', 'lunch': '午餐', 'dinner': '晚餐'
+            };
+            const time = timeMap[parsedData.summary.dietTime] || '饮食';
+            const unit = getUnit();
+
+            // Energy
+            let energy = parsedData.summary.totalEnergy || 0;
+            if (unit === 'kcal') {
+                energy = toKcal(energy);
+            }
+            const energyStr = `${Math.round(energy)}${unit}`;
+
+            // Weight
+            const totalWeight = (parsedData.dishes || []).reduce((sum, d) => sum + (d.weight_g || 0), 0);
+            const weightStr = totalWeight > 0 ? `${totalWeight}g` : '';
+
+            return `${dateStr} ${time} ${energyStr} ${weightStr}`.trim();
         } else {
-            return 'Keep记录';
+            const count = (parsedData.scaleEvents?.length || 0) +
+                (parsedData.sleepEvents?.length || 0) +
+                (parsedData.bodyMeasureEvents?.length || 0);
+            return `${dateStr} Keep记录 ${count}项`.trim();
         }
     },
 

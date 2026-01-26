@@ -260,7 +260,16 @@ const Dashboard = {
     if (this.currentSession && this.currentSession.versions.length > 0) {
       this.renderResult(this.currentSession);
     } else {
-      this.clearResult();
+      // 如果没有 Session 但有 Dialogue ID，尝试重新加载对话 state (修复 Profile 回来消失的问题)
+      if (this.currentDialogueId) {
+        this.loadDialogue(this.currentDialogueId);
+      } else {
+        this.clearResult();
+      }
+    }
+    // 刷新 Sidebar 标题 (确保单位变更实时生效)
+    if (window.SidebarModule) {
+      window.SidebarModule.render();
     }
     // 刷新所有会话卡片标题（确保能量单位等设置生效）
     this.sessions.forEach(s => this.updateSessionCard(s));
@@ -423,7 +432,7 @@ const Dashboard = {
 
     } catch (e) {
       console.error("Failed to load card", e);
-      this.addMessage(`加载卡片失败: ${e.message}`, 'assistant');
+      this.addMessage(`加载分析结果失败: ${e.message}`, 'assistant');
     }
   },
 
@@ -526,7 +535,7 @@ const Dashboard = {
     session.dialogueId = this.currentDialogueId; // 关联 ID
     this.currentSession = session;
     if (!session.persistentCardId) {
-      session.persistentCardId = crypto.randomUUID ? crypto.randomUUID() : `card-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      session.persistentCardId = window.DateFormatter ? window.DateFormatter.generateId('card') : `card-${Date.now()}`;
     }
 
     // 2. 持久化用户消息 (异步)
@@ -569,7 +578,7 @@ const Dashboard = {
         session.cardCreated = true;
       } catch (e) {
         console.error('Create card failed:', e);
-        this.addMessage(`创建卡片失败: ${e.message}`, 'assistant');
+        this.addMessage(`创建分析结果失败: ${e.message}`, 'assistant');
         return;
       }
     }
@@ -1010,18 +1019,24 @@ const Dashboard = {
       ProfileModule.updateField('diet.energy_unit', u);
     }
 
-    // 立即刷新视图
+    // 立即刷新 Profile 视图本身
     if (this.view === 'profile') {
       this.renderProfileView();
     }
 
-    // 更新所有会话卡片 Title
-    this.sessions.forEach(s => this.updateSessionCard(s));
+    // Phase 2: 如果使用新版侧边栏，直接调用其 render 方法刷新标题
+    if (window.SidebarModule) {
+      window.SidebarModule.render();
+      // 同时更新 dashboard 内部 sessions 的 visual (如果需要)
+      // 但其实 SidebarModule 是动态从 card 数据读 title，不需要这里 updateSessionCard 改 DOM
+    } else {
+      // Legacy: 旧版侧边栏逻辑
+      this.sessions.forEach(s => this.updateSessionCard(s));
+      this.loadHistory(); // 清空并重置头
+      this.sessions.filter(s => s.isSaved).forEach(s => this.addHistoryItem(s));
+    }
 
-    // 更新历史列表
-    this.loadHistory(); // 清空并重置头
-    this.sessions.filter(s => s.isSaved).forEach(s => this.addHistoryItem(s));
-
+    // 如果当前正在查看 Analysis 视图且有数据，立即重绘 Dish 列表以更新单位
     if (this.view === 'analysis' && this.currentSession && this.currentSession.versions.length > 0) {
       this.recalculateDietSummary(false);
       this.renderDietDishes();

@@ -75,9 +75,12 @@ const StorageModule = {
             this.addMessage(isUpdate ? '✓ 记录已更新' : '✓ 记录已保存', 'assistant');
             this.updateButtonStates(session);
 
-            // 只有首次保存才添加历史项
-            if (!isUpdate) {
-                this.addHistoryItem(session);
+            // 刷新 Sidebar 以显示新保存的记录
+            if (window.SidebarModule) {
+                // 重新加载最近卡片 (包括刚保存的)
+                window.SidebarModule.loadRecentCards();
+                // 如果是新创建的 Record 且关联了 Dialogue，可能需要刷新 Dialogue List 或 Sidebar 状态
+                // 但通常 loadRecentCards 足够刷新顶部 "最近分析记录"
             }
 
         } catch (error) {
@@ -99,46 +102,13 @@ const StorageModule = {
         return 'unified';
     },
 
+    // Legacy Methods (Phase 1) - Deprecated
     loadHistory() {
-        const today = new Date().toLocaleDateString('zh-CN');
-        if (this.el.historyList) {
-            this.el.historyList.innerHTML = `
-        <div class="history-section-title">今天 ${today}</div>
-        <div class="history-item placeholder">暂无记录</div>
-        `;
-        }
+        // No-op in Phase 2
     },
 
     addHistoryItem(session) {
-        if (!this.el.historyList) return;
-
-        const list = this.el.historyList;
-        const placeholder = list.querySelector('.placeholder');
-        if (placeholder) placeholder.remove();
-
-        const item = document.createElement('div');
-        item.className = 'history-item';
-        item.dataset.sessionId = session.id;
-
-        if (session.mode === 'diet') {
-            const ver = session.versions[session.versions.length - 1];
-            const unit = this.getEnergyUnit();
-            // 这里 ver.parsedData 可能未定义，如果保存时处于 loading 状态（不应该发生）
-            // 假设已分析完成
-            if (ver && ver.parsedData) {
-                const val = unit === 'kcal'
-                    ? Math.round(Number(ver.parsedData.summary.totalEnergy))
-                    : Math.round(this.kcalToKJ(Number(ver.parsedData.summary.totalEnergy)));
-                item.textContent = `${val} ${unit}`;
-            } else {
-                item.textContent = 'Diet 记录';
-            }
-        } else {
-            item.textContent = 'Keep 记录';
-        }
-
-        item.onclick = () => this.selectSession(session.id);
-        list.appendChild(item);
+        // No-op in Phase 2
     },
 };
 

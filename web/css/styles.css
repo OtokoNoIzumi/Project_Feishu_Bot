@@ -12,6 +12,8 @@
   /* Thick paper/Cardboard */
   --color-bg-tertiary: #ebe6da;
   /* Darker paper/Tape */
+  --color-bg-surface: #ffffff;
+  /* Pure white for overlays/cards */
   --color-bg-glass: rgba(255, 255, 255, 0.65);
   /* Frosted tracing paper */
 

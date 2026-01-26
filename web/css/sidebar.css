@@ -1,4 +1,4 @@
-/* ========== Phase 2 Sidebar Styles ========== */
+/* ========== Phase 2 Sidebar Styles (Refined) ========== */
 
 .sidebar-container {
     display: flex;
@@ -30,10 +30,17 @@
     font-size: 0.875rem;
     transition: background 0.15s ease;
     gap: 8px;
+    position: relative;
+    /* For action btn positioning context if needed */
 }
 
 .dialogue-header:hover {
     background: var(--color-bg-glass);
+}
+
+.dialogue-header:hover .action-btn {
+    opacity: 1;
+    pointer-events: auto;
 }
 
 .dialogue-item.active .dialogue-header {
@@ -47,17 +54,51 @@
     text-align: center;
 }
 
-.dialogue-title {
+.dialogue-title-container {
     flex: 1;
+    overflow: hidden;
+}
+
+.dialogue-title {
+    display: block;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 
+/* Action Button (Three dots) */
+.dialogue-actions,
+.card-actions {
+    display: flex;
+    align-items: center;
+    margin-left: auto;
+    /* Push to right */
+    gap: 4px;
+}
+
+.action-btn {
+    opacity: 0;
+    /* Hidden by default */
+    pointer-events: none;
+    background: transparent;
+    border: none;
+    color: var(--color-text-muted);
+    cursor: pointer;
+    padding: 2px 4px;
+    border-radius: 4px;
+    font-size: 1.1rem;
+    line-height: 1;
+    transition: all 0.2s;
+}
+
+.action-btn:hover {
+    background: rgba(0, 0, 0, 0.05);
+    color: var(--color-text-primary);
+}
+
 /* 二级：卡片容器 */
 .dialogue-cards-container {
     padding-left: 20px;
-    /* Indent */
     overflow: hidden;
 }
 
@@ -69,6 +110,7 @@
 .card-item-nested {
     display: flex;
     align-items: center;
+    justify-content: space-between;
     padding: 6px 8px;
     border-radius: var(--radius-sm);
     font-size: 0.8rem;
@@ -76,17 +118,98 @@
     cursor: pointer;
     margin: 2px 0;
     border-left: 2px solid transparent;
-    gap: 6px;
+}
+
+.card-nested-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    overflow: hidden;
+    flex: 1;
+}
+
+/* Override card-title inside nested to reset margins since we use gap now */
+.card-item-nested .card-title {
+    margin: 0;
+    font-size: 0.8rem;
+    /* Keep it slightly smaller than recent */
+}
+
+/* Ensure card-time fits well */
+.card-item-nested .card-time {
+    font-size: 0.65rem;
 }
 
 .card-item-nested:hover {
     background: var(--color-bg-glass);
 }
 
+.card-item-nested:hover .action-btn {
+    opacity: 1;
+    pointer-events: auto;
+}
+
 .card-item-nested.active {
     background: rgba(217, 119, 87, 0.12);
     color: var(--color-accent-primary);
     border-left-color: var(--color-accent-primary);
+}
+
+/* Recent Cards Section */
+.recent-cards-list {
+    margin-bottom: 12px;
+}
+
+.card-item-recent {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    margin-bottom: 4px;
+    background: rgba(255, 255, 255, 0.4);
+    border: 1px solid transparent;
+    transition: all 0.2s;
+}
+
+.card-item-recent:hover {
+    background: var(--color-bg-surface);
+    border-color: var(--color-border);
+    box-shadow: var(--shadow-sm);
+}
+
+.card-item-recent:hover .action-btn {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.card-recent-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    overflow: hidden;
+    flex: 1;
+}
+
+.card-info {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.card-title {
+    font-size: 0.85rem;
+    color: var(--color-text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-weight: 500;
+}
+
+.card-time {
+    font-size: 0.7rem;
+    color: var(--color-text-muted);
 }
 
 .card-status-indicator {
@@ -108,16 +231,9 @@
     background: var(--color-error);
 }
 
-.card-title {
-    flex: 1;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
 .card-status-icon {
-    font-size: 0.8rem;
-    opacity: 0.8;
+    display: none;
+    /* Removed as per user request */
 }
 
 .cards-loading,
@@ -126,4 +242,145 @@
     font-size: 0.75rem;
     color: var(--color-text-muted);
     font-style: italic;
+}
+
+/* Context Menu */
+#context-menu {
+    position: fixed;
+    z-index: 9999;
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-md);
+    min-width: 120px;
+    padding: 4px 0;
+    pointer-events: auto;
+    animation: fadeIn 0.1s ease;
+}
+
+.context-menu-item {
+    padding: 8px 12px;
+    font-size: 0.85rem;
+    color: var(--color-text-primary);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: background 0.1s;
+}
+
+.context-menu-item:hover {
+    background: var(--color-bg-glass);
+}
+
+.context-menu-item.danger {
+    color: var(--color-error);
+}
+
+/* Rename Modal (Centered Overlay) */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(2px);
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s;
+}
+
+.modal-overlay.visible {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.modal-content {
+    background: var(--color-bg-surface);
+    width: 90%;
+    max-width: 320px;
+    padding: 20px;
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-xl);
+    transform: scale(0.95);
+    transition: transform 0.2s;
+    border: 1px solid var(--color-border);
+}
+
+.modal-overlay.visible .modal-content {
+    transform: scale(1);
+}
+
+.modal-title {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin-bottom: 16px;
+    color: var(--color-text-primary);
+}
+
+.modal-input {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    font-size: 0.95rem;
+    margin-bottom: 16px;
+    background: var(--color-bg-alt);
+    color: var(--color-text-primary);
+    outline: none;
+}
+
+.modal-input:focus {
+    border-color: var(--color-accent-primary);
+    background: var(--color-bg-surface);
+}
+
+.modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.modal-btn {
+    padding: 6px 14px;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    font-size: 0.9rem;
+    border: none;
+}
+
+.modal-btn.cancel {
+    background: transparent;
+    color: var(--color-text-muted);
+}
+
+.modal-btn.cancel:hover {
+    background: var(--color-bg-glass);
+    color: var(--color-text-primary);
+}
+
+.modal-btn.confirm {
+    background: var(--color-accent-primary);
+    color: white;
+}
+
+.modal-btn.confirm:hover {
+    opacity: 0.9;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(-5px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }

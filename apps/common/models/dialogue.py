@@ -15,6 +15,7 @@ class Dialogue(BaseModel):
     id: str = Field(..., description="Unique dialogue ID (UUID)")
     user_id: str
     title: str = Field(..., description="Dialogue title or summary")
+    user_title: Optional[str] = Field(None, description="Custom user-defined title")
     messages: List[DialogueMessage] = Field(default_factory=list)
     card_ids: List[str] = Field(default_factory=list, description="List of ResultCard IDs created within this dialogue")
     created_at: datetime
@@ -26,6 +27,7 @@ class ResultCard(BaseModel):
     user_id: Optional[str] = None
     mode: Literal['diet', 'keep']
     title: str
+    user_title: Optional[str] = Field(None, description="Custom user-defined title")
     source_user_note: Optional[str] = Field(None, description="Original user input for analysis")
     image_uris: List[str] = Field(default_factory=list, description="Original image file URIs")
     image_hashes: List[str] = Field(default_factory=list)

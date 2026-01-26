@@ -312,10 +312,10 @@ const API = {
     /**
      * 更新对话（如重命名）
      */
-    async updateDialogue(dialogueId, title) {
+    async updateDialogue(dialogueId, { title, user_title } = {}) {
         return this.request(`/dialogues/${dialogueId}`, {
             method: 'PATCH',
-            body: JSON.stringify({ title })
+            body: JSON.stringify({ title, user_title })
         });
     },
 
@@ -336,6 +336,13 @@ const API = {
         const params = {};
         if (dialogueId) params.dialogue_id = dialogueId;
         return this.get('/cards', params);
+    },
+
+    /**
+     * 获取最近卡片 (Sidebar)
+     */
+    async getRecentCards() {
+        return this.get('/cards/recent');
     },
 
     /**
