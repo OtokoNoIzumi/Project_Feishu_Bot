@@ -143,6 +143,8 @@ const ParserModule = {
             },
             dishes: dishes,
             advice: summary.advice || '',
+            extraImageSummary: data.extra_image_summary || '',
+            userNoteProcess: data.user_note_process || '',
             // 识别到的营养标签
             capturedLabels: (data.captured_labels || data.labels_snapshot || []).map(lb => ({
                 productName: lb.product_name || '',

@@ -29,16 +29,16 @@ def setup_stats_logger():
     stats_log_dir = "user_data/logs"
     os.makedirs(stats_log_dir, exist_ok=True)
     stats_log_file = os.path.join(stats_log_dir, "gemini_stats.jsonl")
-    
+
     s_logger = logging.getLogger("gemini_stats")
     s_logger.setLevel(logging.INFO)
     s_logger.propagate = False  # 不传给 root logger，避免重复
-    
+
     if not s_logger.handlers:
         file_handler = logging.FileHandler(stats_log_file, encoding='utf-8')
         file_handler.setFormatter(logging.Formatter('%(message)s'))
         s_logger.addHandler(file_handler)
-    
+
     return s_logger
 
 stats_logger = setup_stats_logger()
@@ -59,6 +59,9 @@ class GeminiClientConfig:
     model_name: str
     temperature: float = 0.2
     advice_temperature: float = 0.8
+    upload_timeout_seconds: int = 6
+    enable_final_upload_timeout_boost: bool = True
+    final_upload_timeout_seconds: int = 90
 
 
 class GeminiFilesCache:
@@ -229,6 +232,7 @@ class GeminiStructuredClient:
         """
         统一处理内容准备：并发上传图片（含 Metrics）+ 组装 Prompt。
         这是耗时操作（IO），应独立于 LLM 重试循环之外。
+        支持重试机制：最多4次，超时可配置，最后一次可加长。
         """
         contents = [prompt]
         metrics = {
@@ -237,34 +241,166 @@ class GeminiStructuredClient:
             "cache_hits": 0,
             "new_uploads": 0
         }
-        
+
         if not images:
             return contents, metrics
 
         metrics["image_count"] = len(images)
         start_time = time.time()
-        
-        try:
-            upload_tasks = [self._upload_bytes_if_needed(b) for b in images]
-            results = await asyncio.wait_for(
-                asyncio.gather(*upload_tasks), timeout=60
-            )
-            
-            # Unpack results: results is list of (File, bool)
-            uploaded_files = [r[0] for r in results]
-            hits = sum(1 for r in results if r[1])
-            misses = len(results) - hits
-            
-            metrics["cache_hits"] = hits
-            metrics["new_uploads"] = misses
-            
-            contents.extend(uploaded_files)
-        except asyncio.TimeoutError:
-            logger.error("[GeminiStats] Image upload timed out after 60s")
-            raise  # 让上层处理
-            
+
+        max_retries = 4
+        last_error = None
+        actual_attempt = 1  # 记录实际使用的尝试次数
+        base_upload_timeout = self.config.upload_timeout_seconds
+
+        def _recover_from_cache(pending: List[tuple]) -> None:
+            still_failed_indices = [i for i, (_, result) in enumerate(pending) if result is None]
+            for idx in still_failed_indices:
+                img_bytes = pending[idx][0]
+                file_hash = hashlib.sha256(img_bytes).hexdigest()
+                key_suffix = self._get_api_key_suffix()
+                cached = self.file_cache.get(file_hash, key_suffix)
+                if cached:
+                    file_obj = types.File(
+                        name=cached["name"], uri=cached["uri"], mime_type=cached["mime_type"]
+                    )
+                    pending[idx] = (img_bytes, (file_obj, True))
+                    logger.info(
+                        "[GeminiStats] Recovered upload from cache for image %d", idx
+                    )
+
+        # 跟踪每个图片的上传状态: (image_bytes, success_result)
+        # success_result 为 None 表示还未成功，为 (File, bool) 表示已成功
+        pending_images = [(img, None) for img in images]
+
+        for attempt in range(1, max_retries + 1):
+            actual_attempt = attempt
+            # 只重试失败的图片
+            failed_indices = [i for i, (img, result) in enumerate(pending_images) if result is None]
+            failed_images = [pending_images[i][0] for i in failed_indices]
+
+            if not failed_images:
+                # 所有图片都已成功
+                break
+
+            try:
+                # 并发上传失败的图片
+                upload_tasks = [self._upload_bytes_if_needed(img) for img in failed_images]
+                use_timeout = base_upload_timeout
+                if attempt == max_retries and self.config.enable_final_upload_timeout_boost:
+                    use_timeout = max(self.config.final_upload_timeout_seconds, base_upload_timeout)
+
+                results = await asyncio.wait_for(
+                    asyncio.gather(*upload_tasks, return_exceptions=True),
+                    timeout=use_timeout
+                )
+
+                # 更新成功的结果
+                for idx, upload_result in zip(failed_indices, results):
+                    if isinstance(upload_result, Exception):
+                        # 上传失败，保持 None 以便重试
+                        if not isinstance(upload_result, asyncio.CancelledError):
+                            logger.warning(
+                                "[GeminiStats] Upload attempt %d/%d failed for image %d: %s",
+                                attempt, max_retries, idx, str(upload_result)
+                            )
+                        # 检查缓存：即使失败，可能已经上传成功（异步操作）
+                        img_bytes = pending_images[idx][0]
+                        file_hash = hashlib.sha256(img_bytes).hexdigest()
+                        key_suffix = self._get_api_key_suffix()
+                        cached = self.file_cache.get(file_hash, key_suffix)
+                        if cached:
+                            # 从缓存中恢复成功的结果
+                            file_obj = types.File(
+                                name=cached["name"], uri=cached["uri"], mime_type=cached["mime_type"]
+                            )
+                            pending_images[idx] = (img_bytes, (file_obj, True))
+                            logger.info("[GeminiStats] Recovered upload from cache for image %d", idx)
+                    else:
+                        # 上传成功
+                        pending_images[idx] = (pending_images[idx][0], upload_result)
+
+                # 检查是否全部成功
+                if all(result is not None for _, result in pending_images):
+                    break
+
+            except asyncio.TimeoutError:
+                error_msg = f"Upload timed out after {use_timeout}s (attempt {attempt}/{max_retries})"
+                logger.warning(f"[GeminiStats] {error_msg}")
+                last_error = asyncio.TimeoutError(error_msg)
+
+                # 超时后检查缓存：可能部分图片已经上传成功但被取消了
+                _recover_from_cache(pending_images)
+
+                # 如果全部成功，退出循环
+                if all(result is not None for _, result in pending_images):
+                    break
+
+                continue
+            except Exception as e:
+                last_error = e
+                error_msg = str(e)
+                logger.warning(
+                    "[GeminiStats] Upload attempt %d/%d error: %s",
+                    attempt, max_retries, error_msg
+                )
+
+                # 异常后也检查缓存
+                _recover_from_cache(pending_images)
+
+                # 如果全部成功，退出循环
+                if all(result is not None for _, result in pending_images):
+                    break
+
+                continue
+
+        # 检查最终结果：必须全部成功，否则视为失败
+        final_results = [result for _, result in pending_images if result is not None]
+        failed_count = len(images) - len(final_results)
+        if failed_count > 0:
+            reason = None
+            if isinstance(last_error, asyncio.TimeoutError):
+                reason = str(last_error)
+            elif last_error:
+                reason = str(last_error)
+            error_msg = (
+                f"Upload failed after {max_retries} attempts; {reason}; "
+                f"{failed_count} image(s) not uploaded"
+            ) if reason else f"Upload failed; {failed_count} image(s) not uploaded"
+            logger.error(f"[GeminiStats] {error_msg}")
+
+            metrics["upload_duration_ms"] = (time.time() - start_time) * 1000
+            log_stat({
+                "type": "Upload",
+                "scene": scene,
+                "user_id": user_id,
+                "count": len(images),
+                "cache_hits": 0,
+                "new_uploads": 0,
+                "duration_ms": metrics["upload_duration_ms"],
+                "attempt": actual_attempt,
+                "max_retries": max_retries,
+                "status": "Failed"
+            })
+            raise Exception(error_msg)
+
+        # 统计成功的结果
+        hits = sum(1 for r in final_results if r[1])
+        misses = sum(1 for r in final_results if not r[1])
+
+        metrics["cache_hits"] = hits
+        metrics["new_uploads"] = misses
         metrics["upload_duration_ms"] = (time.time() - start_time) * 1000
-        
+
+        # 组装最终的文件列表（按原始顺序）
+        final_files = []
+        for _, result in pending_images:
+            if result is not None:
+                final_files.append(result[0])
+
+        contents.extend(final_files)
+
+        # 记录日志
         log_stat({
             "type": "Upload",
             "scene": scene,
@@ -273,8 +409,11 @@ class GeminiStructuredClient:
             "cache_hits": metrics["cache_hits"],
             "new_uploads": metrics["new_uploads"],
             "duration_ms": metrics["upload_duration_ms"],
+            "attempt": actual_attempt,
+            "max_retries": max_retries,
             "status": "Success"
         })
+
         return contents, metrics
 
     def _handle_auth_error(self, error: Exception) -> None:
@@ -288,7 +427,7 @@ class GeminiStructuredClient:
             self._init_client()
 
     async def generate_json_async(
-        self, prompt: str, images: List[bytes], schema: Dict[str, Any], 
+        self, prompt: str, images: List[bytes], schema: Dict[str, Any],
         scene: str = "unknown", user_id: str = "unknown"
     ) -> Dict[str, Any]:
         """
@@ -311,7 +450,7 @@ class GeminiStructuredClient:
         max_retries = 3
         last_error = None
         retry_timeout = max(40, round((145-upload_duration)/max_retries))
-        
+
 
         for attempt in range(1, max_retries + 1):
             try:
@@ -330,7 +469,7 @@ class GeminiStructuredClient:
                     timeout=retry_timeout
                 )
                 gen_duration = (time.time() - gen_start) * 1000
-                
+
                 # Extract Token Usage
                 usage_str = "N/A"
                 if hasattr(response, "usage_metadata"):
@@ -351,7 +490,7 @@ class GeminiStructuredClient:
                     "image_count": len(images),
                     "status": "Success"
                 })
-                
+
                 # Parse and Validate
                 if hasattr(response, "parsed") and response.parsed:
                     return response.parsed
@@ -376,14 +515,14 @@ class GeminiStructuredClient:
             except Exception as e:
                 last_error = e
                 self._handle_auth_error(e)
-                
+
                 error_msg = str(e)
                 if isinstance(e, asyncio.TimeoutError):
                     error_msg = f"Generation Timed Out ({retry_timeout}s)"
-                
+
                 if attempt < max_retries:
                     logger.warning(
-                        "[GeminiStats] Retry generate (attempt %d/%d) error: %s", 
+                        "[GeminiStats] Retry generate (attempt %d/%d) error: %s",
                         attempt, max_retries, error_msg
                     )
                     await asyncio.sleep(1)
@@ -393,7 +532,7 @@ class GeminiStructuredClient:
         return {"error": f"Gemini 调用失败: {last_error}"}
 
     async def generate_text_async(
-        self, prompt: str, images: List[bytes] = None, 
+        self, prompt: str, images: List[bytes] = None,
         scene: str = "unknown", user_id: str = "unknown"
     ) -> str:
         """
@@ -403,7 +542,7 @@ class GeminiStructuredClient:
             self._init_client()
             if not self.client_ready:
                 return "系统错误：Gemini 客户端无法初始化（请检查 API Key）。"
-        
+
         # Phase 1: Upload (Once)
         try:
             contents, _ = await self._prepare_contents_with_metrics(prompt, images, scene, user_id)
@@ -464,18 +603,18 @@ class GeminiStructuredClient:
             except Exception as e:
                 last_error = e
                 self._handle_auth_error(e)
-                
+
                 error_msg = str(e)
                 if isinstance(e, asyncio.TimeoutError):
                     error_msg = "Generation Timed Out (40s)"
-                
+
                 if attempt < max_retries:
                     logger.warning(
-                        "[GeminiStats] Retry text generate (attempt %d/%d) error: %s", 
+                        "[GeminiStats] Retry text generate (attempt %d/%d) error: %s",
                         attempt, max_retries, error_msg
                     )
                     await asyncio.sleep(1)
                 else:
                     logger.error("[GeminiStats] Text generate failed after %d attempts: %s", max_retries, error_msg)
-        
+
         return f"生成失败: {str(last_error)}"

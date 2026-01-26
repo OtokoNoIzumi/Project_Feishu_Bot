@@ -6,6 +6,7 @@ Aggregates user context (profile, today's intake) for diet advice.
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -18,6 +19,8 @@ from libs.core.config_loader import load_json
 from libs.core.project_paths import get_project_root
 from apps.common.record_service import RecordService
 from apps.profile.service import ProfileService
+from apps.common.user_bio_service import UserBioService
+from apps.common.utils import parse_occurred_at, format_diet_records_to_table
 
 def _diet_user_dir(user_id: str) -> Path:
 
@@ -96,12 +99,52 @@ def get_context_bundle(user_id: str, target_date: Optional[str] = None) -> Dict[
     # 2. 动态计算 today_so_far
     today_so_far = _calculate_today_so_far(user_id=user_id, target_date=target_date)
 
-    # 3. 构造返回结果
-    # 这里不做 demo fallback，如果 user_target 为空，Prompt 会看到空对象，LLM 应自行处理（按通用健康原则建议）
+    # 3. 获取 User Bio (长期记忆)
+    user_bio = UserBioService.load_bio(user_id)
+
+    # 4. 获取 Recent History (仅最近 3 天，且在 Provider 层预处理为精简文本)
+    # 计算日期范围 (Focus on immediate context)
+    end_date_obj = datetime.now()
+    if target_date:
+        try:
+            dt = parse_occurred_at(target_date)
+            if dt:
+                end_date_obj = dt
+        except Exception:
+            pass
+
+    # [Optimization] 只取最近 3 天，避免 token 浪费和无关历史干扰
+    start_date_obj = end_date_obj - timedelta(days=3)
+    start_str = start_date_obj.strftime("%Y-%m-%d")
+    end_str = end_date_obj.strftime("%Y-%m-%d")
+
+    raw_records = RecordService.get_unified_records_range(
+        user_id=user_id, start_date=start_str, end_date=end_str
+    )
+
+    # [Optimization] 在 Context 层直接完成格式化，输出为精简的文本行列表
+    # 格式: {"occurred_at": "...", "line_str": "YYYY-MM-DD|..."}
+    formatted_recent_history = []
+    
+    # Tool: Use shared formatter
+
+    # 简单调用 Utils 方法逐个格式化，保留 occurred_at 映射关系用于后续过滤
+    for rec in raw_records:
+        # format_diet_records_to_table expects a list
+        rows = format_diet_records_to_table([rec], as_list=True)
+        for row in rows:
+            formatted_recent_history.append({
+                "occurred_at": rec.get("occurred_at"),
+                "line_str": row
+            })
+
+    # 5. 构造返回结果
     out = {
         "user_target": user_target,
         "today_so_far": today_so_far,
-        "meta": {"source": "user_data"},
+        "user_bio": user_bio,
+        "recent_history": formatted_recent_history,
+        "meta": {"source": "user_data", "history_range": f"{start_str} to {end_str}"},
     }
 
     return out

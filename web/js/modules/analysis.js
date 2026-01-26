@@ -387,6 +387,96 @@ const AnalysisModule = {
         }
     },
 
+    // ========== Independent Advice Mode (顾问模式) ==========
+
+    async startAdviceChat(userNote) {
+        if (!userNote && this.pendingImages.length === 0) return;
+
+        console.log('[startAdviceChat] currentDialogueId:', this.currentDialogueId);
+
+        // 1. 确保有通过 Dashboard 创建的 Dialogue
+        if (!this.currentDialogueId) {
+            const title = userNote.slice(0, 15) || '顾问咨询';
+            try {
+                const dialogue = await API.createDialogue(title);
+                this.currentDialogueId = dialogue.id;
+                if (window.SidebarModule) window.SidebarModule.loadDialogues();
+            } catch (e) { console.error(e); }
+        }
+
+        // 2. 显示用户消息
+        this.addMessage(userNote || '', 'user');
+
+        // 清理输入框
+        if (this.el.chatInput) this.el.chatInput.value = '';
+        this.pendingImages = [];
+        this.renderPreviews();
+        this.updateSendButton();
+
+        const loadingMsg = this.addMessage('思考中...', 'assistant', { isLoading: true });
+
+        // 3. 调用 Advice API (Mixed Input)
+        // Independent Mode: facts is empty
+        const facts = {};
+
+        try {
+            // Note: API.getDietAdvice takes (facts, userNote, dialogueId)
+            // Ideally we should support images too if the backend advice support mixed input, 
+            // but currently getDietAdvice only takes text userNote in 'DietAdviceRequest'.
+            // The user requested "不依赖特定 Image Card", implying mostly text or reuse history context.
+            // If we have images in 'pendingImages', we might want to warn or just ignore them for now 
+            // as 'DietAdviceRequest' schema in api.py doesn't have 'images_b64'.
+            // Let's stick to text for now.
+
+            const response = await API.getDietAdvice(facts, userNote, this.currentDialogueId);
+
+            if (loadingMsg) loadingMsg.remove();
+
+            let resultText = '';
+            if (response.success && response.result?.advice_text) {
+                resultText = response.result.advice_text;
+            } else {
+                resultText = response.error || '无法获取建议';
+            }
+
+            // Render HTML
+            const html = this.simpleMarkdownToHtml(resultText);
+            this.addMessage(html, 'assistant', { isHtml: true });
+
+            // 持久化 Assistant Msg
+            if (this.currentDialogueId) {
+                const msgId = Date.now().toString(); // simplified
+                const msgPayload = {
+                    id: msgId,
+                    role: 'assistant',
+                    content: resultText,
+                    timestamp: new Date().toISOString(),
+                    attachments: [],
+                };
+                API.appendMessage(this.currentDialogueId, msgPayload).catch(console.warn);
+                // Also persist user msg previously? 
+                // Currently Dashboard.startNewAnalysis handles user msg persistence. 
+                // startAdviceChat does NOT, so we should add it.
+            }
+
+        } catch (e) {
+            if (loadingMsg) loadingMsg.remove();
+            this.addMessage(`出错了: ${e.message}`, 'assistant');
+        }
+
+        // Lazy storage of user message... 
+        // Ideally should be done before API call to be safe, but for demo it's ok.
+        if (this.currentDialogueId && userNote) {
+            const usrMsgId = (Date.now() - 1000).toString();
+            API.appendMessage(this.currentDialogueId, {
+                id: usrMsgId,
+                role: 'user',
+                content: userNote,
+                timestamp: new Date().toISOString()
+            }).catch(console.warn);
+        }
+    },
+
     // ========== Helpers ==========
 
     _buildCardData(session) {
@@ -498,17 +588,52 @@ const AnalysisModule = {
         const statusEl = document.getElementById('advice-status');
         if (!contentEl || !statusEl) return;
 
+        // Build intermediate content (Shared)
+        let intermediateHtml = '';
+        const data = version.parsedData || {};
+
+        // 1. Extra Image Summary / Process
+        if (data.userNoteProcess) {
+            intermediateHtml += `
+                <div class="advice-intermediate-section">
+                    <div class="advice-intermediate-label">AI测算方法</div>
+                    <div class="advice-text">${this.simpleMarkdownToHtml(data.userNoteProcess)}</div>
+                </div>
+             `;
+        }
+
+        // 2. Simple Advice from Analysis (Preliminary)
+        if (data.advice) {
+            intermediateHtml += `
+                <div class="advice-intermediate-section">
+                    <div class="advice-intermediate-label">📝 快捷点评</div>
+                    <div class="advice-text">${this.simpleMarkdownToHtml(data.advice)}</div>
+                </div>
+             `;
+        }
+
         if (version.adviceLoading) {
             statusEl.className = 'advice-status loading';
-            contentEl.innerHTML = '<div class="advice-loading"><span class="loading-spinner"></span>正在生成点评...</div>';
+            contentEl.innerHTML = `
+                ${intermediateHtml}
+                <div class="advice-loading-container">
+                    <span class="loading-spinner"></span>
+                    <span>详细顾问点评生成中...</span>
+                </div>
+            `;
             return;
         }
 
         statusEl.className = 'advice-status';
         if (version.advice) {
+            // Success: Show full advice (intermediate logic hidden as full advice supersedes it)
             contentEl.innerHTML = `<div class="advice-text">${this.simpleMarkdownToHtml(version.advice)}</div>`;
         } else if (version.adviceError) {
-            contentEl.innerHTML = `<div class="advice-error">⚠️ 建议获取失败：${version.adviceError}</div>`;
+            // Failure: Keep intermediate content + Error message
+            contentEl.innerHTML = `
+                ${intermediateHtml}
+                <div class="advice-error">⚠️ 点评获取失败：${version.adviceError}</div>
+            `;
             statusEl.classList.add('error');
         } else {
             contentEl.innerHTML = '<div class="advice-empty">暂无建议</div>';

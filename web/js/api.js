@@ -161,10 +161,11 @@ const API = {
      * @param {object} facts - 饮食数据
      * @param {string} userNote - 用户说明
      */
-    async getDietAdvice(facts, userNote = '') {
+    async getDietAdvice(facts, userNote = '', dialogueId = null) {
         return this.post('/diet/advice', {
             facts,
             user_note: userNote,
+            dialogue_id: dialogueId,
         });
     },
 

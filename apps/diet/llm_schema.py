@@ -140,3 +140,30 @@ DIET_LLM_SCHEMA = {
     },
     "required": ["meal_summary", "dishes", "occurred_at"],
 }
+
+ADVISOR_CHAT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "reply_text": {
+            "type": "string",
+            "description": "回复用户的文本内容。口语化、有温度，像专业的营养顾问一样沟通。",
+        },
+        "user_bio_update": {
+            "type": "object",
+            "description": "基于本次对话，需要对显性用户画像进行的增删操作。如果没有更新，该字段可为空。\n警告：严禁记录AI的建议（如'建议多吃蛋白'）或已有的结构化数据（如体重目标）。只记录用户明确表达的个人偏好/约束。",
+            "properties": {
+                "add": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "需要新增的用户事实/偏好。例如：'用户不爱吃香菜'、'用户最近在进行低碳饮食'。禁止包含：'建议用户...'、'用户需要...'。",
+                },
+                "remove": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "需要移除的过时用户事实/偏好",
+                },
+            },
+        },
+    },
+    "required": ["reply_text"],
+}

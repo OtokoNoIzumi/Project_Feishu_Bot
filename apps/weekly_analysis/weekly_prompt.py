@@ -10,67 +10,8 @@ from datetime import date
 from typing import Any, Dict, List
 
 from apps.weekly_analysis.data_collector import WeeklyDataBundle
+from apps.common.utils import format_diet_records_to_table
 
-
-def _format_diet_records_for_prompt(records: List[Dict]) -> str:
-    """
-    Format diet records for prompt consumption.
-    Uses compact table format with dish-level details.
-    Format: date|meal|dish_name|weight_g|energy_kj|P|F|C|Na|fiber
-    """
-    if not records:
-        return "无饮食记录"
-
-    # 防御性排序：确保严格按时间顺序 (ISO string sort works for date+time)
-    records = sorted(records, key=lambda x: x.get("occurred_at", ""))
-
-    # Header row
-    lines = ["日期|餐|菜品|重量g|能量kJ|蛋白g|脂肪g|碳水g|钠mg|纤维g"]
-    lines.append("-" * 80)
-
-    for rec in records:
-        occurred = rec.get("occurred_at", "")[:10]
-        meal_summary = rec.get("meal_summary", {})
-        diet_time = meal_summary.get("diet_time", "?")
-
-        # Map meal type to short Chinese
-        meal_map = {"breakfast": "早", "lunch": "午", "dinner": "晚", "snack": "加"}
-        meal_short = meal_map.get(diet_time, diet_time[:1])
-
-        dishes = rec.get("dishes", [])
-
-        for dish in dishes:
-            dish_name = dish.get("standard_name", "?")
-
-            # Aggregate dish-level totals from ingredients
-            d_weight = 0.0
-            d_energy = 0.0
-            d_protein = 0.0
-            d_fat = 0.0
-            d_carbs = 0.0
-            d_sodium = 0.0
-            d_fiber = 0.0
-
-            for ing in dish.get("ingredients", []):
-                d_weight += float(ing.get("weight_g", 0) or 0)
-                d_energy += float(ing.get("energy_kj", 0) or 0)
-                macros = ing.get("macros", {})
-                d_protein += float(macros.get("protein_g", 0) or 0)
-                d_fat += float(macros.get("fat_g", 0) or 0)
-                d_carbs += float(macros.get("carbs_g", 0) or 0)
-                d_sodium += float(macros.get("sodium_mg", 0) or 0)
-                d_fiber += float(macros.get("fiber_g", 0) or 0)
-
-            # Format row
-            row = (
-                f"{occurred}|{meal_short}|{dish_name}|"
-                f"{d_weight:.0f}|{d_energy:.0f}|"
-                f"{d_protein:.1f}|{d_fat:.1f}|{d_carbs:.1f}|"
-                f"{d_sodium:.0f}|{d_fiber:.1f}"
-            )
-            lines.append(row)
-
-    return "\n".join(lines)
 
 
 def _format_scale_records_for_prompt(
@@ -223,7 +164,8 @@ def build_weekly_analysis_prompt(bundle: WeeklyDataBundle) -> str:
     week_range = f"{bundle.week_start} 至 {bundle.week_end}"
 
     # Format data sections
-    diet_data = _format_diet_records_for_prompt(bundle.diet_records)
+    # Format data sections
+    diet_data = format_diet_records_to_table(bundle.diet_records)
     scale_data = _format_scale_records_for_prompt(
         bundle.scale_records, bundle.baseline_scale_record
     )

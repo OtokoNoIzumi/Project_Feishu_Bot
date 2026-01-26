@@ -1426,6 +1426,41 @@
     border-radius: var(--radius-sm);
 }
 
+.advice-text h1,
+.advice-text h2,
+.advice-text h3 {
+    margin: 0.8em 0 0.4em;
+    font-weight: 600;
+    color: var(--color-accent-primary);
+}
+
+.advice-text h1 {
+    font-size: 1.1rem;
+}
+
+.advice-text h2 {
+    font-size: 1rem;
+}
+
+.advice-text h3 {
+    font-size: 0.9rem;
+}
+
+.advice-intermediate-section {
+    margin-bottom: var(--spacing-md);
+    padding-bottom: var(--spacing-md);
+    border-bottom: 1px dashed var(--color-border);
+}
+
+.advice-intermediate-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--color-text-secondary);
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
 /* 营养点评可折叠交互 */
 .advice-header.collapsible {
     cursor: pointer;

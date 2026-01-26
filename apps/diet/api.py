@@ -54,6 +54,7 @@ class DietAdviceRequest(BaseModel):
 
     facts: Dict[str, Any]
     user_note: str = Field(default="", description="用户输入（可选，用于理解用户意图）")
+    dialogue_id: Optional[str] = Field(default=None, description="当前的对话ID（用于获取上下文历史）")
 
 
 class DietAdviceResponse(BaseModel):
@@ -253,7 +254,10 @@ def build_diet_router(settings: BackendSettings) -> APIRouter:
         async with semaphore:
             await limiter.check_and_wait()
             advice = await advice_uc.execute_async(
-                user_id=user_id, facts=req.facts, user_note=req.user_note
+                user_id=user_id, 
+                facts=req.facts, 
+                user_note=req.user_note,
+                dialogue_id=req.dialogue_id
             )
             print('test-advice', advice)
             if isinstance(advice, dict) and advice.get("error"):

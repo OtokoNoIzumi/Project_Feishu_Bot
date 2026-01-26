@@ -361,7 +361,12 @@ const DietEditModule = {
         const totals = this.currentDietTotals || {};
         const mealName = this.currentDietMeta?.mealName || '饮食记录';
         const dietTime = this.currentDietMeta?.dietTime || '';
-        const totalEnergyKcal = Number(totals.totalEnergy) || 0;
+        const ExtraImageSummary = this.currentSession?.versions[this.currentSession.currentVersion - 1]?.parsedData?.extraImageSummary || '';
+
+        // 1. 获取原始 Raw Result 以保留 Metadata (status, saved_record_id等)
+        const saved = this.currentSession.isSaved;
+        // console.log('currentSession', this.currentSession);
+        // console.log('currentDietMeta', this.currentDietMeta);
 
         const editedDishes = (this.currentDishes || []).filter(d => d.enabled !== false).map(d => {
             // A. AI 识别菜式
@@ -423,7 +428,10 @@ const DietEditModule = {
             custom_note: lb.customNote || '',
         }));
 
+        // 2. 构造并合并返回对象
+        // 优先级：编辑后的数据 > 原始数据
         return {
+            isSaved: saved,
             meal_summary: {
                 meal_name: mealName,
                 diet_time: dietTime,
@@ -437,6 +445,7 @@ const DietEditModule = {
             },
             dishes: editedDishes,
             captured_labels: editedLabels,
+            extra_image_summary: ExtraImageSummary,
             occurred_at: this.currentDietMeta?.occurredAt || null,
         };
     },

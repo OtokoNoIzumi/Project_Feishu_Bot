@@ -178,11 +178,11 @@ const Dashboard = {
 
   switchMode(mode) {
     this.mode = mode;
-    this.currentDialogueId = null; // 切换模式时重置对话
+    // this.currentDialogueId = null; // Do NOT clear dialogue ID on mode switch to allow context resume
     document.querySelectorAll('.mode-btn').forEach(btn => {
       btn.classList.toggle('active', btn.dataset.mode === mode);
     });
-    // 切换模式时清空右侧
+    // 切换模式时清空右侧 (但保留 ID)
     this.clearResult();
   },
 
@@ -520,6 +520,12 @@ const Dashboard = {
       return;
     }
 
+    // Advice 模式：调用 AnalysisModule.startAdviceChat
+    if (this.mode === 'advice') {
+      await this.startAdviceChat(text);
+      return;
+    }
+
     // 1. 确保有后端 Dialogue (Phase 2)
     if (!this.currentDialogueId) {
       try {
@@ -691,6 +697,7 @@ const Dashboard = {
   reAnalyze: AnalysisModule.reAnalyze,
   retryLastAnalysis: AnalysisModule.retryLastAnalysis,
   executeAnalysis: AnalysisModule.executeAnalysis,
+  startAdviceChat: AnalysisModule.startAdviceChat, // Added delegation for startAdviceChat
   _generateCardTitle: AnalysisModule._generateCardTitle,
   _generateCardSummary: AnalysisModule._generateCardSummary,
   _generateMessageTitle: AnalysisModule._generateMessageTitle,
