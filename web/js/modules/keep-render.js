@@ -12,7 +12,7 @@ const KeepRenderModule = {
     let html = `<div class="result-card">
       <div class="result-card-header">
         <div class="result-icon">💪</div>
-        <div>
+      <div>
           <div class="result-card-title">Keep 数据</div>
           <div class="result-card-subtitle">
             ${data.scaleEvents.length ? `体重×${data.scaleEvents.length} ` : ''}
@@ -20,6 +20,13 @@ const KeepRenderModule = {
             ${data.bodyMeasureEvents.length ? `围度×${data.bodyMeasureEvents.length}` : ''}
           </div>
         </div>
+        ${session.versions.length > 1 ? `
+          <div class="version-nav">
+            <button class="version-btn" onclick="Dashboard.switchVersion(-1)" ${session.currentVersion <= 1 ? 'disabled' : ''}>◀</button>
+            <span class="version-label">v${version.number || '?'}/${session.versions.length}</span>
+            <button class="version-btn" onclick="Dashboard.switchVersion(1)" ${session.currentVersion >= session.versions.length ? 'disabled' : ''}>▶</button>
+          </div>
+        ` : ''}
       </div>
     `;
 

@@ -262,7 +262,7 @@ apps/weekly_analysis/
   - 支持 `week_offset` 参数（-1=上周, 0=本周）
   - 支持直接指定 `week_start` 日期
 - [x] 注册到 `apps/app.py`
-- [ ] 验证数据采集正确性（需启动后端服务测试）
+- [x] 验证数据采集正确性（需启动后端服务测试）
 
 #### MVP2：AI综合分析 ✅ 代码完成
 - [x] `analysis_schema.py`: 定义 AI 输出的 Pydantic Schema
@@ -451,34 +451,33 @@ apps/weekly_analysis/
 ### Phase 1: 核心基石 (Foundation)
 *目标：确保数据不丢失，服务可部署，访问有门禁。*
 
-1.  **[High] Profile 云端持久化 (Profile Persistence)** ✅ 已完成 (前端)
+1.  **[High] Profile 云端持久化 (Profile Persistence)** ✅ 已完成 (前端+后端)
     *   *Task*: 开发 `GET/POST /api/user/profile` 接口，前端 `profile.js` 改为从后端读写。
     *   *Value*: 用户刷新/换设备配置不丢失，是所有个性化分析的基础。
-    *   *User Idea*: 增加 profile 的保存，读取，快速选择，以及单独运转利用右侧llm对话的 profile 编辑模式。
-    *   *Agent Note*: 当前 `profile.js` 已有基础结构。需要：
-        *   后端增加 API 支持 Profile 预设 (如 "减脂期", "增肌期")。
-        *   前端增加 Profile 下拉切换器。
-        *   右侧面板完全复用 Profile 编辑器组件，支持脱离 Chat 上下文的独立路由。    
+    *   *Status*: **Done**. 后端已通过 Github/Google OAuth 绑定 ID，Profile 数据已云端隔离存储。
 
-2.  **[High] 简易邀请码与权限控制 (Auth & Gatekeeping)**
-    *   *Task*: 后端增加 `invitation_codes.json` 白名单机制。无码用户仅能试用 3 天或 5 条。
+2.  **[High] 简易邀请码 (Invitation Codes) & 身份鉴权 (Auth)** ✅ 已完成
+    *   *Task*: 集成 CIAM (Clerk) 并配合本地白名单机制。
     *   *Value*: 保护 API Token，为后续收费做准备。
-2.1. **登录方式扩展 (Clerk Alternatives/Codes)**
-    *   *User Idea*: 了解 clerk 的一些备选登陆方式，考虑前期的用户注册用邀请码或者 code 做必备的功能激活，没有 code 的账号就只能试用 3 天。
-    *   *Agent Note*:
-        *   Clerk 支持 "Allowlist" 或 Custom Flow。
-        *   更简单的做法：App 逻辑层限制。User 登录后，检查 DB 中是否有 Active Subscription 或 Valid Invitation Code。如果没有，限制 Usage Count 或 Time。
-3.  **[High] 生产环境部署架构 (Deployment Setup)**
-    *   *Task*: 配置 `docker-compose` 或 Nginx，统一反代 前端静态文件 (`/`) 和 后端 API (`/api`)。
+    *   *Implementation*: 
+        *   **Auth**: Clerk (Google OAuth / Email)。
+        *   **Gatekeeper**: 后端 `apps/profile/gatekeeper.py` 拦截未授权用户。
+        *   **Invitations**: 系统级邀请码机制 (`invitation_codes.json`)。
+
+3.  **[High] 生产环境部署架构 (Deployment Setup)** ✅ 已完成
+    *   *Task*: 配置 Windows Server + Nginx + DNS + SSL。
     *   *Value*: 解决跨域与 HTTPS 问题，摆脱本地运行限制。
-    *   *User Idea*: 为啥不尝试做github上试试？总之我虽然弄过ssl的api证书，但确实没直接弄过网站……
+    *   *Status*: **Production Ready**. 
+        *   Domain: `izumilife.site` (Production), `localhost` (Dev).
+        *   Auth: Clerk Production Environment (Global).
+        *   Server: Windows Server 2022 + NSSM + Nginx Reverse Proxy.
 
 
 
 ### Phase 2: 交互重构 (Interaction & IA)
 *目标：像一个成熟的 Chatbot，而非文件编辑器。*
 
-4.  **[High] 左侧双层导航 (Sidebar Tree View)**
+4.  **[High] 左侧双层导航 (Sidebar Tree View)** ✅
     *   *Task*: 重构 Sidebar。
         *   Level 1: **Sessions** (以时间/话题命名的会话)。
         *   Level 2: **Cards** (展开显示该会话内的“早餐”、“Keep记录”等卡片快捷入口)。
@@ -486,6 +485,7 @@ apps/weekly_analysis/
         *   **两级结构 (Tree View)**: 一级是 Session (对话)，二级是 Session 内生成的 Analysis Cards (分析结果)。
         *   **卡片状态**: 二级菜单中的卡片应显示状态（如：✅ 已保存, ⏳ 待处理, 📝 草稿），不仅仅是标题。
         *   **目的**: 方便不翻阅冗长的 Chat History 就能快速定位到具体的“mm-dd早饭”、“午饭”卡片进行编辑。
+
 5.  **[Medium] 独立 Advice 模式 (Independent Mode)**
     *   *Task*: 右侧面板增加“顾问模式”开关，允许脱离特定卡片进行自由问答。
     *   *Value*: 增强 AI 的陪伴感和顾问属性。
@@ -500,7 +500,7 @@ apps/weekly_analysis/
     *   *Task*: 后端接收图片生成 300px 缩略图持久化，原图依赖 Gemini 48h 有效期。Chat History 仅加载缩略图。
     *   *Value*: 降低服务器存储成本，提升加载速度。
 
-7.  **[Medium] 错误状态恢复 (Error Recovery)**
+7.  **[Medium] 错误状态恢复 (Error Recovery)** ✅
     *   *Task*: 分析失败时保留用户上传的图和文字，允许修改 Note 后重试。
     *   *Value*: 避免用户挫败感。
     *   *User Idea*: 分析失败的时候不要展示空页面，至少把用户输入信息列出来：图片略缩图+可编辑的 user note。

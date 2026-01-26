@@ -53,7 +53,13 @@ const Dashboard = {
     // 保存原始 footer HTML（用于从 Profile 切回时恢复）
     this._originalFooterHtml = this.el.resultFooter?.innerHTML || '';
 
+    // 初始化 Footer 模块
+    if (window.FooterModule) {
+      window.FooterModule.init();
+    }
+
     // 初始化 Auth（非阻塞）
+
     console.log(`${getLogTime()} calling Auth.init()`);
     Auth.init();
 
@@ -163,14 +169,8 @@ const Dashboard = {
     // 发送（新建分析）
     this.el.sendBtn?.addEventListener('click', () => this.startNewAnalysis());
 
-    // 重新分析（在当前 session 上添加新版本）
-    this.el.reAnalyzeBtn?.addEventListener('click', () => this.reAnalyze());
+    // NOTE: reAnalyzeBtn, updateAdviceBtn, saveBtn 的事件由 FooterModule 统一管理
 
-    // 更新建议（调用 advice API）
-    this.el.updateAdviceBtn?.addEventListener('click', () => this.updateAdvice());
-
-    // 保存记录
-    this.el.saveBtn?.addEventListener('click', () => this.saveRecord());
 
     // 初始化 Profile
     this.profile = this.loadProfile();
@@ -370,9 +370,13 @@ const Dashboard = {
     this.currentSession = session;
     SessionModule.highlightSession(sessionId);
 
-    // 渲染最新版本
+    // 渲染最新版本或 Draft 状态
     if (session.versions.length > 0) {
       this.renderResult(session);
+      if (this.isMobile()) this.setResultPanelOpen(true);
+    } else {
+      // Phase 2: 如果是 Draft（无分析结果），显示输入预览页
+      this.renderDraftState(session);
       if (this.isMobile()) this.setResultPanelOpen(true);
     }
   },
@@ -393,7 +397,8 @@ const Dashboard = {
         // 构造 Session 对象
         // 注意: 后端 ResultCard.versions 结构需与前端对齐
         // 这里假设 version item 就是 parsedData 的超集
-        const versions = (cardData.versions || []).map(v => ({
+        const versions = (cardData.versions || []).map((v, i) => ({
+          number: i + 1,
           createdAt: new Date(v.created_at || new Date()),
           userNote: v.user_note || '',
           rawResult: v.raw_result || {},
@@ -419,7 +424,7 @@ const Dashboard = {
           imageUrls: imageUrls,
           imageHashes: cardData.image_hashes || [],
           versions: versions,
-          currentVersion: cardData.current_version || versions.length,
+          currentVersion: cardData.current_version || (versions.length > 0 ? versions.length : 0),
           isSaved: cardData.status === 'saved',
           savedRecordId: cardData.saved_record_id,
           savedData: null
@@ -569,7 +574,7 @@ const Dashboard = {
           image_uris: [],
           image_hashes: [],
           versions: [],
-          current_version: 0,
+          current_version: 1,
           status: 'analyzing',
           created_at: nowIso,
           updated_at: nowIso
@@ -761,31 +766,10 @@ const Dashboard = {
       this.renderKeepResult(session, version);
     }
 
-    // 恢复原始 footer 内容（Diet/Keep 按钮）
-    this.restoreOriginalFooter();
-    this.el.resultFooter.classList.remove('hidden');
     this.updateButtonStates(session);
   },
 
-  /**
-   * 恢复原始 footer 内容（init 时已缓存）
-   */
-  restoreOriginalFooter() {
-    if (this._originalFooterHtml) {
-      this.el.resultFooter.innerHTML = this._originalFooterHtml;
-      // 重新绑定按钮事件
-      this.bindFooterButtons();
-    }
-  },
 
-  /**
-   * 绑定 footer 按钮事件
-   */
-  bindFooterButtons() {
-    document.getElementById('re-analyze-btn')?.addEventListener('click', () => Dashboard.reAnalyze());
-    document.getElementById('update-advice-btn')?.addEventListener('click', () => Dashboard.updateAdvice());
-    document.getElementById('save-btn')?.addEventListener('click', () => Dashboard.saveRecord());
-  },
 
   // 委托给 DietRenderModule
   renderDietResult: DietRenderModule.renderDietResult,
@@ -1045,8 +1029,11 @@ const Dashboard = {
 
   // ========== 保存 ==========
 
+  // ========== 保存 ==========
+
   // 委托给 StorageModule
   saveRecord: StorageModule.saveRecord,
+  saveCard() { return this.saveRecord(); }, // Alias for FooterModule compatibility
   determineKeepEventType: StorageModule.determineKeepEventType,
 
   // ========== 状态管理 ==========
@@ -1054,22 +1041,42 @@ const Dashboard = {
   showLoading() {
     // 仅状态提示：不遮挡/不替换整个确认面板内容
     this.updateStatus('loading');
-    if (this.el.resultFooter) {
+    if (window.FooterModule) {
+      window.FooterModule.update(FooterState.HIDDEN);
+    } else if (this.el.resultFooter) {
       this.el.resultFooter.classList.add('hidden');
     }
   },
 
-  showError(message) {
+  showError(error) {
     this.updateStatus('');
+    const errorInfo = window.ErrorHandlerModule
+      ? window.ErrorHandlerModule.getFriendlyError(error)
+      : { title: '分析失败', message: (error.message || error || '未知错误') };
+
+    // 默认展示逻辑：只要存在当前会话，就认为是分析流错误，回到 Draft 态展示错误横幅
+    if (this.currentSession && typeof this.renderDraftState === 'function') {
+      this.currentSession.lastError = errorInfo;
+      this.renderDraftState(this.currentSession);
+      return;
+    }
+
+    // 兜底：无活跃会话时的简洁提示
+    if (window.ToastUtils) {
+      ToastUtils.show(`${errorInfo.title}: ${errorInfo.message}`, 'error');
+    }
+
     this.el.resultContent.innerHTML = `
       <div class="empty-state">
-        <div class="empty-icon">⚠️</div>
-        <h3>分析失败</h3>
-        <p>${message}</p>
-        <button class="btn btn-secondary" onclick="Dashboard.retryLastAnalysis()" style="margin-top: 16px;">↻ 重试</button>
+        <div style="font-size:1.5rem; margin-bottom:12px;">⚠️</div>
+        <p class="text-error" style="font-weight:650;">${errorInfo.title}</p>
+        <p style="font-size:0.9rem; color:var(--color-text-secondary);">${errorInfo.message}</p>
       </div>
     `;
-    this.el.resultFooter.classList.add('hidden');
+
+    if (window.FooterModule) {
+      window.FooterModule.update(FooterState.HIDDEN);
+    }
   },
 
   clearResult() {
@@ -1082,7 +1089,11 @@ const Dashboard = {
         </div>
       </div>
     `;
-    this.el.resultFooter.classList.add('hidden');
+    if (window.FooterModule) {
+      window.FooterModule.update(FooterState.HIDDEN); // Or EMPTY
+    } else if (this.el.resultFooter) {
+      this.el.resultFooter.classList.add('hidden');
+    }
     this.el.resultTitle.textContent = '分析结果';
     this.updateStatus('');
   },
@@ -1106,27 +1117,24 @@ const Dashboard = {
   },
 
   updateButtonStates(session) {
-    if (!session) return;
+    if (!window.FooterModule) return;
 
-    // 更新建议按钮（只对 diet 模式有效）
-    if (this.el.updateAdviceBtn) {
-      this.el.updateAdviceBtn.disabled = session.mode !== 'diet';
+    if (!session) {
+      window.FooterModule.update(FooterState.HIDDEN);
+      return;
     }
 
-    // 保存按钮状态
-    if (this.el.saveBtn) {
-      const getIcon = (name) => window.IconManager ? window.IconManager.render(name) : '';
+    // Draft 状态特殊处理
+    if (!session.versions || session.versions.length === 0) {
+      window.FooterModule.update(FooterState.DRAFT, session);
+      return;
+    }
 
-      if (session.isSaved && this.isDataUnchanged(session)) {
-        this.el.saveBtn.disabled = true;
-        this.el.saveBtn.innerHTML = `${getIcon('check')} 已保存`;
-      } else if (session.isSaved) {
-        this.el.saveBtn.disabled = false;
-        this.el.saveBtn.innerHTML = `${getIcon('save')} 更新记录`;
-      } else {
-        this.el.saveBtn.disabled = false;
-        this.el.saveBtn.innerHTML = `${getIcon('save')} 保存记录`;
-      }
+    // Determine mode
+    if (session.mode === 'diet') {
+      window.FooterModule.update(FooterState.ANALYSIS_DIET, session);
+    } else {
+      window.FooterModule.update(FooterState.ANALYSIS_KEEP, session);
     }
   },
 
@@ -1140,7 +1148,14 @@ const Dashboard = {
 
   // 委托给 StorageModule
   loadHistory: StorageModule.loadHistory,
-  addHistoryItem: StorageModule.addHistoryItem,
+  addHistoryItem: StorageModule.addHistoryItem, // 恢复这一行委托
 };
+
+// Mixin Modules
+Object.assign(Dashboard, AnalysisModule);
+Object.assign(Dashboard, ProfileRenderModule);
+Object.assign(Dashboard, DietRenderModule);
+Object.assign(Dashboard, KeepRenderModule);
+Object.assign(Dashboard, StorageModule);
 
 document.addEventListener('DOMContentLoaded', () => Dashboard.init());

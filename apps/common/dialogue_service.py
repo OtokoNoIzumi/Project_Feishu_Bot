@@ -254,6 +254,8 @@ class DialogueService:
         try:
             files = list(self.card_dir.glob("*.json"))
             for f in files:
+                if f.name == "index.json":
+                    continue
                 try:
                     data = json.loads(f.read_text(encoding="utf-8"))
                     card = ResultCard(**data)

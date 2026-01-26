@@ -23,6 +23,7 @@ const ICONS = {
     'lightbulb': { src: 'lightbulb.png', type: 'stamp', defaultClass: '' },
     'check': { src: 'check.png', type: 'stamp', defaultClass: '' },
     'pencil': { src: 'pencil.png', type: 'stamp', defaultClass: '' },
+    'bookmark': { src: 'bookmark.png', type: 'stamp', defaultClass: '' },
 };
 
 /**

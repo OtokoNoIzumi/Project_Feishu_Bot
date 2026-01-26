@@ -33,7 +33,7 @@ class ResultCard(BaseModel):
     image_hashes: List[str] = Field(default_factory=list)
     
     versions: List[dict] = Field(default_factory=list, description="Analysis result versions")
-    current_version: int = 0
+    current_version: int = 1
     
     status: Literal['analyzing', 'draft', 'saved', 'error'] = 'draft'
     saved_record_id: Optional[str] = None

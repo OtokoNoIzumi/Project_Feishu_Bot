@@ -40,7 +40,9 @@ const AnalysisModule = {
 
     async executeAnalysis(session, userNote) {
         session._lastUserNote = userNote; // 保存以备重试
+        session.lastError = null; // 清除之前的错误状态
         this.showLoading();
+
 
         try {
             if ((!session.images || session.images.length === 0) && (session.sourceImagesB64 || []).length > 0) {
@@ -71,7 +73,13 @@ const AnalysisModule = {
             console.log('[Dashboard] API result:', result);
 
             if (!result.success) {
-                this.showError(result.error || '分析失败');
+                // 同样使用统一错误处理并回到 Draft 状态
+                const errorInfo = window.ErrorHandlerModule
+                    ? window.ErrorHandlerModule.getFriendlyError(result.error || '分析失败')
+                    : { title: '分析失败', message: result.error || '未知错误', level: 'error', action: 'retry' };
+
+                session.lastError = errorInfo;
+                this.renderDraftState(session);
                 return;
             }
 
@@ -148,77 +156,61 @@ const AnalysisModule = {
             this.updateStatus('');  // 停止加载状态
             console.error("Execute analysis error:", error);
 
-            // 从 APIError 获取结构化数据
-            const errorCode = error.data?.detail?.code;
-            const metadata = error.data?.detail?.metadata || {};
-            const errorMsg = error.message || '未知错误';
+            // 1. 统一错误处理
+            const errorInfo = window.ErrorHandlerModule
+                ? window.ErrorHandlerModule.getFriendlyError(error)
+                : { title: '分析失败', message: error.message || '未知错误', level: 'error', action: 'retry' };
 
-            // 本地化提示
-            let userTip = `分析失败: ${errorMsg}`;
-            let actions = [];
+            // 2. 将错误暂存到 Session (用于 UI 渲染)
+            session.lastError = errorInfo;
 
-            if (errorCode === 'DAILY_LIMIT_REACHED') {
-                const limit = metadata.limit || 5;
-                userTip = `每日分析次数已耗尽 (${limit}/${limit})。请升级会员继续使用。`;
+            // 3. 渲染带有错误信息的 Draft 状态
+            // 这样用户可以看到之前上传的图片/文字，直接修改后重试
+            this.renderDraftState(session);
+
+            // 4. (可选) 也发送一条简短的消息到聊天区，避免用户没看右边
+            // 但如果错误是引导付费类的，还是需要特定 Action Button
+            const actions = [];
+            if (errorInfo.action === 'profile_code') {
                 actions.push({
                     text: '🔑 去输入激活码',
                     class: 'btn-primary',
                     onClick: () => Dashboard.switchView('profile')
                 });
-            } else if (errorCode === 'SUBSCRIPTION_EXPIRED') {
-                userTip = `订阅已过期，请续费。`;
-                actions.push({
-                    text: '🔑 去输入激活码',
-                    class: 'btn-primary',
-                    onClick: () => Dashboard.switchView('profile')
-                });
-            } else {
-                // 普通错误，提供重试
+            } else if (errorInfo.action === 'retry') {
                 actions.push({
                     text: '🔄 重试',
                     class: 'btn-ghost',
-                    onClick: () => this.retryLastAnalysis()
+                    onClick: () => this.retryDraft(session.id) // 重试 Draft
                 });
             }
 
+            // 防抖：如果最后一条已经是这个错误，就不发了
             const messagesContainer = document.getElementById('chat-messages');
-
-            // Check for duplicate message content against the LAST ASSISTANT message
             if (messagesContainer) {
                 const assistantMsgs = messagesContainer.querySelectorAll('.message.assistant');
                 const lastMsg = assistantMsgs.length > 0 ? assistantMsgs[assistantMsgs.length - 1] : null;
-
                 const lastContentRaw = lastMsg?.querySelector('.message-text')?.innerText || '';
                 const cleanLast = lastContentRaw.replace(/\s+/g, '');
-                const cleanNew = userTip.replace(/<br\s*\/?>/gi, '').replace(/\s+/g, '');
+                const cleanNew = errorInfo.message.replace(/<br\s*\/?>/gi, '').replace(/\s+/g, '');
 
-                if (lastMsg && cleanLast === cleanNew) {
+                if (lastMsg && cleanLast.includes(cleanNew)) {
                     if (window.ToastUtils) {
-                        const shortMsg = userTip.replace(/<br\s*\/?>/gi, '').split(/[\n。]/)[0] + '。';
-                        ToastUtils.show(shortMsg, 'info');
-                        return;
+                        ToastUtils.show(errorInfo.message.split('\n')[0], errorInfo.level || 'error');
+                        return; // Skip adding message
                     }
                 }
             }
 
-            // Hide previous "Go to Profile" buttons to avoid clutter
-            if (errorCode === 'DAILY_LIMIT_REACHED' || errorCode === 'SUBSCRIPTION_EXPIRED') {
-                const buttons = messagesContainer?.querySelectorAll('button');
-                buttons?.forEach(btn => {
-                    if (btn.innerText.includes('去输入激活码')) {
-                        btn.style.display = 'none';
-                    }
-                });
-            }
+            // 发送消息
+            this.addMessage(`${errorInfo.title}: ${errorInfo.message}`, 'assistant', { actions });
 
-            // 发送错误消息卡片
-            this.addMessage(userTip, 'assistant', { actions });
-
-            // 仅在非引导类错误时弹窗，避免打断
-            if (!errorCode || !['DAILY_LIMIT_REACHED', 'SUBSCRIPTION_EXPIRED'].includes(errorCode)) {
-                if (window.ToastUtils) ToastUtils.show(errorMsg, 'error');
+            // Toast 提示
+            if (window.ToastUtils && errorInfo.level === 'error') {
+                ToastUtils.show(errorInfo.title, 'error');
             }
         }
+
     },
 
     async updateAdvice() {
@@ -550,6 +542,278 @@ const AnalysisModule = {
             }
         }
         return results;
+    },
+    renderDraftState(session) {
+        const container = this.el.resultContent;
+        if (!container) return;
+
+        // 初始化草稿图片状态，确保使用完整 Data URI 或 URL
+        if (!session._draftImages) {
+            this._initDraftImages(session);
+        }
+        const draftImages = session._draftImages || [];
+
+        let imagesHtml = '';
+        const iconHtml = window.IconManager ? window.IconManager.render('pencil', 'xl') : '📝';
+
+        // 图片网格
+        imagesHtml = `
+            <div class="preview-grid" id="draft-image-grid" style="margin-bottom:16px;">
+                ${draftImages.map((img, idx) => `
+                    <div class="preview-item">
+                        <img src="${img.src}" style="width:100%; height:100%; border-radius:12px; border:1px solid var(--color-border); object-fit: cover;">
+                        <button class="preview-remove" data-index="${idx}">×</button>
+                    </div>
+                `).join('')}
+                <div class="preview-item upload-zone-mini" id="draft-add-btn" style="display:flex; align-items:center; justify-content:center; border:2px dashed var(--color-border); cursor:pointer; background:var(--color-bg-tertiary);">
+                    <img src="css/icons/add.png" style="width:24px; height:24px; opacity:0.5;">
+                    <input type="file" id="draft-image-upload" accept="image/*" multiple hidden>
+                </div>
+            </div>
+        `;
+
+        const note = session.sourceUserNote || session.text || '';
+
+        // 错误提示 HTML
+        let errorHtml = '';
+        if (session.lastError) {
+            const err = session.lastError;
+            errorHtml = `
+                <div class="draft-error-banner" style="margin-bottom: 16px; padding: 12px; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.2); border-radius: 8px; position: relative;">
+                    <div style="display: flex; align-items: flex-start; gap: 10px;">
+                        <span style="font-size: 1.2rem;">⚠️</span>
+                        <div style="flex: 1;">
+                            <div style="font-weight: 650; color: #b91c1c; font-size: 0.9rem;">${err.title}</div>
+                            <div style="font-size: 0.85rem; color: #7f1d1d; margin-top: 2px; line-height: 1.4;">${err.message}</div>
+                        </div>
+                        <button onclick="event.stopPropagation(); Dashboard.currentSession.lastError=null; Dashboard.renderDraftState(Dashboard.currentSession);" 
+                                style="background:transparent; border:none; cursor:pointer; font-size:1.2rem; color:#b91c1c; padding:0 4px; line-height:1;">×</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        container.innerHTML = `
+            <div class="result-card" id="draft-card-container" style="position:relative;">
+                <div class="result-card-header">
+                    <div class="result-icon-container">
+                        ${iconHtml}
+                    </div>
+                    <div>
+                        <div class="result-card-title">待处理记录</div>
+                        <div class="result-card-subtitle">草稿 / 分析未完成</div>
+                    </div>
+                </div>
+
+                <div class="draft-content">
+                    ${errorHtml}
+                    ${imagesHtml}
+                    <div class="note-section">
+                        <div class="dishes-title">记录说明</div>
+                        <textarea id="draft-note-input" class="input-field" rows="4" style="min-height:100px; resize:vertical;" placeholder="补充描述，或直接粘贴/拖拽图片...">${note}</textarea>
+                    </div>
+                </div>
+
+                <!-- Drop Overlay -->
+                <div id="draft-drop-overlay" style="position:absolute; top:0; left:0; width:100%; height:100%; background:rgba(255,255,255,0.9); z-index:100; border-radius:var(--radius-lg); display:none; flex-direction:column; align-items:center; justify-content:center; border:2px dashed var(--color-accent-primary);">
+                    <div style="font-size:3rem; margin-bottom:16px;">📂</div>
+                    <div style="font-size:1.2rem; color:var(--color-accent-primary); font-weight:600;">释放以添加图片</div>
+                </div>
+            </div>
+        `;
+
+        this.el.resultTitle.textContent = '记录预览';
+        this.updateStatus('draft');
+
+        // Explicitly show footer for draft actions
+        if (this.el.resultFooter) {
+            this.el.resultFooter.classList.remove('hidden');
+            this.updateButtonStates(session);
+        }
+
+
+        // Bind Events (Drag & Drop, Paste, Remove, Add)
+        this._bindDraftEvents(session);
+
+        // Chat Input Sync
+        if (this.el.chatInput) this.el.chatInput.value = note;
+    },
+
+    _initDraftImages(session) {
+        let images = [];
+        if (session.imageUrls && session.imageUrls.length > 0) {
+            images = session.imageUrls.map(url => ({ src: url, type: 'url', base64: null }));
+        } else if (session.images && session.images.length > 0) {
+            images = session.images.map(img => ({
+                src: img.preview || `data:image/jpeg;base64,${img.base64}`,
+                type: 'base64',
+                base64: img.base64
+            }));
+        } else if (session.sourceImagesB64 && session.sourceImagesB64.length > 0) {
+            images = session.sourceImagesB64.map(b64 => ({
+                src: `data:image/jpeg;base64,${b64}`,
+                type: 'base64',
+                base64: b64
+            }));
+        }
+        session._draftImages = images;
+    },
+
+    _bindDraftEvents(session) {
+        const card = document.getElementById('draft-card-container');
+        const overlay = document.getElementById('draft-drop-overlay');
+        const uploadInput = document.getElementById('draft-image-upload');
+        const addBtn = document.getElementById('draft-add-btn');
+
+        if (!card) return;
+
+        // 1. Remove Buttons (Event Delegation)
+        card.addEventListener('click', (e) => {
+            if (e.target.classList.contains('preview-remove')) {
+                const idx = parseInt(e.target.dataset.index);
+                this.removeDraftImage(idx);
+            }
+        });
+
+        // 2. Add Button
+        if (addBtn && uploadInput) {
+            addBtn.addEventListener('click', () => uploadInput.click());
+            uploadInput.addEventListener('change', (e) => this._addDraftImages(e.target.files));
+        }
+
+        // 3. Drag & Drop
+        let dragCounter = 0;
+        card.addEventListener('dragenter', (e) => {
+            e.preventDefault();
+            dragCounter++;
+            if (overlay) overlay.style.display = 'flex';
+        });
+
+        card.addEventListener('dragleave', (e) => {
+            e.preventDefault();
+            dragCounter--;
+            if (dragCounter === 0 && overlay) overlay.style.display = 'none';
+        });
+
+        card.addEventListener('dragover', (e) => e.preventDefault());
+
+        card.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dragCounter = 0;
+            if (overlay) overlay.style.display = 'none';
+            if (e.dataTransfer && e.dataTransfer.files.length > 0) {
+                this._addDraftImages(e.dataTransfer.files);
+            }
+        });
+
+        // 4. Paste
+        card.addEventListener('paste', (e) => {
+            const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+            const files = [];
+            for (let item of items) {
+                if (item.kind === 'file' && item.type.startsWith('image/')) {
+                    const file = item.getAsFile();
+                    if (file) files.push(file);
+                }
+            }
+            if (files.length > 0) {
+                e.preventDefault(); // Prevent pasting image into textarea directly
+                this._addDraftImages(files);
+            }
+        });
+
+        // 5. Note Sync logic
+        const noteInput = document.getElementById('draft-note-input');
+        if (noteInput) {
+            noteInput.addEventListener('input', (e) => {
+                session.sourceUserNote = e.target.value;
+                if (this.el.chatInput) this.el.chatInput.value = e.target.value;
+            });
+        }
+    },
+
+    async _addDraftImages(fileList) {
+        if (!fileList || fileList.length === 0) return;
+        const session = this.currentSession;
+        if (!session) return;
+        // Ensure initialized
+        if (!session._draftImages) this._initDraftImages(session);
+
+        for (const file of fileList) {
+            try {
+                // ImageUtils.fileToBase64 returns pure base64 string
+                const b64 = await ImageUtils.fileToBase64(file);
+                session._draftImages.push({
+                    src: `data:${file.type || 'image/jpeg'};base64,${b64}`, // Construct full Data URI for preview
+                    type: 'base64',
+                    base64: b64
+                });
+            } catch (e) {
+                console.error("Failed to read file", e);
+            }
+        }
+        this.renderDraftState(session);
+    },
+
+    removeDraftImage(index) {
+        if (!this.currentSession || !this.currentSession._draftImages) return;
+        this.currentSession._draftImages.splice(index, 1);
+        this.renderDraftState(this.currentSession);
+    },
+
+    async retryDraft(sessionId) {
+        const session = this.currentSession;
+        if (!session || session.id !== sessionId) return;
+
+        // 1. Update Note
+        const noteInput = document.getElementById('draft-note-input');
+        if (noteInput && noteInput.value !== undefined) {
+            session.sourceUserNote = noteInput.value.trim();
+        }
+        session.text = session.sourceUserNote;
+        if (this.el.chatInput) this.el.chatInput.value = session.text;
+
+        // 2. Consolidate Images (Mixed URL/Base64 -> Unified Base64 session.images)
+        this.showLoading(); // Show loading earlier since fetching might take time
+
+        try {
+            if (session._draftImages && session._draftImages.length > 0) {
+                const unifiedImages = [];
+                for (const img of session._draftImages) {
+                    if (img.type === 'base64' && img.base64) {
+                        unifiedImages.push({ base64: img.base64, preview: img.src });
+                    } else if (img.type === 'url') {
+                        // Fetch remote URL to base64
+                        const b64s = await this._loadImagesFromUris([img.src]);
+                        if (b64s && b64s.length > 0) {
+                            unifiedImages.push({ base64: b64s[0], preview: img.src });
+                        }
+                    }
+                }
+                session.images = unifiedImages;
+                session.sourceImagesB64 = unifiedImages.map(i => i.base64);
+                // Clear legacy fields to avoid confusion during executeAnalysis
+                session.imageUrls = [];
+            } else {
+                // If all images removed
+                session.images = [];
+                session.sourceImagesB64 = [];
+                session.imageUrls = [];
+            }
+
+            // 3. Execute
+            const effectiveNote = session.sourceUserNote || session.text || '';
+            await this.executeAnalysis(session, effectiveNote);
+
+        } catch (e) {
+            console.error("Retry preparation failed", e);
+            const errorInfo = window.ErrorHandlerModule
+                ? window.ErrorHandlerModule.getFriendlyError(e)
+                : { title: '分析重试失败', message: e.message || '图片处理失败', level: 'error', action: 'retry' };
+
+            session.lastError = errorInfo;
+            this.renderDraftState(session);
+        }
     },
 
 };

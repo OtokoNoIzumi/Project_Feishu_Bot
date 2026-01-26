@@ -42,7 +42,7 @@ const DietRenderModule = {
           ${session.versions.length > 1 ? `
             <div class="version-nav">
               <button class="version-btn" onclick="Dashboard.switchVersion(-1)" ${session.currentVersion <= 1 ? 'disabled' : ''}>◀</button>
-              <span class="version-label">v${version.number}/${session.versions.length}</span>
+              <span class="version-label">v${version.number || '?'}/${session.versions.length}</span>
               <button class="version-btn" onclick="Dashboard.switchVersion(1)" ${session.currentVersion >= session.versions.length ? 'disabled' : ''}>▶</button>
             </div>
           ` : ''}
