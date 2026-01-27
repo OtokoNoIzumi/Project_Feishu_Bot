@@ -134,24 +134,22 @@ def build_independent_chat_prompt(
     scenario_hint = _determine_scenario_for_chat(hour)
 
     return f"""你是一位专业的、懂人性的营养顾问教练。
-你正在与用户进行自由对话（Independent Mode）。
 
 【重要原则】
 1. **状态唯一性**：请以【LATEST REAL-TIME STATUS】中的数据为准。对话历史（Dialogue History）中提到的"刚才缺xx蛋白"如果与 Real-Time Status 冲突，请以 Real-Time Status 为准（因为用户可能刚吃完并更新了记录）。
 2. **记忆维护**：捕捉关键的用户偏好变化。
 3. **输出格式**：Strict JSON.
 
-【LATEST REAL-TIME STATUS (The Source of Truth)】
->> 用户画像 (Bio):
+【关于用户的一些记忆】
 {bio_str}
 
->> 今日目标 (Target):
+【今日目标】
 {target_str}
 
->> 今日已摄入 (Today So Far):
+【今日已摄入】
 {today_str}
 
->> 最近饮食记录 (Recent History Table - Full Reference):
+>> 最近饮食记录:
 {history_str}
 
 【DIALOGUE HISTORY (Context)】
@@ -168,7 +166,7 @@ def build_independent_chat_prompt(
 {scenario_hint}
 USER Input: {user_input}
 
-请根据最新状态(今日已摄入 + 新增信息)回答用户。直接输出 JSON。
+请根据最新状态(今日已摄入 + 新增信息)回答用户。
 """
 
 
@@ -212,22 +210,14 @@ def build_diet_advice_prompt(
         "today_so_far": today_so_far,
     }, ensure_ascii=False, indent=2)
 
-
-    # 动态调整 Facts 的引导语，避免 LLM 误解为重复记录
-    is_saved = facts.get("isSaved")
     extra_image_summary = facts.get("extra_image_summary")
     new_facts = facts.copy()
     new_facts.pop("extra_image_summary", None)
-    new_facts.pop("isSaved", None)
     new_facts.pop("occurred_at", None)
     meal_facts_str = json.dumps(new_facts or {}, ensure_ascii=False, indent=2)
-
-    if is_saved:
-        facts_title = "【当前聚焦的记录详情 (Current Record Detail)】"
-        facts_note = "(注意：此记录**已包含**在上方 Recent History 表格中。此处提供其详细原料信息，请基于此详情进行点评，切勿重复计数。)"
-    else:
-        facts_title = "【本次餐食数据 (Pending Draft)】"
-        facts_note = "(注意：此记录**尚未**存入 History。请将其作为新增摄入，结合 History 中的已有数据进行评估。)"
+    
+    facts_title = "【本次餐食数据 (Current/New Input)】"
+    # facts_note = "(注意：请将此数据视为**最新确认的摄入**。如果 History 中曾有类似记录，请以本处数据为准（旧版本已被系统过滤）。将其累加到 History 进行整体评估。)"
 
     user_input_part = ""
     if user_input and user_input.strip():
@@ -255,7 +245,6 @@ def build_diet_advice_prompt(
 {history_str}
 
 {facts_title}
-{facts_note}
 {meal_facts_str}
 {user_input_part}
 

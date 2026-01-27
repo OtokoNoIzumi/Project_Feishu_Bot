@@ -29,9 +29,14 @@ def _diet_user_dir(user_id: str) -> Path:
     return root / "user_data" / safe_user / "diet"
 
 
-def _calculate_today_so_far(user_id: str, target_date: Optional[str] = None) -> Dict[str, Any]:
+def _calculate_today_so_far(
+    user_id: str, 
+    target_date: Optional[str] = None,
+    ignore_record_id: Optional[str] = None
+) -> Dict[str, Any]:
     """
     从 RecordService 计算今天(或指定日期)已确认的记录汇总。
+    exclude_record_id: 如果提供，在计算时排除该 ID (通常是因为正在编辑该记录的最新版 draft)
     """
     consumed_energy_kj = 0.0
     consumed_protein_g = 0.0
@@ -48,6 +53,10 @@ def _calculate_today_so_far(user_id: str, target_date: Optional[str] = None) -> 
         records = RecordService.get_todays_unified_records(user_id)
 
     for rec in records:
+        # [Filter] 排重逻辑
+        if ignore_record_id and rec.get("record_id") == ignore_record_id:
+            continue
+
         # 汇总 meal_summary
         meal = rec.get("meal_summary") or {}
         if isinstance(meal, dict):
@@ -80,11 +89,16 @@ def _calculate_today_so_far(user_id: str, target_date: Optional[str] = None) -> 
     }
 
 
-def get_context_bundle(user_id: str, target_date: Optional[str] = None) -> Dict[str, Any]:
+def get_context_bundle(
+    user_id: str, 
+    target_date: Optional[str] = None,
+    ignore_record_id: Optional[str] = None
+) -> Dict[str, Any]:
     """
     从 user_data/<user_id>/ 读取背景数据：
     - ProfileService -> user_target（用户目标配置）
     - RecordService -> today_so_far
+    ignore_record_id: 传递给 _calculate_today_so_far 和 history filter，防止正在编辑的卡片数据与已存档数据重复。
     """
     # 1. 获取 Profile (Target)
     profile = ProfileService.load_profile(user_id)
@@ -96,8 +110,12 @@ def get_context_bundle(user_id: str, target_date: Optional[str] = None) -> Dict[
         # 移除不需要的字段（如 energy_unit）
         user_target.pop("energy_unit", None)
     
-    # 2. 动态计算 today_so_far
-    today_so_far = _calculate_today_so_far(user_id=user_id, target_date=target_date)
+    # 2. 动态计算 today_so_far (Apply Filter)
+    today_so_far = _calculate_today_so_far(
+        user_id=user_id, 
+        target_date=target_date, 
+        ignore_record_id=ignore_record_id
+    )
 
     # 3. 获取 User Bio (长期记忆)
     user_bio = UserBioService.load_bio(user_id)
@@ -123,13 +141,17 @@ def get_context_bundle(user_id: str, target_date: Optional[str] = None) -> Dict[
     )
 
     # [Optimization] 在 Context 层直接完成格式化，输出为精简的文本行列表
-    # 格式: {"occurred_at": "...", "line_str": "YYYY-MM-DD|..."}
+    # 格式: {"occurred_at": "...", "line_str": "YYYY-MM-DD|...", "record_id": "..."}
     formatted_recent_history = []
     
     # Tool: Use shared formatter
 
     # 简单调用 Utils 方法逐个格式化，保留 occurred_at 映射关系用于后续过滤
     for rec in raw_records:
+        # [Filter] History Table Deduplication
+        if ignore_record_id and rec.get("record_id") == ignore_record_id:
+            continue
+            
         # format_diet_records_to_table expects a list
         rows = format_diet_records_to_table([rec], as_list=True)
         for row in rows:

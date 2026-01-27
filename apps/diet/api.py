@@ -170,6 +170,12 @@ def build_diet_router(settings: BackendSettings) -> APIRouter:
                     target_date_str = dt.strftime("%Y-%m-%d")
 
             context_bundle = get_context_bundle(user_id=user_id, target_date=target_date_str)
+            
+            # [Optimization] 移除 recent_history 以防止 Card Version 数据膨胀
+            # 前端展示历史通过 /api/diet/history 独立获取，无需在每次 analyze result 中冗余存储快照
+            if "recent_history" in context_bundle:
+                del context_bundle["recent_history"]
+                
             result["context"] = context_bundle
 
             return DietAnalyzeResponse(

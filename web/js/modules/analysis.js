@@ -494,6 +494,7 @@ const AnalysisModule = {
             source_user_note: session.sourceUserNote || session.text || '',
             image_uris: (session.imageUrls || []).filter(url => url && !url.startsWith('blob:') && !url.startsWith('data:')),
             image_hashes: session.imageHashes || [],
+            saved_record_id: session.savedRecordId || null, // <--- 关键：持久化关联的 Record ID
             versions: session.versions.map(v => ({
                 created_at: v.createdAt.toISOString(),
                 user_note: v.userNote,
@@ -503,7 +504,7 @@ const AnalysisModule = {
                 adviceError: v.adviceError
             })),
             current_version: session.currentVersion,
-            status: 'draft',
+            status: session.isSaved ? 'saved' : 'draft', // <--- 关键：尊重当前状态，而非强制 draft
             created_at: session.createdAt.toISOString(),
             updated_at: new Date().toISOString()
         };

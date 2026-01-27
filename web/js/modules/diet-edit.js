@@ -363,8 +363,10 @@ const DietEditModule = {
         const dietTime = this.currentDietMeta?.dietTime || '';
         const ExtraImageSummary = this.currentSession?.versions[this.currentSession.currentVersion - 1]?.parsedData?.extraImageSummary || '';
 
-        // 1. 获取原始 Raw Result 以保留 Metadata (status, saved_record_id等)
-        const saved = this.currentSession.isSaved;
+        // 核心：在编辑模式下，必须传递 saved_record_id 给后端，以便后端在计算 "Used Context" 时排除掉这个旧版本
+        // 从而避免 "今日摄入" 重复计算 (Double Counting) 和 "历史记录" 重复展示
+        const savedRecordId = this.currentSession.savedRecordId || null;
+
         // console.log('currentSession', this.currentSession);
         // console.log('currentDietMeta', this.currentDietMeta);
 
@@ -431,7 +433,8 @@ const DietEditModule = {
         // 2. 构造并合并返回对象
         // 优先级：编辑后的数据 > 原始数据
         return {
-            isSaved: saved,
+            // isSaved: saved, // Removed: API logic relies on saved_record_id, no need to send UI state
+            saved_record_id: savedRecordId, // <--- 新增核心字段
             meal_summary: {
                 meal_name: mealName,
                 diet_time: dietTime,

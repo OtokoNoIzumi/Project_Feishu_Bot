@@ -48,7 +48,7 @@ class DietAdviceUsecase:
            - Output: Free Text (+ optional UPDATE_USER_BIO command side-effect)
            - Focus: Critiquing the specific meal.
         """
-        # 0. 尝试从 facts 中提取发生时间
+        # 0. 尝试从 facts 中提取发生时间 & 排重ID
         target_date_str = None
         occurred_at = facts.get("occurred_at")
         if occurred_at:
@@ -56,8 +56,15 @@ class DietAdviceUsecase:
             if dt:
                 target_date_str = dt.strftime("%Y-%m-%d")
 
-        # 1. 获取上下文
-        context_bundle = get_context_bundle(user_id=user_id, target_date=target_date_str)
+        # [Deduplication] 获取前端正在编辑的旧记录 ID，以便在 Context 中排除它
+        ignore_record_id = facts.get("saved_record_id")
+
+        # 1. 获取上下文 (Apply Filter)
+        context_bundle = get_context_bundle(
+            user_id=user_id, 
+            target_date=target_date_str,
+            ignore_record_id=ignore_record_id
+        )
 
         # 2. 获取对话历史 (if in Chat Mode or needed)
         # 仅在 Independent Mode 中我们强烈需要对话历史来维持上下文
@@ -112,6 +119,7 @@ class DietAdviceUsecase:
             # 1. Base History (Before Dialogue) -> Goes to History Table
             # 2. Incremental (After Dialogue) -> Goes to New Info
             
+            # Split History into Base (Before Dialogue) and Incremental (After Dialogue) to restore context accurately.
             base_history_lines = []
             
             if last_msg_time:
@@ -143,23 +151,11 @@ class DietAdviceUsecase:
                 # No dialogue history -> All base
                 base_history_lines = [x.get("line_str") for x in recent_history]
 
-            # Update context_bundle in place (or create copy?) to reflect "Base History" only for the Table Section?
-            # Or Prompt Builder handles "Full Reference"?
-            # Step 71 Prompt says: ">> 最近饮食记录 (Recent History Table - Full Reference):"
-            # So History Table should probably contain E V E R Y T H I N G.
-            # And Incremental Section repeats the new ones for emphasis.
-            #
-            # Let's adhere to "Full Reference" for Table.
-            # So prompt_builder needs `recent_history` (strings) AND `incremental_records` (strings).
-            
-            # Extract plain strings for Prompt Builder
-            full_history_strings = [x.get("line_str") for x in recent_history]
-
-            # Re-inject list of strings into context bundle copy to satisfy Prompt Builder expectation (Step 84 logic)
-            # Actually PromptBuilder Step 84 logic:
-            # "recent_slice = recent_history[-30:]" -> expects list of strings
+            # [Key Logic Fix] 
+            # We pass ONLY base_history to the Prompt's "History Table" section.
+            # The "Incremental Section" will handle the new records.
             context_bundle_for_prompt = context_bundle.copy()
-            context_bundle_for_prompt["recent_history"] = full_history_strings
+            context_bundle_for_prompt["recent_history"] = base_history_lines
             
             # C. Build Prompt
             user_input = user_note or ""
