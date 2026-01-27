@@ -8,6 +8,16 @@
 const StorageModule = {
     async saveRecord() {
         if (!this.currentSession) return;
+        if (typeof Auth !== 'undefined' && Auth.isDemoMode()) {
+            if (typeof this.checkDemoLimit === 'function' && this.checkDemoLimit()) return;
+            if (window.ToastUtils) {
+                ToastUtils.show('演示模式下无法保存，注册即可免费体验 3 天', 'info');
+            }
+            if (window.Auth && typeof window.Auth.openSignUp === 'function') {
+                window.Auth.openSignUp();
+            }
+            return;
+        }
 
         const session = this.currentSession;
         const isUpdate = session.isSaved && session.savedRecordId;

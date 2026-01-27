@@ -128,6 +128,39 @@
       color: #948171;
     }
 
+    /* === Demo Button === */
+    .demo-entry {
+      margin-top: 16px;
+      text-align: center;
+      padding-top: 16px;
+      border-top: 1px dashed rgba(92, 85, 78, 0.1);
+    }
+
+    .btn-demo {
+      background: transparent;
+      border: 1px solid #d97757;
+      color: #d97757;
+      padding: 10px 24px;
+      border-radius: 20px;
+      font-family: inherit;
+      font-size: 0.95rem;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .btn-demo:hover {
+      background: rgba(217, 119, 87, 0.05);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(217, 119, 87, 0.1);
+    }
+
+    .btn-demo:active {
+      transform: translateY(0);
+    }
+
     /* === Clerk Style Overrides === */
     /* 只做最小限度的覆盖，保留 Clerk 的布局 */
 
@@ -221,6 +254,13 @@
           <div class="loading-spinner"></div>
           <p class="login-loading-text">正在加载...</p>
         </div>
+      </div>
+
+      <!-- Demo Entry -->
+      <div class="demo-entry">
+        <button class="btn-demo" onclick="window.location.href='dashboard.html?demo=true'">
+          ✨ 分析效果演示
+        </button>
       </div>
     </div>
   </div>

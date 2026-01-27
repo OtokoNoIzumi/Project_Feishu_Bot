@@ -204,6 +204,9 @@ const ProfileModule = {
     // ========== 保存 ==========
 
     async saveToServer() {
+        if (Auth.isDemoMode()) {
+            return { success: false, error: '演示模式下无法保存' };
+        }
         const profile = this.getCurrentProfile();
         try {
             // 1. 保存 Profile
@@ -228,6 +231,7 @@ const ProfileModule = {
      * 保存身体指标到 Keep
      */
     async saveMetricsToKeep() {
+        if (Auth.isDemoMode()) return;
         const metrics = this.pendingMetrics || {};
 
         // 如果身高有变化，保存到 dimensions

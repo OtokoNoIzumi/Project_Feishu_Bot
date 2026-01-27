@@ -39,6 +39,10 @@ const AnalysisModule = {
     },
 
     async executeAnalysis(session, userNote) {
+        if (Auth.isDemoMode()) {
+            if (window.Dashboard?.checkDemoLimit && window.Dashboard.checkDemoLimit()) return;
+            return;
+        }
         session._lastUserNote = userNote; // 保存以备重试
         session.lastError = null; // 清除之前的错误状态
         this.showLoading();
@@ -413,6 +417,19 @@ const AnalysisModule = {
         this.renderPreviews();
         this.updateSendButton();
 
+        // 2b. 立即持久化用户消息 (Fix: Write BEFORE API call to ensure order)
+        if (this.currentDialogueId && userNote) {
+            const now = new Date();
+            const usrMsgId = now.getTime().toString();
+            // Fire and forget, but it's sent before advice request
+            API.appendMessage(this.currentDialogueId, {
+                id: usrMsgId,
+                role: 'user',
+                content: userNote,
+                timestamp: now.toISOString()
+            }).catch(console.warn);
+        }
+
         const loadingMsg = this.addMessage('思考中...', 'assistant', { isLoading: true });
 
         // 3. 调用 Advice API (Mixed Input)
@@ -421,12 +438,7 @@ const AnalysisModule = {
 
         try {
             // Note: API.getDietAdvice takes (facts, userNote, dialogueId)
-            // Ideally we should support images too if the backend advice support mixed input, 
-            // but currently getDietAdvice only takes text userNote in 'DietAdviceRequest'.
-            // The user requested "不依赖特定 Image Card", implying mostly text or reuse history context.
-            // If we have images in 'pendingImages', we might want to warn or just ignore them for now 
-            // as 'DietAdviceRequest' schema in api.py doesn't have 'images_b64'.
-            // Let's stick to text for now.
+            // ... (comments kept)
 
             const response = await API.getDietAdvice(facts, userNote, this.currentDialogueId);
 
@@ -445,35 +457,21 @@ const AnalysisModule = {
 
             // 持久化 Assistant Msg
             if (this.currentDialogueId) {
-                const msgId = Date.now().toString(); // simplified
+                const aiNow = new Date();
+                const msgId = aiNow.getTime().toString(); // simplified
                 const msgPayload = {
                     id: msgId,
                     role: 'assistant',
                     content: resultText,
-                    timestamp: new Date().toISOString(),
+                    timestamp: aiNow.toISOString(),
                     attachments: [],
                 };
                 API.appendMessage(this.currentDialogueId, msgPayload).catch(console.warn);
-                // Also persist user msg previously? 
-                // Currently Dashboard.startNewAnalysis handles user msg persistence. 
-                // startAdviceChat does NOT, so we should add it.
             }
 
         } catch (e) {
             if (loadingMsg) loadingMsg.remove();
             this.addMessage(`出错了: ${e.message}`, 'assistant');
-        }
-
-        // Lazy storage of user message... 
-        // Ideally should be done before API call to be safe, but for demo it's ok.
-        if (this.currentDialogueId && userNote) {
-            const usrMsgId = (Date.now() - 1000).toString();
-            API.appendMessage(this.currentDialogueId, {
-                id: usrMsgId,
-                role: 'user',
-                content: userNote,
-                timestamp: new Date().toISOString()
-            }).catch(console.warn);
         }
     },
 

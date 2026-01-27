@@ -24,6 +24,8 @@ const ICONS = {
     'check': { src: 'check.png', type: 'stamp', defaultClass: '' },
     'pencil': { src: 'pencil.png', type: 'stamp', defaultClass: '' },
     'bookmark': { src: 'bookmark.png', type: 'stamp', defaultClass: '' },
+    'profile_woman': { src: 'profile_alt.png', type: 'stamp', defaultClass: '' },
+    'profile_man': { src: 'profile.png', type: 'stamp', defaultClass: '' },
 };
 
 /**

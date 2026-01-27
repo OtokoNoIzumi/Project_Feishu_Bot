@@ -73,11 +73,11 @@ const FooterModule = {
             type: 'primary',
             disabled: false,
             onClick: () => {
+                if (window.Dashboard?.checkDemoLimit()) return;
                 if (window.Dashboard && typeof window.Dashboard.retryDraft === 'function') {
                     window.Dashboard.retryDraft(session.id);
                 }
             }
-
         });
     },
 
@@ -89,6 +89,7 @@ const FooterModule = {
             icon: 'refresh',
             type: 'secondary',
             onClick: () => {
+                if (window.Dashboard?.checkDemoLimit()) return;
                 if (window.Dashboard && typeof window.Dashboard.reAnalyze === 'function') {
                     window.Dashboard.reAnalyze();
                 }
@@ -103,6 +104,7 @@ const FooterModule = {
             type: 'secondary',
             disabled: false, // Could add loading state check here
             onClick: () => {
+                if (window.Dashboard?.checkDemoLimit()) return;
                 if (window.Dashboard && typeof window.Dashboard.updateAdvice === 'function') {
                     window.Dashboard.updateAdvice();
                 }
@@ -120,7 +122,10 @@ const FooterModule = {
         let saveConfig = {
             visible: true,
             type: 'primary',
-            onClick: () => window.Dashboard.saveCard()
+            onClick: () => {
+                if (window.Dashboard?.checkDemoLimit()) return;
+                window.Dashboard.saveCard();
+            }
         };
 
         if (isSaved && !isModified) {
@@ -148,6 +153,7 @@ const FooterModule = {
             icon: 'refresh',
             type: 'secondary',
             onClick: () => {
+                if (window.Dashboard?.checkDemoLimit()) return;
                 if (window.Dashboard && typeof window.Dashboard.reAnalyze === 'function') {
                     window.Dashboard.reAnalyze();
                 }
@@ -163,7 +169,10 @@ const FooterModule = {
             type: 'primary',
             text: session.isSaved ? '更新记录' : '保存记录',
             icon: 'save',
-            onClick: () => window.Dashboard.saveCard()
+            onClick: () => {
+                if (window.Dashboard?.checkDemoLimit()) return;
+                window.Dashboard.saveCard();
+            }
         };
         // Simple saved check
         if (session.isSaved) {

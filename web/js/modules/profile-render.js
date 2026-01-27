@@ -123,11 +123,11 @@ const ProfileRenderModule = {
     renderMissingInfoBanner(missing) {
         return `
             <div class="profile-banner profile-banner-warning">
-                <div class="profile-banner-icon">⚠️</div>
+                <div class="profile-banner-icon">${window.IconManager ? window.IconManager.render('pencil', 'xl') : '👤'}</div>
                 <div class="profile-banner-content">
                     <div class="profile-banner-title">请完善基础信息</div>
                     <div class="profile-banner-text">
-                        缺少：${missing.join('、')}。完善后可使用 AI 对话优化 Profile 功能。
+                        缺少：${missing.join('、')}。完善后可使用 AI 对话优化个人目标功能。
                     </div>
                 </div>
             </div>
@@ -135,50 +135,6 @@ const ProfileRenderModule = {
     },
 
     // ========== 档案信息 ==========
-
-    renderProfileSection(p, dm, userName, unit) {
-        return `
-            <div class="profile-section">
-                <div class="profile-section-header">
-                    <div class="profile-section-icon">
-                        ${window.Clerk?.user?.imageUrl
-                ? `<img src="${window.Clerk.user.imageUrl}?width=160" class="cl-avatarImage" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;" alt="Avatar">`
-                : (window.IconManager ? window.IconManager.render('profile', 'xl') : '👤')
-            }
-                    </div>
-                    <div>
-                        <div class="profile-section-title">${userName} 的档案</div>
-                        <div class="profile-section-subtitle">个人基础信息</div>
-                    </div>
-                </div>
-                <div class="profile-grid profile-grid-4">
-                    ${this.renderSelectField('gender', '性别', [
-                { value: '', label: '请选择' },
-                { value: 'female', label: '女' },
-                { value: 'male', label: '男' },
-            ], p.gender)}
-                    ${this.renderNumberField('age', '年龄', p.age, 1)}
-                    ${this.renderNumberField('_metrics.height_cm', '身高 (cm)', dm.height_cm)}
-                    ${this.renderNumberField('_metrics.weight_kg', '体重 (kg)', dm.weight_kg)}
-                    ${this.renderSelectField('diet.goal', '目标', [
-                { value: 'fat_loss', label: '减脂' },
-                { value: 'maintain', label: '维持' },
-                { value: 'muscle_gain', label: '增肌' },
-                { value: 'health', label: '健康' },
-            ], p.diet?.goal)}
-                    ${this.renderSelectField('activity_level', '活动水平', [
-                { value: 'sedentary', label: '久坐' },
-                { value: 'light', label: '轻度活动' },
-                { value: 'moderate', label: '中度活动' },
-                { value: 'active', label: '高度活动' },
-                { value: 'very_active', label: '非常活跃' },
-            ], p.activity_level)}
-                    ${this.renderNumberField('estimated_months', '预期达成 (月)', p.estimated_months, 1)}
-                    ${this.renderSelectField('timezone', '时区', this.getTimezoneOptions(), p.timezone)}
-                </div>
-            </div>
-        `;
-    },
 
     // ========== Diet 目标 ==========
 
@@ -610,7 +566,15 @@ const ProfileRenderModule = {
                     <div class="profile-section-icon">
                         ${window.Clerk?.user?.imageUrl
                 ? `<img src="${window.Clerk.user.imageUrl}?width=160" class="cl-avatarImage" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;" alt="Avatar">`
-                : (window.IconManager ? window.IconManager.render('profile', 'xl') : '👤')
+                : (() => {
+                    const genderValue = p.gender;
+                    const fallbackIcon = genderValue === 'male'
+                        ? 'profile_man'
+                        : genderValue === 'female'
+                            ? 'profile_woman'
+                            : 'bookmark';
+                    return window.IconManager ? window.IconManager.render(fallbackIcon, 'xl') : '👤';
+                })()
             }
                     </div>
                     <div>
@@ -947,6 +911,13 @@ const ProfileRenderModule = {
     },
 
     async redeemCode() {
+        if (Auth.isDemoMode()) {
+            if (window.ToastUtils) ToastUtils.show('演示模式下不可兑换激活码，请注册后使用', 'info');
+            if (window.Auth && typeof window.Auth.openSignUp === 'function') {
+                window.Auth.openSignUp();
+            }
+            return;
+        }
         const input = document.getElementById('invite-code-input');
         const code = input?.value?.trim();
         if (!code) {
@@ -1000,6 +971,13 @@ const ProfileRenderModule = {
     },
 
     async saveProfile() {
+        if (Auth.isDemoMode()) {
+            if (window.ToastUtils) ToastUtils.show('演示模式下无法保存档案，请注册后使用', 'info');
+            if (window.Auth && typeof window.Auth.openSignUp === 'function') {
+                window.Auth.openSignUp();
+            }
+            return;
+        }
         const result = await ProfileModule.saveToServer();
         if (result.success) {
             Dashboard.addMessage('✓ 个人档案已保存', 'assistant');

@@ -206,9 +206,24 @@ const Auth = {
     },
 
     /**
+     * 检查是否为演示模式 (URL param: demo=true)
+     */
+    isDemoMode() {
+        if (typeof window === 'undefined') return false;
+        const params = new URLSearchParams(window.location.search);
+        return params.get('demo') === 'true';
+    },
+
+    /**
      * 保护路由 - 未登录时跳转到登录页
      */
     requireAuth() {
+        // [Demo Mode Bypass]
+        if (this.isDemoMode()) {
+            console.log('[Auth] Running in Demo Mode. Login check bypassed.');
+            return true;
+        }
+
         if (!this.isSignedIn()) {
             window.location.href = '/web/index.html';
             return false;

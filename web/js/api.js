@@ -12,6 +12,10 @@ const API = {
      */
     async request(endpoint, options = {}) {
         const url = `${CONFIG.API_BASE_URL}${endpoint}`;
+        if (Auth.isDemoMode()) {
+            console.warn('[API] Demo mode: blocked request', endpoint);
+            throw new APIError('Demo mode: backend disabled', 0, null);
+        }
 
         // 构建请求头
         const headers = {
@@ -230,6 +234,9 @@ const API = {
      * 获取用户 Profile（设置 + 动态指标）
      */
     async getProfile() {
+        if (Auth.isDemoMode()) {
+            return DemoScenario.userProfile;
+        }
         return this.get('/user/profile');
     },
 
@@ -238,18 +245,17 @@ const API = {
      * @param {object} profile - Profile 数据
      */
     async saveProfile(profile) {
+        if (Auth.isDemoMode()) return { success: true }; // UI should block this, but API is safe
         return this.post('/user/profile', profile);
     },
 
-    /**
-     * Profile AI 分析
-     * @param {string} userNote - 用户输入
-     * @param {number} targetMonths - 目标月份（可选）
-     * @param {boolean} autoSave - 是否自动保存
-     * @param {object} profileOverride - 前端当前编辑的 Profile（优先使用）
-     * @param {object} metricsOverride - 前端编辑的身高/体重
-     */
+    // ... (analyzeProfile remains same, result will be mocked or blocked)
+
     async analyzeProfile(userNote, targetMonths = null, autoSave = false, profileOverride = null, metricsOverride = null) {
+        if (Auth.isDemoMode()) {
+            // Mock response if needed, but UI blocks execution usually
+            return { success: true, result: { advice_text: "Demo mode analysis..." } };
+        }
         const data = {
             user_note: userNote,
             auto_save: autoSave,
@@ -272,6 +278,15 @@ const API = {
      * 获取对话列表
      */
     async getDialogues(limit = 20, offset = 0) {
+        if (Auth.isDemoMode()) {
+            const demoDialogue = DemoScenario.dialogue || {
+                id: DemoScenario.dialogueId,
+                title: '体验演示',
+                created_at: '2025-11-02T08:00:00.000Z',
+                updated_at: '2025-11-02T20:13:43.138371'
+            };
+            return [demoDialogue];
+        }
         return this.get('/dialogues', { limit, offset });
     },
 
@@ -280,6 +295,7 @@ const API = {
      * @param {string} title 
      */
     async createDialogue(title) {
+        if (Auth.isDemoMode()) return { id: 'new-demo', title };
         return this.post('/dialogues', { title });
     },
 
@@ -287,6 +303,18 @@ const API = {
      * 获取对话详情
      */
     async getDialogue(id) {
+        if (Auth.isDemoMode()) {
+            const dialogue = {
+                id: DemoScenario.dialogueId,
+                title: '体验演示',
+                created_at: DemoScenario.dialogue?.created_at || '2025-11-02T08:00:00.000Z',
+                updated_at: DemoScenario.dialogue?.updated_at || '2025-11-02T20:13:43.138371',
+                messages: DemoScenario.messages
+            };
+            // Simulate network delay for effect
+            await new Promise(r => setTimeout(r, 600));
+            return dialogue;
+        }
         return this.get(`/dialogues/${id}`);
     },
 
@@ -294,6 +322,7 @@ const API = {
      * 追加消息到对话
      */
     async appendMessage(dialogueId, message) {
+        if (Auth.isDemoMode()) return { success: true };
         return this.request(`/dialogues/${dialogueId}/message`, {
             method: 'PATCH',
             body: JSON.stringify(message)
@@ -304,6 +333,7 @@ const API = {
      * 更新对话消息
      */
     async updateMessage(dialogueId, message) {
+        if (Auth.isDemoMode()) return { success: true };
         return this.request(`/dialogues/${dialogueId}/messages/${message.id}`, {
             method: 'PATCH',
             body: JSON.stringify(message)
@@ -314,6 +344,7 @@ const API = {
      * 更新对话（如重命名）
      */
     async updateDialogue(dialogueId, { title, user_title } = {}) {
+        if (Auth.isDemoMode()) return { success: true };
         return this.request(`/dialogues/${dialogueId}`, {
             method: 'PATCH',
             body: JSON.stringify({ title, user_title })
@@ -324,6 +355,7 @@ const API = {
      * 删除对话
      */
     async deleteDialogue(dialogueId) {
+        if (Auth.isDemoMode()) return { success: true };
         return this.request(`/dialogues/${dialogueId}`, { method: 'DELETE' });
     },
 
@@ -334,6 +366,9 @@ const API = {
      * @param {string} dialogueId (可选)
      */
     async getCards(dialogueId = null) {
+        if (Auth.isDemoMode()) {
+            return Object.values(DemoScenario.cards);
+        }
         const params = {};
         if (dialogueId) params.dialogue_id = dialogueId;
         return this.get('/cards', params);
@@ -343,6 +378,10 @@ const API = {
      * 获取最近卡片 (Sidebar)
      */
     async getRecentCards() {
+        if (Auth.isDemoMode()) {
+            // Mock some recent cards structure
+            return Object.values(DemoScenario.cards);
+        }
         return this.get('/cards/recent');
     },
 
@@ -350,6 +389,11 @@ const API = {
      * 获取卡片详情
      */
     async getCard(cardId) {
+        if (Auth.isDemoMode()) {
+            const card = DemoScenario.cards[cardId];
+            if (card) return card;
+            throw new Error('Demo card not found');
+        }
         return this.get(`/cards/${cardId}`);
     },
 

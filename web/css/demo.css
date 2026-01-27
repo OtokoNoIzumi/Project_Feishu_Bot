@@ -1,0 +1,53 @@
+/* === Demo Mask (Conversion Wall) === */
+.demo-mask {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(255, 255, 255, 0.4);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 12px;
+    cursor: pointer;
+}
+
+.demo-mask-content {
+    background: rgba(255, 255, 255, 0.9);
+    padding: 24px 32px;
+    border-radius: 16px;
+    box-shadow: 0 12px 32px rgba(92, 85, 78, 0.15);
+    text-align: center;
+    border: 1px solid rgba(217, 119, 87, 0.2);
+    /* Washi Tape Effect */
+    position: relative;
+}
+
+.demo-mask-content::before {
+    content: '';
+    position: absolute;
+    top: -10px;
+    left: 50%;
+    transform: translateX(-50%) rotate(-1deg);
+    width: 60px;
+    height: 18px;
+    background: rgba(217, 119, 87, 0.4);
+    border-radius: 2px;
+    opacity: 0.8;
+}
+
+.demo-mask-content h3 {
+    margin: 0 0 8px 0;
+    color: #382e28;
+    font-family: 'Lora', serif;
+}
+
+.demo-mask-content p {
+    margin: 0 0 16px 0;
+    color: #6e5d50;
+    font-size: 0.9rem;
+}

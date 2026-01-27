@@ -66,6 +66,37 @@ const Dashboard = {
     // 注册 Auth 就绪后的回调
     Auth.onInit(() => {
       console.log(`${getLogTime()} Auth.onInit callback triggered`);
+
+      // [Demo Mode]
+      if (Auth.isDemoMode()) {
+        console.log(`${getLogTime()} Dashboard initialized in DEMO MODE`);
+        // 1. Initialize Sidebar
+        if (window.SidebarModule) {
+          SidebarModule.init();
+        }
+        // 2. Load Demo Dialogue
+        this.loadDialogue(DemoScenario.dialogueId);
+
+        // 3. Auto-load Feature Card
+        setTimeout(() => {
+          const featureCardId = 'card_20260127_49dbba71';
+          const card = DemoScenario.cards[featureCardId];
+          if (card && this.loadSession) {
+            this.loadSession(card);
+            this.currentDialogueId = DemoScenario.dialogueId;
+          }
+        }, 800);
+
+        // 4. Render Interaction Mask
+        this.renderDemoMask();
+
+        // 5. Update Profile View to Ready State (empty)
+        if (this.view === 'profile' && this.el.resultContent.querySelector('.auth-loading-state')) {
+          this.renderProfileView();
+        }
+        return;
+      }
+
       if (!Auth.isSignedIn()) {
         console.log(`${getLogTime()} User not signed in, redirecting...`);
         window.location.href = 'index.html';
@@ -91,6 +122,50 @@ const Dashboard = {
     console.log(`${getLogTime()} Initialized (Auth pending)`);
 
     window.Dashboard = this;
+  },
+
+  // [New] Render Demo Mask
+  renderDemoMask() {
+    // 1. Cover Input Area Only
+    const inputSection = document.querySelector('.input-area');
+    if (inputSection) {
+      const mask = document.createElement('div');
+      mask.className = 'demo-mask';
+      // Adjust style for smaller area
+      mask.style.position = 'absolute';
+      mask.style.borderRadius = '0';
+      mask.innerHTML = `
+            <div class="demo-mask-content">
+                <h3>🔓 解锁 AI 营养顾问</h3>
+                <p>注册后即可自由对话</p>
+                <button class="btn btn-primary" onclick="window.Auth.openSignUp()">立即免费注册</button>
+            </div>
+          `;
+      // Prevent interactions
+      mask.addEventListener('click', (e) => {
+        if (e.target.tagName !== 'BUTTON') {
+          window.Auth.openSignUp();
+        }
+      });
+
+      const computedStyle = window.getComputedStyle(inputSection);
+      if (computedStyle.position === 'static') {
+        inputSection.style.position = 'relative';
+      }
+      inputSection.appendChild(mask);
+    }
+  },
+
+  // [New] Intercept Demo Action
+  checkDemoLimit() {
+    if (Auth.isDemoMode()) {
+      if (window.ToastUtils) {
+        ToastUtils.show('这是演示数据。注册即可免费体验 3 天完整分析功能！', 'info');
+      }
+      setTimeout(() => window.Auth.openSignUp(), 1500);
+      return true; // Blocked
+    }
+    return false;
   },
 
   cacheElements() {
@@ -182,8 +257,6 @@ const Dashboard = {
     document.querySelectorAll('.mode-btn').forEach(btn => {
       btn.classList.toggle('active', btn.dataset.mode === mode);
     });
-    // 切换模式时清空右侧 (但保留 ID)
-    this.clearResult();
   },
 
   // ========== 视图 / 面板 ==========
@@ -464,6 +537,21 @@ const Dashboard = {
         return;
       }
 
+      const isImageUrl = (url) => {
+        if (typeof url !== 'string') return false;
+        return url.startsWith('assets/') || url.startsWith('http') || url.startsWith('data:image') || url.startsWith('/');
+      };
+
+      const resolveMessageImages = (msg) => {
+        const attachments = (msg.attachments || []).filter(isImageUrl);
+        if (attachments.length > 0) return attachments;
+        if (Auth.isDemoMode() && msg.linked_card_id && window.DemoScenario?.cards?.[msg.linked_card_id]) {
+          const card = window.DemoScenario.cards[msg.linked_card_id];
+          return (card.image_uris || []).filter(isImageUrl);
+        }
+        return [];
+      };
+
       messages.forEach(msg => {
         const hasCard = Boolean(msg.linked_card_id);
         const titleHint = msg.title || ((!msg.content && (msg.attachments || []).length > 0)
@@ -472,6 +560,10 @@ const Dashboard = {
         const options = {
           title: titleHint
         };
+        const images = resolveMessageImages(msg);
+        if (images.length > 0) {
+          options.images = images;
+        }
         if (hasCard) {
           options.sessionId = msg.linked_card_id;
           options.onClick = () => this.loadCard(msg.linked_card_id);
@@ -511,6 +603,9 @@ const Dashboard = {
   // ========== 分析流程 ==========
 
   async startNewAnalysis() {
+    if (Auth.isDemoMode()) {
+      if (this.checkDemoLimit && this.checkDemoLimit()) return;
+    }
     const text = this.el.chatInput?.value.trim() || '';
     if (!text && this.pendingImages.length === 0) return;
 

@@ -351,8 +351,13 @@ const DietEditModule = {
     },
 
     collectEditedData() {
-        // 目前只对 diet 结果做“确认面板编辑”
-        if (this.mode !== 'diet') return {};
+        // [Fix] Dependency on 'this.mode' caused issue when input mode switched.
+        // Use session mode as source of truth.
+        const sessionMode = this.currentSession?.mode;
+        // 只要是 diet 或者拥有有效 diet 数据（dishes 不为空），就应该允许收集，防止 Input Mode 切换（Advice Mode）导致数据丢失
+        const hasData = this.currentDishes && this.currentDishes.length > 0;
+
+        if (sessionMode !== 'diet' && !hasData) return {};
 
         if (!this.currentDietTotals) {
             this.recalculateDietSummary(false);
