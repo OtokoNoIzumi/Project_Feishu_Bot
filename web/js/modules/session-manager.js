@@ -101,6 +101,7 @@ const SessionManagerModule = {
      */
     async loadDialogue(dialogueId, _preloadedMessages = null) {
         if (!dialogueId) return;
+
         try {
             const dialogue = _preloadedMessages ? { id: dialogueId, messages: _preloadedMessages } : await API.getDialogue(dialogueId);
             this.currentDialogueId = dialogue.id;
@@ -159,7 +160,7 @@ const SessionManagerModule = {
                 );
             });
         } catch (e) {
-            console.error('Load dialogue failed:', e);
+            console.error('[SessionManager] Load dialogue failed:', e);
             this.addMessage(`加载对话失败: ${e.message}`, 'assistant');
         }
     },

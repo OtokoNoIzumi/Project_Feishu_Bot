@@ -93,6 +93,7 @@ const SidebarModule = {
      * 加载对话列表
      */
     async loadDialogues() {
+        // console.log('[Sidebar] loadDialogues called');
         if (!this.el.dialogueList) return;
 
         try {
@@ -102,7 +103,7 @@ const SidebarModule = {
                 this.el.dialogueList.innerHTML = '<div class="loading-placeholder">加载中...</div>';
             }
 
-            const dialogues = await API.getDialogues(); // 假设 API.getDialogues 已返回列表
+            const dialogues = await API.getDialogues();
             this.dialogues = dialogues;
 
             // 如果没有数据，显示空状态
@@ -111,12 +112,30 @@ const SidebarModule = {
                 return;
             }
 
-            // 渲染列表（直接替换，无闪烁）
+            // 自动选中最近的一个 (如果当前未选中，且非 Demo 模式)
+            // Demo 模式下由 DemoModule 控制加载顺序，避免重复加载导致消息重复
+            const isDemo = new URLSearchParams(window.location.search).get('demo') === 'true';
+
+            if (this.dialogues.length > 0 && !this.currentDialogueId && !isDemo) {
+                const recentId = this.dialogues[0].id;
+                this.currentDialogueId = recentId;
+
+                // 默认展开选中项
+                this.collapsedStates[recentId] = false;
+
+                // 在右侧加载消息
+                setTimeout(() => {
+                    if (window.Dashboard && window.Dashboard.loadDialogue) {
+                        window.Dashboard.loadDialogue(recentId);
+                    }
+                }, 0);
+            }
+
+            // 渲染列表
             this.render();
 
         } catch (error) {
             console.error('Failed to load dialogues:', error);
-            // 仅当之前没有内容时才显示错误
             if (this.dialogues.length === 0) {
                 this.el.dialogueList.innerHTML = '<div class="error-placeholder">加载失败，请刷新重试</div>';
             }

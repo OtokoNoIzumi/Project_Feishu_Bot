@@ -30,14 +30,13 @@ const DemoModule = {
             // No typing effect, just wait
             await this.delay(1000);
 
-            this.el.chatInput.value = '';
-            this.updateSendButton();
-
-            // Render User Message with IMAGES
-            SessionModule.renderMessage(this.el.chatMessages, userMsg.content, 'user', {
+            const options = {
                 title: userMsg.title,
                 images: userMsg.attachments // Pass images from message
-            });
+            };
+
+            // Render User Message with IMAGES (capture element)
+            const userMsgEl = SessionModule.renderMessage(this.el.chatMessages, userMsg.content, 'user', options);
 
             // Simulate Analysis & Update Status
             if (this.el.resultStatus) this.updateStatus('loading');
@@ -50,8 +49,20 @@ const DemoModule = {
             // 3. Analysis Done: Reveal Card 3
             window._DEMO_HIDDEN_CARD_ID = null; // Clear filter
 
+            // Upgrade message to clickable card
+            if (userMsgEl && userMsg.linked_card_id) {
+                userMsgEl.dataset.sessionId = userMsg.linked_card_id;
+                userMsgEl.classList.add('session-card');
+                userMsgEl.onclick = () => this.loadCard(userMsg.linked_card_id);
+            }
+
             // Refresh Sidebar to show new card (Data layer will now return all cards)
             if (window.SidebarModule) {
+                // [Fix] Sync dialogue ID to Sidebar to prevent it from auto-loading messages again
+                // causing duplicate rendering (Sidebar thinks no dialogue is active)
+                if (this.currentDialogueId) {
+                    SidebarModule.currentDialogueId = this.currentDialogueId;
+                }
                 SidebarModule.loadRecentCards();
                 SidebarModule.loadDialogues();
             }
