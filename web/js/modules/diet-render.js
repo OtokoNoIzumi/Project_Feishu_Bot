@@ -91,21 +91,14 @@ const DietRenderModule = {
               <span style="position: relative; top: 1px;">AI 营养点评</span>
             </div>
             <div class="advice-header-right">
-              <span id="advice-status" class="advice-status ${version.advice ? '' : (version.adviceError ? 'error' : 'loading')}"></span>
+              <span id="advice-status" class="advice-status ${version.advice ? '' : (version.adviceError ? 'error' : (version.adviceLoading ? 'loading' : ''))}"></span>
               <button class="section-toggle-btn" id="advice-toggle-btn" onclick="Dashboard.toggleAdviceSection(event)" title="折叠/展开" aria-label="折叠/展开">▼</button>
             </div>
           </div>
           <div class="section-wrapper">
              <div class="section-body">
                 <div id="advice-content" class="advice-content">
-                    ${version.advice
-        ? `<div class="advice-text">${this.simpleMarkdownToHtml(version.advice)}</div>`
-        : (version.adviceError
-          ? `<div class="advice-error">⚠️ 建议获取失败：${version.adviceError}</div>`
-          : (version.adviceLoading
-            ? '<div class="advice-loading"><span class="loading-spinner"></span>正在生成点评...</div>'
-            : '<div class="advice-empty">暂无建议</div>'))
-      }
+                    ${this.generateAdviceHtml(version)}
                 </div>
              </div>
           </div>
@@ -464,6 +457,76 @@ const DietRenderModule = {
   // 调用 EnergyUtils，自动传入当前单位
   formatEnergyFromMacros(proteinG, fatG, carbsG) {
     return EnergyUtils.formatEnergyFromMacros(proteinG, fatG, carbsG, this.getEnergyUnit());
+  },
+
+  /**
+   * 生成建议部分的 HTML
+   * 提取为公共方法以供 AnalysisModule._setAdviceLoading 复用，避免逻辑不一致
+   */
+  generateAdviceHtml(version) {
+    const data = version.parsedData || {};
+    // Ensure simpleMarkdownToHtml is available (mixed in or on this)
+    const md = (text) => this.simpleMarkdownToHtml ? this.simpleMarkdownToHtml(text) : text;
+
+    const processContent = data.userNoteProcess ? md(data.userNoteProcess) : '';
+    const adviceContent = version.advice ? md(version.advice) : '';
+    const quickAdviceContent = data.advice ? md(data.advice) : '';
+
+    let html = '';
+    // 1. Success State
+    if (version.advice) {
+      if (processContent) {
+        html += `
+              <details class="advice-process-details" style="margin-bottom: 12px; border-bottom: 1px dashed var(--color-border, #eee); padding-bottom: 12px;">
+                  <summary style="cursor: pointer; color: var(--color-text-tertiary, #999); font-size: 0.8rem; display: flex; align-items: center; gap: 6px; user-select: none;">
+                      <span style="opacity: 0.8;">AI测算方法 (点击展开)</span>
+                  </summary>
+                  <div class="advice-intermediate-section" style="margin-top: 12px; opacity: 0.95">
+                        <div class="advice-text" style="font-size: 0.9em; line-height: 1.5;">${processContent}</div>
+                  </div>
+              </details>`;
+      }
+      html += `<div class="advice-text">${adviceContent}</div>`;
+      return html;
+    }
+
+    if (processContent) {
+      html += `
+              <div class="advice-intermediate-section">
+                  <div class="advice-intermediate-label">AI测算方法</div>
+                  <div class="advice-text">${processContent}</div>
+              </div>`;
+    }
+    if (quickAdviceContent) {
+      html += `
+          <div class="advice-intermediate-section">
+              <div class="advice-intermediate-label">📝 单餐点评</div>
+              <div class="advice-text">${quickAdviceContent}</div>
+          </div>`;
+    }
+    // 2. Error State
+    if (version.adviceError) {
+      // Error时也保留中间过程（如果存在），方便排查
+      html += `<div class="advice-error">⚠️ 定制建议获取失败：${version.adviceError}</div>`;
+      return html;
+    }
+
+    // 3. Loading State
+    if (version.adviceLoading) {
+      // 正在加载时，如果前面已经有中间过程 HTML，保留它们在上方（用户体验更好）
+      // 或者直接追加 loading
+      html += '<div class="advice-loading"><span class="loading-spinner"></span>正在生成定制建议...</div>';
+      return html;
+    }
+
+    // 4. Empty State
+    // 如果已经有中间过程（AI测算方法/快捷点评），则不算完全 Empty，直接返回已累积的 HTML
+    if (html.trim()) {
+      return html;
+    }
+
+    // 只有当 advice, adviceError, adviceLoading 都为空，且连中间过程都没有时，才显示暂无建议
+    return '<div class="advice-empty">暂无建议</div>';
   },
 };
 

@@ -133,6 +133,13 @@
     border-bottom: 1px dashed var(--color-border);
 }
 
+/* 针对 details 内部的特殊处理 */
+.advice-process-details .advice-intermediate-section {
+    border-bottom: none;
+    padding-bottom: 0;
+    margin-bottom: 0;
+}
+
 .advice-intermediate-label {
     font-size: 0.75rem;
     font-weight: 600;

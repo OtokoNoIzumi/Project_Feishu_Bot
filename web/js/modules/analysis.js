@@ -281,7 +281,7 @@ const AnalysisModule = {
 
             if (errorCode === 'DAILY_LIMIT_REACHED') {
                 const limit = metadata.limit || 5;
-                userTip = `每日建议生成次数已耗尽 (${limit}/${limit})。请升级会员继续使用。`;
+                userTip = `每日定制建议生成次数已耗尽 (${limit}/${limit})。请升级会员继续使用。`;
                 actions.push({
                     text: '🔑 去输入激活码',
                     class: 'btn-primary',
@@ -587,55 +587,20 @@ const AnalysisModule = {
         const statusEl = document.getElementById('advice-status');
         if (!contentEl || !statusEl) return;
 
-        // Build intermediate content (Shared)
-        let intermediateHtml = '';
-        const data = version.parsedData || {};
-
-        // 1. Extra Image Summary / Process
-        if (data.userNoteProcess) {
-            intermediateHtml += `
-                <div class="advice-intermediate-section">
-                    <div class="advice-intermediate-label">AI测算方法</div>
-                    <div class="advice-text">${this.simpleMarkdownToHtml(data.userNoteProcess)}</div>
-                </div>
-             `;
-        }
-
-        // 2. Simple Advice from Analysis (Preliminary)
-        if (data.advice) {
-            intermediateHtml += `
-                <div class="advice-intermediate-section">
-                    <div class="advice-intermediate-label">📝 快捷点评</div>
-                    <div class="advice-text">${this.simpleMarkdownToHtml(data.advice)}</div>
-                </div>
-             `;
-        }
-
-        if (version.adviceLoading) {
-            statusEl.className = 'advice-status loading';
-            contentEl.innerHTML = `
-                ${intermediateHtml}
-                <div class="advice-loading-container">
-                    <span class="loading-spinner"></span>
-                    <span>详细顾问点评生成中...</span>
-                </div>
-            `;
-            return;
-        }
-
+        // Update status class
         statusEl.className = 'advice-status';
-        if (version.advice) {
-            // Success: Show full advice (intermediate logic hidden as full advice supersedes it)
-            contentEl.innerHTML = `<div class="advice-text">${this.simpleMarkdownToHtml(version.advice)}</div>`;
+        if (version.adviceLoading) {
+            statusEl.classList.add('loading');
         } else if (version.adviceError) {
-            // Failure: Keep intermediate content + Error message
-            contentEl.innerHTML = `
-                ${intermediateHtml}
-                <div class="advice-error">⚠️ 点评获取失败：${version.adviceError}</div>
-            `;
             statusEl.classList.add('error');
+        }
+
+        // Generate content using shared renderer
+        // Note: Assuming AnalysisModule is mixed into Dashboard alongside DietRenderModule
+        if (typeof this.generateAdviceHtml === 'function') {
+            contentEl.innerHTML = this.generateAdviceHtml(version);
         } else {
-            contentEl.innerHTML = '<div class="advice-empty">暂无建议</div>';
+            console.warn('generateAdviceHtml not found on this context');
         }
     },
 

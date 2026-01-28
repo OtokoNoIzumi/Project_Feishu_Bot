@@ -979,10 +979,24 @@ const Dashboard = {
   renderAdvice(adviceText) {
     const contentEl = document.getElementById('advice-content');
     const statusEl = document.getElementById('advice-status');
+    const session = this.currentSession;
+    const version = session?.versions?.[session.currentVersion - 1];
+
+    if (version) {
+      version.advice = adviceText;
+      version.adviceLoading = false;
+      version.adviceError = null;
+    }
+
     if (contentEl) {
-      // 简单的 markdown 转 HTML
-      const html = this.simpleMarkdownToHtml(adviceText);
-      contentEl.innerHTML = `<div class="advice-text">${html}</div>`;
+      let html = '';
+      if (typeof this.generateAdviceHtml === 'function' && version) {
+        html = this.generateAdviceHtml(version);
+      } else {
+        const md = this.simpleMarkdownToHtml ? this.simpleMarkdownToHtml(adviceText) : adviceText;
+        html = `<div class="advice-text">${md}</div>`;
+      }
+      contentEl.innerHTML = html;
     }
     if (statusEl) {
       statusEl.className = 'advice-status';
@@ -1046,13 +1060,28 @@ const Dashboard = {
   renderAdviceError(errorMsg) {
     const contentEl = document.getElementById('advice-content');
     const statusEl = document.getElementById('advice-status');
+    const session = this.currentSession;
+    const version = session?.versions?.[session.currentVersion - 1];
+
+    if (version) {
+      version.adviceError = errorMsg;
+      version.adviceLoading = false;
+    }
+
     if (contentEl) {
-      contentEl.innerHTML = `<div class="advice-error">⚠️ 建议获取失败：${errorMsg}</div>`;
+      // 优先使用 generateAdviceHtml 以包含中间过程和快捷点评
+      if (version && typeof this.generateAdviceHtml === 'function') {
+        contentEl.innerHTML = this.generateAdviceHtml(version);
+      } else {
+        contentEl.innerHTML = `<div class="advice-error">⚠️ 定制建议获取失败：${errorMsg}</div>`;
+      }
     }
     if (statusEl) {
       statusEl.className = 'advice-status error';
       statusEl.textContent = '';
     }
+    // Error时也确保展开，方便用户看到报错
+    this.restoreAdviceState();
   },
 
   // 切换营养标签区域的折叠状态
