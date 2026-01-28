@@ -1,0 +1,186 @@
+/* AI 营养点评区域 */
+.advice-section {
+    margin-top: var(--spacing-lg);
+    padding: var(--spacing-md);
+    background: linear-gradient(135deg, rgba(217, 119, 87, 0.08) 0%, rgba(224, 142, 115, 0.05) 100%);
+    border: 1px solid rgba(217, 119, 87, 0.2);
+    border-radius: var(--radius-lg);
+}
+
+.advice-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-sm);
+}
+
+.advice-header .dishes-title {
+    margin-bottom: 0;
+}
+
+.advice-status {
+    font-size: 0.75rem;
+}
+
+.advice-status.loading::after {
+    content: '生成中...';
+    color: var(--color-text-muted);
+    animation: pulse 1.5s ease-in-out infinite;
+}
+
+.advice-status.error::after {
+    content: '失败';
+    color: var(--color-error);
+}
+
+.advice-content {
+    margin-top: var(--spacing-sm);
+}
+
+.advice-text {
+    font-size: 0.875rem;
+    line-height: 1.7;
+    color: var(--color-text-primary);
+    margin: 0;
+}
+
+.advice-text ul {
+    margin: 8px 0;
+    padding-left: 20px;
+}
+
+.advice-text li {
+    margin: 4px 0;
+}
+
+.advice-text strong {
+    color: var(--color-accent-primary);
+    font-weight: 600;
+}
+
+.advice-text em {
+    font-style: italic;
+    color: var(--color-text-secondary);
+}
+
+.advice-loading {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    color: var(--color-text-muted);
+    font-size: 0.875rem;
+}
+
+.loading-spinner {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border: 2px solid var(--color-border);
+    border-top-color: var(--color-accent-primary);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+@keyframes pulse {
+
+    0%,
+    100% {
+        opacity: 1;
+    }
+
+    50% {
+        opacity: 0.5;
+    }
+}
+
+.advice-error {
+    font-size: 0.875rem;
+    color: var(--color-warning);
+    padding: var(--spacing-sm);
+    background: rgba(245, 158, 11, 0.1);
+    border-radius: var(--radius-sm);
+}
+
+.advice-text h1,
+.advice-text h2,
+.advice-text h3 {
+    margin: 0.8em 0 0.4em;
+    font-weight: 600;
+    color: var(--color-accent-primary);
+}
+
+.advice-text h1 {
+    font-size: 1.1rem;
+}
+
+.advice-text h2 {
+    font-size: 1rem;
+}
+
+.advice-text h3 {
+    font-size: 0.9rem;
+}
+
+.advice-intermediate-section {
+    margin-bottom: var(--spacing-md);
+    padding-bottom: var(--spacing-md);
+    border-bottom: 1px dashed var(--color-border);
+}
+
+.advice-intermediate-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--color-text-secondary);
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* 营养点评可折叠交互 */
+.advice-header.collapsible {
+    cursor: pointer;
+    user-select: none;
+    padding: var(--spacing-sm);
+    margin: calc(-1 * var(--spacing-sm));
+    margin-bottom: 0;
+    border-radius: var(--radius-md);
+    transition: background 0.15s ease;
+}
+
+.advice-header.collapsible:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.advice-header-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* Note: Button rotation logic for .advice-section.collapsed is in ui.css */
+
+/* 营养点评可折叠交互 - 修复版 (Scheme B - Max Height) */
+.advice-section .advice-content {
+    /* 设置一个足够大的 max-height 以允许展开内容 */
+    max-height: 3000px;
+    opacity: 1;
+    margin-top: var(--spacing-sm);
+    overflow: hidden;
+    transition: max-height 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+        opacity 0.3s ease,
+        margin 0.3s ease;
+}
+
+.advice-section.collapsed .advice-content {
+    max-height: 0 !important;
+    opacity: 0 !important;
+    margin-top: 0 !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+}

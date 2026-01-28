@@ -1,0 +1,55 @@
+/* Keep 数据区块样式 */
+.keep-section {
+    margin-top: var(--spacing-md);
+    padding: var(--spacing-md);
+    background: var(--color-bg-tertiary);
+    border-radius: var(--radius-md);
+}
+
+.keep-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--spacing-sm) 0;
+    border-bottom: 1px solid var(--color-border);
+}
+
+.keep-item:last-child {
+    border-bottom: none;
+}
+
+.keep-value {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--color-accent-primary);
+}
+
+.keep-main {
+    display: flex;
+    align-items: baseline;
+    gap: var(--spacing-sm);
+}
+
+.keep-sub {
+    font-size: 0.875rem;
+    color: var(--color-text-secondary);
+}
+
+.keep-details {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-sm);
+    font-size: 0.75rem;
+    color: var(--color-text-muted);
+}
+
+.keep-details span {
+    background: var(--color-bg-secondary);
+    padding: 2px 6px;
+    border-radius: var(--radius-sm);
+}
+
+.keep-meta {
+    font-size: 0.75rem;
+    color: var(--color-text-muted);
+}

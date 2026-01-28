@@ -1,0 +1,912 @@
+/* 可编辑结果卡片 */
+.result-card {
+    background: var(--color-bg-secondary);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: var(--spacing-lg);
+    max-width: none;
+
+    /* Organic Touch */
+    transform: rotate(0.4deg);
+    box-shadow: 2px 4px 10px rgba(74, 62, 53, 0.05);
+    position: relative;
+    border-top-right-radius: 4px;
+    /* Slight asymmetry */
+}
+
+/* Washi Tape (Alt color) */
+.result-card::after {
+    content: '';
+    position: absolute;
+    top: -12px;
+    right: 20%;
+    transform: rotate(-2deg);
+    width: 60px;
+    height: 20px;
+    background: rgba(107, 142, 35, 0.25);
+    /* Olive Tape */
+    opacity: 0.7;
+    z-index: 10;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.result-card-header {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    margin-bottom: var(--spacing-lg);
+    padding-bottom: var(--spacing-md);
+    border-bottom: 1px solid var(--color-border);
+}
+
+.result-icon {
+    width: 44px;
+    height: 44px;
+    background: var(--color-accent-gradient);
+    border-radius: var(--radius-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.25rem;
+}
+
+.result-card-title {
+    font-size: 1rem;
+    font-weight: 600;
+}
+
+.result-card-subtitle {
+    font-size: 0.75rem;
+    color: var(--color-text-muted);
+}
+
+/* 营养数据网格（可编辑） */
+.nutrition-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: var(--spacing-md);
+    margin-bottom: var(--spacing-lg);
+}
+
+.nutrition-item {
+    background: var(--color-bg-tertiary);
+    border-radius: var(--radius-md);
+    padding: var(--spacing-md);
+    text-align: center;
+}
+
+.nutrition-input {
+    width: 100%;
+    background: transparent;
+    border: none;
+    color: var(--color-accent-primary);
+    font-size: 1.25rem;
+    font-weight: 600;
+    text-align: center;
+    outline: none;
+}
+
+.nutrition-input:focus {
+    background: var(--color-bg-secondary);
+    border-radius: var(--radius-sm);
+}
+
+.nutrition-label {
+    font-size: 0.7rem;
+    color: var(--color-text-muted);
+    margin-top: 4px;
+}
+
+/* 新：总览（只读，自动加总） */
+.nutrition-summary {
+    display: grid;
+    grid-template-columns: 1.2fr 1fr;
+    gap: var(--spacing-md);
+    margin-bottom: var(--spacing-lg);
+}
+
+.summary-energy {
+    background: #fffdf0;
+    /* Sticky note yellow-white */
+    border: 1px solid rgba(0, 0, 0, 0.05);
+    border-radius: var(--radius-sm);
+    padding: var(--spacing-md);
+    box-shadow: 1px 2px 5px rgba(0, 0, 0, 0.05);
+    transform: rotate(-1deg);
+}
+
+.summary-energy .value {
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--color-accent-primary);
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+}
+
+.summary-energy .label {
+    margin-top: 6px;
+    font-size: 0.75rem;
+    color: var(--color-text-muted);
+}
+
+.summary-macros {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: var(--spacing-sm);
+}
+
+.summary-macro-item {
+    background: var(--color-bg-tertiary);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    padding: var(--spacing-sm) var(--spacing-md);
+}
+
+.summary-macro-item .value {
+    font-size: 1.1rem;
+    font-weight: 650;
+    color: var(--color-text-primary);
+    font-variant-numeric: tabular-nums;
+}
+
+.summary-macro-item .label {
+    font-size: 0.7rem;
+    color: var(--color-text-muted);
+    margin-top: 2px;
+}
+
+/* 紧凑型营养汇总（新设计） */
+.nutrition-summary-compact {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    margin-bottom: var(--spacing-md);
+    flex-wrap: wrap;
+}
+
+.nutrition-summary-compact .summary-energy {
+    flex-shrink: 0;
+}
+
+.summary-macros-inline {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    flex: 1;
+}
+
+.macro-chip {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 6px;
+    padding: 6px 12px;
+    background: var(--color-bg-tertiary, rgba(255, 255, 255, 0.05));
+    border: 1px solid var(--color-border, rgba(255, 255, 255, 0.1));
+    border-radius: 999px;
+    /* 完全圆角 */
+    font-size: 0.8rem;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    transition: all 0.2s ease;
+}
+
+.macro-chip:hover {
+    background: rgba(74, 62, 53, 0.12);
+    /* Slightly darker hover */
+    border-color: var(--color-accent-primary);
+}
+
+.macro-chip .k {
+    color: var(--color-text-muted);
+    font-size: 0.7rem;
+}
+
+.macro-chip .v {
+    font-weight: 600;
+    color: var(--color-text-primary);
+}
+
+/* 移动端适配 for diet summary */
+@media (max-width: 768px) {
+    .nutrition-summary-compact {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .nutrition-summary-compact .summary-energy {
+        text-align: center;
+    }
+
+    .summary-macros-inline {
+        justify-content: center;
+    }
+}
+
+/* 新：菜式表头表格 */
+.dish-table-wrap {
+    overflow-x: auto;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    background: var(--color-bg-secondary);
+}
+
+/* Dish Tables */
+.dish-table {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 0;
+}
+
+.dish-table thead th {
+    position: sticky;
+    top: 0;
+    background: var(--color-bg-secondary);
+    border-bottom: 1px solid var(--color-border);
+    padding: 10px 10px;
+    font-size: 0.75rem;
+    color: var(--color-text-muted);
+    text-align: left;
+    white-space: nowrap;
+}
+
+.dish-table thead th.num {
+    text-align: right;
+}
+
+.dish-table tbody td {
+    border-bottom: 1px solid var(--color-border);
+    padding: 8px 10px;
+    vertical-align: middle;
+}
+
+.dish-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.dish-table .cell-input {
+    width: 100%;
+    background: var(--color-bg-tertiary);
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    padding: 6px 10px;
+    color: var(--color-text-primary);
+    font-size: 0.875rem;
+}
+
+.dish-table .cell-input:focus {
+    border-color: var(--color-accent-primary);
+    outline: none;
+}
+
+.dish-table .cell-input.num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+.dish-table .cell-remove {
+    width: 28px;
+    height: 28px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    color: var(--color-text-muted);
+    cursor: pointer;
+}
+
+.dish-table .cell-remove:hover {
+    background: rgba(239, 68, 68, 0.2);
+    border-color: rgba(239, 68, 68, 0.35);
+    color: var(--color-error);
+}
+
+/* Diet：菜式（层级结构） */
+.diet-dish-block {
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    background: var(--color-bg-secondary);
+    padding: var(--spacing-md);
+    margin-bottom: var(--spacing-md);
+}
+
+.diet-dish-block.disabled {
+    opacity: 0.6;
+}
+
+.diet-dish-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-md);
+    padding-bottom: var(--spacing-sm);
+    border-bottom: 1px solid var(--color-border);
+}
+
+.diet-dish-left {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    min-width: 0;
+    flex: 1;
+}
+
+.diet-dish-name {
+    font-weight: 650;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.diet-dish-right {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+}
+
+.diet-level-tag {
+    font-size: 0.75rem;
+    color: var(--color-text-muted);
+    padding: 2px 6px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    background: var(--color-bg-tertiary);
+}
+
+/* AI 菜式：合并的单行头 */
+.diet-dish-header-combined {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px 10px;
+    padding-bottom: var(--spacing-sm);
+}
+
+.diet-dish-header-combined input[type="checkbox"] {
+    flex-shrink: 0;
+}
+
+.diet-dish-header-combined .diet-dish-name {
+    font-weight: 650;
+    margin-right: 8px;
+}
+
+.diet-dish-header-combined .diet-stat {
+    display: inline-flex;
+    gap: 4px;
+    font-size: 0.8rem;
+}
+
+.diet-dish-header-combined .diet-stat .k {
+    color: var(--color-text-muted);
+}
+
+.diet-dish-header-combined .diet-stat .v {
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
+.diet-dish-header-combined .diet-chips {
+    display: inline-flex;
+    gap: 4px;
+    margin-left: auto;
+}
+
+.diet-dish-header-combined .diet-toggle-btn {
+    margin-left: 8px;
+}
+
+.diet-dish-summary {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: var(--spacing-sm);
+    padding-top: var(--spacing-sm);
+}
+
+.diet-dish-summary-item {
+    background: var(--color-bg-tertiary);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    padding: 8px 10px;
+}
+
+.diet-dish-summary-item .v {
+    font-weight: 650;
+    font-variant-numeric: tabular-nums;
+}
+
+.diet-dish-summary-item .k {
+    margin-top: 2px;
+    font-size: 0.7rem;
+    color: var(--color-text-muted);
+}
+
+.diet-ingredients-wrap {
+    margin-top: var(--spacing-md);
+    padding-top: var(--spacing-md);
+    border-top: 1px solid var(--color-border);
+}
+
+.diet-ingredients-title {
+    font-size: 0.8rem;
+    font-weight: 650;
+    color: var(--color-text-secondary);
+    margin-bottom: var(--spacing-sm);
+}
+
+.diet-ingredients-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-sm);
+    margin-bottom: var(--spacing-sm);
+}
+
+.diet-toggle-btn {
+    padding: 6px 10px;
+    background: var(--color-bg-tertiary);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    color: var(--color-text-secondary);
+    font-size: 0.75rem;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.diet-toggle-btn:hover {
+    background: var(--color-bg-glass);
+    color: var(--color-text-primary);
+}
+
+.diet-ingredients-body.collapsed {
+    display: none;
+}
+
+.diet-dish-stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 10px;
+    padding-top: var(--spacing-sm);
+}
+
+.diet-stat {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 6px;
+    padding: 6px 10px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-full);
+    background: var(--color-bg-tertiary);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.diet-stat .k {
+    font-size: 0.7rem;
+    color: var(--color-text-muted);
+}
+
+.diet-stat .v {
+    font-size: 0.85rem;
+    font-weight: 650;
+    color: var(--color-text-primary);
+}
+
+.diet-chips {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: auto;
+    flex-wrap: wrap;
+}
+
+.diet-chip {
+    font-size: 0.7rem;
+    color: var(--color-text-secondary);
+    padding: 4px 8px;
+    border: 1px dashed var(--color-border);
+    border-radius: var(--radius-full);
+    background: transparent;
+}
+
+.diet-user-edit-row {
+    margin-top: var(--spacing-md);
+    padding-top: var(--spacing-md);
+    border-top: 1px solid var(--color-border);
+}
+
+/* Ingredients 表格：不使用 sticky 表头，避免小屏/滚动异常 */
+.ingredients-table thead th {
+    position: static;
+}
+
+/* 统一成分/菜式表格布局 */
+.ingredients-table {
+    table-layout: auto;
+    width: 100%;
+}
+
+/* 第一列（名称）稍宽 */
+.ingredients-table th:nth-child(1),
+.ingredients-table td:nth-child(1) {
+    width: 18%;
+    min-width: 80px;
+}
+
+/* 最后一列（AI/删除）紧凑 */
+.ingredients-table th:nth-child(9),
+.ingredients-table td:nth-child(9) {
+    width: 1%;
+    white-space: nowrap;
+    padding: 2px 4px;
+    text-align: center;
+}
+
+/* 统一 AI 标签和删除按钮的尺寸 */
+.ingredients-table td:nth-child(9) .diet-level-tag {
+    display: inline-block;
+    width: 24px;
+    height: 24px;
+    line-height: 22px;
+    padding: 0;
+    text-align: center;
+    font-size: 0.65rem;
+}
+
+.ingredients-table td:nth-child(9) .cell-remove {
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    font-size: 0.875rem;
+}
+
+/* 等比缩放开关按钮 */
+.scale-toggle-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    background: var(--color-bg-tertiary);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    color: var(--color-text-muted);
+    font-size: 0.875rem;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    filter: grayscale(0.8);
+    opacity: 0.6;
+}
+
+.scale-toggle-btn:hover {
+    background: var(--color-bg-glass);
+    border-color: var(--color-accent-primary);
+    filter: grayscale(0.3);
+    opacity: 0.9;
+}
+
+.scale-toggle-btn.active {
+    background: rgba(217, 119, 87, 0.15);
+    border-color: var(--color-accent-primary);
+    color: var(--color-accent-primary);
+    filter: grayscale(0);
+    opacity: 1;
+}
+
+/* 表格内的等比缩放按钮尺寸统一 */
+.ingredients-table td:nth-child(9) .scale-toggle-btn {
+    width: 24px;
+    height: 24px;
+    font-size: 0.75rem;
+}
+
+/* 用户自定义菜式表格：添加外框与 AI 表格一致 */
+.diet-user-dishes-table {
+    margin-top: var(--spacing-md);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    background: var(--color-bg-secondary);
+    padding: var(--spacing-md);
+}
+
+.diet-user-dishes-table .dish-table-wrap {
+    overflow-x: hidden;
+    border: none;
+}
+
+/* 汇总行（菜式列表底部） */
+.diet-summary-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 12px;
+    margin-top: var(--spacing-md);
+    padding: var(--spacing-md);
+    background: var(--color-bg-tertiary);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+}
+
+.diet-summary-item {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 4px;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.diet-summary-item .k {
+    font-size: 0.75rem;
+    color: var(--color-text-muted);
+}
+
+.diet-summary-item .v {
+    font-size: 0.95rem;
+    font-weight: 650;
+    color: var(--color-accent-primary);
+}
+
+.diet-summary-item .u {
+    font-size: 0.75rem;
+    color: var(--color-text-secondary);
+}
+
+/* 识别到的营养标签区域 */
+.labels-section {
+    margin-top: var(--spacing-lg);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    background: var(--color-bg-secondary);
+    overflow: hidden;
+}
+
+.labels-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: var(--spacing-md);
+    cursor: pointer;
+    background: var(--color-bg-tertiary);
+    transition: background 0.15s ease;
+}
+
+.labels-header:hover {
+    background: var(--color-bg-glass);
+}
+
+.labels-header .dishes-title {
+    margin-bottom: 0;
+}
+
+.labels-toggle {
+    font-size: 0.75rem;
+    color: var(--color-text-muted);
+    transition: transform 0.2s ease;
+}
+
+.labels-content {
+    padding: var(--spacing-md);
+}
+
+.labels-content.collapsed {
+    display: none;
+}
+
+.label-card {
+    padding: var(--spacing-md);
+    background: var(--color-bg-tertiary);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    margin-bottom: var(--spacing-sm);
+}
+
+.label-card:last-child {
+    margin-bottom: 0;
+}
+
+.label-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--spacing-sm);
+}
+
+.label-name {
+    font-weight: 600;
+    font-size: 0.875rem;
+}
+
+.label-serving {
+    font-size: 0.75rem;
+    color: var(--color-text-muted);
+    padding: 2px 8px;
+    background: var(--color-bg-secondary);
+    border-radius: var(--radius-sm);
+}
+
+.label-macros {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.label-macro {
+    display: inline-flex;
+    gap: 4px;
+    padding: 4px 8px;
+    background: var(--color-bg-secondary);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-full);
+    font-size: 0.75rem;
+}
+
+.label-macro .k {
+    color: var(--color-text-muted);
+}
+
+.label-macro .v {
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
+.label-note {
+    margin-top: var(--spacing-sm);
+    font-size: 0.8rem;
+    color: var(--color-text-secondary);
+    font-style: italic;
+}
+
+/* 营养标签编辑区域 */
+.label-edit-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--spacing-sm);
+    margin-bottom: var(--spacing-sm);
+}
+
+.label-edit-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.label-edit-field label {
+    font-size: 0.7rem;
+    color: var(--color-text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.label-edit-field.label-edit-primary {
+    flex: 1.5;
+}
+
+.label-edit-field.label-edit-full {
+    margin-top: var(--spacing-sm);
+}
+
+.label-input {
+    width: 100%;
+    padding: 6px 10px;
+    background: var(--color-bg-secondary);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    color: var(--color-text-primary);
+    font-size: 0.875rem;
+}
+
+.label-input:focus {
+    border-color: var(--color-accent-primary);
+    outline: none;
+}
+
+.label-input::placeholder {
+    color: var(--color-text-muted);
+    font-size: 0.8rem;
+}
+
+.label-input-sm {
+    max-width: 80px;
+}
+
+.label-macros-display {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: var(--spacing-sm);
+    background: var(--color-bg-secondary);
+    border-radius: var(--radius-sm);
+    margin-bottom: var(--spacing-sm);
+}
+
+/* 可编辑菜品列表 */
+.dishes-section {
+    margin-top: var(--spacing-lg);
+}
+
+.dishes-title {
+    font-size: 0.875rem;
+    font-weight: 600;
+    margin-bottom: var(--spacing-md);
+}
+
+.dish-row {
+    display: grid;
+    grid-template-columns: 1fr 80px 80px 30px;
+    gap: var(--spacing-sm);
+    align-items: center;
+    padding: var(--spacing-sm) 0;
+    border-bottom: 1px solid var(--color-border);
+}
+
+.dish-row:last-child {
+    border-bottom: none;
+}
+
+.dish-input {
+    background: var(--color-bg-tertiary);
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    padding: 6px 10px;
+    color: var(--color-text-primary);
+    font-size: 0.875rem;
+}
+
+.dish-input:focus {
+    border-color: var(--color-accent-primary);
+    outline: none;
+}
+
+.dish-input.name {
+    font-weight: 500;
+}
+
+.dish-input.number {
+    text-align: right;
+}
+
+.dish-remove {
+    width: 24px;
+    height: 24px;
+    background: transparent;
+    border: none;
+    color: var(--color-text-muted);
+    cursor: pointer;
+    border-radius: var(--radius-sm);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.dish-remove:hover {
+    background: rgba(239, 68, 68, 0.2);
+    color: var(--color-error);
+}
+
+.add-dish-btn {
+    margin-top: var(--spacing-sm);
+    padding: var(--spacing-sm) var(--spacing-md);
+    background: var(--color-bg-tertiary);
+    border: 1px dashed var(--color-border);
+    border-radius: var(--radius-md);
+    color: var(--color-text-muted);
+    font-size: 0.875rem;
+    cursor: pointer;
+    width: 100%;
+}
+
+.add-dish-btn:hover {
+    border-color: var(--color-accent-primary);
+    color: var(--color-accent-primary);
+}
+
+
+/* 只读单元格（热量等不可输入） */
+.cell-readonly {
+    background: rgba(255, 255, 255, 0.04) !important;
+    border-color: rgba(255, 255, 255, 0.08) !important;
+    color: var(--color-text-primary) !important;
+    cursor: default;
+}

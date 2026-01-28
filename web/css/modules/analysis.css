@@ -1,0 +1,154 @@
+/* 底部操作栏 */
+.result-footer {
+    padding: var(--spacing-md) var(--spacing-lg);
+    border-top: 1px solid var(--color-border);
+    display: flex;
+    gap: var(--spacing-md);
+    justify-content: flex-end;
+    background: var(--color-bg-secondary);
+}
+
+.result-footer.hidden {
+    display: none;
+}
+
+/* 补充说明输入框 */
+.refine-section {
+    margin-top: var(--spacing-lg);
+    padding-top: var(--spacing-lg);
+    border-top: 1px solid var(--color-border);
+}
+
+.refine-input {
+    width: 100%;
+    min-height: 60px;
+    margin-top: var(--spacing-sm);
+    padding: var(--spacing-sm);
+    background: var(--color-bg-tertiary);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    color: var(--color-text-primary);
+    font-size: 0.875rem;
+    font-family: inherit;
+    resize: vertical;
+}
+
+.refine-input:focus {
+    outline: none;
+    border-color: var(--color-accent-primary);
+}
+
+.refine-input::placeholder {
+    color: var(--color-text-muted);
+}
+
+/* 文字说明输入框 */
+.note-section {
+    margin-top: var(--spacing-lg);
+    padding-top: var(--spacing-lg);
+    border-top: 1px solid var(--color-border);
+}
+
+.note-input {
+    width: 100%;
+    min-height: 60px;
+    margin-top: var(--spacing-sm);
+    padding: var(--spacing-sm);
+    background: var(--color-bg-tertiary);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    color: var(--color-text-primary);
+    font-size: 0.875rem;
+    font-family: inherit;
+    resize: vertical;
+}
+
+.note-input:focus {
+    outline: none;
+    border-color: var(--color-accent-primary);
+}
+
+.note-input::placeholder {
+    color: var(--color-text-muted);
+}
+
+/* 消息头容器：用于并排显示标题和版本标 */
+.message-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 4px;
+    gap: 8px;
+}
+
+.message-title {
+    font-weight: 600;
+    font-size: 0.875rem;
+    margin-bottom: 0;
+    /* 由 header 控制间距 */
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.version-badge {
+    /* 移除 absolute 定位，改为流式布局 */
+    position: static;
+    background: rgba(99, 102, 241, 0.15);
+    /* 更轻量的背景 */
+    color: var(--color-accent-primary);
+    border: 1px solid rgba(99, 102, 241, 0.3);
+    font-size: 0.7rem;
+    /* 稍微大一点，易读 */
+    padding: 1px 6px;
+    border-radius: 10px;
+    /* 圆润风格 */
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.version-selector {
+    background: var(--color-bg-tertiary);
+    padding: 4px 8px;
+    border-radius: var(--radius-sm);
+    font-size: 0.75rem;
+    color: var(--color-text-muted);
+}
+
+.version-nav {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: auto;
+}
+
+.version-btn {
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--color-bg-tertiary);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    font-size: 0.75rem;
+}
+
+.version-btn:hover:not(:disabled) {
+    background: var(--color-accent-primary);
+    color: white;
+}
+
+.version-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
+.version-label {
+    font-size: 0.75rem;
+    color: var(--color-text-muted);
+    padding: 0 4px;
+}
