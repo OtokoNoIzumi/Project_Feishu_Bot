@@ -548,7 +548,7 @@ const DemoScenario = {
         {
             "id": "demo_msg_005",
             "role": "user",
-            "title": "午餐 785 kJ",
+            "title": "",
             "content": "午餐，先吃虾后吃的洋葱，其他配菜没吃",
             "timestamp": "2025-11-02T12:00:00.000Z",
             "attachments": [

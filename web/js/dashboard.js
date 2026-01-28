@@ -144,12 +144,12 @@ const Dashboard = {
       });
 
       // Simulate Analysis & Update Status
-      if (this.el.resultStatus) this.el.resultStatus.textContent = '分析中...';
-      const loadingMsg = this.addMessage('正在分析...', 'assistant', { isLoading: true });
+      if (this.el.resultStatus) this.updateStatus('loading');
+      // const loadingMsg = this.addMessage('正在分析...', 'assistant', { isLoading: true });
 
       await this.delay(2000); // Analysis delay
 
-      loadingMsg.remove();
+      // loadingMsg.remove();
 
       // 3. Analysis Done: Reveal Card 3
       window._DEMO_HIDDEN_CARD_ID = null; // Clear filter

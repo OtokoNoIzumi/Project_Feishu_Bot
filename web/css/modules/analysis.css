@@ -13,34 +13,7 @@
 }
 
 /* 补充说明输入框 */
-.refine-section {
-    margin-top: var(--spacing-lg);
-    padding-top: var(--spacing-lg);
-    border-top: 1px solid var(--color-border);
-}
 
-.refine-input {
-    width: 100%;
-    min-height: 60px;
-    margin-top: var(--spacing-sm);
-    padding: var(--spacing-sm);
-    background: var(--color-bg-tertiary);
-    border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
-    color: var(--color-text-primary);
-    font-size: 0.875rem;
-    font-family: inherit;
-    resize: vertical;
-}
-
-.refine-input:focus {
-    outline: none;
-    border-color: var(--color-accent-primary);
-}
-
-.refine-input::placeholder {
-    color: var(--color-text-muted);
-}
 
 /* 文字说明输入框 */
 .note-section {
@@ -108,13 +81,7 @@
     flex-shrink: 0;
 }
 
-.version-selector {
-    background: var(--color-bg-tertiary);
-    padding: 4px 8px;
-    border-radius: var(--radius-sm);
-    font-size: 0.75rem;
-    color: var(--color-text-muted);
-}
+
 
 .version-nav {
     display: flex;
