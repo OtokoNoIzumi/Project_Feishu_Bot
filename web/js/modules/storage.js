@@ -23,8 +23,12 @@ const StorageModule = {
         const isUpdate = session.isSaved && session.savedRecordId;
 
         try {
-            this.el.saveBtn.disabled = true;
-            this.el.saveBtn.textContent = isUpdate ? '更新中...' : '保存中...';
+
+            this.updateStatus('loading');
+
+            // UI Update: Disable buttons implicitly via loading status or let user wait
+            // FooterModule operations should be handled by updateButtonStates at the end
+
 
             let result;
 
@@ -97,9 +101,8 @@ const StorageModule = {
             console.error('Save error:', error);
             this.addMessage(`${isUpdate ? '更新' : '保存'}失败: ${error.message}`, 'assistant');
         } finally {
-            if (this.el.saveBtn) {
-                this.el.saveBtn.disabled = false;
-            }
+            this.updateStatus('');
+
             this.updateButtonStates(session);
         }
     },

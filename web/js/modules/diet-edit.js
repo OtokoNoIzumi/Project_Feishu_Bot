@@ -49,11 +49,21 @@ const DietEditModule = {
             const newWeight = parseFloat(value) || 0;
             // 如果开启了等比缩放且有密度数据，按比例调整所有营养素
             if (ing._proportionalScale && ing._density && newWeight > 0) {
+                // [Fix] Ensure energy_per_g exists in density (handling legacy data state)
+                if (ing._density.energy_per_g === undefined && ing.weight_g > 0 && ing.energy_kj !== undefined) {
+                    ing._density.energy_per_g = ing.energy_kj / ing.weight_g;
+                }
+
                 ing.macros.protein_g = Math.round(ing._density.protein_per_g * newWeight * 100) / 100;
                 ing.macros.fat_g = Math.round(ing._density.fat_per_g * newWeight * 100) / 100;
                 ing.macros.carbs_g = Math.round(ing._density.carbs_per_g * newWeight * 100) / 100;
                 ing.macros.sodium_mg = Math.round(ing._density.sodium_per_g * newWeight * 100) / 100;
                 ing.macros.fiber_g = Math.round(ing._density.fiber_per_g * newWeight * 100) / 100;
+
+                // Update Energy if density exists
+                if (ing._density.energy_per_g) {
+                    ing.energy_kj = Math.round(ing._density.energy_per_g * newWeight * 10) / 10;
+                }
             }
             ing.weight_g = newWeight;
         } else {
@@ -75,6 +85,17 @@ const DietEditModule = {
                 if (fieldToDensity[field]) {
                     ing._density[fieldToDensity[field]] = ing.macros[field] / ing.weight_g;
                 }
+
+                // [Fix] Recalculate energy_kj when macros change
+                const newKcal = EnergyUtils.macrosToKcal(
+                    ing.macros.protein_g,
+                    ing.macros.fat_g,
+                    ing.macros.carbs_g
+                );
+                ing.energy_kj = Math.round(EnergyUtils.kcalToKJ(newKcal) * 10) / 10;
+
+                // Update energy density as well
+                ing._density.energy_per_g = ing.energy_kj / ing.weight_g;
             }
         }
 
@@ -187,9 +208,9 @@ const DietEditModule = {
     },
 
     // 获取当前能量单位 - 【重构】统一使用 ProfileModule 作为唯一数据源
+    // 获取当前能量单位 - 【重构】统一使用 ProfileModule 作为唯一数据源
     getEnergyUnit() {
-        const p = typeof ProfileModule !== 'undefined' ? ProfileModule.getCurrentProfile() : null;
-        return (p?.diet?.energy_unit) || 'kJ';
+        return (ProfileModule.getCurrentProfile()?.diet?.energy_unit) || 'kJ';
     },
 
     toggleIngredients(dishId) {
@@ -218,6 +239,8 @@ const DietEditModule = {
                 carbs_per_g: (ing.macros?.carbs_g || 0) / ing.weight_g,
                 sodium_per_g: (ing.macros?.sodium_mg || 0) / ing.weight_g,
                 fiber_per_g: (ing.macros?.fiber_g || 0) / ing.weight_g,
+                // Add energy density
+                energy_per_g: (ing.energy_kj || 0) / ing.weight_g,
             };
         }
 

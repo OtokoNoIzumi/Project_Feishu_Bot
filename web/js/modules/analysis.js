@@ -93,7 +93,7 @@ const AnalysisModule = {
                 createdAt: new Date(),
                 userNote: userNote,
                 rawResult: result.result,
-                parsedData: this.parseResult(result.result, session.mode),
+                parsedData: ParserModule.parseResult(result.result, session.mode),
                 advice: null,
                 adviceError: null,
                 adviceLoading: false,
@@ -478,32 +478,59 @@ const AnalysisModule = {
     // ========== Helpers ==========
 
     _buildCardData(session) {
-        if (!session.persistentCardId) return null;
+        if (!session || !session.persistentCardId) return null;
+
+        // 获取最新的编辑数据
+        let currentData = null;
+        if (session.mode === 'diet' && typeof this.collectEditedData === 'function') {
+            currentData = this.collectEditedData();
+        }
+
+        // 深度复制 versions
+        const updatedVersions = JSON.parse(JSON.stringify(session.versions));
+
+        // 如果有编辑数据，更新当前版本
+        // 注意：session.currentVersion 是 1-based index
+        if (currentData && updatedVersions.length >= session.currentVersion) {
+            const currentVer = updatedVersions[session.currentVersion - 1];
+
+            if (session.mode === 'diet') {
+                // 1. 更新 Summary
+                currentVer.rawResult.meal_summary = currentData.meal_summary;
+                // 2. 更新 Dishes
+                currentVer.rawResult.dishes = currentData.dishes;
+                // 3. 更新 Labels
+                currentVer.rawResult.captured_labels = currentData.captured_labels;
+
+                // Update parsedData for consistency
+                currentVer.parsedData.summary.totalEnergy = currentData.meal_summary.total_energy_kj;
+                currentVer.parsedData.dishes = currentData.dishes;
+            }
+        }
 
         // 找到最新版本的 parsedData 用于生成 Title
-        const latestVersion = session.versions[session.currentVersion - 1];
+        const latestVersion = updatedVersions[session.currentVersion - 1];
 
         return {
             id: session.persistentCardId,
             dialogue_id: session.dialogueId,
             mode: session.mode,
             title: this._generateCardTitle(latestVersion?.parsedData),
-            user_id: 'placeholder', // 后端会自动覆盖/忽略(若设为Optional)
+            user_id: 'placeholder',
             source_user_note: session.sourceUserNote || session.text || '',
             image_uris: (session.imageUrls || []).filter(url => url && !url.startsWith('blob:') && !url.startsWith('data:')),
             image_hashes: session.imageHashes || [],
-            saved_record_id: session.savedRecordId || null, // <--- 关键：持久化关联的 Record ID
-            versions: session.versions.map(v => ({
-                created_at: v.createdAt.toISOString(),
+            saved_record_id: session.savedRecordId || null,
+            versions: updatedVersions.map(v => ({
+                created_at: v.createdAt, // Assume string or Date handled by JSON.stringify eventually, but better keep original format if possible. Previous code used toISOString()
                 user_note: v.userNote,
                 raw_result: v.rawResult,
-                // 这里关键：要把 advice 存进去！
                 advice: v.advice,
                 adviceError: v.adviceError
             })),
             current_version: session.currentVersion,
-            status: session.isSaved ? 'saved' : 'draft', // <--- 关键：尊重当前状态，而非强制 draft
-            created_at: session.createdAt.toISOString(),
+            status: session.isSaved ? 'saved' : 'draft',
+            created_at: session.createdAt instanceof Date ? session.createdAt.toISOString() : session.createdAt,
             updated_at: new Date().toISOString()
         };
     },
@@ -567,9 +594,9 @@ const AnalysisModule = {
         if (!parsedData) return '';
 
         if (parsedData.type === 'diet') {
-            const unit = this.getEnergyUnit();
+            const unit = (ProfileModule.getCurrentProfile()?.diet?.energy_unit) || 'kJ';
             const energy = parsedData.summary.totalEnergy || 0;
-            const val = unit === 'kcal' ? Math.round(energy) : Math.round(this.kcalToKJ(energy));
+            const val = unit === 'kcal' ? Math.round(energy) : Math.round(EnergyUtils.kcalToKJ(energy));
             const count = parsedData.dishes ? parsedData.dishes.length : 0;
             return `${val} ${unit} - ${count}种食物`;
         }

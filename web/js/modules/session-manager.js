@@ -1,0 +1,222 @@
+/**
+ * Session Manager Module
+ * 
+ * 负责管理会话生命周期、对话加载、卡片同步
+ * 挂载到 Dashboard 实例运行
+ */
+const SessionManagerModule = {
+    createSession(text, images) {
+        const session = SessionModule.createSession(this.mode, text, images);
+
+        // 异步计算 SHA-256 哈希
+        this.calculateImageHashes(images).then(hashes => {
+            session.imageHashes = hashes;
+        });
+
+        this.sessions.unshift(session);
+        return session;
+    },
+
+    // 委托给 ImageUtils
+    calculateImageHashes: ImageUtils.calculateImageHashes,
+
+    selectSession(sessionId) {
+        const session = this.sessions.find(s => s.id === sessionId);
+        if (!session) return;
+
+        this.currentSession = session;
+        SessionModule.highlightSession(sessionId);
+
+        // 渲染最新版本或 Draft 状态
+        if (session.versions.length > 0) {
+            this.renderResult(session);
+            if (this.isMobile()) this.setResultPanelOpen(true);
+        } else {
+            // Phase 2: 如果是 Draft（无分析结果），显示输入预览页
+            this.renderDraftState(session);
+            if (this.isMobile()) this.setResultPanelOpen(true);
+        }
+    },
+
+    /**
+     * 加载后端卡片 (Phase 2)
+     */
+    async loadCard(cardId) {
+        try {
+            if (this.el.resultStatus) this.el.resultStatus.textContent = '加载中...';
+
+            const cardData = await API.getCard(cardId);
+
+            // 尝试并在本地 sessions 查找，避免重复创建
+            let session = this.sessions.find(s => s.id === cardData.id);
+
+            if (!session) {
+                // 构造 Session 对象
+                const versions = (cardData.versions || []).map((v, i) => ({
+                    number: i + 1,
+                    createdAt: new Date(v.created_at || new Date()),
+                    userNote: v.user_note || '',
+                    rawResult: v.raw_result || {},
+                    parsedData: ParserModule.parseResult(v.raw_result || {}, cardData.mode),
+                    advice: v.advice,
+                    adviceError: v.adviceError,
+                    adviceLoading: false
+                }));
+                const sourceUserNote = cardData.source_user_note || versions[0]?.userNote || '';
+                const imageUrls = cardData.image_uris || [];
+
+                session = {
+                    id: cardData.id,
+                    persistentCardId: cardData.id,
+                    dialogueId: cardData.dialogue_id,
+                    mode: cardData.mode,
+                    createdAt: new Date(cardData.created_at),
+                    text: sourceUserNote,
+                    sourceUserNote: sourceUserNote,
+                    sourceImagesB64: [],
+                    cardCreated: true,
+                    images: [],
+                    imageUrls: imageUrls,
+                    imageHashes: cardData.image_hashes || [],
+                    versions: versions,
+                    currentVersion: cardData.current_version || (versions.length > 0 ? versions.length : 0),
+                    isSaved: cardData.status === 'saved',
+                    savedRecordId: cardData.saved_record_id,
+                    savedData: null
+                };
+                this.sessions.push(session);
+            }
+
+            this.selectSession(session.id);
+            if (this.el.resultStatus) this.el.resultStatus.textContent = '';
+
+        } catch (e) {
+            console.error("Failed to load card", e);
+            this.addMessage(`加载分析结果失败: ${e.message}`, 'assistant');
+        }
+    },
+
+    /**
+     * 加载对话并还原消息列表
+     */
+    async loadDialogue(dialogueId, _preloadedMessages = null) {
+        if (!dialogueId) return;
+        try {
+            const dialogue = _preloadedMessages ? { id: dialogueId, messages: _preloadedMessages } : await API.getDialogue(dialogueId);
+            this.currentDialogueId = dialogue.id;
+            this.currentSession = null;
+
+            if (this.el.chatMessages) {
+                this.el.chatMessages.innerHTML = '';
+            }
+
+            const messages = (dialogue.messages || []).slice().sort((a, b) => {
+                return new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime();
+            });
+
+            if (messages.length === 0) {
+                this.addMessage('暂无对话内容', 'assistant');
+                return;
+            }
+
+            const isImageUrl = (url) => {
+                if (typeof url !== 'string') return false;
+                return url.startsWith('assets/') || url.startsWith('http') || url.startsWith('data:image') || url.startsWith('/');
+            };
+
+            const resolveMessageImages = (msg) => {
+                const attachments = (msg.attachments || []).filter(isImageUrl);
+                if (attachments.length > 0) return attachments;
+                if (Auth.isDemoMode() && msg.linked_card_id && window.DemoScenario?.cards?.[msg.linked_card_id]) {
+                    const card = window.DemoScenario.cards[msg.linked_card_id];
+                    return (card.image_uris || []).filter(isImageUrl);
+                }
+                return [];
+            };
+
+            messages.forEach(msg => {
+                const hasCard = Boolean(msg.linked_card_id);
+                const titleHint = msg.title || ((!msg.content && (msg.attachments || []).length > 0)
+                    ? `${msg.attachments.length}张图片`
+                    : '');
+                const options = {
+                    title: titleHint
+                };
+                const images = resolveMessageImages(msg);
+                if (images.length > 0) {
+                    options.images = images;
+                }
+                if (hasCard) {
+                    options.sessionId = msg.linked_card_id;
+                    options.onClick = () => this.loadCard(msg.linked_card_id);
+                }
+
+                SessionModule.renderMessage(
+                    this.el.chatMessages,
+                    msg.content || '',
+                    msg.role || 'user',
+                    options
+                );
+            });
+        } catch (e) {
+            console.error('Load dialogue failed:', e);
+            this.addMessage(`加载对话失败: ${e.message}`, 'assistant');
+        }
+    },
+
+    /**
+     * 创建新对话 (Phase 2)
+     */
+    async createNewDialogue() {
+        try {
+            const dialogue = await API.createDialogue("新对话");
+            if (window.SidebarModule) {
+                SidebarModule.loadDialogues();
+            }
+            this.addMessage('已创建新对话', 'assistant');
+        } catch (e) {
+            console.error("Create dialogue failed", e);
+        }
+    },
+
+    updateSessionCard(session) {
+        let title = '';
+        const latest = session.versions.length > 0 ? session.versions[session.versions.length - 1] : null;
+
+        if (latest) {
+            if (latest.parsedData.type === 'diet') {
+                const unit = this.getEnergyUnit();
+                const energy = latest.parsedData.summary.totalEnergy;
+                // 强制取整
+                const val = unit === 'kcal' ? Math.round(energy) : Math.round(EnergyUtils.kcalToKJ(energy));
+                title = `${val} ${unit} - ${latest.parsedData.dishes.length}种食物`;
+            } else {
+                const eventCount = latest.parsedData.scaleEvents.length +
+                    latest.parsedData.sleepEvents.length +
+                    latest.parsedData.bodyMeasureEvents.length;
+                title = `Keep - ${eventCount}条记录`;
+            }
+        }
+
+        SessionModule.updateCardVisuals(session.id, title, {
+            current: session.currentVersion,
+            total: session.versions.length,
+            isLatest: session.currentVersion === session.versions.length
+        });
+    },
+
+    // 版本切换
+    switchVersion(delta) {
+        if (!this.currentSession) return;
+
+        const session = this.currentSession;
+        const newVersion = session.currentVersion + delta;
+
+        if (newVersion < 1 || newVersion > session.versions.length) return;
+
+        session.currentVersion = newVersion;
+        this.renderResult(session);
+    }
+};
+
+window.SessionManagerModule = SessionManagerModule;
