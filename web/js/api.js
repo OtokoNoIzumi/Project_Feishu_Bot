@@ -279,11 +279,21 @@ const API = {
      */
     async getDialogues(limit = 20, offset = 0) {
         if (Auth.isDemoMode()) {
-            const demoDialogue = DemoScenario.dialogue || {
-                id: DemoScenario.dialogueId,
-                title: '体验演示',
-                created_at: '2025-11-02T08:00:00.000Z',
-                updated_at: '2025-11-02T20:13:43.138371'
+            // Filter cards based on hidden ID
+            let messages = DemoScenario.messages || [];
+            let cardIds = Object.keys(DemoScenario.cards || {});
+            if (window._DEMO_HIDDEN_CARD_ID) {
+                cardIds = cardIds.filter(id => id !== window._DEMO_HIDDEN_CARD_ID);
+                // Also hide the message associated with the hidden card
+                messages = messages.filter(msg => msg.linked_card_id !== window._DEMO_HIDDEN_CARD_ID);
+            }
+
+            const baseDialogue = DemoScenario.dialogue; // Centralized definition
+
+            const demoDialogue = {
+                ...baseDialogue,
+                messages: messages,
+                card_ids: cardIds
             };
             return [demoDialogue];
         }
@@ -367,7 +377,12 @@ const API = {
      */
     async getCards(dialogueId = null) {
         if (Auth.isDemoMode()) {
-            return Object.values(DemoScenario.cards);
+            let cards = Object.values(DemoScenario.cards);
+            // [Demo Control] Filter hidden card (consistency with Recent view)
+            if (window._DEMO_HIDDEN_CARD_ID) {
+                cards = cards.filter(c => c.id !== window._DEMO_HIDDEN_CARD_ID);
+            }
+            return cards.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
         }
         const params = {};
         if (dialogueId) params.dialogue_id = dialogueId;
@@ -380,7 +395,12 @@ const API = {
     async getRecentCards() {
         if (Auth.isDemoMode()) {
             // Mock some recent cards structure
-            return Object.values(DemoScenario.cards);
+            let cards = Object.values(DemoScenario.cards);
+            // [Demo Control] Support filtering via global flag for animation sequence
+            if (window._DEMO_HIDDEN_CARD_ID) {
+                cards = cards.filter(c => c.id !== window._DEMO_HIDDEN_CARD_ID);
+            }
+            return cards.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
         }
         return this.get('/cards/recent');
     },

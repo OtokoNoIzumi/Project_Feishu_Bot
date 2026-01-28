@@ -76,7 +76,11 @@ const DietRenderModule = {
               <button class="section-toggle-btn" id="nutrition-toggle-btn" onclick="Dashboard.toggleNutritionSection(event)" title="折叠/展开" aria-label="折叠/展开">▼</button>
             </div>
           </div>
-          <div id="nutrition-chart" class="nutrition-chart-canvas"></div>
+          <div class="section-wrapper">
+             <div class="section-body">
+                <div id="nutrition-chart" class="nutrition-chart-canvas"></div>
+             </div>
+          </div>
         </div>
 
 
@@ -91,8 +95,10 @@ const DietRenderModule = {
               <button class="section-toggle-btn" id="advice-toggle-btn" onclick="Dashboard.toggleAdviceSection(event)" title="折叠/展开" aria-label="折叠/展开">▼</button>
             </div>
           </div>
-          <div id="advice-content" class="advice-content">
-            ${version.advice
+          <div class="section-wrapper">
+             <div class="section-body">
+                <div id="advice-content" class="advice-content">
+                    ${version.advice
         ? `<div class="advice-text">${this.simpleMarkdownToHtml(version.advice)}</div>`
         : (version.adviceError
           ? `<div class="advice-error">⚠️ 建议获取失败：${version.adviceError}</div>`
@@ -100,6 +106,8 @@ const DietRenderModule = {
             ? '<div class="advice-loading"><span class="loading-spinner"></span>正在生成点评...</div>'
             : '<div class="advice-empty">暂无建议</div>'))
       }
+                </div>
+             </div>
           </div>
         </div>
 

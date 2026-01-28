@@ -57,9 +57,7 @@ const FooterModule = {
                 this._renderKeepMode(context);
                 break;
             case FooterState.PROFILE:
-                // Profile usually has its own footer or no footer for now
-                // We could add connection/sync buttons here later
-                this.el.container.classList.add('hidden');
+                this._renderProfileMode(context);
                 break;
         }
     },
@@ -145,6 +143,47 @@ const FooterModule = {
         this._setupButton(this.el.saveBtn, saveConfig);
     },
 
+    _renderProfileMode(context) {
+        // Profile has 3 actions: Revert All, Back, Save Profile
+        // We need to map them to the 3 available slots: Retry(Revert), Advice(Back), Save(Save)
+
+        // 1. Revert (Mapped to Retry Btn Slot)
+        const hasChanges = window.ProfileModule ? window.ProfileModule.hasChanges() : false;
+
+        this._setupButton(this.el.retryBtn, {
+            visible: hasChanges,
+            text: '↩ 还原全部',
+            icon: null,
+            type: 'ghost',
+            onClick: () => {
+                if (window.ProfileRenderModule) window.ProfileRenderModule.revertAll();
+            }
+        });
+
+        // 2. Back (Mapped to Advice Btn Slot)
+        this._setupButton(this.el.adviceBtn, {
+            visible: true,
+            text: '返回',
+            icon: null,
+            type: 'secondary',
+            onClick: () => {
+                if (window.Dashboard) window.Dashboard.switchView('analysis');
+            }
+        });
+
+        // 3. Save (Mapped to Save Btn Slot)
+        this._setupButton(this.el.saveBtn, {
+            visible: true,
+            text: '保存档案',
+            icon: 'save',
+            type: 'primary',
+            disabled: !hasChanges,
+            onClick: () => {
+                if (window.ProfileRenderModule) window.ProfileRenderModule.saveProfile();
+            }
+        });
+    },
+
     _renderKeepMode(session) {
         // 1. Retry
         this._setupButton(this.el.retryBtn, {
@@ -197,7 +236,7 @@ const FooterModule = {
 
         if (config.visible) {
             // Text & Icon
-            const iconHtml = window.IconManager
+            const iconHtml = (window.IconManager && config.icon)
                 ? window.IconManager.render(config.icon)
                 : '';
             el.innerHTML = `${iconHtml} ${config.text}`;

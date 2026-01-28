@@ -99,26 +99,7 @@ const ProfileRenderModule = {
         return this.render();
     },
 
-    /**
-     * 渲染底部操作按钮（用于 result-footer）
-     */
-    renderFooterButtons() {
-        const hasChanges = ProfileModule.hasChanges();
 
-        return `
-            ${hasChanges ? `
-                <button class="btn btn-ghost" onclick="ProfileRenderModule.revertAll()">
-                    ↩ 还原全部
-                </button>
-            ` : ''}
-            <button class="btn btn-secondary" onclick="Dashboard.switchView('analysis')">
-                返回
-            </button>
-            <button class="btn btn-primary" onclick="ProfileRenderModule.saveProfile()" ${!hasChanges ? 'disabled' : ''}>
-                ${window.IconManager ? window.IconManager.render('save') : ''} 保存档案
-            </button>
-        `;
-    },
 
     renderMissingInfoBanner(missing) {
         return `

@@ -266,7 +266,7 @@ const SidebarModule = {
         if (msgCount === cardCount && cardCount > 0) {
             autoTitle = `${cardCount}个分析结果`;
         } else {
-            autoTitle = `${msgCount}条消息 ${cardCount}个分析结果`;
+            autoTitle = `${msgCount}条消息 ${cardCount}个分析`;
         }
 
         if (msgCount === 0 && cardCount === 0) autoTitle = "新对话";

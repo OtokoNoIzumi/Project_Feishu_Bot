@@ -422,6 +422,18 @@ h3 {
   font-size: 1rem;
 }
 
+.btn:disabled,
+.btn[disabled] {
+  opacity: 0.6;
+  cursor: not-allowed;
+  filter: grayscale(0.2);
+  box-shadow: none !important;
+  transform: none !important;
+  background-color: var(--color-bg-tertiary);
+  /* Optional fallback */
+  color: var(--color-text-muted);
+}
+
 /* === Input Fields === */
 .input-field {
   width: 100%;

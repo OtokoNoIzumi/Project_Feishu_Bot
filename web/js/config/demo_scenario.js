@@ -49,11 +49,12 @@ const DemoScenario = {
         ]
     },
 
+    // Base Dialogue Info
     dialogue: {
         id: 'dialogue_20260127_4f3ccb74',
         title: '体验演示',
         created_at: '2025-11-02T08:00:00.000Z',
-        updated_at: '2025-11-02T20:13:43.138371',
+        updated_at: '2025-11-02T12:05:00.000000',
     },
 
     // Card Details
@@ -64,7 +65,7 @@ const DemoScenario = {
             "dialogue_id": "dialogue_20260127_4f3ccb74",
             "user_id": "placeholder",
             "mode": "keep",
-            "title": "19:59 Keep记录 1项",
+            "title": "",
             "user_title": null,
             "source_user_note": "",
             "image_uris": [
@@ -75,7 +76,7 @@ const DemoScenario = {
             ],
             "versions": [
                 {
-                    "created_at": "2025-11-02T11:59:34.884Z",
+                    "created_at": "2025-11-02T09:40:15.884Z",
                     "user_note": "",
                     "raw_result": {
                         "scale_events": [
@@ -111,8 +112,8 @@ const DemoScenario = {
             "current_version": 1,
             "status": "draft",
             "saved_record_id": null,
-            "created_at": "2025-11-02T11:59:18.945000Z",
-            "updated_at": "2025-11-02T19:59:34.892936",
+            "created_at": "2025-11-02T09:40:00.000Z",
+            "updated_at": "2025-11-02T09:40:15.892936",
             "is_demo": false
         },
 
@@ -122,15 +123,15 @@ const DemoScenario = {
             "dialogue_id": "dialogue_20260127_4f3ccb74",
             "user_id": "placeholder",
             "mode": "diet",
-            "title": "19:46 早餐 265kJ",
+            "title": "",
             "user_title": null,
-            "source_user_note": "明天早餐 382.4g脱脂奶 34钢切燕麦",
+            "source_user_note": "早餐 382.4g脱脂奶 34钢切燕麦",
             "image_uris": [],
             "image_hashes": [],
             "versions": [
                 {
-                    "created_at": "2025-11-02T11:45:51.714Z",
-                    "user_note": "明天早餐 382.4g脱脂奶 34钢切燕麦",
+                    "created_at": "2025-11-02T09:50:51.714Z",
+                    "user_note": "早餐 382.4g脱脂奶 34钢切燕麦",
                     "raw_result": {
                         "meal_summary": {
                             "total_energy_kj": 1107.4211,
@@ -179,8 +180,8 @@ const DemoScenario = {
                                 ]
                             }
                         ],
-                        "user_note_process": "用户指定了明天早餐的摄入量：382.4g脱脂奶和34g钢切燕麦。根据已知产品库，匹配到“荷高脱脂纯牛奶”和“阿巴香钢切燕麦”。脱脂奶根据1.023g/ml的密度将重量转换为体积（约373.8ml）后计算营养成分；燕麦直接按34g重量计算。",
-                        "occurred_at": "2025-11-02 08:00:00",
+                        "user_note_process": "用户指定了早餐的摄入量：382.4g脱脂奶和34g钢切燕麦。根据已知产品库，匹配到“荷高脱脂纯牛奶”和“阿巴香钢切燕麦”。脱脂奶根据1.023g/ml的密度将重量转换为体积（约373.8ml）后计算营养成分；燕麦直接按34g重量计算。",
+                        "occurred_at": "2025-11-02 09:00:00",
                         "image_hashes": [],
                         "image_count": 0,
                         "context": {
@@ -224,8 +225,8 @@ const DemoScenario = {
             "current_version": 1,
             "status": "saved",
             "saved_record_id": "c8ca39e5dbf1",
-            "created_at": "2025-11-02T11:45:33.482000Z",
-            "updated_at": "2025-11-02T19:46:39.631557",
+            "created_at": "2025-11-02T09:50:33.482000Z",
+            "updated_at": "2025-11-02T09:50:51.631557",
             "is_demo": false
         },
 
@@ -235,7 +236,7 @@ const DemoScenario = {
             "dialogue_id": "dialogue_20260127_4f3ccb74",
             "user_id": "placeholder",
             "mode": "diet",
-            "title": "20:13 午餐 188kJ",
+            "title": "",
             "user_title": null,
             "source_user_note": "",
             "image_uris": [
@@ -252,7 +253,7 @@ const DemoScenario = {
             ],
             "versions": [
                 {
-                    "created_at": "2025-11-02T12:07:15.813Z",
+                    "created_at": "2025-11-02T12:01:15.813Z",
                     "user_note": "",
                     "raw_result": {
                         "meal_summary": {
@@ -377,8 +378,8 @@ const DemoScenario = {
                     "adviceError": null
                 },
                 {
-                    "created_at": "2025-11-02T12:13:24.317Z",
-                    "user_note": "先吃虾后吃的洋葱，其他配菜没吃",
+                    "created_at": "2025-11-02T12:03:24.317Z",
+                    "user_note": "午餐，先吃虾后吃的洋葱，其他配菜没吃",
                     "raw_result": {
                         "meal_summary": {
                             "total_energy_kj": 785.3368,
@@ -455,7 +456,7 @@ const DemoScenario = {
                                 ]
                             }
                         ],
-                        "user_note_process": "用户指定进食时间为午餐，并明确了先吃虾后吃洋葱的顺序。通过图片序列（301.1g -> 179.2g -> 138.9g）的减法链精确计算了虾（121.9g）和洋葱（40.3g）的重量。",
+                        "user_note_process": "用户指定进食时间为午餐，并明确了先吃虾后吃洋葱的顺序。通过图片序列（301.1g -> 179.2g -> 138.9g）的减法链精确计算了虾（121.9g）和洋葱（40.3g）的重量。\n发现图中包含的鸡胸肉营养成分标签，已经用于精确计算。",
                         "extra_image_summary": "菜肴中含有大量的鲜红辣椒、青辣椒和西芹段作为配菜，整体呈现爆炒风格，碗底可见少量烹饪油脂和汤汁。",
                         "occurred_at": "2025-11-02 12:00:00",
                         "image_hashes": [
@@ -506,8 +507,8 @@ const DemoScenario = {
             "current_version": 2,
             "status": "draft",
             "saved_record_id": null,
-            "created_at": "2025-11-02T12:06:48.818000Z",
-            "updated_at": "2025-11-02T20:13:43.138371",
+            "created_at": "2025-11-02T12:00:48.818000Z",
+            "updated_at": "2025-11-02T12:04:00.000000",
             "is_demo": false
         }
     },
@@ -518,7 +519,7 @@ const DemoScenario = {
             "role": "user",
             "title": "Keep - 1条记录",
             "content": "",
-            "timestamp": "2025-11-02T09:00:00.000Z",
+            "timestamp": "2025-11-02T08:30:00.000Z",
             "attachments": [
                 "assets/demo/keep_longscreenshot.jpg"
             ],
@@ -529,27 +530,27 @@ const DemoScenario = {
             "role": "user",
             "title": "早餐 1107 kJ",
             "content": "早餐 382.4g脱脂奶 34钢切燕麦",
-            "timestamp": "2025-11-02T09:01:00.000Z",
+            "timestamp": "2025-11-02T09:06:51.000Z",
             "linked_card_id": "card_20260127_56a7bf50"
         },
         {
             "id": "demo_msg_003",
             "role": "user",
             "content": "午餐吃点啥好？",
-            "timestamp": "2025-11-02T09:02:00.000Z"
+            "timestamp": "2025-11-02T11:45:00.000Z"
         },
         {
             "id": "demo_msg_004",
             "role": "assistant",
             "content": "即食鸡胸肉简直是现在的“满分答案”！我刚帮你算了下，蛋白质缺口补得很稳，晚点配点蔬菜就更均衡了。",
-            "timestamp": "2025-11-02T09:03:00.000Z"
+            "timestamp": "2025-11-02T11:46:00.000Z"
         },
         {
             "id": "demo_msg_005",
             "role": "user",
             "title": "午餐 785 kJ",
-            "content": "先吃虾后吃的洋葱，其他配菜没吃",
-            "timestamp": "2025-11-02T09:04:00.000Z",
+            "content": "午餐，先吃虾后吃的洋葱，其他配菜没吃",
+            "timestamp": "2025-11-02T12:00:00.000Z",
             "attachments": [
                 "assets/demo/diet_1.jpg",
                 "assets/demo/diet_2.jpg",

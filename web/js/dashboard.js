@@ -70,27 +70,12 @@ const Dashboard = {
       // [Demo Mode]
       if (Auth.isDemoMode()) {
         console.log(`${getLogTime()} Dashboard initialized in DEMO MODE`);
-        // 1. Initialize Sidebar
-        if (window.SidebarModule) {
-          SidebarModule.init();
-        }
-        // 2. Load Demo Dialogue
-        this.loadDialogue(DemoScenario.dialogueId);
+        // Note: Sidebar init moved to runDemoSequence to handle progressive loading
 
-        // 3. Auto-load Feature Card
-        setTimeout(() => {
-          const featureCardId = 'card_20260127_49dbba71';
-          const card = DemoScenario.cards[featureCardId];
-          if (card && this.loadSession) {
-            this.loadSession(card);
-            this.currentDialogueId = DemoScenario.dialogueId;
-          }
-        }, 800);
+        // Run Sequence
+        this.runDemoSequence();
 
-        // 4. Render Interaction Mask
-        this.renderDemoMask();
-
-        // 5. Update Profile View to Ready State (empty)
+        // Update Profile View
         if (this.view === 'profile' && this.el.resultContent.querySelector('.auth-loading-state')) {
           this.renderProfileView();
         }
@@ -124,11 +109,108 @@ const Dashboard = {
     window.Dashboard = this;
   },
 
+  async runDemoSequence() {
+    const cardId = 'card_20260127_dfe803ab';
+
+    // 1. Initial State: Hide Card 3 via Filter
+    window._DEMO_HIDDEN_CARD_ID = cardId;
+
+    // Init Sidebar (Shows only card 1 & 2 because card 3 is filtered in API)
+    if (window.SidebarModule) SidebarModule.init();
+
+    // Load early messages
+    const fullMessages = DemoScenario.messages || [];
+    const targetMsgIndex = fullMessages.findIndex(m => m.content && m.content.includes('吃虾'));
+    const initialMessages = targetMsgIndex >= 0 ? fullMessages.slice(0, targetMsgIndex) : fullMessages;
+
+    this.currentDialogueId = DemoScenario.dialogueId;
+    await this.loadDialogue(DemoScenario.dialogueId, initialMessages);
+
+    this.renderDemoMask();
+
+    // 2. Start Animation (Wait 1s, then send)
+    if (targetMsgIndex >= 0) {
+      const userMsg = fullMessages[targetMsgIndex];
+      // No typing effect, just wait
+      await this.delay(1000);
+
+      this.el.chatInput.value = '';
+      this.updateSendButton();
+
+      // Render User Message with IMAGES
+      SessionModule.renderMessage(this.el.chatMessages, userMsg.content, 'user', {
+        title: userMsg.title,
+        images: userMsg.attachments // Pass images from message
+      });
+
+      // Simulate Analysis & Update Status
+      if (this.el.resultStatus) this.el.resultStatus.textContent = '分析中...';
+      const loadingMsg = this.addMessage('正在分析...', 'assistant', { isLoading: true });
+
+      await this.delay(2000); // Analysis delay
+
+      loadingMsg.remove();
+
+      // 3. Analysis Done: Reveal Card 3
+      window._DEMO_HIDDEN_CARD_ID = null; // Clear filter
+
+      // Refresh Sidebar to show new card (Data layer will now return all cards)
+      if (window.SidebarModule) {
+        SidebarModule.loadRecentCards();
+        SidebarModule.loadDialogues();
+      }
+
+      await this.loadCard(cardId);
+      if (this.el.resultStatus) this.el.resultStatus.textContent = ''; // Clear status
+
+      // Simulate Advice Generation Stage (Extended)
+      if (this.currentSession) {
+        const sess = this.currentSession;
+        const v = sess.versions[sess.currentVersion - 1];
+        if (v && v.advice) {
+          const finalAdvice = v.advice;
+          // Temporarily hide advice to show loading state
+          v.advice = null;
+          v.adviceLoading = true;
+          this.renderResult(sess);
+
+          // [Important] Trigger detailed loading state with intermediate data (Process reasoning)
+          if (typeof this._setAdviceLoading === 'function') {
+            this._setAdviceLoading(v, true);
+          }
+
+          // Wait longer for user to read intermediate info
+          await this.delay(6000);
+
+          // Reveal Advice
+          v.advice = finalAdvice;
+          v.adviceLoading = false;
+          this.renderResult(sess);
+        }
+      }
+    }
+  },
+
+  async typeEffect(text) {
+    // Deprecated in new demo flow
+  },
+
+  delay(ms) { return new Promise(r => setTimeout(r, ms)); },
+
   // [New] Render Demo Mask
   renderDemoMask() {
     // 1. Cover Input Area Only
     const inputSection = document.querySelector('.input-area');
     if (inputSection) {
+      // Remove existing mask if any
+      const existingMask = inputSection.querySelector('.demo-mask');
+      if (existingMask) existingMask.remove();
+
+      // Determine text based on view
+      const isProfile = this.view === 'profile';
+      const title = isProfile ? '🔓 解锁 AI 训练顾问' : '🔓 解锁 AI 营养顾问';
+      const subtitle = isProfile ? '和 AI 一起探讨如何设定目标' : '注册后即可自由对话';
+
       const mask = document.createElement('div');
       mask.className = 'demo-mask';
       // Adjust style for smaller area
@@ -136,15 +218,15 @@ const Dashboard = {
       mask.style.borderRadius = '0';
       mask.innerHTML = `
             <div class="demo-mask-content">
-                <h3>🔓 解锁 AI 营养顾问</h3>
-                <p>注册后即可自由对话</p>
-                <button class="btn btn-primary" onclick="window.Auth.openSignUp()">立即免费注册</button>
+                <h3>${title}</h3>
+                <p>${subtitle}</p>
+                <button class="btn btn-primary" onclick="window.location.href='index.html'">立即免费注册</button>
             </div>
           `;
       // Prevent interactions
       mask.addEventListener('click', (e) => {
         if (e.target.tagName !== 'BUTTON') {
-          window.Auth.openSignUp();
+          window.location.href = 'index.html';
         }
       });
 
@@ -160,9 +242,9 @@ const Dashboard = {
   checkDemoLimit() {
     if (Auth.isDemoMode()) {
       if (window.ToastUtils) {
-        ToastUtils.show('这是演示数据。注册即可免费体验 3 天完整分析功能！', 'info');
+        ToastUtils.show('注册即可免费体验 3 天完整分析功能！', 'info');
       }
-      setTimeout(() => window.Auth.openSignUp(), 1500);
+      // setTimeout(() => window.location.href = 'index.html', 1500); // Removed: Allow stay
       return true; // Blocked
     }
     return false;
@@ -300,6 +382,11 @@ const Dashboard = {
     const prev = this.view;
     this.view = next;
 
+    // [Fix] Always refresh Demo Mask text immediately after view change
+    if (Auth.isDemoMode()) {
+      this.renderDemoMask();
+    }
+
     // 左侧菜单高亮
     this.el.sideMenu?.querySelectorAll('.side-menu-item')?.forEach(btn => {
       btn.classList.toggle('active', btn.dataset.view === next);
@@ -324,17 +411,12 @@ const Dashboard = {
       this.bindModeSwitch(); // 重新绑定事件
     }
 
-    // 切出 Profile 时隐藏其 footer 按钮
-    if (prev === 'profile') {
-      this.el.resultFooter.classList.add('hidden');
-    }
-
     // 回到分析视图
     if (this.currentSession && this.currentSession.versions.length > 0) {
       this.renderResult(this.currentSession);
     } else {
       // 如果没有 Session 但有 Dialogue ID，尝试重新加载对话 state (修复 Profile 回来消失的问题)
-      if (this.currentDialogueId) {
+      if (this.currentDialogueId && !this.currentSession) {
         this.loadDialogue(this.currentDialogueId);
       } else {
         this.clearResult();
@@ -347,6 +429,11 @@ const Dashboard = {
     // 刷新所有会话卡片标题（确保能量单位等设置生效）
     this.sessions.forEach(s => this.updateSessionCard(s));
     if (this.isMobile()) this.setResultPanelOpen(true);
+
+    // [Demo Mode] Re-render mask to update text if needed
+    if (Auth.isDemoMode()) {
+      this.renderDemoMask();
+    }
   },
 
   // 绑定模式切换按钮事件
@@ -517,10 +604,10 @@ const Dashboard = {
   /**
    * 加载对话并还原消息列表
    */
-  async loadDialogue(dialogueId) {
+  async loadDialogue(dialogueId, _preloadedMessages = null) {
     if (!dialogueId) return;
     try {
-      const dialogue = await API.getDialogue(dialogueId);
+      const dialogue = _preloadedMessages ? { id: dialogueId, messages: _preloadedMessages } : await API.getDialogue(dialogueId);
       this.currentDialogueId = dialogue.id;
       this.currentSession = null;
 
@@ -1040,11 +1127,13 @@ const Dashboard = {
     }
 
     // 使用新的渲染模块（不含操作按钮）
+    // 使用新的渲染模块（不含操作按钮）
     this.el.resultContent.innerHTML = ProfileRenderModule.renderContent();
 
-    // 在 footer 显示操作按钮
-    this.el.resultFooter.classList.remove('hidden');
-    this.el.resultFooter.innerHTML = ProfileRenderModule.renderFooterButtons();
+    // 更新 Footer 为 Profile 模式
+    if (window.FooterModule && window.FooterState) {
+      FooterModule.update(FooterState.PROFILE);
+    }
   },
 
   // 委托给 ProfileUtils

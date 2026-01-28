@@ -729,7 +729,7 @@
     color: var(--color-text-muted);
     font-size: 0.75rem;
     line-height: 1;
-    transition: transform 0.2s ease, background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+    transition: transform 0.3s ease, background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
 
 .section-toggle-btn:hover {
@@ -738,12 +738,10 @@
     color: var(--color-text-secondary);
 }
 
-.nutrition-chart-container.collapsed .section-toggle-btn {
+/* 按钮旋转逻辑 */
+.nutrition-chart-container.collapsed .section-toggle-btn,
+.advice-section.collapsed .section-toggle-btn {
     transform: rotate(-90deg);
-}
-
-.nutrition-chart-container.collapsed .nutrition-chart-canvas {
-    display: none;
 }
 
 .nutrition-chart-title {
@@ -1324,6 +1322,23 @@
     background: linear-gradient(135deg, rgba(217, 119, 87, 0.08) 0%, rgba(224, 142, 115, 0.05) 100%);
     border: 1px solid rgba(217, 119, 87, 0.2);
     border-radius: var(--radius-lg);
+}
+
+/* 通用折叠动画：Scheme A (Grid Template Rows) */
+.section-wrapper {
+    display: grid;
+    grid-template-rows: 1fr;
+    transition: grid-template-rows 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.collapsed .section-wrapper {
+    grid-template-rows: 0fr;
+}
+
+.section-body {
+    overflow: hidden;
+    min-height: 0;
+    /* Necessary for grid fr calculation */
 }
 
 .advice-header {
