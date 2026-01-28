@@ -68,10 +68,11 @@
 .version-badge {
     /* 移除 absolute 定位，改为流式布局 */
     position: static;
-    background: rgba(99, 102, 241, 0.15);
-    /* 更轻量的背景 */
-    color: var(--color-accent-primary);
-    border: 1px solid rgba(99, 102, 241, 0.3);
+    background: rgba(124, 45, 18, 0.08);
+    /* 暖褐色背景，配合整体色调 */
+    color: #9a3412;
+    /* 深橘褐色字体，高对比度 */
+    border: 1px solid rgba(154, 52, 18, 0.2);
     font-size: 0.7rem;
     /* 稍微大一点，易读 */
     padding: 1px 6px;

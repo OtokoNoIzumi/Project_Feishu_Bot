@@ -249,6 +249,11 @@ const DashboardUIModule = {
     },
 
     updateStatus(status) {
+        // Toggle loading class on result content for animations
+        if (this.el.resultContent) {
+            this.el.resultContent.classList.toggle('is-loading', status === 'loading');
+        }
+
         const el = this.el.resultStatus;
         if (!el) return;
         el.className = 'result-status';
