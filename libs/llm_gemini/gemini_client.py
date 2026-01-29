@@ -246,6 +246,14 @@ class GeminiStructuredClient:
             return contents, metrics
 
         metrics["image_count"] = len(images)
+        
+        # Calculate sizes for logs and timeout
+        sizes = [len(img) for img in images]
+        max_size_bytes = max(sizes) if sizes else 0
+        total_size_bytes = sum(sizes)
+        max_size_mb = max_size_bytes / (1024 * 1024)
+        total_size_mb = total_size_bytes / (1024 * 1024)
+
         start_time = time.time()
 
         max_retries = 4
@@ -253,10 +261,13 @@ class GeminiStructuredClient:
         actual_attempt = 1  # 记录实际使用的尝试次数
         base_upload_timeout = self.config.upload_timeout_seconds
 
-        def _recover_from_cache(pending: List[tuple]) -> None:
-            still_failed_indices = [i for i, (_, result) in enumerate(pending) if result is None]
-            for idx in still_failed_indices:
-                img_bytes = pending[idx][0]
+        def _recover_from_cache(pending_indices: List[int]) -> None:
+            """
+            尝试从缓存中恢复指定的 pending 图片。
+            注意：在此处恢复的一定是 "New Upload" (因为如果是旧缓存，在循环开始前的 check 就命中了)
+            """
+            for idx in pending_indices:
+                img_bytes = pending_images[idx][0]
                 file_hash = hashlib.sha256(img_bytes).hexdigest()
                 key_suffix = self._get_api_key_suffix()
                 cached = self.file_cache.get(file_hash, key_suffix)
@@ -264,61 +275,107 @@ class GeminiStructuredClient:
                     file_obj = types.File(
                         name=cached["name"], uri=cached["uri"], mime_type=cached["mime_type"]
                     )
-                    pending[idx] = (img_bytes, (file_obj, True))
+                    # 标记为 False (New Upload)，因为如果在第一步check cache时没拿到，说明这是本次上传的
+                    pending_images[idx] = (img_bytes, (file_obj, False))
                     logger.info(
-                        "[GeminiStats] Recovered upload from cache for image %d", idx
+                        "[GeminiStats] Recovered upload from cache for image %d (New Upload)", idx
                     )
 
         # 跟踪每个图片的上传状态: (image_bytes, success_result)
-        # success_result 为 None 表示还未成功，为 (File, bool) 表示已成功
+        # success_result 为 None 表示还未成功，为 (File, is_cache_hit) 表示已成功
         pending_images = [(img, None) for img in images]
 
         for attempt in range(1, max_retries + 1):
             actual_attempt = attempt
-            # 只重试失败的图片
-            failed_indices = [i for i, (img, result) in enumerate(pending_images) if result is None]
-            failed_images = [pending_images[i][0] for i in failed_indices]
-
-            if not failed_images:
-                # 所有图片都已成功
+            
+            # 1. 识别当前还需要处理的图片索引
+            pending_indices = [i for i, (_, result) in enumerate(pending_images) if result is None]
+            
+            if not pending_indices:
                 break
 
+            # 2. 先尝试同步检查缓存 (Cache Hit Check)
+            # 这样可以确保如果是老缓存，算作 Hit；如果是后来上传的，算作 New
+            for idx in pending_indices:
+                img_bytes = pending_images[idx][0]
+                file_hash = hashlib.sha256(img_bytes).hexdigest()
+                key_suffix = self._get_api_key_suffix()
+                cached = self.file_cache.get(file_hash, key_suffix)
+                if cached:
+                    logger.info("Using cached Gemini file: %s", cached["name"])
+                    file_obj = types.File(
+                        name=cached["name"], uri=cached["uri"], mime_type=cached["mime_type"]
+                    )
+                    pending_images[idx] = (img_bytes, (file_obj, True)) # True = Cache Hit
+
+            # 再次检查还需要上传的
+            upload_indices = [i for i, (_, result) in enumerate(pending_images) if result is None]
+            if not upload_indices:
+                break
+
+            # 3. 准备上传任务 (New Uploads)
+            
+            # 计算动态超时时间：基础时间 + (总大小MB * 5秒)
+            # 例如 3MB 图片 -> 6 + 15 = 21s
+            current_upload_size_mb = sum(len(pending_images[i][0]) for i in upload_indices) / (1024 * 1024)
+            dynamic_timeout = base_upload_timeout + (current_upload_size_mb * 5)
+            # 确保至少有 base_timeout
+            dynamic_timeout = max(dynamic_timeout, base_upload_timeout)
+
+            use_timeout = dynamic_timeout
+            if attempt == max_retries and self.config.enable_final_upload_timeout_boost:
+                # 最后一次尝试给予更多时间，取较大值
+                use_timeout = max(self.config.final_upload_timeout_seconds, dynamic_timeout * 1.5)
+            
+            use_timeout = round(use_timeout, 2) # 保留两位小数日志好看点
+
             try:
-                # 并发上传失败的图片
-                upload_tasks = [self._upload_bytes_if_needed(img) for img in failed_images]
-                use_timeout = base_upload_timeout
-                if attempt == max_retries and self.config.enable_final_upload_timeout_boost:
-                    use_timeout = max(self.config.final_upload_timeout_seconds, base_upload_timeout)
+                # 定义单个上传函数 (不含缓存检查，因为前面查过了)
+                async def _single_upload(idx, img_bytes):
+                    file_hash = hashlib.sha256(img_bytes).hexdigest()
+                    key_suffix = self._get_api_key_suffix()
+                    logger.info("Uploading new file to Gemini: hash=%s", file_hash[:8])
+                    
+                    tmp_fd, tmp_path = tempfile.mkstemp(suffix=".png")
+                    try:
+                        with os.fdopen(tmp_fd, "wb") as tmp:
+                            tmp.write(img_bytes)
+                        
+                        def _sync_upload():
+                            return self.client.files.upload(
+                                file=tmp_path, config={"mime_type": "image/png"}
+                            )
+                        
+                        uploaded_file = await asyncio.to_thread(_sync_upload)
+                        # 更新缓存
+                        self.file_cache.set(file_hash, key_suffix, uploaded_file)
+                        return uploaded_file
+                    finally:
+                        if os.path.exists(tmp_path):
+                            try:
+                                os.remove(tmp_path)
+                            except OSError:
+                                pass
+
+                upload_tasks = [_single_upload(i, pending_images[i][0]) for i in upload_indices]
 
                 results = await asyncio.wait_for(
                     asyncio.gather(*upload_tasks, return_exceptions=True),
                     timeout=use_timeout
                 )
 
-                # 更新成功的结果
-                for idx, upload_result in zip(failed_indices, results):
+                # 更新结果
+                for idx, upload_result in zip(upload_indices, results):
                     if isinstance(upload_result, Exception):
-                        # 上传失败，保持 None 以便重试
                         if not isinstance(upload_result, asyncio.CancelledError):
                             logger.warning(
                                 "[GeminiStats] Upload attempt %d/%d failed for image %d: %s",
                                 attempt, max_retries, idx, str(upload_result)
                             )
-                        # 检查缓存：即使失败，可能已经上传成功（异步操作）
-                        img_bytes = pending_images[idx][0]
-                        file_hash = hashlib.sha256(img_bytes).hexdigest()
-                        key_suffix = self._get_api_key_suffix()
-                        cached = self.file_cache.get(file_hash, key_suffix)
-                        if cached:
-                            # 从缓存中恢复成功的结果
-                            file_obj = types.File(
-                                name=cached["name"], uri=cached["uri"], mime_type=cached["mime_type"]
-                            )
-                            pending_images[idx] = (img_bytes, (file_obj, True))
-                            logger.info("[GeminiStats] Recovered upload from cache for image %d", idx)
+                        # 失败了，会在后续 recover 或下一次重试处理
                     else:
-                        # 上传成功
-                        pending_images[idx] = (pending_images[idx][0], upload_result)
+                        # 成功，标记为 False (New Upload)
+                        pending_images[idx] = (pending_images[idx][0], (upload_result, False))
 
                 # 检查是否全部成功
                 if all(result is not None for _, result in pending_images):
@@ -329,10 +386,10 @@ class GeminiStructuredClient:
                 logger.warning(f"[GeminiStats] {error_msg}")
                 last_error = asyncio.TimeoutError(error_msg)
 
-                # 超时后检查缓存：可能部分图片已经上传成功但被取消了
-                _recover_from_cache(pending_images)
+                # 超时后检查缓存：可能在超时前刚好上传完写入了缓存
+                # 这里查到的必然是 New Upload (因为循环开始前的 Cache Check 没查到)
+                _recover_from_cache(upload_indices)
 
-                # 如果全部成功，退出循环
                 if all(result is not None for _, result in pending_images):
                     break
 
@@ -345,18 +402,39 @@ class GeminiStructuredClient:
                     attempt, max_retries, error_msg
                 )
 
-                # 异常后也检查缓存
-                _recover_from_cache(pending_images)
+                _recover_from_cache(upload_indices)
 
-                # 如果全部成功，退出循环
                 if all(result is not None for _, result in pending_images):
                     break
 
                 continue
 
-        # 检查最终结果：必须全部成功，否则视为失败
+        # 检查最终结果
         final_results = [result for _, result in pending_images if result is not None]
         failed_count = len(images) - len(final_results)
+        
+        metrics["upload_duration_ms"] = (time.time() - start_time) * 1000
+        
+        # 统计结果
+        hits = sum(1 for r in final_results if r[1])
+        misses = sum(1 for r in final_results if not r[1]) # False = New Upload
+
+        metrics["cache_hits"] = hits
+        metrics["new_uploads"] = misses
+        
+        log_payload = {
+            "type": "Upload",
+            "scene": scene,
+            "user_id": user_id,
+            "count": len(images),
+            "max_size_mb": round(max_size_mb, 2),
+            "cache_hits": metrics["cache_hits"],
+            "new_uploads": metrics["new_uploads"],
+            "duration_ms": metrics["upload_duration_ms"],
+            "attempt": actual_attempt,
+            "max_retries": max_retries,
+        }
+
         if failed_count > 0:
             reason = None
             if isinstance(last_error, asyncio.TimeoutError):
@@ -368,31 +446,12 @@ class GeminiStructuredClient:
                 f"{failed_count} image(s) not uploaded"
             ) if reason else f"Upload failed; {failed_count} image(s) not uploaded"
             logger.error(f"[GeminiStats] {error_msg}")
-
-            metrics["upload_duration_ms"] = (time.time() - start_time) * 1000
-            log_stat({
-                "type": "Upload",
-                "scene": scene,
-                "user_id": user_id,
-                "count": len(images),
-                "cache_hits": 0,
-                "new_uploads": 0,
-                "duration_ms": metrics["upload_duration_ms"],
-                "attempt": actual_attempt,
-                "max_retries": max_retries,
-                "status": "Failed"
-            })
+            
+            log_payload["status"] = "Failed"
+            log_stat(log_payload)
             raise Exception(error_msg)
 
-        # 统计成功的结果
-        hits = sum(1 for r in final_results if r[1])
-        misses = sum(1 for r in final_results if not r[1])
-
-        metrics["cache_hits"] = hits
-        metrics["new_uploads"] = misses
-        metrics["upload_duration_ms"] = (time.time() - start_time) * 1000
-
-        # 组装最终的文件列表（按原始顺序）
+        # 组装最终的文件列表
         final_files = []
         for _, result in pending_images:
             if result is not None:
@@ -400,19 +459,8 @@ class GeminiStructuredClient:
 
         contents.extend(final_files)
 
-        # 记录日志
-        log_stat({
-            "type": "Upload",
-            "scene": scene,
-            "user_id": user_id,
-            "count": len(images),
-            "cache_hits": metrics["cache_hits"],
-            "new_uploads": metrics["new_uploads"],
-            "duration_ms": metrics["upload_duration_ms"],
-            "attempt": actual_attempt,
-            "max_retries": max_retries,
-            "status": "Success"
-        })
+        log_payload["status"] = "Success"
+        log_stat(log_payload)
 
         return contents, metrics
 
