@@ -106,6 +106,12 @@ def build_diet_router(settings: BackendSettings) -> APIRouter:
                 success=False, error="user_note 与 images 不能同时为空"
             )
 
+        # [Limit Check] Single Batch Size
+        if len(images_bytes) > 10:
+             return DietAnalyzeResponse(
+                success=False, error="单次请求最多支持 10 张图片，请分批上传"
+            )
+
         # [Access Check]
         # [Access Check] - Text/Basic Analyze Limit
         access = Gatekeeper.check_access(user_id, "analyze")
@@ -280,6 +286,9 @@ def build_diet_router(settings: BackendSettings) -> APIRouter:
         images_bytes = decode_images_b64(req.images_b64)
         warning_message = None
         
+        if len(images_bytes) > 10:
+             return DietAdviceResponse(success=False, error="单次请求最多支持 10 张图片")
+
         if images_bytes:
             img_access = Gatekeeper.check_access(user_id, "image_analyze", amount=len(images_bytes))
             if not img_access["allowed"]:

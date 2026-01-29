@@ -14,7 +14,26 @@ const ChatUIModule = {
 
     async handleFiles(files) {
         const images = Array.from(files).filter(f => f.type.startsWith('image/'));
+        const MAX_BATCH = 10;
+        const WARN_THRESHOLD = 9;
+
         for (const file of images) {
+            if (this.pendingImages.length >= MAX_BATCH) {
+                if (window.ToastUtils) {
+                    ToastUtils.show(`单次最多仅支持 ${MAX_BATCH} 张图片`, 'warning');
+                } else {
+                    console.warn(`[ChatUI] Max batch size reached: ${MAX_BATCH}`);
+                }
+                break;
+            }
+
+            // Quality warning at threshold
+            if (this.pendingImages.length === WARN_THRESHOLD - 1) {
+                if (window.ToastUtils) {
+                    ToastUtils.show('图片过多可能会产生识别错误，建议单次控制在 9 张以内', 'info', 4000);
+                }
+            }
+
             // 依赖 Dashboard 上的 fileToBase64 代理
             const base64 = await this.fileToBase64(file);
             this.pendingImages.push({
