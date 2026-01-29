@@ -55,6 +55,8 @@ class DietAdviceRequest(BaseModel):
     facts: Dict[str, Any]
     user_note: str = Field(default="", description="用户输入（可选，用于理解用户意图）")
     dialogue_id: Optional[str] = Field(default=None, description="当前的对话ID（用于获取上下文历史）")
+    images_b64: List[str] = []
+
 
 
 class DietAdviceResponse(BaseModel):
@@ -63,6 +65,7 @@ class DietAdviceResponse(BaseModel):
     success: bool
     result: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
+    warning: Optional[str] = None
 
 
 class DietHistoryResponse(BaseModel):
@@ -104,6 +107,7 @@ def build_diet_router(settings: BackendSettings) -> APIRouter:
             )
 
         # [Access Check]
+        # [Access Check] - Text/Basic Analyze Limit
         access = Gatekeeper.check_access(user_id, "analyze")
         if not access["allowed"]:
              raise HTTPException(
@@ -114,6 +118,19 @@ def build_diet_router(settings: BackendSettings) -> APIRouter:
                      "metadata": {k: v for k, v in access.items() if k not in ["allowed", "reason", "code"]}
                  }
              )
+
+        # [Access Check] - Image Analyze Limit
+        if images_bytes:
+            img_access = Gatekeeper.check_access(user_id, "image_analyze", amount=len(images_bytes))
+            if not img_access["allowed"]:
+                raise HTTPException(
+                    status_code=403,
+                    detail={
+                        "code": img_access.get("code", "DAILY_LIMIT_REACHED"),
+                        "message": img_access.get("reason", "图片分析额度已用完"),
+                        "metadata": {k: v for k, v in img_access.items() if k not in ["allowed", "reason", "code"]}
+                    }
+                )
 
         # [Usage Log] Request Entrance
         access_log = (
@@ -131,6 +148,8 @@ def build_diet_router(settings: BackendSettings) -> APIRouter:
             # Record Usage on Success
             if isinstance(result, dict) and not result.get("error"):
                  Gatekeeper.record_usage(user_id, "analyze")
+                 if images_bytes:
+                     Gatekeeper.record_usage(user_id, "image_analyze", amount=len(images_bytes))
 
             if isinstance(result, dict) and result.get("error"):
                 return DietAnalyzeResponse(
@@ -257,20 +276,36 @@ def build_diet_router(settings: BackendSettings) -> APIRouter:
                  }
              )
 
+        # Image Processing & Soft Limit Check
+        images_bytes = decode_images_b64(req.images_b64)
+        warning_message = None
+        
+        if images_bytes:
+            img_access = Gatekeeper.check_access(user_id, "image_analyze", amount=len(images_bytes))
+            if not img_access["allowed"]:
+                # Soft Limit: Clear images but allow text advice to proceed
+                images_bytes = []
+                warning_message = f"图片分析数量已用完，仅进行文字建议 (当前限制: {img_access.get('limit', 'Unknown')})"
+
         async with semaphore:
             await limiter.check_and_wait()
             advice = await advice_uc.execute_async(
                 user_id=user_id, 
                 facts=req.facts, 
                 user_note=req.user_note,
-                dialogue_id=req.dialogue_id
+                dialogue_id=req.dialogue_id,
+                images=images_bytes,
             )
             print('test-advice', advice)
             if isinstance(advice, dict) and advice.get("error"):
                 return DietAdviceResponse(success=False, error=str(advice.get("error")))
             
             Gatekeeper.record_usage(user_id, "advice")
-            return DietAdviceResponse(success=True, result=advice)
+            # Record image usage only if images were actually processed
+            if images_bytes:
+                Gatekeeper.record_usage(user_id, "image_analyze", amount=len(images_bytes))
+                
+            return DietAdviceResponse(success=True, result=advice, warning=warning_message)
 
     @router.get(
         "/api/diet/history",

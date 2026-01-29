@@ -34,7 +34,8 @@ class DietAdviceUsecase:
         user_id: str, 
         facts: Dict[str, Any], 
         user_note: Optional[str] = None,
-        dialogue_id: Optional[str] = None
+        dialogue_id: Optional[str] = None,
+        images: list = []
     ) -> Dict[str, Any]:
         """
         Execute advice generation.
@@ -110,16 +111,6 @@ class DietAdviceUsecase:
             incremental_records = []
             recent_history = context_bundle.get("recent_history", []) # List[{occurred_at, line_str}]
             
-            # Prepare Base History Strings (All history - Incremental)
-            # Initial Assumption: Recent History contains EVERYTHING needed.
-            # But Prompt Builder needs "History Table" AND "Incremental".
-            # We should probably pass ALL into "History Table" OR split them.
-            # User request: "Incremental Info" section.
-            # Let's split:
-            # 1. Base History (Before Dialogue) -> Goes to History Table
-            # 2. Incremental (After Dialogue) -> Goes to New Info
-            
-            # Split History into Base (Before Dialogue) and Incremental (After Dialogue) to restore context accurately.
             base_history_lines = []
             
             if last_msg_time:
@@ -151,9 +142,6 @@ class DietAdviceUsecase:
                 # No dialogue history -> All base
                 base_history_lines = [x.get("line_str") for x in recent_history]
 
-            # [Key Logic Fix] 
-            # We pass ONLY base_history to the Prompt's "History Table" section.
-            # The "Incremental Section" will handle the new records.
             context_bundle_for_prompt = context_bundle.copy()
             context_bundle_for_prompt["recent_history"] = base_history_lines
             
@@ -170,7 +158,7 @@ class DietAdviceUsecase:
             # 使用 JSON Schema 生成
             llm_result = await self.client.generate_json_async(
                 prompt=prompt,
-                images=[],
+                images=images,
                 schema=ADVISOR_CHAT_SCHEMA,
                 scene="advisor_chat",
                 user_id=user_id
@@ -202,7 +190,7 @@ class DietAdviceUsecase:
             
             advice_text = await self.client.generate_text_async(
                 prompt=prompt, 
-                images=[], 
+                images=images, 
                 scene="diet_advice", 
                 user_id=user_id
             )

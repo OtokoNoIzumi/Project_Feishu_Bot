@@ -149,6 +149,11 @@ const AnalysisModule = {
             this.renderResult(session);
             if (this.isMobile()) this.setResultPanelOpen(true);
 
+            // Limit updated, trigger refresh
+            if (window.ProfileModule) {
+                ProfileModule.refreshLimits();
+            }
+
             this.addMessage('分析完成！', 'assistant');
 
             // 自动触发 advice 请求（仅饮食模式）
@@ -254,6 +259,10 @@ const AnalysisModule = {
                 currentVersion.adviceError = null; // 清除错误
                 this.renderAdvice(response.result.advice_text);
                 this.addMessage('建议已更新', 'assistant');
+
+                if (window.ProfileModule) {
+                    ProfileModule.refreshLimits();
+                }
 
                 // 持久化更新
                 if (session.persistentCardId) {
@@ -368,6 +377,11 @@ const AnalysisModule = {
                 this._setAdviceLoading(currentVersion, false);
                 this.renderAdvice(response.result.advice_text);
 
+                // Limit updated (advice count), trigger refresh
+                if (window.ProfileModule) {
+                    ProfileModule.refreshLimits();
+                }
+
                 // 持久化更新
                 if (session.persistentCardId) {
                     const cardData = this._buildCardData(session);
@@ -394,13 +408,18 @@ const AnalysisModule = {
     // ========== Independent Advice Mode (顾问模式) ==========
 
     async startAdviceChat(userNote) {
-        if (!userNote && this.pendingImages.length === 0) return;
+        // Capture images
+        const images = [...this.pendingImages];
+        const imageUrls = images.map(img => img.preview);
+        const imagesB64 = images.map(img => img.base64);
+
+        if (!userNote && images.length === 0) return;
 
         console.log('[startAdviceChat] currentDialogueId:', this.currentDialogueId);
 
         // 1. 确保有通过 Dashboard 创建的 Dialogue
         if (!this.currentDialogueId) {
-            const title = userNote.slice(0, 15) || '顾问咨询';
+            const title = userNote ? userNote.slice(0, 15) : (images.length ? `${images.length}张图片` : '顾问咨询');
             try {
                 const dialogue = await API.createDialogue(title);
                 this.currentDialogueId = dialogue.id;
@@ -409,7 +428,7 @@ const AnalysisModule = {
         }
 
         // 2. 显示用户消息
-        this.addMessage(userNote || '', 'user');
+        this.addMessage(userNote || (images.length > 0 ? '[图片]' : ''), 'user', { images: imageUrls });
 
         // 清理输入框
         if (this.el.chatInput) this.el.chatInput.value = '';
@@ -418,15 +437,16 @@ const AnalysisModule = {
         this.updateSendButton();
 
         // 2b. 立即持久化用户消息 (Fix: Write BEFORE API call to ensure order)
-        if (this.currentDialogueId && userNote) {
+        if (this.currentDialogueId && (userNote || images.length > 0)) {
             const now = new Date();
             const usrMsgId = now.getTime().toString();
             // Fire and forget, but it's sent before advice request
             API.appendMessage(this.currentDialogueId, {
                 id: usrMsgId,
                 role: 'user',
-                content: userNote,
-                timestamp: now.toISOString()
+                content: userNote || (images.length > 0 ? '[图片]' : ''),
+                timestamp: now.toISOString(),
+                attachments: [] // Attachments logic for images if needed in future
             }).catch(console.warn);
         }
 
@@ -437,10 +457,10 @@ const AnalysisModule = {
         const facts = {};
 
         try {
-            // Note: API.getDietAdvice takes (facts, userNote, dialogueId)
+            // Note: API.getDietAdvice takes (facts, userNote, dialogueId, imagesB64)
             // ... (comments kept)
 
-            const response = await API.getDietAdvice(facts, userNote, this.currentDialogueId);
+            const response = await API.getDietAdvice(facts, userNote, this.currentDialogueId, imagesB64);
 
             if (loadingMsg) loadingMsg.remove();
 
@@ -454,6 +474,11 @@ const AnalysisModule = {
             // Render HTML
             const html = this.simpleMarkdownToHtml(resultText);
             this.addMessage(html, 'assistant', { isHtml: true });
+
+            // Limit updated, trigger refresh
+            if (window.ProfileModule) {
+                ProfileModule.refreshLimits();
+            }
 
             // 持久化 Assistant Msg
             if (this.currentDialogueId) {

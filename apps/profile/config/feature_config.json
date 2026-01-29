@@ -14,6 +14,11 @@
             "basic": 4,
             "pro": 6,
             "ultra": -1
+        },
+        "image_analyze": {
+            "basic": 20,
+            "pro": 40,
+            "ultra": -1
         }
     },
     "locked_features": [

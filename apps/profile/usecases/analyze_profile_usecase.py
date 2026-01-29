@@ -35,7 +35,8 @@ class AnalyzeProfileUsecase:
         target_months: int = None, 
         auto_save: bool = False,
         profile_override: "UserProfile" = None,
-        metrics_override: "MetricsOverride" = None
+        metrics_override: "MetricsOverride" = None,
+        images: list = []
     ) -> ProfileAnalyzeResponse:
         # 1. 加载当前 Profile 设定（优先使用前端传入的数据）
         if profile_override:
@@ -93,6 +94,8 @@ class AnalyzeProfileUsecase:
         # 7. 目标月份默认值为 2 个月
         effective_target_months = target_months if target_months else 2
 
+        contain_image = len(images)
+
         # 8. 构建 Prompt
         prompt = self._build_prompt(
             user_note=user_note,
@@ -103,17 +106,19 @@ class AnalyzeProfileUsecase:
             has_dimension_history=has_dimension_history,
             user_set_keep_targets=user_set_keep_targets,
             target_months=effective_target_months,
+            contain_image=contain_image,
         )
         print('test-prompt', prompt)
 
         # 8. 调用 LLM
         try:
-            result = await self.client.generate_json_async(prompt, [], PROFILE_LLM_SCHEMA)
+            result = await self.client.generate_json_async(prompt, images, PROFILE_LLM_SCHEMA, scene="profile_analysis", user_id=user_id)
         except Exception as e:
             logger.error(f"Profile analysis LLM error: {e}")
             raise e
 
         if isinstance(result, dict) and result.get("error"):
+            print('test-error', result)
             raise Exception(result["error"])
 
         # 9. 解析结果并合并到 Profile
@@ -332,11 +337,13 @@ class AnalyzeProfileUsecase:
         has_dimension_history: bool,
         user_set_keep_targets: Dict,
         target_months: int = None,
+        contain_image: int = 0,
     ) -> str:
         stats_json = json.dumps(calculated_stats, indent=2, ensure_ascii=False)
         user_set_json = json.dumps(user_set_keep_targets, ensure_ascii=False)
         
         target_months_info = f"用户期望在 {target_months} 个月内达成目标。" if target_months else "用户未指定达成时间。"
+        image_info = "\n注意结合用户上传的图片进行分析。" if contain_image else ""
 
         return f"""
 角色: 智能健康目标推算助手。
@@ -376,8 +383,8 @@ Profile 设定:
 {target_months_info}
 
 ---
-## 用户备注
-"{user_note}"
+## 用户直接输入
+{user_note}
 
 ---
 ## 指令
@@ -401,7 +408,7 @@ Profile 设定:
 ### 2. 推算 Keep 目标
 综合根据用户备注、历史数据、用户已设定的目标，推算合理的 Keep 目标。
 
-参考用户的关键主张进行分析（如特殊的身材目标偏好）。
+参考用户的关键主张进行分析（如特殊的身材目标偏好）。{image_info}
 
 可推算的围度目标字段：waist, bust, hip_circ, thigh, calf, arm
 

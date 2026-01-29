@@ -97,6 +97,15 @@ const Dashboard = {
         this.loadHistory();
       }
 
+      // Pre-load Profile to get limits info
+      if (window.ProfileModule && window.ChatUIModule) {
+        ProfileModule.loadFromServer().then(() => {
+          if (ProfileModule.limitsInfo) {
+            ChatUIModule.updateLimitStatus(ProfileModule.limitsInfo);
+          }
+        });
+      }
+
       // 如果当前停留在 Profile 视图且显示的是加载态，则刷新
       if (this.view === 'profile' && this.el.resultContent.querySelector('.auth-loading-state')) {
         console.log(`${getLogTime()} Updating Profile view from loading state`);
@@ -238,8 +247,12 @@ const Dashboard = {
    * Profile 模式下的分析
    */
   async startProfileAnalysis(userNote) {
+    // Capture images before clearing
+    const images = [...this.pendingImages];
+    const imageUrls = images.map(img => img.preview);
+
     // 添加用户消息
-    this.addMessage(userNote, 'user');
+    this.addMessage(userNote || (images.length > 0 ? '[图片]' : ''), 'user', { images: imageUrls });
 
     // 清空输入
     this.el.chatInput.value = '';
@@ -258,8 +271,8 @@ const Dashboard = {
       targetMonths = currentProfile.estimated_months || null;
     }
 
-    // 调用 Profile 分析（传入 targetMonths）
-    const result = await ProfileModule.analyze(userNote, targetMonths);
+    // 调用 Profile 分析（传入 targetMonths 和 images）
+    const result = await ProfileModule.analyze(userNote, targetMonths, images);
 
     // 移除加载消息
     if (loadingMsg) loadingMsg.remove();

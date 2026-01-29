@@ -28,7 +28,7 @@ class UsageTracker:
             return {}
 
     @staticmethod
-    def increment_usage(user_id: str, feature: str):
+    def increment_usage(user_id: str, feature: str, amount: int = 1):
         path = UsageTracker._get_usage_path(user_id)
         today_str = date.today().isoformat()
         
@@ -44,7 +44,7 @@ class UsageTracker:
                 pass
         
         current_count = data["counts"].get(feature, 0)
-        data["counts"][feature] = current_count + 1
+        data["counts"][feature] = current_count + amount
         
         path.parent.mkdir(parents=True, exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:

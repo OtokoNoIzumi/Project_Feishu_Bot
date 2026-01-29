@@ -165,11 +165,19 @@ const API = {
      * @param {object} facts - 饮食数据
      * @param {string} userNote - 用户说明
      */
-    async getDietAdvice(facts, userNote = '', dialogueId = null) {
+    /**
+     * 获取饮食建议
+     * @param {object} facts - 饮食数据
+     * @param {string} userNote - 用户说明
+     * @param {string} dialogueId - 对话ID
+     * @param {string[]} imagesB64 - 图片列表
+     */
+    async getDietAdvice(facts, userNote = '', dialogueId = null, imagesB64 = []) {
         return this.post('/diet/advice', {
             facts,
             user_note: userNote,
             dialogue_id: dialogueId,
+            images_b64: imagesB64
         });
     },
 
@@ -251,7 +259,7 @@ const API = {
 
     // ... (analyzeProfile remains same, result will be mocked or blocked)
 
-    async analyzeProfile(userNote, targetMonths = null, autoSave = false, profileOverride = null, metricsOverride = null) {
+    async analyzeProfile(userNote, targetMonths = null, autoSave = false, profileOverride = null, metricsOverride = null, imagesB64 = []) {
         if (Auth.isDemoMode()) {
             // Mock response if needed, but UI blocks execution usually
             return { success: true, result: { advice_text: "Demo mode analysis..." } };
@@ -259,6 +267,7 @@ const API = {
         const data = {
             user_note: userNote,
             auto_save: autoSave,
+            images_b64: imagesB64
         };
         if (targetMonths) {
             data.target_months = targetMonths;

@@ -95,6 +95,11 @@ const DashboardUIModule = {
         document.querySelectorAll('.mode-btn').forEach(btn => {
             btn.classList.toggle('active', btn.dataset.mode === mode);
         });
+
+        // Refresh limit display
+        if (window.ChatUIModule && window.ProfileModule && ProfileModule.limitsInfo) {
+            ChatUIModule.updateLimitStatus(ProfileModule.limitsInfo);
+        }
     },
 
     isMobile() {
@@ -127,6 +132,11 @@ const DashboardUIModule = {
             this.renderDemoMask();
         }
 
+        // Refresh limit display
+        if (window.ChatUIModule && window.ProfileModule && ProfileModule.limitsInfo) {
+            ChatUIModule.updateLimitStatus(ProfileModule.limitsInfo);
+        }
+
         // 左侧菜单高亮
         this.el.sideMenu?.querySelectorAll('.side-menu-item')?.forEach(btn => {
             btn.classList.toggle('active', btn.dataset.view === next);
@@ -138,6 +148,7 @@ const DashboardUIModule = {
             // Profile 模式：隐藏 diet/keep 切换，显示"档案沟通"
             if (modeSwitch) {
                 this._savedModeSwitch = modeSwitch.innerHTML;
+                this._savedMode = this.mode; // Save current mode
                 modeSwitch.innerHTML = '<button class="mode-btn active" style="cursor: default; pointer-events: none;">档案沟通</button>';
             }
             this.renderProfileView();
@@ -149,6 +160,7 @@ const DashboardUIModule = {
         if (prev === 'profile' && modeSwitch && this._savedModeSwitch) {
             modeSwitch.innerHTML = this._savedModeSwitch;
             this.bindModeSwitch(); // 重新绑定事件
+            this.mode = this._savedMode || 'diet'; // Restore mode
         }
 
         // 回到分析视图

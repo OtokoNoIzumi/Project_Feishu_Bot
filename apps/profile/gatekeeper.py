@@ -70,7 +70,7 @@ class Gatekeeper:
         return "expired", None
 
     @staticmethod
-    def check_access(user_id: str, feature: str) -> dict:
+    def check_access(user_id: str, feature: str, amount: int = 1) -> dict:
         """
         Check if user can access feature.
         
@@ -119,7 +119,7 @@ class Gatekeeper:
         usage = UsageTracker.get_today_usage(user_id)
         current = usage.get(feature, 0)
         
-        if current >= limit:
+        if current + amount > limit:
             return {
                 "allowed": False,
                 "code": "DAILY_LIMIT_REACHED",
@@ -137,5 +137,5 @@ class Gatekeeper:
         }
 
     @staticmethod
-    def record_usage(user_id: str, feature: str):
-        UsageTracker.increment_usage(user_id, feature)
+    def record_usage(user_id: str, feature: str, amount: int = 1):
+        UsageTracker.increment_usage(user_id, feature, amount)

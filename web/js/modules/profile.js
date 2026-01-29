@@ -32,6 +32,7 @@ const ProfileModule = {
             // response 是 ProfileView: { ...settings, current_weight_kg, height_cm }
             // 后端将 settings 打平到顶层，并注入 current_weight_kg, height_cm
             this.serverProfile = response;
+            this.limitsInfo = response.limits_info;
             this.dynamicMetrics = {
                 weight_kg: response.current_weight_kg,  // 后端字段名是 current_weight_kg
                 height_cm: response.height_cm,
@@ -83,6 +84,25 @@ const ProfileModule = {
             } catch (e) {
                 console.warn('[Profile] Failed to auto-sync timezone:', e);
             }
+        }
+    },
+
+    /**
+     * 刷新配额限制信息
+     */
+    async refreshLimits() {
+        if (Auth.isDemoMode()) return;
+        try {
+            const response = await API.getProfile();
+            if (response && response.limits_info) {
+                this.limitsInfo = response.limits_info;
+                // Notify UI to update
+                if (window.ChatUIModule && typeof ChatUIModule.updateLimitStatus === 'function') {
+                    ChatUIModule.updateLimitStatus(this.limitsInfo);
+                }
+            }
+        } catch (e) {
+            console.warn('[Profile] Failed to refresh limits:', e);
         }
     },
 
@@ -164,7 +184,13 @@ const ProfileModule = {
      * @param {string} userNote - 用户输入
      * @param {number} targetMonths - 目标月份
      */
-    async analyze(userNote, targetMonths = null) {
+    /**
+     * 执行 AI 分析
+     * @param {string} userNote - 用户输入
+     * @param {number} targetMonths - 目标月份
+     * @param {Array} images - 图片列表 (Dashboard.pendingImages)
+     */
+    async analyze(userNote, targetMonths = null, images = []) {
         const { canAnalyze, missing } = this.canAnalyze();
         if (!canAnalyze) {
             return {
@@ -181,7 +207,14 @@ const ProfileModule = {
                 height_cm: currentMetrics.height_cm,
                 weight_kg: currentMetrics.weight_kg,
             };
-            const response = await API.analyzeProfile(userNote, targetMonths, false, currentProfile, metricsOverride);
+
+            const imagesB64 = images.map(img => img.base64);
+
+            const response = await API.analyzeProfile(userNote, targetMonths, false, currentProfile, metricsOverride, imagesB64);
+
+            // Limit updated, trigger refresh
+            this.refreshLimits();
+
             this.lastAnalyzeResponse = response;
             this.pendingProfile = response.suggested_profile;
             return {

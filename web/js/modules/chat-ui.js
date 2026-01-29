@@ -69,6 +69,69 @@ const ChatUIModule = {
         }
         // SessionModule.renderMessage 是核心静态方法
         return SessionModule.renderMessage(this.el.chatMessages, content, role, options);
+    },
+
+    updateLimitStatus(info) {
+        const container = document.getElementById('limit-status-container');
+        if (!container || !info) return;
+
+        const { usage, max } = info;
+        const app = window.Dashboard;
+
+        // Determine feature based on current view/mode
+        let feature = 'analyze';
+        let label = '分析';
+        if (app.view === 'profile') {
+            feature = 'profile';
+            label = '目标沟通';
+        } else if (app.mode === 'advice') {
+            feature = 'advice';
+            label = '顾问讨论';
+        }
+
+        const used = usage[feature] || 0;
+        const limit = max[feature] || 0;
+
+        let text = '';
+        let title = '';
+        let isLimitReached = false;
+
+        if (limit === -1) {
+            text = `${used}`;
+            title = `今日${label} (已用)`;
+        } else {
+            const remaining = Math.max(0, limit - used);
+            text = `${remaining}`;
+            title = `今日${label}剩余`;
+            isLimitReached = remaining === 0;
+        }
+
+        const imgUsed = usage.image_analyze || 0;
+        const imgLimit = max.image_analyze || 0;
+
+        let imgText = '';
+        let imgTitle = '';
+        let isImgLimitReached = false;
+
+        if (imgLimit === -1) {
+            imgText = `${imgUsed}`;
+            imgTitle = '今日图片分析 (已用)';
+        } else {
+            const imgRemaining = Math.max(0, imgLimit - imgUsed);
+            imgText = `${imgRemaining}`;
+            imgTitle = '今日图片分析剩余';
+            isImgLimitReached = imgRemaining === 0;
+        }
+
+        container.classList.remove('hidden');
+        container.innerHTML = `
+            <div class="limit-status-item ${isLimitReached ? 'limit-reached' : ''}" title="${title}">
+                <span class="limit-icon">💬</span> ${text}
+            </div>
+            <div class="limit-status-item ${isImgLimitReached ? 'limit-reached' : ''}" title="${imgTitle}">
+                <span class="limit-icon">📷</span> ${imgText}
+            </div>
+        `;
     }
 };
 

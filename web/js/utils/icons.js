@@ -26,9 +26,6 @@ const ICONS = {
     'bookmark': { src: 'bookmark.png', type: 'stamp', defaultClass: '' },
     'profile_woman': { src: 'profile_alt.png', type: 'stamp', defaultClass: '' },
     'profile_man': { src: 'profile.png', type: 'stamp', defaultClass: '' },
-    'comment': { src: 'notepad.png', type: 'stamp', defaultClass: '' }, // Reusing notepad for comment
-    'undo': { src: 'refresh.png', type: 'stamp', defaultClass: '' }, // Reusing refresh for undo
-    'arrow_left': { src: 'arrow_left.png', type: 'stamp', defaultClass: '' }, // Assuming arrow_left.png exists or fallback
 };
 
 /**

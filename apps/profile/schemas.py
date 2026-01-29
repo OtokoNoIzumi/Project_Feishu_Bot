@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Optional, Dict
+from typing import Optional, Dict, List
 
 class DietTarget(BaseModel):
     """饮食目标设定。所有字段可空，表示用户未设置。"""
@@ -64,9 +64,11 @@ class ProfileAnalyzeRequest(BaseModel):
     auto_save: bool = False
     profile_override: Optional[UserProfile] = None  # 前端当前编辑的 Profile（优先使用）
     metrics_override: Optional[MetricsOverride] = None  # 前端编辑的身高/体重
+    images_b64: List[str] = []
 
 class ProfileAnalyzeResponse(BaseModel):
     advice: str
     suggested_profile: UserProfile
     estimated_months: Optional[int] = None  # LLM 推算的达成时间（月）
     saved: bool
+    warning: Optional[str] = None

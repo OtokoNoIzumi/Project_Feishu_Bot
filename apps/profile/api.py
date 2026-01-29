@@ -8,6 +8,12 @@ from apps.profile.invitation_manager import InvitationManager
 from apps.profile.nid_manager import NIDManager
 from apps.profile.invitation_schemas import BatchCodeManageRequest, InvitationCodeDefinition
 from apps.profile.gatekeeper import Gatekeeper
+from apps.common.utils import decode_images_b64
+import logging
+
+logger = logging.getLogger(__name__)
+
+from apps.common.usage_tracker import UsageTracker
 
 def build_profile_router(settings: BackendSettings) -> APIRouter:
     router = APIRouter()
@@ -18,8 +24,29 @@ def build_profile_router(settings: BackendSettings) -> APIRouter:
         """
         获取当前用户 Profile 配置 (View Model)。
         包含：存档的设置 (Gender/Age/Targets) + 动态的最新的 Weight/Height。
+        以及：今日用量与额度 (limits)。
         """
-        return ProfileService.get_profile_view(user_id)
+        data = ProfileService.get_profile_view(user_id)
+        
+        # Inject Limits Info
+        profile_obj = ProfileService.load_profile(user_id)
+        current_level, _ = Gatekeeper.get_current_effective_level(profile_obj)
+        limits_config = Gatekeeper.get_limits()
+        usage = UsageTracker.get_today_usage(user_id)
+        
+        data["limits_info"] = {
+            "level": current_level,
+            "usage": usage,
+            "max": {}
+        }
+        
+        default_limits = {"basic": 5, "pro": 10, "ultra": -1}
+        for feat, feat_limits in limits_config.items():
+            if isinstance(feat_limits, dict):
+                val = feat_limits.get(current_level, default_limits.get(current_level, 5))
+                data["limits_info"]["max"][feat] = val
+                
+        return data
 
     @router.post("/api/user/profile", response_model=UserProfile, dependencies=[Depends(auth_dep)])
     async def save_profile(
@@ -51,6 +78,18 @@ def build_profile_router(settings: BackendSettings) -> APIRouter:
                 }
             )
             
+        # [Image Limit Check] - Soft Enforcement
+        images_bytes = decode_images_b64(req.images_b64)
+        warning_message = None
+        
+        if images_bytes:
+            img_access = Gatekeeper.check_access(user_id, "image_analyze", amount=len(images_bytes))
+            if not img_access["allowed"]:
+                # Limit reached: degrade to text-only mode and warn
+                images_bytes = []
+                warning_message = f"今日图片分析额度已用完，仅针对文本内容进行分析。"
+                logger.info(f"User {user_id} image limit reached for profile, processing text only.")
+
         usecase = AnalyzeProfileUsecase(settings)
         result = await usecase.execute(
             user_id, 
@@ -58,11 +97,18 @@ def build_profile_router(settings: BackendSettings) -> APIRouter:
             req.target_months, 
             req.auto_save,
             req.profile_override,
-            req.metrics_override
+            req.metrics_override,
+            images=images_bytes
         )
         
         # 2. Record Usage
         Gatekeeper.record_usage(user_id, "profile")
+        if images_bytes:
+            Gatekeeper.record_usage(user_id, "image_analyze", amount=len(images_bytes))
+            
+        if warning_message:
+            result.warning = warning_message
+            
         return result
 
     @router.post("/api/user/invitation/redeem", dependencies=[Depends(auth_dep)])
