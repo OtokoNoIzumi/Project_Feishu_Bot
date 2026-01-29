@@ -80,6 +80,34 @@ const DashboardUIModule = {
             }
         });
 
+        // 粘贴 (Paste) support for images
+        this.el.chatInput?.addEventListener('paste', e => {
+            const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+            const files = [];
+            for (let i = 0; i < items.length; i++) {
+                if (items[i].kind === 'file' && items[i].type.startsWith('image/')) {
+                    const file = items[i].getAsFile();
+                    if (file) files.push(file);
+                }
+            }
+            if (files.length > 0) {
+                e.preventDefault();
+                this.handleFiles(files);
+
+                // Manually paste text if mixed content
+                const text = (e.clipboardData || e.originalEvent.clipboardData).getData('text');
+                if (text) {
+                    const input = this.el.chatInput;
+                    const start = input.selectionStart;
+                    const end = input.selectionEnd;
+                    const val = input.value;
+                    input.value = val.substring(0, start) + text + val.substring(end);
+                    input.selectionStart = input.selectionEnd = start + text.length;
+                    this.updateSendButton();
+                }
+            }
+        });
+
         // 发送（新建分析）
         this.el.sendBtn?.addEventListener('click', () => this.startNewAnalysis());
 
