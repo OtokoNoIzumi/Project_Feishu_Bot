@@ -19,7 +19,7 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      padding: 24px;
+      padding: 16px;
       /* CSS-only warm paper background */
       background-color: #f8f4ec;
       background-image:
@@ -28,23 +28,113 @@
         radial-gradient(ellipse at 60% 40%, rgba(200, 180, 160, 0.08) 0%, transparent 50%);
     }
 
-    /* === Main Login Card === */
+    .login-content-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 32px;
+      max-width: 960px;
+      width: 100%;
+    }
+
+    /* === Marketing Section (Left/Top) === */
+    .marketing-section {
+      width: 100%;
+      text-align: center;
+      color: #382e28;
+      padding: 0 12px;
+      box-sizing: border-box;
+    }
+
+    .brand-hero {
+      margin-bottom: 24px;
+    }
+
+    .hero-logo {
+      width: 72px;
+      height: 72px;
+      margin-bottom: 12px;
+      filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.1));
+      transform: rotate(-3deg);
+    }
+
+    .hero-title {
+      font-family: 'Lora', serif;
+      font-size: 2rem;
+      font-weight: 600;
+      color: #382e28;
+      margin: 0 0 8px 0;
+      line-height: 1.2;
+    }
+
+    .hero-subtitle {
+      font-family: 'Patrick Hand', cursive;
+      font-size: 1.15rem;
+      color: #6e5d50;
+      margin: 0;
+      opacity: 0.9;
+    }
+
+    .features-list {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      margin-top: 24px;
+      text-align: left;
+      /* Mobile: Centered block */
+      margin-left: auto;
+      margin-right: auto;
+      max-width: 360px;
+    }
+
+    .feature-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+    }
+
+    .feature-text h3 {
+      font-family: 'Patrick Hand', cursive;
+      font-size: 1.2rem;
+      color: #d97757;
+      font-weight: 600;
+      margin: 0 0 4px 0;
+    }
+
+    .feature-text p {
+      font-size: 0.875rem;
+      margin: 0;
+      padding-left: 2px;
+      color: #7d6c5d;
+      line-height: 1.4;
+    }
+
+    /* === Login Section (Right/Bottom) === */
+    .login-section {
+      width: 100%;
+      display: flex;
+      justify-content: center;
+    }
+
+    /* Main Login Card */
     .login-main-card {
       position: relative;
       width: 100%;
-      /* 增加宽度到 480px 以容纳内容和 Badge */
-      max-width: 480px;
+      max-width: 420px;
+      /* Sized for Clerk card */
       background: rgba(255, 255, 255, 0.75);
       backdrop-filter: blur(16px);
       -webkit-backdrop-filter: blur(16px);
       border: 1px solid rgba(92, 85, 78, 0.15);
       border-radius: 20px;
-      /* 统一由容器控制内边距，给 Badge 留出空间 */
-      padding: 48px 40px;
+      padding: 32px 24px;
+      /* Reduced padding for mobile */
       box-shadow: 0 12px 40px rgba(74, 62, 53, 0.15);
+      display: flex;
+      flex-direction: column;
     }
 
-    /* Washi Tape 装饰条 */
+    /* Washi Tape Decoration */
     .login-main-card::before {
       content: '';
       position: absolute;
@@ -59,51 +149,14 @@
       border-radius: 2px;
     }
 
-    /* === Branding Section === */
-    .login-branding {
-      text-align: center;
-      padding: 0 24px;
-      margin-bottom: 32px;
-    }
-
-    .login-app-logo {
-      width: 72px;
-      height: 72px;
-      margin: 0 auto 16px;
-      background: linear-gradient(135deg, #d97757 0%, #e08e73 100%);
-      border-radius: 16px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      box-shadow: 0 4px 12px rgba(74, 62, 53, 0.08);
-    }
-
-    .login-app-logo img {
-      width: 48px;
-      height: 48px;
-      filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.1));
-    }
-
-    .login-app-title {
-      font-family: 'Lora', serif;
-      font-size: 1.75rem;
-      font-weight: 600;
-      color: #382e28;
-      margin: 0 0 4px 0;
-    }
-
-    .login-app-tagline {
-      font-family: 'Patrick Hand', cursive;
-      font-size: 1rem;
-      color: #6e5d50;
-      letter-spacing: 0.02em;
-      margin: 0;
-    }
-
     /* Loading State */
     .login-loading {
-      padding: 32px 24px;
+      padding: 20px;
       text-align: center;
+      min-height: 100px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
     }
 
     .login-loading .loading-spinner {
@@ -128,19 +181,31 @@
       color: #948171;
     }
 
+    .login-prompt {
+      text-align: center;
+      font-family: 'Patrick Hand', cursive;
+      font-size: 1.05rem;
+      color: #6e5d50;
+      margin: 0;
+      letter-spacing: 0.02em;
+    }
+
     /* === Demo Button === */
     .demo-entry {
       margin-top: 16px;
       text-align: center;
       padding-top: 16px;
       border-top: 1px dashed rgba(92, 85, 78, 0.1);
+      position: relative;
+      z-index: 5;
+      /* Ensure clickable */
     }
 
     .btn-demo {
       background: transparent;
       border: 1px solid #d97757;
       color: #d97757;
-      padding: 10px 24px;
+      padding: 10px 20px;
       border-radius: 20px;
       font-family: inherit;
       font-size: 0.95rem;
@@ -151,127 +216,290 @@
       gap: 6px;
     }
 
+    .btn-demo .hand-icon {
+      width: 16px;
+      height: 16px;
+    }
+
     .btn-demo:hover {
       background: rgba(217, 119, 87, 0.05);
       transform: translateY(-1px);
       box-shadow: 0 4px 12px rgba(217, 119, 87, 0.1);
     }
 
-    .btn-demo:active {
-      transform: translateY(0);
+    /* === Button Animations === */
+    .btn-demo {
+      position: relative;
+      overflow: hidden;
+      /* For shimmer containment */
     }
 
-    /* === Clerk Style Overrides === */
-    /* 只做最小限度的覆盖，保留 Clerk 的布局 */
+    /* Light Shimmer Effect */
+    @keyframes shimmer {
+      0% {
+        transform: translateX(-120%) skewX(-20deg);
+      }
 
-    /* 移除 Clerk 卡片的背景和阴影，并强制宽度适配 */
+      50% {
+        transform: translateX(250%) skewX(-20deg);
+      }
+
+      /* Sweep across */
+      100% {
+        transform: translateX(250%) skewX(-20deg);
+      }
+
+      /* Stay off-screen for pause */
+    }
+
+    .btn-demo::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 40%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(217, 119, 87, 0.15), transparent);
+      transform: translateX(-150%) skewX(-20deg);
+      animation: shimmer 3s infinite ease-in-out;
+      pointer-events: none;
+
+      /* Paused by default, waits for js-loaded */
+      animation-play-state: paused;
+    }
+
+    .btn-demo.js-loaded::after {
+      animation-play-state: running;
+    }
+
+    /* Icon Pulse Animation */
+    @keyframes icon-float {
+
+      0%,
+      100% {
+        transform: translateY(0) scale(1.1);
+      }
+
+      50% {
+        transform: translateY(-1px) scale(1.2);
+      }
+    }
+
+    .btn-demo .demo-icon img {
+      animation: icon-float 2s infinite ease-in-out;
+      display: block;
+      /* Remove baseline space */
+      /* Paused by default */
+      animation-play-state: paused;
+    }
+
+    .btn-demo.js-loaded .demo-icon img {
+      animation-play-state: running;
+    }
+
+    /* === Clerk Style CSS Reset/Overrides === */
+    /* 仅做必要的布局修复，避免 Clerk 默认容器挤压 */
+    #clerk-auth {
+      min-height: 180px;
+      width: 100%;
+    }
+
+    /* 强制 Clerk 内部容器占满并保持纵向布局 */
     #clerk-auth .cl-card,
     #clerk-auth .cl-rootBox,
     #clerk-auth .cl-main,
     #clerk-auth .cl-cardBox {
       width: 100% !important;
-      align-items: center !important;
       max-width: none !important;
+      margin: 0 !important;
+      align-items: center !important;
       box-shadow: none !important;
       border: none !important;
       background: transparent !important;
-      margin: 0 !important;
       display: flex !important;
       flex-direction: column !important;
+      gap: 12px;
     }
 
-    /* 隐藏 Clerk 自带的标题（我们有自己的 branding） */
+    #clerk-auth .cl-form {
+      gap: 12px;
+    }
+
+    /* 隐藏 Clerk 自带的标题 */
+    #clerk-auth .cl-header,
     #clerk-auth .cl-headerTitle,
-    #clerk-auth .cl-headerSubtitle,
-    #clerk-auth .cl-header {
+    #clerk-auth .cl-headerSubtitle {
       display: none !important;
     }
 
-    /* 主按钮使用我们的主题色 */
-    #clerk-auth .cl-formButtonPrimary {
-      background: linear-gradient(135deg, #d97757 0%, #e08e73 100%) !important;
-      border-radius: 12px !important;
+    /* === Compliance Footer === */
+    .compliance-footer {
+      margin-top: 20px;
+      text-align: center;
+      font-size: 0.75rem;
+      color: #948171;
     }
 
-    /* 链接颜色 */
-    #clerk-auth a,
-    #clerk-auth .cl-footerActionLink {
-      color: #d97757 !important;
+    .compliance-footer a {
+      color: #948171;
+      text-decoration: none;
+      margin: 0 6px;
+      transition: color 0.2s;
     }
 
-    #clerk-auth a:hover {
-      color: #c86b4e !important;
+    .compliance-footer a:hover {
+      color: #d97757;
     }
 
-    /* === Responsive === */
-    @media (max-width: 480px) {
-      .login-page-wrapper {
-        padding: 16px;
+    /* === responsive === */
+    /* Desktop */
+    @media (min-width: 900px) {
+      .login-content-container {
+        flex-direction: row;
+        align-items: flex-start;
+        /* Align top */
+        justify-content: center;
+        gap: 80px;
+        padding: 48px;
+        max-width: 1100px;
       }
 
+      .marketing-section {
+        flex: 1;
+        text-align: left;
+        max-width: 400px;
+        padding-top: 40px;
+        /* Visual balance with card */
+        padding-left: 0;
+      }
+
+      .features-list {
+        margin-left: 0;
+        align-items: flex-start;
+      }
+
+      .hero-title {
+        font-size: 2.5rem;
+      }
+
+      .login-section {
+        flex: 1;
+        max-width: 420px;
+      }
+    }
+
+    @media (max-width: 640px) {
       .login-main-card {
-        max-width: 100%;
-        border-radius: 16px;
+        padding: 20px 16px;
       }
 
-      .login-branding {
-        padding: 0 16px;
+      .login-prompt {
+        margin: 0;
+        font-size: 1rem;
       }
 
-      .login-app-logo {
-        width: 60px;
-        height: 60px;
+      .demo-entry {
+        margin-top: 16px;
       }
 
-      .login-app-logo img {
-        width: 40px;
-        height: 40px;
+      .btn-demo {
+        padding: 10px 18px;
+        font-size: 0.9rem;
       }
 
-      .login-app-title {
-        font-size: 1.5rem;
+      .login-loading {
+        min-height: 120px;
+        padding: 12px;
       }
+
+      #clerk-auth .cl-socialButtons,
+      #clerk-auth .cl-socialButtonsBlock {
+        display: flex !important;
+        gap: 8px !important;
+      }
+
     }
   </style>
 </head>
 
 <body>
   <div class="login-page-wrapper">
-    <div class="login-main-card">
-      <!-- Branding Section -->
-      <div class="login-branding">
-        <div class="login-app-logo">
-          <img src="css/icons/apple.png" alt="Diet & Keep Logo">
+    <div class="login-content-container">
+
+      <!-- Left: Marketing / "Why Me" -->
+      <div class="marketing-section">
+        <div class="brand-hero">
+          <img src="css/icons/apple.png" class="hero-logo" alt="Diet & Keep Logo">
+          <h1 class="hero-title">Diet & Keep</h1>
+          <p class="hero-subtitle">你的 AI 营养师，懂热量更懂生活</p>
         </div>
-        <h1 class="login-app-title">Diet & Keep</h1>
-        <p class="login-app-tagline">智能饮食与健康数据分析</p>
+
+        <div class="features-list">
+          <div class="feature-item">
+            <div class="feature-text">
+              <h3>拍照即记</h3>
+              <p>拍张照，AI 自动识别中餐热量与营养，告别繁琐查表。</p>
+            </div>
+          </div>
+          <div class="feature-item">
+            <div class="feature-text">
+              <h3>动态分析</h3>
+              <p>每餐之后，AI 都会为你更新营养报告和用餐建议。</p>
+            </div>
+          </div>
+          <div class="feature-item">
+            <div class="feature-text">
+              <h3>全维追踪</h3>
+              <p>联动体重与饮食数据，见证每一次健康改变。</p>
+            </div>
+          </div>
+        </div>
       </div>
 
-      <!-- Clerk Auth Container -->
-      <div class="login-clerk-wrapper">
-        <div id="clerk-auth"></div>
-        <div id="loading-state" class="login-loading">
-          <div class="loading-spinner"></div>
-          <p class="login-loading-text">正在加载...</p>
+      <!-- Right: Login Card -->
+      <div class="login-section">
+        <div class="login-main-card">
+          <!-- Auth Container -->
+          <p class="login-prompt">立即登录开始记录</p>
+          <div class="login-clerk-wrapper">
+            <div id="clerk-auth"></div>
+            <div id="loading-state" class="login-loading">
+              <div class="loading-spinner"></div>
+              <p class="login-loading-text">正在唤醒 AI 助理...</p>
+            </div>
+          </div>
+
+          <!-- Demo Entry -->
+          <div class="demo-entry">
+            <button class="btn-demo" onclick="window.location.href='dashboard.html?demo=true'">
+              <span class="demo-icon"></span>
+              不登录，先看看效果
+            </button>
+          </div>
+
+          <!-- Compliance Footer -->
+          <div class="compliance-footer">
+            <a href="privacy.html" target="_blank">隐私政策</a>
+            |
+            <a href="terms.html" target="_blank">服务条款</a>
+          </div>
         </div>
       </div>
 
-      <!-- Demo Entry -->
-      <div class="demo-entry">
-        <button class="btn-demo" onclick="window.location.href='dashboard.html?demo=true'">
-          ✨ 分析效果演示
-        </button>
-      </div>
-      <!-- Compliance Footer -->
-      <div style="margin-top: 24px; text-align: center; font-size: 0.8rem; color: #948171;">
-        <a href="privacy.html" target="_blank" style="color: #948171; text-decoration: none; margin: 0 8px;">隐私政策</a>
-        |
-        <a href="terms.html" target="_blank" style="color: #948171; text-decoration: none; margin: 0 8px;">服务条款</a>
-      </div>
     </div>
   </div>
 
   <script src="config.js"></script>
+  <!-- Render Demo Icon Immediately via Module -->
+  <script type="module">
+    import { IconManager } from './js/utils/icons.js';
+    const demoIconSlot = document.querySelector('.btn-demo .demo-icon');
+    if (demoIconSlot) {
+      // update icon is 'sparkle.png', nice and noticeable
+      demoIconSlot.innerHTML = IconManager.render('update');
+    }
+  </script>
+
   <script src="js/auth.js"></script>
   <script>
     // 动态加载 Clerk - 使用 CONFIG 中的 Key
@@ -302,32 +530,56 @@
           return;
         }
 
+        // Clerk 加载完成后启用动效
+        const demoBtn = document.querySelector('.btn-demo');
+        if (demoBtn) demoBtn.classList.add('js-loaded');
+
         // Mount SignIn - Clerk 的 appearance API
         const signInDiv = document.getElementById('clerk-auth');
-        if (signInDiv) { // 确保元素存在
+        if (signInDiv) {
+          // 修复：移除导致布局崩坏的强制宽度和复杂覆盖，仅保留最小风格化
           window.Clerk.mountSignIn(signInDiv, {
             appearance: {
+              variables: {
+                colorPrimary: '#d97757', // 品牌色
+                fontFamily: '"Lora", sans-serif',
+              },
+              layout: {
+                shimmer: true, // 启用加载动画
+                socialButtonsPlacement: 'top',
+                showOptionalFields: false,
+              },
               elements: {
-                // 移除内部卡片样式并强制宽度适配
-                rootBox: {
-                  boxShadow: 'none',
-                  width: '100%'
-                },
+                // 仅移除卡片背景，让它融入我们的磨砂玻璃容器，但不强制尺寸
                 card: {
+                  background: 'transparent',
                   boxShadow: 'none',
                   border: 'none',
-                  background: 'transparent',
                   width: '100%',
-                  maxWidth: 'none',
-                  padding: '0' // 由外部容器控制内边距，避免冲突
+                  margin: 0,
+                  padding: 0
                 },
-                // 隐藏 Clerk 标题
+                rootBox: {
+                  width: '100%'
+                },
+                // 隐藏标题，因为我们在外面有 "Diet & Keep"
                 headerTitle: { display: 'none' },
                 headerSubtitle: { display: 'none' },
+                // 调整社交按钮布局
+                socialButtonsBlockButton: {
+                  borderRadius: '12px',
+                  border: '1px solid rgba(92, 85, 78, 0.2)'
+                },
                 // 主按钮样式
                 formButtonPrimary: {
                   background: 'linear-gradient(135deg, #d97757 0%, #e08e73 100%)',
-                  borderRadius: '12px'
+                  borderRadius: '12px',
+                  border: 'none',
+                  fontSize: '0.95rem'
+                },
+                // 底部链接颜色
+                footerActionLink: {
+                  color: '#d97757'
                 },
                 // 社交登录按钮容器增加顶部间距（因为隐藏了 header）
                 socialButtons: {
@@ -341,6 +593,7 @@
         window.Clerk.addListener((r) => {
           if (r.user) window.location.href = 'dashboard.html';
         });
+
       } catch (error) {
         console.error('Clerk initialization failed:', error);
         const loadingState = document.getElementById('loading-state');
