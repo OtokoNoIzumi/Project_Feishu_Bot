@@ -213,3 +213,55 @@ class DietAdviceUsecase:
                 print(f"Updated user bio (Structured) for {user_id}: +{add_list} -{remove_list}")
             except Exception as e:
                 print(f"Failed to update bio: {e}")
+
+    async def execute_stream_async(
+        self, 
+        user_id: str, 
+        facts: Dict[str, Any], 
+        user_note: Optional[str] = None,
+        images: list = []
+    ):
+        """
+        Execute advice generation in stream mode (Text only).
+        Currently supports Analysis Critique Mode.
+        """
+        # 0. Context Setup (Identical to execute_async)
+        target_date_str = None
+        occurred_at = facts.get("occurred_at")
+        if occurred_at:
+            dt = parse_occurred_at(occurred_at)
+            if dt:
+                target_date_str = dt.strftime("%Y-%m-%d")
+
+        ignore_record_id = facts.get("saved_record_id")
+        context_bundle = get_context_bundle(
+            user_id=user_id, 
+            target_date=target_date_str,
+            ignore_record_id=ignore_record_id
+        )
+
+        # Pre-process recent_history
+        raw_history = context_bundle.get("recent_history", [])
+        str_history = [x.get("line_str",str(x)) for x in raw_history if isinstance(x, dict)]
+        
+        context_bundle_for_prompt = context_bundle.copy()
+        context_bundle_for_prompt["recent_history"] = str_history
+
+        # Build Prompt (Critique Mode)
+        prompt_data = build_diet_advice_prompt(
+            facts=facts, context_bundle=context_bundle_for_prompt, user_input=user_note.strip() if user_note else ""
+        )
+        
+        prompt_user = prompt_data.get("user", "")
+        print("test-advice-critique-prompt", prompt_user) # Debug log if needed
+        prompt_system = prompt_data.get("system", "")
+
+        # Stream Generation
+        async for chunk in self.client.generate_text_stream_async(
+            prompt=prompt_user,
+            system_instruction=prompt_system,
+            images=images,
+            scene="diet_advice_stream",
+            user_id=user_id
+        ):
+            yield chunk

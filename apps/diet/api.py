@@ -10,6 +10,7 @@ import logging
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, File, Form, Header, UploadFile, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from apps.profile.gatekeeper import Gatekeeper
@@ -343,5 +344,69 @@ def build_diet_router(settings: BackendSettings) -> APIRouter:
             )
 
         return DietHistoryResponse(success=True, records=records)
+
+    @router.post(
+        "/api/diet/advice_stream",
+        dependencies=[Depends(auth_dep)],
+    )
+    async def diet_advice_stream(
+        req: DietAdviceRequest,
+        user_id: str = Depends(get_current_user_id),
+        semaphore: asyncio.Semaphore = Depends(get_global_semaphore),
+        limiter: AsyncRateLimiter = Depends(_get_model_limiter),
+    ):
+        """流式获取饮食建议"""
+        # [Access Check]
+        access = Gatekeeper.check_access(user_id, "advice")
+        if not access["allowed"]:
+             raise HTTPException(
+                 status_code=403, 
+                 detail={
+                     "code": access.get("code", "FORBIDDEN"),
+                     "message": access["reason"],
+                     "metadata": {k: v for k, v in access.items() if k not in ["allowed", "reason", "code"]}
+                 }
+             )
+
+        # Image Processing & Soft Limit Check
+        images_bytes = decode_images_b64(req.images_b64)
+        
+        if len(images_bytes) > 10:
+             raise HTTPException(status_code=400, detail="单次请求最多支持 10 张图片")
+
+        if images_bytes:
+            img_access = Gatekeeper.check_access(user_id, "image_analyze", amount=len(images_bytes))
+            if not img_access["allowed"]:
+                # Soft Limit: Clear images but allow text advice to proceed
+                images_bytes = []
+                # Streaming doesn't easily support warning headers in mid-stream, 
+                # but we can just proceed with text-only.
+                # Ideally we could send a first chunk as meta, but let's keep it simple text stream for now.
+
+        async def _stream_generator():
+            # Acquire semaphore for the duration of the stream?
+            # Or just for the initial request? 
+            # Ideally for the whole duration to limit concurrency on LLM API.
+            async with semaphore:
+                await limiter.check_and_wait()
+                
+                # Usage Record (start)
+                Gatekeeper.record_usage(user_id, "advice")
+                if images_bytes:
+                    Gatekeeper.record_usage(user_id, "image_analyze", amount=len(images_bytes))
+                
+                try:
+                    async for chunk in advice_uc.execute_stream_async(
+                        user_id=user_id, 
+                        facts=req.facts, 
+                        user_note=req.user_note,
+                        images=images_bytes,
+                    ):
+                        yield chunk
+                except Exception as e:
+                    logger.error(f"Stream advice error: {e}")
+                    yield f"\n[建议生成中断: {str(e)}]"
+
+        return StreamingResponse(_stream_generator(), media_type="text/plain")
 
     return router

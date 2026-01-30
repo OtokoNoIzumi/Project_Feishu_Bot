@@ -487,6 +487,11 @@ const DietRenderModule = {
               </details>`;
       }
       html += `<div class="advice-text">${adviceContent}</div>`;
+
+      if (version.adviceLoading) {
+        html += `<div class="streaming-cursor" style="font-size: 1.2em; color: var(--color-primary); animation: blink 1s step-end infinite;">▌</div>
+          <style>@keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }</style>`;
+      }
       return html;
     }
 

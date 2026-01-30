@@ -182,6 +182,62 @@ const API = {
     },
 
     /**
+     * 获取饮食建议 (流式)
+     */
+    async getDietAdviceStream(facts, userNote = '', dialogueId = null, imagesB64 = [], onChunk = null) {
+        const url = `${CONFIG.API_BASE_URL}/diet/advice_stream`;
+        const userId = Auth.getUserId() || 'anonymous';
+        let headers = {
+            'X-User-ID': userId,
+            'Content-Type': 'application/json'
+        };
+        if (Auth.isSignedIn()) {
+            try {
+                const token = await Auth.getToken();
+                headers['Authorization'] = `Bearer ${token}`;
+            } catch (e) { console.warn(e); }
+        }
+
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: headers,
+            body: JSON.stringify({
+                facts,
+                user_note: userNote,
+                dialogue_id: dialogueId,
+                images_b64: imagesB64
+            })
+        });
+
+        if (!response.ok) {
+            // Try to read error details
+            let errDetail = `Error ${response.status}`;
+            try {
+                const errJson = await response.json();
+                if (errJson.detail) errDetail = typeof errJson.detail === 'string' ? errJson.detail : JSON.stringify(errJson.detail);
+            } catch (e) { }
+            throw new Error(errDetail);
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+
+        try {
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                const text = decoder.decode(value, { stream: true });
+                if (onChunk) onChunk(text);
+            }
+        } catch (e) {
+            console.error("Stream reading failed", e);
+            throw e;
+        }
+
+        return { success: true };
+    },
+
+    /**
      * 保存饮食记录 (使用统一 storage API)
      * @param {object} data - 饮食记录数据
      */

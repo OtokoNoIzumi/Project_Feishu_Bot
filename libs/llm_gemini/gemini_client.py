@@ -670,3 +670,53 @@ class GeminiStructuredClient:
                     logger.error("[GeminiStats] Text generate failed after %d attempts: %s", max_retries, error_msg)
 
         return f"生成失败: {str(last_error)}"
+
+    async def generate_text_stream_async(
+        self, prompt: str, system_instruction: Optional[str] = None, images: List[bytes] = None,
+        scene: str = "unknown", user_id: str = "unknown"
+    ):
+        """
+        生成纯文本流式响应 (Async Generator).
+        """
+        if not self.client_ready:
+            self._init_client()
+            if not self.client_ready:
+                yield f"系统错误：Gemini 客户端无法初始化"
+                return
+
+        # Phase 1: Upload (Once)
+        try:
+            contents, _ = await self._prepare_contents_with_metrics(prompt, images, scene, user_id)
+        except Exception as e:
+            yield f"图片上传失败: {e}"
+            return
+
+        # Phase 2: Generation (Stream)
+        # Note: Retries for streams are harder to manage cleanly (partial output).
+        # We will try once with a generous timeout.
+        
+        gen_config = {
+            "temperature": self.config.advice_temperature,
+        }
+        if system_instruction:
+            gen_config["system_instruction"] = [types.Part.from_text(text=system_instruction)]
+
+        try:
+            # Using the stream method from google-genai
+            # Note: The SDK's generate_content_stream is sync/blocking iterator by default in v0, 
+            # but v1 (google.genai) has async support via client.aio
+            
+            stream = await self.client.aio.models.generate_content_stream(
+                model=self.config.model_name,
+                contents=contents,
+                config=gen_config,
+            )
+            
+            async for chunk in stream:
+                 # Check explicitly for text content to avoid empty chunks
+                if chunk.text:
+                    yield chunk.text
+                    
+        except Exception as e:
+            logger.error(f"[GeminiStream] Error: {e}")
+            yield f"\n[生成中断: {str(e)}]"

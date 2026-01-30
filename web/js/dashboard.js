@@ -377,7 +377,7 @@ const Dashboard = {
   // 委托给 DietEditModule
   toggleDishEnabled: DietEditModule.toggleDishEnabled,
 
-  renderAdvice(adviceText) {
+  renderAdvice(adviceText, isLoading = false) {
     const contentEl = document.getElementById('advice-content');
     const statusEl = document.getElementById('advice-status');
     const session = this.currentSession;
@@ -385,7 +385,7 @@ const Dashboard = {
 
     if (version) {
       version.advice = adviceText;
-      version.adviceLoading = false;
+      version.adviceLoading = isLoading;
       version.adviceError = null;
     }
 
