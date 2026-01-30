@@ -150,14 +150,19 @@ const API = {
      * @param {string[]} imagesB64 - Base64 编码的图片数组
      * @param {boolean} autoSave - 是否自动保存
      */
-    async analyzeDiet(userNote, imagesB64, autoSave = false) {
+    async analyzeDiet(userNote, imagesB64, autoSave = false, excludeRecordId = null) {
         // user_id 已移至 Header，body 不再包含
         // 将超时设置延长至 180s 以适应大图上传
-        return this.post('/diet/analyze', {
+        const payload = {
             user_note: userNote,
             images_b64: imagesB64,
             auto_save: autoSave,
-        }, { timeout: 150000 });
+        };
+        if (excludeRecordId) {
+            payload.exclude_record_id = excludeRecordId;
+        }
+
+        return this.post('/diet/analyze', payload, { timeout: 150000 });
     },
 
     /**

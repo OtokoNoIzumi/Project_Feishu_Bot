@@ -39,6 +39,7 @@ class DietAnalyzeRequest(BaseModel):
     user_note: str = ""
     images_b64: List[str] = []
     auto_save: bool = False
+    exclude_record_id: Optional[str] = None
 
 
 class DietAnalyzeResponse(BaseModel):
@@ -57,8 +58,7 @@ class DietAdviceRequest(BaseModel):
     user_note: str = Field(default="", description="用户输入（可选，用于理解用户意图）")
     dialogue_id: Optional[str] = Field(default=None, description="当前的对话ID（用于获取上下文历史）")
     images_b64: List[str] = []
-
-
+    
 
 class DietAdviceResponse(BaseModel):
     """Response model for diet advice."""
@@ -91,12 +91,13 @@ def build_diet_router(settings: BackendSettings) -> APIRouter:
     # --- Helper: 统一处理分析与自动保存逻辑 ---
 
     async def _process_analysis(
-        user_id: str,  # 已经过 deps 解析的 resolved ID
+        user_id: str,
         user_note: str,
         images_bytes: List[bytes],
         auto_save: bool,
         semaphore: asyncio.Semaphore,
         limiter: AsyncRateLimiter,
+        exclude_record_id: Optional[str] = None,
     ) -> DietAnalyzeResponse:
         """
         核心业务逻辑：并发控制 -> 调用 LLM 分析 -> (可选) 自动入库 -> 返回结果
@@ -142,7 +143,7 @@ def build_diet_router(settings: BackendSettings) -> APIRouter:
         # [Usage Log] Request Entrance
         access_log = (
             f"[Request] User:{user_id} | Images:{len(images_bytes)} | "
-            f"Note:{bool(user_note)} | AutoSave:{auto_save}"
+            f"Note:{bool(user_note)} | AutoSave:{auto_save} | Exclude:{exclude_record_id}"
         )
         logger.info(access_log)
 
@@ -195,7 +196,11 @@ def build_diet_router(settings: BackendSettings) -> APIRouter:
                 if dt:
                     target_date_str = dt.strftime("%Y-%m-%d")
 
-            context_bundle = get_context_bundle(user_id=user_id, target_date=target_date_str)
+            context_bundle = get_context_bundle(
+                user_id=user_id, 
+                target_date=target_date_str,
+                ignore_record_id=exclude_record_id  # Pass to exclude current record if editing
+            )
             
             # [Optimization] 移除 recent_history 以防止 Card Version 数据膨胀
             # 前端展示历史通过 /api/diet/history 独立获取，无需在每次 analyze result 中冗余存储快照
@@ -231,6 +236,7 @@ def build_diet_router(settings: BackendSettings) -> APIRouter:
             auto_save=req.auto_save,
             semaphore=semaphore,
             limiter=limiter,
+            exclude_record_id=req.exclude_record_id,
         )
 
     @router.post(
@@ -241,6 +247,7 @@ def build_diet_router(settings: BackendSettings) -> APIRouter:
     async def diet_analyze_upload(
         user_note: str = Form(""),
         auto_save: bool = Form(False),
+        exclude_record_id: Optional[str] = Form(None),
         images: List[UploadFile] = File(default=[], description="食品照片"),
         user_id: str = Depends(get_current_user_id),  # 从 Header 注入
         semaphore: asyncio.Semaphore = Depends(get_global_semaphore),
@@ -257,6 +264,7 @@ def build_diet_router(settings: BackendSettings) -> APIRouter:
             auto_save=auto_save,
             semaphore=semaphore,
             limiter=limiter,
+            exclude_record_id=exclude_record_id,
         )
 
     @router.post(

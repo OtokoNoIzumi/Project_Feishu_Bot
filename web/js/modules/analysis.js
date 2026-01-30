@@ -68,7 +68,9 @@ const AnalysisModule = {
             let result;
 
             if (session.mode === 'diet') {
-                result = await API.analyzeDiet(userNote, imagesB64);
+                // 如果是已保存的记录，传入 savedRecordId 以便后端排除其旧数据的营养值
+                const recordIdToExclude = session.savedRecordId;
+                result = await API.analyzeDiet(userNote, imagesB64, false, recordIdToExclude);
             } else {
                 // Keep 模式使用 unified analyze
                 result = await API.analyzeKeep(userNote, imagesB64);
