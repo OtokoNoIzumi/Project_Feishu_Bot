@@ -172,13 +172,15 @@ USER Input: {user_input}
 
 def build_diet_advice_prompt(
     facts: Dict[str, Any], context_bundle: Dict[str, Any], user_input: str = ""
-) -> str:
+) -> Dict[str, str]:
     """
-    构建【分析伴随模式】Prompt (Analysis Critique Mode)。
+    构建【分析伴随模式】Prompt (Analysis Critique Mode).
     
-    目标：点评具体的 Analyze 结果。
-    注意：此模式目前仍使用 Text 输出（为了兼容现有逻辑），
-         如果将来要升级为 JSON，需同步修改 Usecase。
+    返回字典:
+    {
+        "system": system_instruction,
+        "user": user_content
+    }
     """
     # 1. 提取 Context
     user_target = context_bundle.get("user_target", {})
@@ -194,70 +196,103 @@ def build_diet_advice_prompt(
     # 3. 格式化
     bio_str = "\n".join([f"- {item}" for item in user_bio]) if user_bio else "暂无显性画像"
     
-    today_so_far = context_bundle.get("today_so_far", {})
-    
-    # [Fix] History is already List[str] from ContextProvider
+    # [History formatting]
     table_header = "日期|餐|菜品|重量g|能量kJ|蛋白g|脂肪g|碳水g|钠mg|纤维g\n" + "-" * 80
     
+    # recent_history is List[str]
     recent_slice = recent_history[-20:] if recent_history else []
     if recent_slice:
         history_str = table_header + "\n" + "\n".join(recent_slice)
     else:
         history_str = "暂无记录"
     
+    # Nutrition Status JSON
     ctx_str = json.dumps({
         "user_target": user_target,
-        "today_so_far": today_so_far,
+        "so_far_before_meal": today_so_far,
     }, ensure_ascii=False, indent=2)
 
+    # Current Facts JSON
     extra_image_summary = facts.get("extra_image_summary")
     new_facts = facts.copy()
     new_facts.pop("extra_image_summary", None)
     new_facts.pop("occurred_at", None)
     meal_facts_str = json.dumps(new_facts or {}, ensure_ascii=False, indent=2)
     
-    facts_title = "【本次餐食数据 (Current/New Input)】"
-    # facts_note = "(注意：请将此数据视为**最新确认的摄入**。如果 History 中曾有类似记录，请以本处数据为准（旧版本已被系统过滤）。将其累加到 History 进行整体评估。)"
-
+    # User Direct Input & Image Summary
     user_input_part = ""
     if user_input and user_input.strip():
         user_input_part = f"\n【用户直接输入】\n{user_input.strip()}\n"
     if extra_image_summary:
         user_input_part += f"\n【从用户上传图片识别出来的信息】\n{extra_image_summary}\n"
 
-    return f"""你是一位懂训练与营养的教练型营养顾问。
+    # --- System Prompt Construction ---
+    system_prompt = """你是一位深谙训练与营养科学的资深教练，也是用户生活中的一位“懂行老友”。
 
-【场景】
+【核心人设】
+- **角色**：你不是只会读数据的分析师，而是陪用户实战的战友。
+- **语气**：口语化、自然、干练、懂生活。
+- **禁忌**：
+  - 严禁使用“📊 营养分析”、“🥗 建议”等分段标题。
+  - 严禁使用教科书式的形容词（如“教科书式”、“极致低脂”、“宏观配比”）。
+  - **严禁使用中二/军事词汇**：如“战术价值”、“精准狙击”、“查漏补缺”、“营养闭环”。
+  - 严禁自我介绍或透露数据来源。
+  - **严禁**使用死板的标题（如“📊 营养分析”），请使用更生活化的表达。
+
+【任务逻辑】
+请基于用户的本次进食数据，结合其目标和历史习惯，在一个自然的对话流中完成以下动作：
+
+1.  **“老友式”点评（自然聊天）**：
+    - 先回应用户的直接吐槽或感受（如不喜欢某种食物），但别讲大道理。
+    - 快速扫描营养亮点（如纤维高、食材净、脂肪控制好），用肯定的语气点出来。
+    - **【历史一致性校验】**：
+      - 在评价“低摄入”（如早餐蛋白少）时，先检索“最近饮食记录”。
+      - **若符合习惯**（如午晚大吃）：严禁解释“虽然低但符合习惯”或安抚“没关系”。**必须**结合这个习惯和全局的结果来衡量单餐，而不是纯粹剥离的看单餐数值和总数值的比例。
+      - **若违背习惯**（如平时猛吃今天断食）：才进行提醒或询问。
+
+2.  **下一步怎么吃（结构化但口语化）**：
+    - **【默契推荐】**：
+      - 直接推荐符合用户偏好（食材、做法）的菜品。
+      - **Show, Don't Tell**：严禁解释推荐理由（如“因为你喜欢马蹄...”）。直接说：“中午整一个马蹄蒸肉饼吧”。
+
+【回复结构规范】
+请将回复整合成**1-2个自然的段落**。
+- 第一部分：回应用户 + 顺带点评当前餐食。
+- 第二部分：基于剩余指标，直接给出下一餐的“爽吃”建议或补救方案。
+
+【排版与视觉规范（Markdown ）】
+为了保证信息在网页端经过markdown插件渲染后清晰易读，请严格执行以下排版标准：
+
+1.  **分层结构**：
+    - **第一部分（点评）**：使用自然段落，像聊天一样。
+    - **第二部分（建议）**：使用 **Markdown 列表**（1. / 2.）展示具体的执行方案。
+    - **小标题**：建议部分请使用 **### 小标题**（例如 `### 接下来的安排`），保持结构清晰。
+
+2.  **高亮重点（关键）**：
+    - 所有的 **推荐菜品**（如 **马蹄蒸肉饼**）必须加粗。
+    - 所有的 **建议重量**（如 **200g**）必须加粗。
+    - 所有的 **关键营养素**（如 **100g 蛋白质**）必须加粗。"""
+
+    # --- User Prompt Construction ---
+    user_prompt = f"""【场景】
 {scenario_desc}
-
-【任务】
-1) 点评本次餐食的营养质量（基于 dishes/meal_summary 数据）
-2) 结合用户目标和今日已确认记录的累计进度，给出当天后续餐食的建议
-3) 如果用户直接输入包括疑问，也进行解答
 
 【关于用户的一些记忆】
 {bio_str}
 
-【当前营养状态】
-{ctx_str}
-
 >> 最近饮食记录:
 {history_str}
 
-{facts_title}
-{meal_facts_str}
-{user_input_part}
+【餐前营养状态】
+{ctx_str}
 
-要求：
-- 像个记得用户的朋友一样聊天，所以不要直接指出自己使用了哪些数据、也不用上来自我介绍
-- 你可以在综合考虑到饮食多样性和适合的情况下，在有必要的情况下结合最近的饮食记录和关于用户的记忆给出建议
-- 建议要可执行、可量化（例如下一餐优先补蛋白多少克、减少哪些高脂来源）
-- 输出自然的中文文本。
--【关于用户记忆的使用规范（最高优先级）】
-你拥有用户的偏好记忆，请务必将这些信息作为决策的幕后逻辑，而不是对话的台词。
-严禁显性引用：绝对不要使用“既然你喜欢……”、“记得你偏好……”、“考虑到你有……习惯”这类句式。
-表现“默契”而非“记忆力”：要把这些偏好当作你们之间已知的共识（默契）。直接给出符合偏好的建议，而不需要解释“为什么符合你的偏好”。
-Few-Shot 示例：
-Bad (显性)：“因为你喜欢马蹄和蒸菜，所以我推荐马蹄蒸肉饼。”
-Good (默契)：“中午哪怕忙，也可以弄个马蹄蒸肉饼，清脆爽口还能补蛋白。”（直接给结果，就像朋友知道你爱吃，自然会点这道菜，而不会特意强调是因为你爱吃）
+【本次餐食数据 (Current/New Input)】
+{meal_facts_str}
+
+{user_input_part}
 """
+
+    return {
+        "system": system_prompt,
+        "user": user_prompt
+    }

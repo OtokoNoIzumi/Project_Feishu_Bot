@@ -183,13 +183,17 @@ class DietAdviceUsecase:
             context_bundle_for_prompt = context_bundle.copy()
             context_bundle_for_prompt["recent_history"] = str_history
 
-            prompt = build_diet_advice_prompt(
+            prompt_data = build_diet_advice_prompt(
                 facts=facts, context_bundle=context_bundle_for_prompt, user_input=user_note.strip()
             )
-            print("test-advice-critique-prompt", prompt)
+            print("test-advice-critique-prompt", prompt_data['user']) # Debug log if needed
             
+            prompt_user = prompt_data.get("user", "")
+            prompt_system = prompt_data.get("system", "")
+
             advice_text = await self.client.generate_text_async(
-                prompt=prompt, 
+                prompt=prompt_user, 
+                system_instruction=prompt_system,
                 images=images, 
                 scene="diet_advice", 
                 user_id=user_id

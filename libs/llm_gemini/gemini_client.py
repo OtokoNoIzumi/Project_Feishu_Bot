@@ -580,7 +580,7 @@ class GeminiStructuredClient:
         return {"error": f"Gemini 调用失败: {last_error}"}
 
     async def generate_text_async(
-        self, prompt: str, images: List[bytes] = None,
+        self, prompt: str, system_instruction: Optional[str] = None, images: List[bytes] = None,
         scene: str = "unknown", user_id: str = "unknown"
     ) -> str:
         """
@@ -601,6 +601,12 @@ class GeminiStructuredClient:
         max_retries = 3
         last_error = None
 
+        gen_config = {
+            "temperature": self.config.advice_temperature,
+        }
+        if system_instruction:
+            gen_config["system_instruction"] = [types.Part.from_text(text=system_instruction)]
+
         for attempt in range(1, max_retries + 1):
             try:
                 gen_start = time.time()
@@ -608,9 +614,7 @@ class GeminiStructuredClient:
                     self.client.aio.models.generate_content(
                         model=self.config.model_name,
                         contents=contents,
-                        config={
-                            "temperature": self.config.advice_temperature,
-                        },
+                        config=gen_config,
                     ),
                     timeout=40
                 )
