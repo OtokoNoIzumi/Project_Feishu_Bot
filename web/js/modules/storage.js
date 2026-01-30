@@ -24,7 +24,9 @@ const StorageModule = {
 
         try {
 
-            this.updateStatus('loading');
+
+            this.updateStatus('');
+
 
             // UI Update: Disable buttons implicitly via loading status or let user wait
             // FooterModule operations should be handled by updateButtonStates at the end
