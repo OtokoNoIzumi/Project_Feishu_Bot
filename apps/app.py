@@ -43,6 +43,8 @@ def create_app() -> FastAPI:
             "https://*.github.io",  # GitHub Pages
             "https://izumilife.site",  # Vercel 前端域名
             "https://www.izumilife.site",  # Vercel 前端域名 (www)
+            "https://izumilife.xyz",  # Vercel 前端域名
+            "https://www.izumilife.xyz",  # Vercel 前端域名 (www)
             "https://project-feishu-bot.vercel.app",  # Vercel 默认域名
         ],
         allow_credentials=True,

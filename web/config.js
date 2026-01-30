@@ -14,9 +14,10 @@ const CONFIG = {
     ENV: IS_LOCAL ? 'development' : 'production',
 
     // Clerk 公钥（可以公开）
+    // NOTE: 生产环境已迁移至 izumilife.xyz，请确保此处填入新的 pk_live
     CLERK_PUBLISHABLE_KEY: IS_LOCAL
-        ? 'pk_test_YWR2YW5jZWQtcHVtYS01Mi5jbGVyay5hY2NvdW50cy5kZXYk'  // Test Instance
-        : 'pk_live_Y2xlcmsuaXp1bWlsaWZlLnNpdGUk',                      // Live Instance
+        ? 'pk_test_YWR2YW5jZWQtcHVtYS01Mi5jbGVyay5hY2NvdW50cy5kZXYk'
+        : 'pk_live_Y2xlcmsuaXp1bWlsaWZlLnh5eiQ',
 
     // 后端 API 地址
     API_BASE_URL: IS_LOCAL
