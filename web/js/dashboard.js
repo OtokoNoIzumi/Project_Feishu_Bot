@@ -88,6 +88,9 @@ const Dashboard = {
         return;
       }
       Auth.mountUserButton('#user-button');
+      // Show sidebar footer only for logged-in users (matches result-footer height)
+      const sidebarFooter = document.querySelector('.history-footer');
+      if (sidebarFooter) sidebarFooter.classList.add('visible');
 
       console.log(`${getLogTime()} Loading history...`);
       // Phase 2: Use SidebarModule instead of old StorageModule

@@ -97,10 +97,10 @@ const SidebarModule = {
         if (!this.el.dialogueList) return;
 
         try {
-            // 只在完全空白时显示 loading（避免刷新闪烁）
+            // 只在完全空白时显示 loading (避免刷新闪烁)
             const hasContent = this.el.dialogueList.querySelector('.dialogue-item, .empty-sidebar');
             if (!hasContent) {
-                this.el.dialogueList.innerHTML = '<div class="loading-placeholder">加载中...</div>';
+                this.renderSkeleton();
             }
 
             const dialogues = await API.getDialogues();
@@ -609,6 +609,20 @@ const SidebarModule = {
             case 'error': return EmojiIcon.render('status-error');
             default: return '';
         }
+    },
+
+    renderSkeleton() {
+        const skeletonItem = `
+            <div class="skeleton-item">
+                <div class="skeleton-icon"></div>
+                <div class="skeleton-text"></div>
+            </div>
+        `;
+        // Generate a few items to simulate content
+        this.el.dialogueList.innerHTML = `
+            <div class="dialogue-section-title" style="opacity: 0.5;">加载中</div>
+            ${skeletonItem.repeat(3)}
+        `;
     },
 
     escapeHtml(str) {

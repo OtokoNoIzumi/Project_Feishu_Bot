@@ -1,7 +1,8 @@
 /* History Panel / Sidebar Styles (Legacy/Main) */
 
 .history-panel .panel-header {
-    padding: var(--spacing-md);
+    padding: var(--spacing-md) var(--spacing-lg);
+    /* Consistent with history items visual flow */
     border-bottom: 1px solid var(--color-border);
     display: flex;
     align-items: center;
@@ -19,7 +20,8 @@
 
 .side-menu-item {
     width: 100%;
-    padding: 8px 12px;
+    padding: var(--spacing-sm) var(--spacing-lg);
+    /* Match history-item padding */
     border-radius: var(--radius-md);
     background: transparent;
     border: 1px solid transparent;
@@ -52,19 +54,26 @@
 
 .history-list {
     flex: 1;
-    padding: var(--spacing-sm);
+    padding: 0;
+    /* Remove container padding to align with header/footer */
     overflow-y: auto;
 }
 
 .history-section-title {
     font-size: 0.75rem;
     color: var(--color-text-muted);
-    padding: var(--spacing-sm) var(--spacing-sm);
+    padding: var(--spacing-md) var(--spacing-lg) var(--spacing-xs);
+    /* Align with items */
     text-transform: uppercase;
 }
 
 .history-item {
-    padding: var(--spacing-sm) var(--spacing-md);
+    padding: var(--spacing-sm) var(--spacing-lg);
+    /* Increased side padding */
+    border-radius: 0;
+    /* Full width feel or modify as needed, keeping radius for now but removing outer padding impact */
+    margin: 0 var(--spacing-sm);
+    /* Add margin back for floating look */
     border-radius: var(--radius-md);
     font-size: 0.875rem;
     color: var(--color-text-secondary);
@@ -92,8 +101,23 @@
 }
 
 .history-footer {
-    padding: var(--spacing-md);
+    display: none;
+    /* Changed: Hidden by default, shown via JS for logged-in users */
+    padding: var(--spacing-md) var(--spacing-lg);
     border-top: 1px solid var(--color-border);
+    background: var(--color-bg-secondary);
+}
+
+.history-footer.visible {
+    display: block;
+    /* or flex depending on inner content need, block is fine for wrapper */
+}
+
+/* Ensure User Button container matches height of Result Footer buttons (~38px) */
+#user-button {
+    min-height: 40px;
+    display: flex;
+    align-items: center;
 }
 
 /* Session Card (Likely used in history list or similar context) */
@@ -110,4 +134,46 @@
 .session-card.active {
     border-color: var(--color-accent-primary);
     box-shadow: 0 0 0 2px rgba(217, 119, 87, 0.2);
+}
+
+/* Skeleton Loading for Sidebar */
+.skeleton-item {
+    padding: var(--spacing-sm) var(--spacing-md);
+    margin-bottom: 2px;
+    border-radius: var(--radius-md);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 36px;
+    /* Similar to dialogue-item height */
+}
+
+.skeleton-icon {
+    width: 16px;
+    height: 16px;
+    border-radius: 4px;
+    background-color: rgba(0, 0, 0, 0.05);
+}
+
+.skeleton-text {
+    flex: 1;
+    height: 12px;
+    border-radius: 4px;
+    background-color: rgba(0, 0, 0, 0.05);
+    background-image: linear-gradient(90deg,
+            rgba(0, 0, 0, 0.05) 0px,
+            rgba(0, 0, 0, 0.08) 40px,
+            rgba(0, 0, 0, 0.05) 80px);
+    background-size: 200px 100%;
+    animation: skeleton-shimmer 1.5s infinite linear;
+}
+
+@keyframes skeleton-shimmer {
+    0% {
+        background-position: -200px 0;
+    }
+
+    100% {
+        background-position: 200px 0;
+    }
 }
