@@ -88,6 +88,7 @@ const Dashboard = {
         return;
       }
       Auth.mountUserButton('#user-button');
+      Auth.mountUserButton('#user-button-mobile');
       // Show sidebar footer only for logged-in users (matches result-footer height)
       const sidebarFooter = document.querySelector('.history-footer');
       if (sidebarFooter) sidebarFooter.classList.add('visible');

@@ -154,9 +154,17 @@
     }
 }
 
+/* Mobile Header (Hidden by default) */
+.mobile-header {
+    display: none;
+}
+
 @media (max-width: 768px) {
     .app-container {
         flex-direction: column;
+        overflow-x: hidden;
+        /* Prevent horizontal scroll when pushed */
+        position: relative;
     }
 
     .input-panel {
@@ -164,7 +172,118 @@
         height: 100vh;
         border-left: none;
         border-top: 1px solid var(--color-border);
+        /* Mobile transition properties for push effect */
+        transition: transform 0.3s cubic-bezier(0.2, 0, 0, 1), border-radius 0.3s ease;
+        background: var(--color-bg-primary);
+        z-index: 100;
+        position: relative;
     }
+
+    /* Push Effect Context */
+    .app-container.sidebar-open .input-panel {
+        transform: translateX(260px);
+        /* Push content right */
+        overflow: hidden;
+        /* Prevent scrolling inside when pushed */
+        border-radius: 16px 0 0 16px;
+        /* Rounded card effect */
+        box-shadow: -5px 0 20px rgba(0, 0, 0, 0.1);
+    }
+
+    /* Dimming Overlay using pseudo-element */
+    .input-panel::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.4);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.3s ease;
+        z-index: 999;
+    }
+
+    .app-container.sidebar-open .input-panel::after {
+        opacity: 1;
+        pointer-events: auto;
+        /* Catch clicks to close */
+    }
+
+    /* Mobile Header */
+    .mobile-header {
+        display: grid;
+        grid-template-columns: 48px 1fr 48px;
+        align-items: center;
+        height: 56px;
+        padding: 0 8px;
+        /* Reduced side padding as grid cols provide spacing */
+        background: var(--color-bg-secondary);
+        border-bottom: 1px solid var(--color-border);
+        flex-shrink: 0;
+    }
+
+    .header-icon-btn {
+        background: none;
+        border: none;
+        font-size: 1.4rem;
+        color: var(--color-text-secondary);
+        cursor: pointer;
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .header-title {
+        font-weight: 600;
+        font-family: 'Lora', serif;
+        font-size: 1.1rem;
+        text-align: center;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    #user-button-mobile {
+        display: flex;
+        justify-content: center;
+    }
+
+    /* Sidebar Slide-in */
+    .history-panel {
+        display: flex !important;
+        position: fixed;
+        left: 0;
+        top: 0;
+        bottom: 0;
+        width: 280px;
+        z-index: 50;
+        /* Below input-panel initially? No, sidebar should be 'revealed' or 'slide over'? User said "slide out" but also "push". 
+                      Gemini behavior: Sidebar is effectively *under* or *next to*? 
+                      Actually, usually Fixed Sidebar slides *over*. 
+                      But if "chat pushes right", implies Sidebar is *behind* or *pushing it*.
+                      Let's try "Slide Over" (z-index higher) + "Content Push". 
+                      Or "Reveal" (Sidebar fixed at 0, content translates).
+                      Let's go with Sidebar Fixed Left, z-index 200. */
+        z-index: 200;
+        transform: translateX(-100%);
+        transition: transform 0.3s cubic-bezier(0.2, 0, 0, 1);
+        box-shadow: none;
+        /* Shadow handled by input-panel? or sidebar itself */
+    }
+
+    .history-panel.mobile-open {
+        transform: translateX(0);
+        box-shadow: 2px 0 20px rgba(0, 0, 0, 0.1);
+        /* Shadow when open */
+    }
+
+    /* Ensure history panel content scrollable */
+    .history-list {
+        overflow-y: auto;
+    }
+
+    /* Mobile Input Area adjustment */
 
     /* Mobile Input Area */
     .chat-messages {

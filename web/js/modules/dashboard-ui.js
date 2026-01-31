@@ -25,10 +25,9 @@ const DashboardUIModule = {
             resultFooter: document.getElementById('result-footer'),
             historyList: document.getElementById('history-list'),
             sideMenu: document.getElementById('side-menu'),
-            toggleResultBtn: document.getElementById('toggle-result-btn'),
-            openProfileBtn: document.getElementById('open-profile-btn'),
             resultCloseBtn: document.getElementById('result-close-btn'),
             resultOverlay: document.getElementById('result-overlay'),
+            mobileSidebarToggle: document.getElementById('mobile-sidebar-toggle'),
         };
     },
 
@@ -43,15 +42,26 @@ const DashboardUIModule = {
             btn.addEventListener('click', () => this.switchMode(btn.dataset.mode));
         });
 
-        // 移动端：打开/折叠确认面板
-        this.el.toggleResultBtn?.addEventListener('click', () => {
-            this.setResultPanelOpen(!this.isResultPanelOpen);
-        });
+
         this.el.resultCloseBtn?.addEventListener('click', () => this.setResultPanelOpen(false));
         this.el.resultOverlay?.addEventListener('click', () => this.setResultPanelOpen(false));
 
-        // 移动端快捷入口：Profile
-        this.el.openProfileBtn?.addEventListener('click', () => this.switchView('profile'));
+        // 移动端：侧边栏 Toggle
+        this.el.mobileSidebarToggle?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.toggleMobileSidebar();
+        });
+
+        // 移动端：点击遮罩关闭侧边栏
+        // 遮罩是 input-panel 的 ::after 伪元素，当 sidebar-open 时 pointer-events: auto
+        const inputPanel = document.querySelector('.input-panel');
+        if (inputPanel) {
+            inputPanel.addEventListener('click', () => {
+                if (document.querySelector('.app-container').classList.contains('sidebar-open')) {
+                    this.toggleMobileSidebar(false);
+                }
+            });
+        }
 
         // 上传
         this.el.uploadBtn?.addEventListener('click', () => this.el.fileInput?.click());
@@ -145,6 +155,18 @@ const DashboardUIModule = {
         }
     },
 
+    toggleMobileSidebar(forceState) {
+        const app = document.querySelector('.app-container');
+        const historyPanel = document.querySelector('.history-panel');
+        if (!app || !historyPanel) return;
+
+        const isOpen = app.classList.contains('sidebar-open');
+        const nextState = forceState !== undefined ? forceState : !isOpen;
+
+        app.classList.toggle('sidebar-open', nextState);
+        historyPanel.classList.toggle('mobile-open', nextState);
+    },
+
     switchView(view) {
         // 确保 Auth 已初始化
         if (!Auth.isSignedIn()) {
@@ -195,11 +217,13 @@ const DashboardUIModule = {
         if (this.currentSession && this.currentSession.versions.length > 0) {
             this.renderResult(this.currentSession);
         } else {
-            // 如果没有 Session 但有 Dialogue ID，尝试重新加载对话 state (修复 Profile 回来消失的问题)
+            // 无论是否有 Dialogue ID，只要没有 Session，都先重置分析面板为空状态
+            // 这解决了从 Profile 返回时面板未清理的问题
+            this.clearResult();
+
+            // 如果没有 Session 但有 Dialogue ID，尝试重新加载对话 state
             if (this.currentDialogueId && !this.currentSession) {
                 this.loadDialogue(this.currentDialogueId);
-            } else {
-                this.clearResult();
             }
         }
         // 刷新 Sidebar 标题 (确保单位变更实时生效)
@@ -213,6 +237,11 @@ const DashboardUIModule = {
         // [Demo Mode] Re-render mask to update text if needed
         if (Auth.isDemoMode()) {
             this.renderDemoMask();
+        }
+
+        // 关闭 Sidebar (移动端)
+        if (this.isMobile()) {
+            this.toggleMobileSidebar(false);
         }
     },
 
@@ -270,15 +299,16 @@ const DashboardUIModule = {
     },
 
     clearResult() {
-        // 轻量占位：不做大面积遮挡
+        // 恢复默认的 Empty State
         this.el.resultContent.innerHTML = `
-      <div class="result-card" style="padding: 16px;">
-        <div class="text-secondary" style="font-weight: 600; margin-bottom: 6px;">分析面板</div>
-        <div class="text-muted" style="font-size: 0.875rem;">
-          上传图片或输入描述后点击发送开始分析。分析过程中这里会显示状态与可编辑结果。
-        </div>
-      </div>
-    `;
+            <div class="empty-state">
+                <div class="empty-icon">
+                    <img src="css/icons/bowl.png" class="icon-stamp xl" alt="Empty" style="opacity: 0.5;">
+                </div>
+                <h3>等待分析</h3>
+                <p>上传食物图片或输入描述开始分析</p>
+            </div>
+        `;
         if (window.FooterModule) {
             window.FooterModule.update(FooterState.HIDDEN); // Or EMPTY
         } else if (this.el.resultFooter) {

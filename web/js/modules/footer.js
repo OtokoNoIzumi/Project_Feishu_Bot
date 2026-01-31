@@ -161,8 +161,11 @@ const FooterModule = {
         });
 
         // 2. Back (Mapped to Advice Btn Slot)
+        // Mobile: Hide "Back" button as it has a "Close" (X) button in the modal header
+        const isMobile = window.matchMedia && window.matchMedia('(max-width: 768px)').matches;
+
         this._setupButton(this.el.adviceBtn, {
-            visible: true,
+            visible: !isMobile,
             text: '返回',
             icon: null,
             type: 'secondary',

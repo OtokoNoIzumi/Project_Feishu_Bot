@@ -100,6 +100,11 @@
 
         <!-- 右侧：输入区（对话 + 输入框始终保留） -->
         <section class="input-panel">
+            <div class="mobile-header">
+                <button id="mobile-sidebar-toggle" class="header-icon-btn">☰</button>
+                <div class="header-title">Diet & Keep</div>
+                <div id="user-button-mobile"></div>
+            </div>
             <div class="chat-messages" id="chat-messages">
                 <div class="message assistant">你好！上传食物图片或描述饮食，我来帮你分析。</div>
             </div>
@@ -115,10 +120,7 @@
                             <button class="tool-btn" id="upload-btn" title="上传图片"><img src="css/icons/add.png"
                                     class="icon-stamp" alt="Add"></button>
                             <input type="file" id="file-input" accept="image/*" multiple hidden>
-                            <button class="tool-btn tool-btn-mobile" id="toggle-result-btn" title="打开/折叠确认面板"><img
-                                    src="css/icons/chart.png" class="icon-stamp" alt="Chart"></button>
-                            <!-- <button class="tool-btn tool-btn-mobile" id="open-profile-btn" title="Profile 设置"><img
-                                    src="css/icons/gear.png" class="icon-stamp" alt="Settings"></button> -->
+                            <!-- Mobile buttons removed as requested -->
                             <div class="mode-switch">
                                 <button class="mode-btn active" data-mode="diet">饮食</button>
                                 <button class="mode-btn" data-mode="keep">Keep</button>

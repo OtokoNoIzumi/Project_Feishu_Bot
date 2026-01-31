@@ -382,7 +382,18 @@ h3 {
   border-radius: var(--radius-md);
   font-size: 0.875rem;
   font-weight: 500;
+  font-weight: 500;
   transition: all var(--transition-fast);
+}
+
+@media (max-width: 640px) {
+  .btn {
+    padding: 6px 10px;
+    font-size: 0.8rem;
+    gap: 4px;
+    white-space: nowrap;
+    /* Prevent wrapping */
+  }
 }
 
 .btn-primary {

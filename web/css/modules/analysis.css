@@ -12,6 +12,15 @@
     display: none;
 }
 
+@media (max-width: 640px) {
+    .result-footer {
+        padding: var(--spacing-sm) var(--spacing-md);
+        gap: var(--spacing-sm);
+        justify-content: flex-end;
+        /* Keep buttons on the right, even if only one */
+    }
+}
+
 /* 补充说明输入框 */
 
 
