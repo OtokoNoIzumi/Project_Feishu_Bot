@@ -78,11 +78,11 @@ const DietRenderModule = {
           <div class="result-icon-container">${window.IconManager ? window.IconManager.render('meal') : '<img src="css/icons/bowl.png" class="hand-icon icon-sticker">'}</div>
           <div>
             <div class="result-card-title">${summary.mealName}</div>
-            <div class="result-card-subtitle" id="diet-subtitle">
-              <span id="diet-dish-count">${this.currentDishes.length} 种食物</span>
-              <span> · </span>
+            <div class="result-card-subtitle" id="diet-subtitle" style="display:flex; flex-wrap:wrap; align-items:center; column-gap: 8px; row-gap: 6px; margin-top: 4px;">
+              <span id="diet-dish-count" style="white-space:nowrap;">${this.currentDishes.length} 种食物</span>
+              <span style="color:var(--color-text-muted); opacity: 0.5;">·</span>
               ${this.renderMealTypeSelector(summary.mealName, summary.dietTime)}
-              <button class="btn-text-icon" onclick="ProteinReportModule.render(Dashboard.currentDietTotals)" title="查看蛋白质价值评估" style="margin-left: 12px; font-size: 0.85em; color: var(--color-accent-primary, #d97757); background: rgba(217, 119, 87, 0.1); padding: 2px 8px; border-radius: 12px; border:none; cursor: pointer;">
+              <button class="btn-text-icon" onclick="ProteinReportModule.render(Dashboard.currentDietTotals)" title="查看蛋白质价值评估" style="font-size: 0.85em; color: var(--color-accent-primary, #d97757); background: rgba(217, 119, 87, 0.1); padding: 2px 8px; border-radius: 12px; border:none; cursor: pointer; white-space:nowrap;">
                 📊 蛋白效力图
               </button>
             </div>

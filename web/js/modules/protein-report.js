@@ -169,10 +169,15 @@ const ProteinReportModule = {
             .pr-tip-body { padding: 8px 10px; }
             .pr-tip-row { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 2px; }
             
-            .pr-footer-controls {
-                display: flex; justify-content: flex-end; align-items: center;
+            .pr-footer {
                 margin-top: 10px; padding-top: 16px; border-top: 1px solid #eee;
+                display: flex; flex-direction: column; gap: 12px;
             }
+            .pr-footer-row {
+                display: flex; justify-content: space-between; align-items: center;
+                flex-wrap: wrap; gap: 12px;
+            }
+            
             .pr-toggle-label { font-size: 12px; color: #666; margin-right: 8px; cursor: pointer;}
             .pr-toggle-switch {
                 position: relative; width: 36px; height: 20px;
@@ -185,9 +190,12 @@ const ProteinReportModule = {
             }
             .pr-toggle-switch.active .pr-toggle-dot { transform: translateX(16px); }
 
-            .pr-legend { display: flex; gap: 16px; margin-top: 8px; flex-wrap: wrap; }
-            .pr-legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #666; }
-            .pr-legend-dot { width: 10px; height: 10px; border-radius: 50%; }
+            .pr-legend { 
+                display: flex; gap: 12px 16px; flex-wrap: wrap; 
+                padding-right: 8px;
+            }
+            .pr-legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #666; white-space: nowrap; }
+            .pr-legend-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 
             .pr-hint {
                 font-size: 12px; color: #95a5a6; 
@@ -199,7 +207,12 @@ const ProteinReportModule = {
             @keyframes pr-fade-in { from { opacity: 0; } to { opacity: 1; } }
             @keyframes pr-slide-up { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
             
-            @media (max-width: 600px) { .pr-container { padding: 16px; } }
+            @media (max-width: 600px) { 
+                .pr-container { padding: 16px; padding-bottom: 24px; } 
+                .pr-footer-row { flex-direction: column-reverse; align-items: flex-start; gap: 16px; }
+                .pr-controls-container { align-self: flex-end; }
+                .pr-legend { gap: 8px 12px; }
+            }
         `;
         const style = document.createElement('style');
         style.id = 'pr-styles';
@@ -262,11 +275,14 @@ const ProteinReportModule = {
         const visiblePoints = [];
 
         // 1. Determine visibility based on Priority Order
+        // 移动端屏幕窄，需要更大的防重叠阈值 (14%)，PC端保持 6%
+        const threshold = window.innerWidth < 600 ? 14 : 6;
+
         for (const p of points) {
             let isCollision = false;
             for (const v of visiblePoints) {
                 // Check distance against already visible (higher priority) points
-                if (Math.abs(p.pct - v.pct) < 6) {
+                if (Math.abs(p.pct - v.pct) < threshold) {
                     isCollision = true;
                     break;
                 }
@@ -296,6 +312,9 @@ const ProteinReportModule = {
         const anchors = this.getNormalizedAnchors();
         const metrics = this.calculateMealMetrics(totals);
 
+        // Track which items are actually visible across all charts
+        const visibleIds = new Set();
+
         const html = `
             ${!isUpdate ? `<div class="pr-modal-overlay" onclick="ProteinReportModule.close(event)"><div class="pr-container" onclick="event.stopPropagation()">` : ''}
                     ${!isUpdate ? `<button class="pr-close-btn" onclick="ProteinReportModule.close()">&times;</button>` : ''}
@@ -305,36 +324,44 @@ const ProteinReportModule = {
             '📊 蛋白质/能量比 (g/100kJ) - 越高越优',
             anchors, metrics.pe, 'pe',
             { min: 1.0, max: 6.0 },
-            (item, meal) => this.getTipContent(item, meal, '倍')
+            (item, meal) => this.getTipContent(item, meal, '倍'),
+            visibleIds
         )}
                     
                     ${this.renderChartSection(
             '💪 蛋白质/脂肪比 (g:g) - 越高越增肌',
             anchors, metrics.pf, 'pf',
             { min: 0, max: 25.0 },
-            (item, meal) => this.getTipContent(item, meal, '倍')
+            (item, meal) => this.getTipContent(item, meal, '倍'),
+            visibleIds
         )}
                     
-                    ${this.renderPriceSection(anchors, metrics.p_total)}
+                    ${this.renderPriceSection(anchors, metrics.p_total, visibleIds)}
 
-                    <div class="pr-footer-controls">
-                        <div class="pr-legend" style="flex:1; margin-top:0;">
-                             <div class="pr-legend-item">
-                                <div class="pr-legend-dot" style="background: #ff6b6b"></div>
-                                <span>本餐</span>
-                            </div>
-                            <div class="pr-legend-item"><span style="color:#aaa">·</span></div>
-                            ${anchors.map(a => `
-                                <div class="pr-legend-item">
-                                    <div class="pr-legend-dot" style="background: ${a.color}"></div>
-                                    <span>${a.name}</span>
+                    <div class="pr-footer">
+                        <div class="pr-footer-row">
+                             <div class="pr-legend">
+                                 <div class="pr-legend-item">
+                                    <div class="pr-legend-dot" style="background: #ff6b6b"></div>
+                                    <span>本餐</span>
                                 </div>
-                            `).join('')}
-                        </div>
-                        <div style="display:flex; align-items:center" onclick="ProteinReportModule.toggleShowAll()">
-                            <span class="pr-toggle-label">展示全部标签</span>
-                            <div class="pr-toggle-switch ${this.showAllLabels ? 'active' : ''}">
-                                <div class="pr-toggle-dot"></div>
+                                <div class="pr-legend-item"><span style="color:#eee">|</span></div>
+                                ${anchors.map(a => {
+            if (!visibleIds.has(a.id)) return '';
+            return `
+                                    <div class="pr-legend-item">
+                                        <div class="pr-legend-dot" style="background: ${a.color}"></div>
+                                        <span>${a.name}</span>
+                                    </div>
+                                `;
+        }).join('')}
+                            </div>
+                            
+                            <div class="pr-controls-container" style="display:flex; align-items:center" onclick="ProteinReportModule.toggleShowAll()">
+                                <span class="pr-toggle-label">展示全部标签</span>
+                                <div class="pr-toggle-switch ${this.showAllLabels ? 'active' : ''}">
+                                    <div class="pr-toggle-dot"></div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -382,7 +409,7 @@ const ProteinReportModule = {
         `;
     },
 
-    renderChartSection(title, anchors, mealVal, key, range, tipGenFn) {
+    renderChartSection(title, anchors, mealVal, key, range, tipGenFn, visibleIds) {
         const { min, max } = range;
 
         let anchorPoints = anchors.map(a => ({
@@ -392,6 +419,13 @@ const ProteinReportModule = {
         }));
 
         this.resolveCollisions(anchorPoints);
+
+        // Track visible items
+        if (visibleIds) {
+            anchorPoints.forEach(p => {
+                if (!p.hidden) visibleIds.add(p.id);
+            });
+        }
 
         const anchorHtml = anchorPoints.map(p => {
             if (p.hidden) return '';
@@ -427,7 +461,7 @@ const ProteinReportModule = {
         `;
     },
 
-    renderPriceSection(anchors, currentProteinG) {
+    renderPriceSection(anchors, currentProteinG, visibleIds) {
         const targetP = currentProteinG > 0 ? currentProteinG : 52.7;
 
         let anchorPoints = anchors.map(a => {
@@ -439,28 +473,32 @@ const ProteinReportModule = {
         });
 
         // Dynamic Range Calculation
-        // 硬编码的 4-15 范围不适用于极低或极高蛋白摄入的场景，需动态计算
         const values = anchorPoints.map(p => p.val);
         let dataMin = Math.min(...values);
         let dataMax = Math.max(...values);
 
-        // 防止范围过小 (如所有点都是 0 或非常接近)
+        // 防止范围过小
         if (dataMax - dataMin < 2) {
             dataMin -= 1;
             dataMax += 1;
         } else {
-            // 两侧留白 10%
             const padding = (dataMax - dataMin) * 0.1;
             dataMin -= padding;
             dataMax += padding;
         }
 
-        // 确保不小于 0
         const axisMin = Math.max(0, dataMin);
-        const axisMax = Math.max(axisMin + 0.1, dataMax); // 确保 max > min
+        const axisMax = Math.max(axisMin + 0.1, dataMax);
 
         anchorPoints.forEach(p => p.pct = this.getPct(p.val, axisMin, axisMax));
         this.resolveCollisions(anchorPoints);
+
+        // Track visible items
+        if (visibleIds) {
+            anchorPoints.forEach(p => {
+                if (!p.hidden) visibleIds.add(p.id);
+            });
+        }
 
         const anchorHtml = anchorPoints.map(p => {
             if (p.hidden) return '';
