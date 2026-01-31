@@ -51,6 +51,13 @@ def log_stat(data: Dict[str, Any]):
     stats_logger.info(json.dumps(data, ensure_ascii=False))
 # --------------------------
 
+class StreamError(Exception):
+    """Custom exception for streaming errors with error code."""
+    def __init__(self, code: str, message: str):
+        self.code = code
+        self.message = message
+        super().__init__(f"{code}:{message}")
+
 
 @dataclass
 class GeminiClientConfig:
@@ -676,7 +683,7 @@ class GeminiStructuredClient:
         scene: str = "unknown", user_id: str = "unknown"
     ):
         """
-        生成纯文本流式响应 (Async Generator).
+        生成纯文本流式响应 (Async Generator) with Auto-Retry.
         """
         if not self.client_ready:
             self._init_client()
@@ -691,32 +698,62 @@ class GeminiStructuredClient:
             yield f"图片上传失败: {e}"
             return
 
-        # Phase 2: Generation (Stream)
-        # Note: Retries for streams are harder to manage cleanly (partial output).
-        # We will try once with a generous timeout.
-        
+        # Phase 2: Generation (Stream) with Retry
         gen_config = {
             "temperature": self.config.advice_temperature,
         }
         if system_instruction:
             gen_config["system_instruction"] = [types.Part.from_text(text=system_instruction)]
 
-        try:
-            # Using the stream method from google-genai
-            # Note: The SDK's generate_content_stream is sync/blocking iterator by default in v0, 
-            # but v1 (google.genai) has async support via client.aio
-            
-            stream = await self.client.aio.models.generate_content_stream(
-                model=self.config.model_name,
-                contents=contents,
-                config=gen_config,
-            )
-            
-            async for chunk in stream:
-                 # Check explicitly for text content to avoid empty chunks
-                if chunk.text:
-                    yield chunk.text
+        max_retries = 3
+        has_yielded_any = False
+        
+        for attempt in range(1, max_retries + 1):
+            try:
+                # Note: The SDK's generate_content_stream is sync/blocking iterator by default in v0, 
+                # but v1 (google.genai) has async support via client.aio
+                
+                stream = await self.client.aio.models.generate_content_stream(
+                    model=self.config.model_name,
+                    contents=contents,
+                    config=gen_config,
+                )
+                
+                async for chunk in stream:
+                    # Check explicitly for text content
+                    if chunk.text:
+                        has_yielded_any = True
+                        yield chunk.text
+                
+                # If we complete the stream successfully, break the retry loop
+                return
                     
-        except Exception as e:
-            logger.error(f"[GeminiStream] Error: {e}")
-            yield f"\n[生成中断: {str(e)}]"
+            except Exception as e:
+                err_str = str(e)
+                logger.warning(f"[GeminiStream] Attempt {attempt} failed: {err_str}")
+                
+                # 判断是否可以重试
+                # 如果已经输出过内容，简单的重试会导致内容重复(Frontend receives: "PartA" + "PartA...PartB")
+                # 除非我们能实现 "Continue" 逻辑
+                
+                is_retryable = (attempt < max_retries)
+                
+                # Error code mapping
+                error_code = "ERR_STREAM_UNKNOWN"
+                if "503" in err_str or "Overloaded" in err_str:
+                    error_code = "ERR_MODEL_BUSY"
+                elif "429" in err_str or "Quota" in err_str:
+                    error_code = "ERR_QUOTA_EXCEEDED"
+                elif "Safety" in err_str or "blocked" in err_str:
+                    error_code = "ERR_SAFETY_BLOCK"
+                
+                if is_retryable and not has_yielded_any:
+                    # Case A: Failed at start. Retry seamlessly.
+                    wait_time = attempt * 1.5
+                    logger.info(f"[GeminiStream] Retrying from start in {wait_time}s...")
+                    await asyncio.sleep(wait_time)
+                    continue
+                
+                # Case B (Mid-stream) or Final Failure
+                logger.error(f"[GeminiStream] Stream failed (yielded={has_yielded_any}): {error_code}")
+                raise StreamError(error_code, err_str)

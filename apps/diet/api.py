@@ -7,6 +7,7 @@ Provides endpoints for diet analysis, advice generation, and record management.
 import asyncio
 import hashlib
 import logging
+import json
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, File, Form, Header, UploadFile, HTTPException
@@ -27,7 +28,7 @@ from apps.diet.usecases.analyze import DietAnalyzeUsecase
 from apps.llm_runtime import get_global_semaphore, get_model_limiter
 from apps.settings import BackendSettings
 from libs.utils.rate_limiter import AsyncRateLimiter
-
+from libs.llm_gemini.gemini_client import StreamError
 logger = logging.getLogger(__name__)
 
 
@@ -392,9 +393,6 @@ def build_diet_router(settings: BackendSettings) -> APIRouter:
                 # Ideally we could send a first chunk as meta, but let's keep it simple text stream for now.
 
         async def _stream_generator():
-            # Acquire semaphore for the duration of the stream?
-            # Or just for the initial request? 
-            # Ideally for the whole duration to limit concurrency on LLM API.
             async with semaphore:
                 await limiter.check_and_wait()
                 
@@ -410,11 +408,22 @@ def build_diet_router(settings: BackendSettings) -> APIRouter:
                         user_note=req.user_note,
                         images=images_bytes,
                     ):
-                        yield chunk
-                except Exception as e:
-                    logger.error(f"Stream advice error: {e}")
-                    yield f"\n[建议生成中断: {str(e)}]"
+                        # Wrap chunk in JSON for SSE protocol
+                        payload = json.dumps({"text": chunk}, ensure_ascii=False)
+                        yield f"data: {payload}\n\n"
 
-        return StreamingResponse(_stream_generator(), media_type="text/plain")
+                except Exception as e:
+                    code = "ERR_STREAM_UNKNOWN"
+                    if isinstance(e, StreamError):
+                        code = e.code
+                        logger.error(f"Stream advice error (known): {e}")
+                    else:
+                         logger.error(f"Stream advice error (unknown): {e}")
+
+                    # Standard SSE Error Event (JSON)
+                    error_payload = json.dumps({"code": code}, ensure_ascii=False)
+                    yield f"event: error\ndata: {error_payload}\n\n"
+
+        return StreamingResponse(_stream_generator(), media_type="text/event-stream")
 
     return router

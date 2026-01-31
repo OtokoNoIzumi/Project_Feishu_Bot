@@ -38,6 +38,31 @@ const ErrorHandlerModule = {
             action: 'retry',
             level: 'error'
         },
+        // Stream Specific Errors
+        'ERR_MODEL_BUSY': {
+            title: '服务繁忙',
+            message: 'AI 模型繁忙 (503)，请稍后重试。',
+            action: 'retry',
+            level: 'error'
+        },
+        'ERR_QUOTA_EXCEEDED': {
+            title: '额度不足',
+            message: 'API 额度不足 (429)，请稍后重试。',
+            action: 'retry',
+            level: 'error'
+        },
+        'ERR_SAFETY_BLOCK': {
+            title: '内容拦截',
+            message: '生成内容被安全策略拦截，请尝试调整输入。',
+            action: 'retry',
+            level: 'warning'
+        },
+        'ERR_STREAM_UNKNOWN': {
+            title: '生成中断',
+            message: '生成过程中断，请重试。',
+            action: 'retry',
+            level: 'error'
+        },
         'DEFAULT': {
             title: '分析失败',
             message: '遇到未知错误：{msg}',
@@ -56,8 +81,12 @@ const ErrorHandlerModule = {
         let msg = typeof error === 'string' ? error : (error.message || 'Unknown error');
         let metadata = {};
 
+        // 0. 尝试直接匹配 Error Code (用于流式错误码等)
+        if (typeof error === 'string' && this.errors[error]) {
+            code = error;
+        }
         // 1. 尝试从结构化 APIError 中提取
-        if (error && error.data && error.data.detail) {
+        else if (error && error.data && error.data.detail) {
             if (error.data.detail.code) code = error.data.detail.code;
             if (error.data.detail.metadata) metadata = error.data.detail.metadata;
         }

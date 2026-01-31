@@ -250,6 +250,9 @@ const AnalysisModule = {
             const facts = this.collectEditedData();
             const userNote = document.getElementById('additional-note')?.value.trim() || '';
 
+            // Update version userNote so it remembers what prompted this advice
+            currentVersion.userNote = userNote;
+
             // Reset advice state
             currentVersion.advice = '';
             currentVersion.adviceError = null;
@@ -273,7 +276,6 @@ const AnalysisModule = {
                 }
             );
 
-            // Stream Done
             currentVersion.adviceLoading = false;
             this.renderAdvice(currentVersion.advice, false); // Final render
 
@@ -295,20 +297,22 @@ const AnalysisModule = {
             currentVersion.adviceLoading = false;
             currentVersion.adviceError = error.message;
 
-            // Error handling logic (copied from previous)
-            const errorCode = error.message?.includes('DAILY_LIMIT') ? 'DAILY_LIMIT_REACHED' : 'UNKNOWN';
+            // Unified Error Handling via ErrorHandlerModule
+            let friendlyError = { title: '建议更新失败', message: error.message, action: 'retry' };
+            if (window.ErrorHandlerModule) {
+                friendlyError = ErrorHandlerModule.getFriendlyError(error);
+            }
 
-            let userTip = `建议更新失败: ${error.message}`;
+            let userTip = `${friendlyError.title}: ${friendlyError.message}`;
             let actions = [];
 
-            if (errorCode === 'DAILY_LIMIT_REACHED') {
-                userTip = `每日定制建议生成次数已耗尽。请升级会员继续使用。`;
+            if (friendlyError.action === 'profile_code') {
                 actions.push({
                     text: '🔑 去输入激活码',
                     class: 'btn-primary',
                     onClick: () => Dashboard.switchView('profile')
                 });
-            } else {
+            } else if (friendlyError.action === 'retry') {
                 actions.push({
                     text: '🔄 重试',
                     class: 'btn-ghost',
@@ -317,7 +321,7 @@ const AnalysisModule = {
             }
 
             this.addMessage(userTip, 'assistant', { actions });
-            this.renderAdviceError(error.message);
+            this.renderAdviceError(friendlyError.message);
 
         } finally {
             if (btn) {

@@ -166,6 +166,109 @@ const API = {
     },
 
     /**
+     * 流式获取饮食建议 (SSE)
+     */
+    async getDietAdviceStream(facts, userNote, dialogueId, imagesB64, onChunk) {
+        if (Auth.isDemoMode()) {
+            return DemoScenario.mockStreamAdvice(onChunk);
+        }
+
+        const endpoint = '/diet/advice_stream';
+        const payload = {
+            facts: facts,
+            user_note: userNote, // Include user_note in payload
+            images_b64: imagesB64 || []
+        };
+        // imagesB64 is separate from facts, usually. Check backend model.
+        // Backend expects DietAdviceRequest(facts, user_note, images_b64).
+        // Check execute_stream_async usage.
+
+        // Build Fetch
+        const headers = {
+            'Content-Type': 'application/json'
+        };
+        // Standard Headers
+        const userId = Auth.getUserId() || 'anonymous';
+        headers['X-User-ID'] = userId;
+
+        if (Auth.isSignedIn()) {
+            try {
+                const token = await Auth.getToken();
+                headers['Authorization'] = `Bearer ${token}`;
+            } catch (e) {
+                console.warn('[API] Could not get auth token for stream:', e);
+            }
+        }
+
+        const response = await fetch(`${CONFIG.API_BASE_URL}${endpoint}`, {
+            method: 'POST',
+            headers: headers,
+            body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) {
+            // Non-stream error (e.g. 403, 429 before stream)
+            const errorData = await response.json().catch(() => ({}));
+            const msg = errorData.detail ? (errorData.detail.message || errorData.detail) : `HTTP ${response.status}`;
+            throw new Error(msg);
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder("utf-8");
+        let buffer = '';
+
+        try {
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                buffer += decoder.decode(value, { stream: true });
+
+                // SSE events are separated by double newline
+                const parts = buffer.split('\n\n');
+                buffer = parts.pop(); // Keep the last incomplete chunk
+
+                for (const part of parts) {
+                    if (!part.trim()) continue;
+
+                    const lines = part.split('\n');
+                    let eventType = 'message';
+                    let eventData = '';
+
+                    for (const line of lines) {
+                        if (line.startsWith('event:')) {
+                            eventType = line.substring(6).trim();
+                        } else if (line.startsWith('data:')) {
+                            eventData = line.substring(5).trim(); // Append data? Usually single line for simple protocol
+                        }
+                    }
+
+                    if (eventType === 'error') {
+                        // Throw Error with Code
+                        let code = eventData;
+                        try {
+                            const payload = JSON.parse(eventData);
+                            if (payload.code) code = payload.code;
+                        } catch (e) { }
+                        throw new Error(code);
+                    } else if (eventType === 'message' && eventData) {
+                        try {
+                            const payload = JSON.parse(eventData);
+                            if (payload.text && onChunk) {
+                                onChunk(payload.text);
+                            }
+                        } catch (e) {
+                            console.warn('[SSE] Failed to parse JSON data:', eventData);
+                        }
+                    }
+                }
+            }
+        } finally {
+            reader.releaseLock();
+        }
+    },
+
+    /**
      * 获取饮食建议
      * @param {object} facts - 饮食数据
      * @param {string} userNote - 用户说明
@@ -186,61 +289,7 @@ const API = {
         });
     },
 
-    /**
-     * 获取饮食建议 (流式)
-     */
-    async getDietAdviceStream(facts, userNote = '', dialogueId = null, imagesB64 = [], onChunk = null) {
-        const url = `${CONFIG.API_BASE_URL}/diet/advice_stream`;
-        const userId = Auth.getUserId() || 'anonymous';
-        let headers = {
-            'X-User-ID': userId,
-            'Content-Type': 'application/json'
-        };
-        if (Auth.isSignedIn()) {
-            try {
-                const token = await Auth.getToken();
-                headers['Authorization'] = `Bearer ${token}`;
-            } catch (e) { console.warn(e); }
-        }
 
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: headers,
-            body: JSON.stringify({
-                facts,
-                user_note: userNote,
-                dialogue_id: dialogueId,
-                images_b64: imagesB64
-            })
-        });
-
-        if (!response.ok) {
-            // Try to read error details
-            let errDetail = `Error ${response.status}`;
-            try {
-                const errJson = await response.json();
-                if (errJson.detail) errDetail = typeof errJson.detail === 'string' ? errJson.detail : JSON.stringify(errJson.detail);
-            } catch (e) { }
-            throw new Error(errDetail);
-        }
-
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-
-        try {
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-                const text = decoder.decode(value, { stream: true });
-                if (onChunk) onChunk(text);
-            }
-        } catch (e) {
-            console.error("Stream reading failed", e);
-            throw e;
-        }
-
-        return { success: true };
-    },
 
     /**
      * 保存饮食记录 (使用统一 storage API)

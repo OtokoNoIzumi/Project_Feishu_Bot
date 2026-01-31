@@ -473,9 +473,10 @@ const DietRenderModule = {
     const quickAdviceContent = data.advice ? md(data.advice) : '';
 
     let html = '';
-    // 1. Success State
-    if (version.advice) {
-      if (processContent) {
+
+    // 1. Process Logic (Hidden Details)
+    if (processContent) {
+      if (version.advice) {
         html += `
               <details class="advice-process-details" style="margin-bottom: 12px; border-bottom: 1px dashed var(--color-border, #eee); padding-bottom: 12px;">
                   <summary style="cursor: pointer; color: var(--color-text-tertiary, #999); font-size: 0.8rem; display: flex; align-items: center; gap: 6px; user-select: none;">
@@ -485,52 +486,51 @@ const DietRenderModule = {
                         <div class="advice-text" style="font-size: 0.9em; line-height: 1.5;">${processContent}</div>
                   </div>
               </details>`;
-      }
-      html += `<div class="advice-text">${adviceContent}</div>`;
-
-      if (version.adviceLoading) {
-        html += `<div class="streaming-cursor" style="font-size: 1.2em; color: var(--color-primary); animation: blink 1s step-end infinite;">▌</div>
-          <style>@keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }</style>`;
-      }
-      return html;
-    }
-
-    if (processContent) {
-      html += `
+      } else {
+        html += `
               <div class="advice-intermediate-section">
                   <div class="advice-intermediate-label">AI测算方法</div>
                   <div class="advice-text">${processContent}</div>
               </div>`;
+      }
     }
-    if (quickAdviceContent) {
+
+    // 2. Advice Content (Partial or Full)
+    if (version.advice) {
+      html += `<div class="advice-text">${adviceContent}</div>`;
+    } else if (quickAdviceContent) {
+      // Fallback to quick advice if no explicit advice text
       html += `
           <div class="advice-intermediate-section">
               <div class="advice-intermediate-label">📝 单餐点评</div>
               <div class="advice-text">${quickAdviceContent}</div>
           </div>`;
     }
-    // 2. Error State
-    if (version.adviceError) {
-      // Error时也保留中间过程（如果存在），方便排查
-      html += `<div class="advice-error">⚠️ 定制建议获取失败：${version.adviceError}</div>`;
-      return html;
-    }
 
-    // 3. Loading State
+    // 3. Loading Indicator
     if (version.adviceLoading) {
-      // 正在加载时，如果前面已经有中间过程 HTML，保留它们在上方（用户体验更好）
-      // 或者直接追加 loading
-      html += '<div class="advice-loading"><span class="loading-spinner"></span>正在生成定制建议...</div>';
-      return html;
+      // If we already have some advice text, showing a cursor is appropriate.
+      // But if user only sees "Method" or "Quick Advice" blocks above, and the main advice area is empty,
+      // a lonely cursor looks weird. We should show "Generating..." text until the first chunk of advice arrives.
+      if (version.advice && version.advice.length > 0) {
+        html += `<span class="streaming-cursor" style="display:inline-block; width:8px; height:1em; background:currentColor; margin-left:2px; vertical-align:text-bottom; animation: blink 1s step-end infinite;"></span>
+             <style>@keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }</style>`;
+      } else {
+        html += '<div class="advice-loading" style="margin-top: 12px;"><span class="loading-spinner"></span><span style="margin-left:8px">正在撰写详细建议...</span></div>';
+      }
     }
 
-    // 4. Empty State
-    // 如果已经有中间过程（AI测算方法/快捷点评），则不算完全 Empty，直接返回已累积的 HTML
+    // 4. Error State (Can coexist with partial advice)
+    if (version.adviceError) {
+      // Append error below partial text
+      html += `<div class="advice-error">⚠️ 定制建议获取失败：${version.adviceError}</div>`;
+    }
+
+    // 5. Empty State
     if (html.trim()) {
       return html;
     }
 
-    // 只有当 advice, adviceError, adviceLoading 都为空，且连中间过程都没有时，才显示暂无建议
     return '<div class="advice-empty">暂无建议</div>';
   },
 };
