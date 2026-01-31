@@ -1,0 +1,99 @@
+/* Loading Tips and Animations */
+.loading-pulse {
+    animation: pulse-bowl 1.5s infinite ease-in-out;
+}
+
+@keyframes pulse-bowl {
+    0% {
+        transform: scale(1);
+        opacity: 0.8;
+    }
+
+    50% {
+        transform: scale(1.1);
+        opacity: 1;
+        filter: drop-shadow(0 4px 12px rgba(217, 119, 87, 0.4));
+    }
+
+    100% {
+        transform: scale(1);
+        opacity: 0.8;
+    }
+}
+
+.breathing-icon img {
+    animation: breathing 3s ease-in-out infinite;
+}
+
+@keyframes breathing {
+    0% {
+        transform: scale(1);
+        opacity: 0.8;
+    }
+
+    50% {
+        transform: scale(1.15);
+        opacity: 1;
+    }
+
+    100% {
+        transform: scale(1);
+        opacity: 0.8;
+    }
+}
+
+/* Loading Tips Container */
+.loading-tips-container {
+    margin-top: 24px;
+    padding: 0;
+    max-width: 480px;
+    /* Use a simple flex row layout for icon and text per user request */
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    text-align: left;
+    gap: 12px;
+
+    /* Removed background, borders as requested "不要周围的一圈白底" */
+    background: transparent;
+    border: none;
+    border-radius: 0;
+}
+
+.loading-tips-container.static-tips {
+    /* No extra styling needed for static mode as background is removed */
+    background: transparent;
+    border-color: transparent;
+}
+
+/* Tip Icon - Smaller and unobtrusive */
+.tip-icon {
+    font-size: 1.25rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    /* Removed background circle */
+    background: transparent;
+    border-radius: 0;
+    box-shadow: none;
+    flex-shrink: 0;
+}
+
+.tip-icon img {
+    width: 18px;
+    height: 18px;
+    object-fit: contain;
+}
+
+/* Tip Text - Smaller and clean */
+.tip-text {
+    font-size: 0.9rem;
+    color: var(--color-text-secondary);
+    line-height: 1.5;
+    margin: 0;
+    /* User requested "Handwriting chinese font" - attempting consistent handwriting style fallback */
+    font-family: 'Patrick Hand', 'KaiTi', 'STKaiti', cursive, sans-serif;
+}

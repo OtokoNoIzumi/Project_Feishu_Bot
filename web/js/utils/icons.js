@@ -26,6 +26,7 @@ const ICONS = {
     'bookmark': { src: 'bookmark.png', type: 'stamp', defaultClass: '' },
     'profile_woman': { src: 'profile_alt.png', type: 'stamp', defaultClass: '' },
     'profile_man': { src: 'profile.png', type: 'stamp', defaultClass: '' },
+    'notepad': { src: 'notepad.png', type: 'stamp', defaultClass: '' },
 };
 
 /**

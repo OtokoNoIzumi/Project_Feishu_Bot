@@ -53,10 +53,12 @@ const Dashboard = {
     // 保存原始 footer HTML（用于从 Profile 切回时恢复）
     this._originalFooterHtml = this.el.resultFooter?.innerHTML || '';
 
-    // 初始化 Footer 模块
     if (window.FooterModule) {
       window.FooterModule.init();
     }
+
+    // 初始化 UI 状态 (Empty State with Tips)
+    this.clearResult();
 
     // 初始化 Auth（非阻塞）
 
@@ -248,6 +250,61 @@ const Dashboard = {
   },
 
   /**
+   * 快捷输入模式：直接创建一个空的草稿会话
+   */
+  async startQuickInput() {
+    // 1. 确保有后端 Dialogue
+    if (!this.currentDialogueId) {
+      try {
+        const dialogue = await API.createDialogue("快捷记录");
+        this.currentDialogueId = dialogue.id;
+        if (window.SidebarModule) window.SidebarModule.loadDialogues();
+      } catch (e) {
+        console.error("Failed to create dialogue", e);
+        return;
+      }
+    }
+
+    // 2. 创建空白 Session
+    const session = this.createSession('', []);
+    session.dialogueId = this.currentDialogueId;
+    session.persistentCardId = window.DateFormatter ? window.DateFormatter.generateId('card') : `card-${Date.now()}`;
+    this.currentSession = session;
+
+    // 3. 初始化为空的 Diet 数据结构
+    const initialData = {
+      type: 'diet',
+      summary: { totalEnergy: 0, totalProtein: 0, totalCarbs: 0, totalFat: 0 },
+      dishes: [], // 空列表，待添加
+      advice: '快捷记录模式：请手动添加餐食。'
+    };
+
+    // 4. 创建版本
+    session.versions.push({
+      number: 1,
+      createdAt: new Date(),
+      userNote: '',
+      rawResult: {}, // Empty raw result
+      parsedData: initialData,
+      advice: initialData.advice,
+      adviceLoading: false
+    });
+    session.currentVersion = 1;
+
+    // 5. 渲染为空结果（此时应该显示“添加餐食”按钮）
+    this.renderResult(session);
+
+    // 6. 自动触发“添加餐食”弹窗或聚焦
+    // 也可以由用户手动点击 renderResult 里渲染出来的 "添加" 按钮
+    // 这里为了体验更好，可以添加这一行提示
+    this.addMessage('已开启快捷记录模式，请手动添加餐食。', 'assistant');
+
+    // 7. 持久化卡片 Draft (可选)
+    // 暂时不先创建后端卡片，等用户实际点保存或添加了菜品再同步可能更好
+    // 但为了一致性，这里也可以先创建一个 empty card
+  },
+
+  /**
    * Profile 模式下的分析
    */
   async startProfileAnalysis(userNote) {
@@ -358,6 +415,8 @@ const Dashboard = {
     }
 
     this.updateButtonStates(session);
+    // Show close button on desktop when result is rendered
+    this.showSessionControls();
   },
 
 

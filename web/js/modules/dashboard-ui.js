@@ -43,7 +43,15 @@ const DashboardUIModule = {
         });
 
 
-        this.el.resultCloseBtn?.addEventListener('click', () => this.setResultPanelOpen(false));
+        this.el.resultCloseBtn?.addEventListener('click', () => {
+            if (this.isMobile()) {
+                this.setResultPanelOpen(false);
+            } else {
+                // Desktop: Close current session view
+                this.currentSession = null;
+                this.clearResult();
+            }
+        });
         this.el.resultOverlay?.addEventListener('click', () => this.setResultPanelOpen(false));
 
         // 移动端：侧边栏 Toggle
@@ -255,11 +263,101 @@ const DashboardUIModule = {
         });
     },
 
+    // ========== 渲染辅助 ==========
+
+    getRandomTip() {
+        const tips = [
+            '一个人连自己身上的骨肉都能下手，还有什么是做不到的？',
+            '配合食物称的称重或营养成分标签一起拍照，可以大幅提高精确度。',
+            '减脂期的关键不是不吃，而是会吃。',
+            '蛋白质是肌肉的朋友，多吃点瘦肉没坏处。',
+            '喝水也能提高代谢哦，今天喝够水了吗？',
+            '细嚼慢咽，每口嚼20下，大脑才来得及收到‘饱了’的信号。',
+            '睡个好觉也是减肥，睡眠不足更容易想吃高热量食物。'
+        ];
+        return tips[Math.floor(Math.random() * tips.length)];
+    },
+
+    renderEmptyState() {
+        const tip = this.getRandomTip();
+        const lightbulbIcon = window.IconManager ? window.IconManager.render('lightbulb') : '💡';
+
+        return `
+            <div class="empty-state" style="position: relative; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center;">
+                <div class="empty-icon">
+                    <img src="css/icons/bowl.png" class="icon-stamp xl" alt="Empty" style="opacity: 0.5;">
+                </div>
+                <h3>等待分析</h3>
+                <p>上传食物图片或输入描述开始分析</p>
+                
+
+                <div style="margin-top: 32px;">
+                    <button class="btn btn-primary" onclick="Dashboard.startQuickInput()" style="box-shadow: 0 4px 12px rgba(217, 119, 87, 0.3);">
+                        ${window.IconManager ? window.IconManager.render('notepad') : '+'} 快捷记录
+                    </button>
+                    <p style="font-size: 0.75rem; color: var(--color-text-muted); margin-top: 12px;">
+                        无需分析，直接手动添加常用餐食
+                    </p>
+                </div>
+
+                <div class="loading-tips-container static-tips" style="position: absolute; bottom: 48px; left: 50%; transform: translateX(-50%); width: 100%; max-width: 480px;">
+                    <div class="tip-icon breathing-icon">${lightbulbIcon}</div>
+                    <p class="tip-text">${tip}</p>
+                </div>                
+            </div>
+        `;
+    },
+
+    renderLoadingState() {
+        const tip = this.getRandomTip();
+        const lightbulbIcon = window.IconManager ? window.IconManager.render('lightbulb') : '💡';
+
+        // 根据当前模式显示不同的加载文案
+        let loadingText = '正在分析饮食...';
+        let loadingIcon = 'bowl.png'; // Default
+
+        // Dashboard object is global
+        const currentMode = (window.Dashboard && window.Dashboard.mode) || 'diet';
+
+        if (currentMode === 'keep') {
+            loadingText = '正在分析身体数据...';
+        } else if (currentMode === 'advice') {
+            loadingText = '顾问正在根据历史记录生成建议...';
+        }
+
+        return `
+             <div class="empty-state" style="position: relative; height: 100%; display: flex; flex-direction: column; justify-content: center; align-items: center;">
+                <div class="empty-icon">
+                    <img src="css/icons/${loadingIcon}" class="icon-stamp xl hand-drawn-wiggle" alt="Loading">
+                </div>
+                <h3 style="margin-top: 16px;">${loadingText}</h3>
+                
+                <div class="loading-tips-container" style="position: absolute; bottom: 48px; left: 50%; transform: translateX(-50%); width: 100%; max-width: 480px;">
+                    <div class="tip-icon breathing-icon">${lightbulbIcon}</div>
+                    <p class="tip-text">${tip}</p>
+                </div>
+            </div>
+        `;
+    },
+
+
+
     // ========== UI 状态反馈 ==========
 
-    showLoading() {
-        // 仅状态提示：不遮挡/不替换整个确认面板内容
+    showLoading(preserveContent = false) {
+        // 如果不保留内容，则更新为 Loading 态（含 Tips）
+        if (!preserveContent && this.el.resultContent) {
+            this.el.resultContent.innerHTML = this.renderLoadingState();
+        }
+
+        // 更新 Header 状态
         this.updateStatus('loading');
+
+        // Hide Close Button during loading on Desktop (prevent closing mid-analysis)
+        if (this.el.resultCloseBtn && !this.isMobile()) {
+            this.el.resultCloseBtn.style.display = 'none';
+        }
+
         if (window.FooterModule) {
             window.FooterModule.update(FooterState.HIDDEN);
         } else if (this.el.resultFooter) {
@@ -277,6 +375,8 @@ const DashboardUIModule = {
         if (this.currentSession && typeof this.renderDraftState === 'function') {
             this.currentSession.lastError = errorInfo;
             this.renderDraftState(this.currentSession);
+            // Show close button if we have a session (even with error)
+            this.showSessionControls();
             return;
         }
 
@@ -290,36 +390,55 @@ const DashboardUIModule = {
         <div style="font-size:1.5rem; margin-bottom:12px;">⚠️</div>
         <p class="text-error" style="font-weight:650;">${errorInfo.title}</p>
         <p style="font-size:0.9rem; color:var(--color-text-secondary);">${errorInfo.message}</p>
+        
+        <button class="btn btn-secondary" onclick="DashboardUIModule.clearResult()" style="margin-top:16px;">
+            返回
+        </button>
       </div>
     `;
 
         if (window.FooterModule) {
             window.FooterModule.update(FooterState.HIDDEN);
         }
+
+        // Ensure close button is handled (e.g. hidden if no session)
+        if (this.el.resultCloseBtn && !this.isMobile()) {
+            this.el.resultCloseBtn.style.display = 'none';
+        }
     },
 
     clearResult() {
-        // 恢复默认的 Empty State
-        this.el.resultContent.innerHTML = `
-            <div class="empty-state">
-                <div class="empty-icon">
-                    <img src="css/icons/bowl.png" class="icon-stamp xl" alt="Empty" style="opacity: 0.5;">
-                </div>
-                <h3>等待分析</h3>
-                <p>上传食物图片或输入描述开始分析</p>
-            </div>
-        `;
+        // 恢复默认的 Empty State (使用 renderEmptyState 统一管理)
+        if (this.el.resultContent) {
+            this.el.resultContent.innerHTML = this.renderEmptyState();
+        }
+
         if (window.FooterModule) {
             window.FooterModule.update(FooterState.HIDDEN); // Or EMPTY
         } else if (this.el.resultFooter) {
             this.el.resultFooter.classList.add('hidden');
         }
-        this.el.resultTitle.textContent = '分析结果';
+        this.el.resultTitle.textContent = '分析面板';
         this.updateStatus('');
+
+        // Desktop: Hide Close Button when empty
+        if (this.el.resultCloseBtn && !this.isMobile()) {
+            this.el.resultCloseBtn.style.display = 'none';
+        }
+    },
+
+    /**
+     * 显示会话相关的控制按钮（如桌面端的关闭按钮）
+     * 在 renderResult 时调用
+     */
+    showSessionControls() {
+        if (this.el.resultCloseBtn && !this.isMobile()) {
+            this.el.resultCloseBtn.style.display = 'inline-flex';
+        }
     },
 
     updateStatus(status) {
-        // Toggle loading class on result content for animations
+        // Toggle loading class on result content for animations (legacy support, mostly handled by renderLoadingState now)
         if (this.el.resultContent) {
             this.el.resultContent.classList.toggle('is-loading', status === 'loading');
         }
@@ -331,7 +450,8 @@ const DashboardUIModule = {
             el.textContent = '✓ 已保存';
             el.classList.add('saved');
         } else if (status === 'loading') {
-            el.innerHTML = `<span class="loading-spinner" style="display:inline-block; width:14px; height:14px; vertical-align: -2px; margin-right:6px;"></span>分析中...`;
+            // Header 上的小 loading 提示
+            el.innerHTML = `<span class="loading-spinner" style="display:inline-block; width:14px; height:14px; vertical-align: -2px; margin-right:6px;"></span>分析中`;
             el.classList.add('loading');
         } else if (status === 'modified') {
             el.textContent = '● 已修改';

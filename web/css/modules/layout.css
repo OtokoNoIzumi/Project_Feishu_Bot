@@ -55,7 +55,7 @@
 .result-close-btn {
     width: 28px;
     height: 28px;
-    display: none;
+    display: inline-flex;
     align-items: center;
     justify-content: center;
     background: var(--color-bg-tertiary);
@@ -338,6 +338,7 @@
 }
 
 /* Hand-drawn Wiggle Animation */
+/* Hand-drawn Wiggle Animation (restored) */
 @keyframes hand-drawn-wiggle {
     0% {
         transform: rotate(0deg);
@@ -358,7 +359,8 @@
 
 /* Apply animation when loading if empty state is visible */
 .result-content.is-loading .empty-icon img,
-.result-content.is-loading .icon-stamp {
+.result-content.is-loading .icon-stamp,
+.hand-drawn-wiggle {
     animation: hand-drawn-wiggle 1.2s steps(1) infinite;
     opacity: 0.8 !important;
     filter: brightness(1.1);

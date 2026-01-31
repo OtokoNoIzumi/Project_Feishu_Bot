@@ -45,7 +45,10 @@ const AnalysisModule = {
         }
         session._lastUserNote = userNote; // 保存以备重试
         session.lastError = null; // 清除之前的错误状态
-        this.showLoading();
+
+        // 如果是重新分析已有结果，保留当前卡片内容 (preserveContent=true)
+        const hasHistory = session.versions && session.versions.length > 0;
+        this.showLoading(hasHistory);
 
 
         try {
@@ -155,8 +158,6 @@ const AnalysisModule = {
             if (window.ProfileModule) {
                 ProfileModule.refreshLimits();
             }
-
-            this.addMessage('分析完成！', 'assistant');
 
             // 自动触发 advice 请求（仅饮食模式）
             if (session.mode === 'diet' && this.currentDishes?.length > 0) {
