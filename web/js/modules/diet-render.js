@@ -405,102 +405,338 @@ const DietRenderModule = {
   },
 
   renderDietDishesMobile() {
+    // 注入样式
+    if (!document.getElementById('mobile-dish-editor-style')) {
+      const style = document.createElement('style');
+      style.id = 'mobile-dish-editor-style';
+      style.textContent = `
+            .mobile-dish-card {
+                background: var(--color-bg-secondary, #fff);
+                border: 1px solid var(--color-border, #eee);
+                padding: 12px 16px;
+                border-radius: 12px;
+                margin-bottom: 10px;
+                cursor: pointer;
+                transition: transform 0.1s;
+                position: relative;
+            }
+            .mobile-dish-card:active { transform: scale(0.98); }
+            .mobile-dish-row { display: flex; justify-content: space-between; align-items: center; }
+            .mobile-dish-name { font-weight: 600; color: var(--color-text-primary); font-size: 1rem; }
+            .mobile-dish-energy { font-weight: bold; color: var(--color-accent-primary); font-size: 1rem; font-family: 'Patrick Hand', cursive; }
+            .mobile-dish-details { margin-top: 8px; color: var(--color-text-secondary); font-size: 0.85rem; display: flex; gap: 12px; }
+            .mobile-dish-macros { color: var(--color-text-muted); font-size: 0.8rem; flex: 1; }
+            .mobile-edit-icon { color: var(--color-accent-primary); opacity: 0.8; font-size: 0.9em; display: flex; align-items: center; gap: 4px; }
+            
+            .user-dish-controls { display:flex; justify-content:flex-end; padding:0 4px 12px 4px; }
+            .btn-text-remove { color: var(--color-text-tertiary); font-size: 0.85rem; background:none; border:none; padding:4px 8px; }
+            
+            .diet-mobile-editor-overlay {
+                position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+                background: rgba(0,0,0,0.6); z-index: 10000;
+                display: flex; align-items: center; justify-content: center;
+                backdrop-filter: blur(4px);
+                animation: fadeIn 0.15s;
+            }
+            .diet-mobile-editor {
+                background: var(--color-bg-secondary, #fff);
+                width: 85%; max-width: 360px;
+                padding: 24px;
+                border-radius: 20px;
+                box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+                animation: slideUp 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+            }
+            .editor-title { font-size: 1.2rem; font-weight: bold; margin-bottom: 20px; color: var(--color-text-primary); text-align: center; }
+            .editor-field-group { margin-bottom: 16px; }
+            /* Removed uppercase transform */
+            .editor-label { display: block; font-size: 0.8rem; color: var(--color-text-muted); margin-bottom: 6px; letter-spacing: 0.5px; }
+            .editor-input { 
+                width: 100%; padding: 12px; font-size: 1rem; 
+                border: 1px solid var(--color-border); border-radius: 12px; 
+                background: var(--color-bg-tertiary); color: var(--color-text-primary);
+                box-sizing: border-box; 
+            }
+            .editor-input:focus { border-color: var(--color-accent-primary); outline: none; background: var(--color-bg-secondary); }
+            .editor-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+            
+            .editor-btn-row { display: flex; gap: 12px; margin-top: 24px; }
+            .editor-btn { flex: 1; padding: 14px; border-radius: 12px; border: none; font-weight: 600; cursor: pointer; font-size: 1rem; }
+            .btn-save { background: var(--color-accent-primary, #d97757); color: white; box-shadow: 0 4px 12px rgba(217, 119, 87, 0.3); }
+            .btn-cancel { background: var(--color-bg-tertiary, #f5f5f5); color: var(--color-text-secondary); }
+            
+            @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+            @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        `;
+      document.head.appendChild(style);
+    }
+
     return `
       ${this.currentDishes.map((d, i) => {
-      const enabled = d.enabled !== false;
-      const totals = this.getDishTotals(d);
       const unit = this.getEnergyUnit();
-      const energyText = this.formatEnergyFromMacros(totals.protein, totals.fat, totals.carb);
-      const disableInputs = !enabled;
-      const canRemove = d.source === 'user';
-      const dis = disableInputs ? 'disabled' : '';
-      const r1 = (x) => Math.round((Number(x) || 0) * 10) / 10;
-      const r0 = (x) => Math.round(Number(x) || 0);
+      const r = (v) => Math.round(Number(v) || 0);
 
-      // AI：菜式头只读 + ingredients 可编辑
-      const collapsed = this.dietIngredientsCollapsed?.[d.id] !== false;
-      const toggleText = collapsed ? '展开' : '收起';
-      const aiIngredients = d.source === 'ai'
-        ? `
-            <div class="dishes-title" style="margin-top: 10px;">Ingredients（可编辑）</div>
-            <button class="diet-toggle-btn" style="margin: 6px 0 10px 0;" onclick="Dashboard.toggleIngredients(${d.id})">${toggleText}</button>
-            <div class="${collapsed ? 'diet-ingredients-body collapsed' : 'diet-ingredients-body'}">
-            ${(d.ingredients || []).map((ing, j) => {
-          const ie = this.formatEnergyFromMacros(ing.macros?.protein_g, ing.macros?.fat_g, ing.macros?.carbs_g);
-          return `
-                <div class="keep-item" style="border-bottom: none; padding: 10px 0 6px 0;">
-                  <div class="keep-main" style="gap: 8px; justify-content: space-between;">
-                    <div style="display: flex; align-items: center; gap: 8px;">
-                      <span class="keep-sub">${ing.name_zh || ''}</span>
-                      <span class="keep-details"><span>能量 ${ie} ${unit}</span></span>
-                    </div>
-                    <button class="scale-toggle-btn ${ing._proportionalScale ? 'active' : ''}" onclick="Dashboard.toggleProportionalScale(${i}, ${j})" title="${ing._proportionalScale ? '比例模式' : '独立模式'}">${ing._proportionalScale ? '⚖' : '⚖'}</button>
-                  </div>
-                </div>
-                <div class="dish-row" style="grid-template-columns: repeat(3, 1fr); gap: 8px; border-bottom: none;">
-                  <input type="number" class="dish-input number" placeholder="蛋白(g)" value="${ing.macros?.protein_g ?? 0}" min="0" step="0.1" ${dis} oninput="Dashboard.updateIngredient(${i}, ${j}, 'protein_g', this.value)">
-                  <input type="number" class="dish-input number" placeholder="脂肪(g)" value="${ing.macros?.fat_g ?? 0}" min="0" step="0.1" ${dis} oninput="Dashboard.updateIngredient(${i}, ${j}, 'fat_g', this.value)">
-                  <input type="number" class="dish-input number" placeholder="碳水(g)" value="${ing.macros?.carbs_g ?? 0}" min="0" step="0.1" ${dis} oninput="Dashboard.updateIngredient(${i}, ${j}, 'carbs_g', this.value)">
-                </div>
-                <div class="dish-row" style="grid-template-columns: repeat(3, 1fr); gap: 8px; border-bottom: none;">
-                  <input type="number" class="dish-input number" placeholder="纤维(g)" value="${ing.macros?.fiber_g ?? 0}" min="0" step="0.1" ${dis} oninput="Dashboard.updateIngredient(${i}, ${j}, 'fiber_g', this.value)">
-                  <input type="number" class="dish-input number" placeholder="钠(mg)" value="${ing.macros?.sodium_mg ?? 0}" min="0" step="1" ${dis} oninput="Dashboard.updateIngredient(${i}, ${j}, 'sodium_mg', this.value)">
-                  <input type="number" class="dish-input number" placeholder="重量(g)" value="${ing.weight_g ?? 0}" min="0" step="0.1" ${dis} oninput="Dashboard.updateIngredient(${i}, ${j}, 'weight_g', this.value)">
-                </div>
-              `;
-        }).join('')}
-            </div>
-          `
-        : '';
+      // --- 手动添加的菜品 (User) ---
+      if (d.source === 'user') {
+        const e = this.formatEnergyFromMacros(d.protein, d.fat, d.carb);
+        const macros = `蛋白:${r(d.protein)} 脂肪:${r(d.fat)} 碳水:${r(d.carb)}`;
 
-      // 用户新增：保持汇总编辑
-      const userEditor = d.source === 'user'
-        ? `
-            <div class="dish-row" style="grid-template-columns: repeat(3, 1fr); gap: 8px; border-bottom: none; padding-top: 10px;">
-              <input type="number" class="dish-input number" placeholder="蛋白(g)" value="${d.protein ?? 0}" min="0" step="0.1" ${dis} oninput="Dashboard.updateDish(${i}, 'protein', this.value)">
-              <input type="number" class="dish-input number" placeholder="脂肪(g)" value="${d.fat ?? 0}" min="0" step="0.1" ${dis} oninput="Dashboard.updateDish(${i}, 'fat', this.value)">
-              <input type="number" class="dish-input number" placeholder="碳水(g)" value="${d.carb ?? 0}" min="0" step="0.1" ${dis} oninput="Dashboard.updateDish(${i}, 'carb', this.value)">
-            </div>
-            <div class="dish-row" style="grid-template-columns: repeat(3, 1fr); gap: 8px; border-bottom: none;">
-              <input type="number" class="dish-input number" placeholder="纤维(g)" value="${d.fiber ?? 0}" min="0" step="0.1" ${dis} oninput="Dashboard.updateDish(${i}, 'fiber', this.value)">
-              <input type="number" class="dish-input number" placeholder="钠(mg)" value="${d.sodium_mg ?? 0}" min="0" step="1" ${dis} oninput="Dashboard.updateDish(${i}, 'sodium_mg', this.value)">
-              <input type="number" class="dish-input number" placeholder="重量(g)" value="${d.weight ?? 0}" min="0" step="0.1" ${dis} oninput="Dashboard.updateDish(${i}, 'weight', this.value)">
-            </div>
-          `
-        : '';
+        return `
+             <div class="diet-mobile-group">
+                 <div class="mobile-dish-card user-dish" onclick="Dashboard.openMobileUserDishEditor(${i})">
+                     <div class="mobile-dish-row">
+                          <span class="mobile-dish-name">${d.name || '新添加菜品'}</span>
+                          <span class="mobile-dish-energy">${e} ${unit}</span>
+                     </div>
+                     <div class="mobile-dish-details">
+                          <span style="font-weight:600; color:var(--color-text-primary)">${d.weight || 0}g</span>
+                          <span class="mobile-dish-macros">${macros}</span>
+                          <span class="mobile-edit-icon">✎</span>
+                     </div>
+                 </div>
+                 <div class="user-dish-controls">
+                     <button class="btn-text-remove" onclick="event.stopPropagation(); Dashboard.removeDish(${i})">删除此条目</button>
+                 </div>
+             </div>
+            `;
+      }
+
+      // --- AI 识别的菜品 (Ingredients) ---
+      const ingredients = d.ingredients || [];
+      if (ingredients.length === 0) return '';
+
+      // 标题优先使用 name，其次 meal_name
+      const title = d.name || d.meal_name || '菜品';
 
       return `
-          <div class="keep-section" style="${disableInputs ? 'opacity: 0.55;' : ''}">
-            <div style="display:flex; align-items:center; justify-content: space-between; gap: 10px;">
-              <div style="display:flex; align-items:center; gap: 10px; min-width: 0;">
-                <input type="checkbox" ${enabled ? 'checked' : ''} onchange="Dashboard.toggleDishEnabled(${i}, this.checked)">
-                ${d.source === 'user'
-          ? `<input type="text" class="dish-input name" style="flex:1; min-width: 0;" value="${d.name}" ${dis} oninput="Dashboard.updateDish(${i}, 'name', this.value)">`
-          : `<div style="flex:1; min-width: 0; font-weight: 600; overflow:hidden; text-overflow: ellipsis; white-space: nowrap;">${d.name}</div>`
-        }
-              </div>
-              ${canRemove ? `<button class="cell-remove" onclick="Dashboard.removeDish(${i})">×</button>` : `<span class="text-muted" style="font-size:0.75rem;">AI</span>`}
-            </div>
+            <div class="diet-mobile-group" style="margin-bottom: 20px;">
+                <div class="dishes-title" style="margin-bottom: 10px; padding-left: 4px;">${title}</div>
+                ${ingredients.map((ing, j) => {
+        const m = ing.macros || {};
+        const e = this.formatEnergyFromMacros(m.protein_g, m.fat_g, m.carbs_g);
+        // 中文宏量标签
+        const macrosSummary = `蛋白:${r(m.protein_g)} 脂肪:${r(m.fat_g)} 碳水:${r(m.carbs_g)}`;
 
-            <div class="keep-item" style="border-bottom:none; padding-bottom: 0;">
-              <div class="keep-details" style="gap: 8px;">
-                <span>能量 ${energyText} ${unit}</span>
-                <span>蛋白 ${r1(totals.protein)}g</span>
-                <span>脂肪 ${r1(totals.fat)}g</span>
-                <span>碳水 ${r1(totals.carb)}g</span>
-                <span>纤维 ${r1(totals.fiber)}g</span>
-                <span>钠 ${r0(totals.sodium_mg)}mg</span>
-                <span>重量 ${r1(totals.weight)}g</span>
-              </div>
+        return `
+                    <div class="mobile-dish-card" onclick="Dashboard.openMobileDishEditor(${i}, ${j})">
+                        <div class="mobile-dish-row">
+                            <span class="mobile-dish-name">${ing.name_zh || '未命名'}</span>
+                            <span class="mobile-dish-energy">${e} ${unit}</span>
+                        </div>
+                        <div class="mobile-dish-details">
+                             <span style="font-weight:600; color:var(--color-text-primary)">${ing.weight_g || 0}g</span>
+                             <span class="mobile-dish-macros">${macrosSummary}</span>
+                             <span class="mobile-edit-icon">
+                                ${window.IconManager ? window.IconManager.render('pencil', '14px') : '✎'}
+                                编辑
+                             </span>
+                        </div>
+                    </div>
+                   `;
+      }).join('')}
             </div>
-
-            ${d.source === 'user' ? userEditor : aiIngredients}
-          </div>
         `;
     }).join('')}
     `;
   },
 
+  // 编辑 AI 食材
+  openMobileDishEditor(dishIdx, ingIdx) {
+    this._editingIndices = { dishIdx, ingIdx, type: 'ai' };
+    const dish = this.currentDishes[dishIdx];
+    const ing = dish.ingredients[ingIdx];
+    const m = ing.macros || {};
+
+    // 强制开启等比缩放
+    ing._proportionalScale = true;
+
+    // 总是根据当前数值刷新密度，确保联动准确
+    // 注意：如果重量为0，无法计算密度，则可能无法联动
+    if (Number(ing.weight_g) > 0) {
+      const w = Number(ing.weight_g);
+      ing._density = {
+        protein_per_g: (Number(m.protein_g) || 0) / w,
+        fat_per_g: (Number(m.fat_g) || 0) / w,
+        carbs_per_g: (Number(m.carbs_g) || 0) / w,
+        sodium_per_g: (Number(m.sodium_mg) || 0) / w,
+        fiber_per_g: (Number(m.fiber_g) || 0) / w,
+      };
+    }
+
+    this._renderMobileEditor({
+      title: `编辑 ${ing.name_zh || '食材'}`,
+      name: ing.name_zh,
+      weight: ing.weight_g,
+      protein: m.protein_g,
+      fat: m.fat_g,
+      carbs: m.carbs_g,
+      fiber: m.fiber_g,
+      sodium: m.sodium_mg
+    });
+  },
+
+  // 编辑手动菜品
+  openMobileUserDishEditor(dishIdx) {
+    this._editingIndices = { dishIdx, type: 'user' };
+    const dish = this.currentDishes[dishIdx];
+
+    this._renderMobileEditor({
+      title: `编辑 ${dish.name || '菜品'}`,
+      name: dish.name,
+      weight: dish.weight,
+      protein: dish.protein,
+      fat: dish.fat,
+      carbs: dish.carb, // 注意属性名差异 carb vs carbs_g
+      fiber: dish.fiber,
+      sodium: dish.sodium_mg
+    });
+  },
+
+  _renderMobileEditor(data) {
+    const overlay = document.createElement('div');
+    overlay.className = 'diet-mobile-editor-overlay';
+    overlay.id = 'diet-mobile-editor';
+    // 点击遮罩关闭
+    overlay.onclick = (e) => { if (e.target === overlay) this.closeMobileDishEditor(); };
+
+    // 只有 AI 菜品才启用联动逻辑
+    const onWeightInput = (this._editingIndices && this._editingIndices.type === 'ai')
+      ? 'oninput="Dashboard.handleMobileWeightChange(this.value)"'
+      : '';
+
+    // 调试 ID
+    const randomId = Math.random().toString(36).substring(7);
+
+    overlay.innerHTML = `
+        <div class="diet-mobile-editor" data-uid="${randomId}">
+            <div class="editor-title">${data.title}</div>
+            
+            <div class="editor-field-group">
+                <label class="editor-label">名称</label>
+                <input id="me-name" class="editor-input" value="${data.name || ''}">
+            </div>
+            
+             <div class="editor-row editor-field-group">
+                <div>
+                     <label class="editor-label">总重量 (g)</label>
+                     <input id="me-weight" type="number" class="editor-input" value="${data.weight || 0}" ${onWeightInput}>
+                </div>
+                 <div>
+                     <label class="editor-label">钠 (mg)</label>
+                     <input id="me-sodium" type="number" class="editor-input" value="${data.sodium || 0}">
+                </div>
+            </div>
+
+            <div class="editor-row editor-field-group">
+                <div>
+                     <label class="editor-label">蛋白质 (g)</label>
+                     <input id="me-protein" type="number" class="editor-input" value="${data.protein || 0}">
+                </div>
+                 <div>
+                     <label class="editor-label">脂肪 (g)</label>
+                     <input id="me-fat" type="number" class="editor-input" value="${data.fat || 0}">
+                </div>
+            </div>
+            
+            <div class="editor-row editor-field-group">
+                <div>
+                     <label class="editor-label">碳水 (g)</label>
+                     <input id="me-carbs" type="number" class="editor-input" value="${data.carbs || 0}">
+                </div>
+                 <div>
+                     <label class="editor-label">膳食纤维 (g)</label>
+                     <input id="me-fiber" type="number" class="editor-input" value="${data.fiber || 0}">
+                </div>
+            </div>
+
+            <div class="editor-btn-row">
+                <button class="editor-btn btn-cancel" onclick="Dashboard.closeMobileDishEditor()">取消</button>
+                <button class="editor-btn btn-save" onclick="Dashboard.saveMobileDishEditor()">保存修改</button>
+            </div>
+        </div>
+      `;
+    document.body.appendChild(overlay);
+  },
+
+  handleMobileWeightChange(val) {
+    if (!this._editingIndices || this._editingIndices.type !== 'ai') return;
+    const { dishIdx, ingIdx } = this._editingIndices;
+    const dish = this.currentDishes?.[dishIdx];
+    const ing = dish?.ingredients?.[ingIdx];
+
+    if (!ing || !ing._proportionalScale || !ing._density) return;
+
+    const newWeight = parseFloat(val);
+    if (isNaN(newWeight) || newWeight <= 0) return;
+
+    const d = ing._density;
+    const setVal = (id, v) => {
+      const el = document.getElementById(id);
+      if (el) el.value = (Math.round(v * 100) / 100);
+    };
+
+    setVal('me-protein', d.protein_per_g * newWeight);
+    setVal('me-fat', d.fat_per_g * newWeight);
+    setVal('me-carbs', d.carbs_per_g * newWeight);
+    setVal('me-fiber', d.fiber_per_g * newWeight);
+
+    const elSod = document.getElementById('me-sodium');
+    if (elSod) elSod.value = Math.round(d.sodium_per_g * newWeight);
+  },
+
+  closeMobileDishEditor() {
+    const el = document.getElementById('diet-mobile-editor');
+    if (el) el.remove();
+    this._editingIndices = null;
+  },
+
+  saveMobileDishEditor() {
+    if (!this._editingIndices) return;
+    const { dishIdx, ingIdx, type } = this._editingIndices;
+
+    const name = document.getElementById('me-name').value;
+    const weight = parseFloat(document.getElementById('me-weight').value) || 0;
+    const protein = parseFloat(document.getElementById('me-protein').value) || 0;
+    const fat = parseFloat(document.getElementById('me-fat').value) || 0;
+    const carbs = parseFloat(document.getElementById('me-carbs').value) || 0;
+    const fiber = parseFloat(document.getElementById('me-fiber').value) || 0;
+    const sodium = parseFloat(document.getElementById('me-sodium').value) || 0;
+
+    if (type === 'ai') {
+      const dish = this.currentDishes[dishIdx];
+      const ing = dish.ingredients[ingIdx];
+      ing.name_zh = name;
+      ing.weight_g = weight;
+      if (!ing.macros) ing.macros = {};
+      ing.macros.protein_g = protein;
+      ing.macros.fat_g = fat;
+      ing.macros.carbs_g = carbs;
+      ing.macros.fiber_g = fiber;
+      ing.macros.sodium_mg = sodium;
+    } else {
+      // User Dish
+      const dish = this.currentDishes[dishIdx];
+      dish.name = name;
+      dish.weight = weight;
+      dish.protein = protein;
+      dish.fat = fat;
+      dish.carb = carbs;
+      dish.fiber = fiber;
+      dish.sodium_mg = sodium;
+      // Mark as saved/modified manually if needed
+    }
+
+    this.recalculateDietSummary();
+
+    const session = this.currentSession;
+    if (session && session.versions) {
+      const version = session.versions[session.currentVersion - 1];
+      this.renderDietResult(session, version);
+    }
+
+    this.closeMobileDishEditor();
+
+    this.updateStatus('');
+  },
 
   // 调用 EnergyUtils，自动传入当前单位
   formatEnergyFromMacros(proteinG, fatG, carbsG) {
@@ -562,7 +798,7 @@ const DietRenderModule = {
       // a lonely cursor looks weird. We should show "Generating..." text until the first chunk of advice arrives.
       if (version.advice && version.advice.length > 0) {
         html += `<span class="streaming-cursor" style="display:inline-block; width:8px; height:1em; background:currentColor; margin-left:2px; vertical-align:text-bottom; animation: blink 1s step-end infinite;"></span>
-             <style>@keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }</style>`;
+              <style>@keyframes blink {0%, 100% { opacity: 1; } 50% {opacity: 0; } }</style>`;
       } else {
         html += '<div class="advice-loading" style="margin-top: 12px;"><span class="loading-spinner"></span><span style="margin-left:8px">正在撰写详细建议...</span></div>';
       }
@@ -614,17 +850,17 @@ const DietRenderModule = {
 
     // 样式：增加轻量背景和清晰箭头，提升可交互感
     const style = `
-        appearance: none; -webkit-appearance: none;
-        background-color: rgba(0, 0, 0, 0.04);
-        border: 1px solid rgba(0, 0, 0, 0.08);
-        border-radius: 6px;
-        font-family: inherit; font-size: inherit; color: inherit;
-        font-weight: 600; cursor: pointer;
-        padding: 2px 24px 2px 8px; margin-left: 4px;
-        background-image: url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2212%22%20height%3D%2212%22%20viewBox%3D%220%200%2024%2024%22%3E%3Cpath%20fill%3D%22%23666%22%20d%3D%22M7%2010l5%205%205-5z%22%2F%3E%3C%2Fsvg%3E");
-        background-repeat: no-repeat; background-position: right 4px center;
-        transition: all 0.2s;
-    `;
+appearance: none; -webkit-appearance: none;
+background-color: rgba(0, 0, 0, 0.04);
+border: 1px solid rgba(0, 0, 0, 0.08);
+border-radius: 6px;
+font-family: inherit; font-size: inherit; color: inherit;
+font-weight: 600; cursor: pointer;
+padding: 2px 24px 2px 8px; margin-left: 4px;
+background-image: url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2212%22%20height%3D%2212%22%20viewBox%3D%220%200%2024%2024%22%3E%3Cpath%20fill%3D%22%23666%22%20d%3D%22M7%2010l5%205%205-5z%22%2F%3E%3C%2Fsvg%3E");
+background-repeat: no-repeat; background-position: right 4px center;
+transition: all 0.2s;
+`;
 
     return `
         <select onchange="Dashboard.updateMealType(this.value, this.options[this.selectedIndex].text)" style="${style.replace(/\n/g, '')}" title="点击切换餐段">

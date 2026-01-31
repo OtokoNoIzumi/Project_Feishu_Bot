@@ -98,6 +98,7 @@ const NutritionChartModule = {
         return {
             tooltip: {
                 trigger: 'axis',
+                confine: true, // 防止 tooltip 被容器裁剪
                 axisPointer: { type: 'shadow' },
                 backgroundColor: '#fdfbf7', // Paper background
                 borderColor: '#d97757',     // Accent border
@@ -167,6 +168,7 @@ const NutritionChartModule = {
             xAxis: {
                 type: 'value',
                 max: axisMax, // 动态：对 >100% 友好
+                interval: window.innerWidth < 600 ? 50 : null, // 移动端减少刻度密度 (0, 50, 100...)
                 splitLine: { lineStyle: { color: 'rgba(92, 85, 78, 0.1)' } }, // Faint pencil line
                 axisLabel: { color: '#b0a69a', formatter: '{value}%', fontFamily: 'Lora' }
             },
