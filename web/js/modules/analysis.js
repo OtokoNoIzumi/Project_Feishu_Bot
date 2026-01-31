@@ -502,10 +502,17 @@ const AnalysisModule = {
                 currentVer.rawResult.dishes = currentData.dishes;
                 // 3. 更新 Labels
                 currentVer.rawResult.captured_labels = currentData.captured_labels;
+                // 4. [Fix] 更新 occurred_at
+                if (currentData.occurred_at) {
+                    currentVer.rawResult.occurred_at = currentData.occurred_at;
+                }
 
                 // Update parsedData for consistency
                 currentVer.parsedData.summary.totalEnergy = currentData.meal_summary.total_energy_kj;
                 currentVer.parsedData.dishes = currentData.dishes;
+                if (currentData.occurred_at) {
+                    currentVer.parsedData.occurredAt = currentData.occurred_at;
+                }
             }
         }
 

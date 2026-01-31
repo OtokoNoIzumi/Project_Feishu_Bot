@@ -664,7 +664,26 @@ const Dashboard = {
   isDataUnchanged(session) {
     if (!session.savedData) return false;
     const current = this.collectEditedData();
-    return JSON.stringify(current) === JSON.stringify(session.savedData);
+    const savedStr = JSON.stringify(session.savedData);
+    const currentStr = JSON.stringify(current);
+
+    if (savedStr !== currentStr) {
+      // console.warn('[DataDiff] Data modified. Diff details:');
+      // try {
+      //   const saved = session.savedData;
+      //   // 简单的一层对比，如果有深层差异再看 total_energy 等关键字段
+      //   const allKeys = new Set([...Object.keys(saved), ...Object.keys(current)]);
+      //   allKeys.forEach(key => {
+      //     const v1 = JSON.stringify(saved[key]);
+      //     const v2 = JSON.stringify(current[key]);
+      //     if (v1 !== v2) {
+      //       console.warn(`Field [${key}] changed:\n  Old: ${v1}\n  New: ${v2}`);
+      //     }
+      //   });
+      // } catch (e) { console.error(e); }
+      return false;
+    }
+    return true;
   },
 
   // ========== 历史 ==========

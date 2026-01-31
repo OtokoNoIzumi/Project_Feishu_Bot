@@ -20,7 +20,7 @@ const StorageModule = {
         }
 
         const session = this.currentSession;
-        const isUpdate = session.isSaved && session.savedRecordId;
+        const isUpdate = !!session.savedRecordId;
 
         try {
 
@@ -64,8 +64,25 @@ const StorageModule = {
             }
 
             // 如果后端返回了 record_id，保存它
+            // 兼容 Diet (result.saved_record.record_id) 和 Keep (result.record_id)
             if (result.saved_record && result.saved_record.record_id) {
                 session.savedRecordId = result.saved_record.record_id;
+            } else if (result.record_id) {
+                session.savedRecordId = result.record_id;
+            }
+
+            // [Fix] 同步后端确定的 occurred_at，防止后续更新时时间被重置
+            // 注意：API.saveDiet 可能直接返回 RecordService 的结果，或者包装了一层
+            // 直接检查 result 或 result.saved_record (取决于 API 包装)
+            const savedTime = result.occurred_at || (result.saved_record && result.saved_record.occurred_at);
+
+            if (savedTime && session.mode === 'diet' && this.currentDietMeta) {
+                this.currentDietMeta.occurredAt = savedTime;
+                // 同时更新当前 Version 的 parsedData，确保持久化 Card 时带上时间
+                const currentVer = session.versions[session.currentVersion - 1];
+                if (currentVer && currentVer.parsedData) {
+                    currentVer.parsedData.occurredAt = savedTime;
+                }
             }
 
             session.isSaved = true;

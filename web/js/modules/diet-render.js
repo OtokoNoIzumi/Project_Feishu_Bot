@@ -17,9 +17,50 @@ const DietRenderModule = {
     this.currentDietMeta = {
       mealName: summary.mealName || '饮食记录',
       dietTime: summary.dietTime || '',
-      occurredAt: data.occurredAt || null,  // AI 识别的发生时间
+      occurredAt: (() => {
+        // 1. 优先使用 Card 数据，其次回退到 Session 创建时间
+        let val = data.occurredAt;
+        if (!val && session.createdAt) {
+          val = session.createdAt;
+        }
+        if (!val) return null;
+
+        // 2. 格式清洗：如果是 UTC 格式 (Z 或 +00:00)，转为本地时间字符串
+        // 这能修复旧数据被污染为 UTC 格式的问题，也能处理 session.createdAt 是 UTC 的情况
+        if (typeof val === 'string' && (val.endsWith('Z') || val.includes('+00:00'))) {
+          try {
+            const dt = new Date(val);
+            // 简单粗暴：利用 toISOString 的时区偏移技巧获取本地时间的 string representation
+            const offset = dt.getTimezoneOffset() * 60000;
+            const local = new Date(dt.getTime() - offset);
+            return local.toISOString().slice(0, -1);
+          } catch (e) {
+            return val; // 解析失败则原样返回
+          }
+        }
+        return val;
+      })(),
     };
-    this.recalculateDietSummary(false);
+
+    // [Fix] 同步基准数据：如果 savedData 中的 occurred_at 为空（旧卡片），
+    // 强制同步为刚刚计算出的本地时间，避免页面一加载就显示 "更新记录"
+    if (session.savedData && !session.savedData.occurred_at && this.currentDietMeta.occurredAt) {
+      session.savedData.occurred_at = this.currentDietMeta.occurredAt;
+    }
+
+    // [Fix] 历史卡片首次加载时 savedData 可能为空，导致被误判为 "已修改"
+    // 此时应立即构建 savedData 作为基准
+    if (session.isSaved && !session.savedData && typeof this.collectEditedData === 'function') {
+      // 必须先计算 currentDietTotals，否则 collectEditedData 拿不到总数据
+      this.recalculateDietSummary(false);
+      try {
+        session.savedData = JSON.parse(JSON.stringify(this.collectEditedData()));
+      } catch (e) {
+        console.warn('Failed to init savedData:', e);
+      }
+    } else {
+      this.recalculateDietSummary(false);
+    }
 
     // 获取当前版本的 user_note
     const currentNote = version.userNote || session.text || '';
@@ -37,7 +78,14 @@ const DietRenderModule = {
           <div class="result-icon-container">${window.IconManager ? window.IconManager.render('meal') : '<img src="css/icons/bowl.png" class="hand-icon icon-sticker">'}</div>
           <div>
             <div class="result-card-title">${summary.mealName}</div>
-            <div class="result-card-subtitle" id="diet-subtitle">${this.currentDishes.length} 种食物 · ${summary.dietTime || ''}</div>
+            <div class="result-card-subtitle" id="diet-subtitle">
+              <span id="diet-dish-count">${this.currentDishes.length} 种食物</span>
+              <span> · </span>
+              ${this.renderMealTypeSelector(summary.mealName, summary.dietTime)}
+              <button class="btn-text-icon" onclick="ProteinReportModule.render(Dashboard.currentDietTotals)" title="查看蛋白质价值评估" style="margin-left: 12px; font-size: 0.85em; color: var(--color-accent-primary, #d97757); background: rgba(217, 119, 87, 0.1); padding: 2px 8px; border-radius: 12px; border:none; cursor: pointer;">
+                📊 蛋白效力图
+              </button>
+            </div>
           </div>
           ${session.versions.length > 1 ? `
             <div class="version-nav">
@@ -532,6 +580,57 @@ const DietRenderModule = {
     }
 
     return '<div class="advice-empty">暂无建议</div>';
+  },
+  // 渲染餐食类型选择器 (Stealth Select)
+  renderMealTypeSelector(name, timeStr) {
+    const raw = (name || '').toLowerCase().trim();
+    let selected = 'snack'; // default fallback
+
+    // 1. 尝试映射已知类型
+    if (raw.includes('break') || raw.includes('早')) selected = 'breakfast';
+    else if (raw.includes('lunch') || raw.includes('午')) selected = 'lunch';
+    else if (raw.includes('din') || raw.includes('晚')) selected = 'dinner';
+    else if (raw.includes('snack') || raw.includes('加') || raw.includes('零')) selected = 'snack';
+    else {
+      // 2. 如果 name 无法识别（可能是空或时间），尝试从 timeStr 推断
+      // 这里简单处理：如果有 name 就保留 name 作为自定义值，否则推断
+      // 为了简化，若无法识别则根据当前时间段推断（暂略，直接默认为午餐或保持原样）
+      if (!name && timeStr) {
+        const h = parseInt(timeStr.split(':')[0]);
+        if (!isNaN(h)) {
+          if (h >= 5 && h < 10) selected = 'breakfast';
+          else if (h >= 10 && h < 16) selected = 'lunch';
+          else if (h >= 16 && h < 22) selected = 'dinner';
+        }
+      }
+    }
+
+    const options = [
+      { v: 'breakfast', l: '早餐' },
+      { v: 'lunch', l: '午餐' },
+      { v: 'dinner', l: '晚餐' },
+      { v: 'snack', l: '加餐/零食' }
+    ];
+
+    // 样式：增加轻量背景和清晰箭头，提升可交互感
+    const style = `
+        appearance: none; -webkit-appearance: none;
+        background-color: rgba(0, 0, 0, 0.04);
+        border: 1px solid rgba(0, 0, 0, 0.08);
+        border-radius: 6px;
+        font-family: inherit; font-size: inherit; color: inherit;
+        font-weight: 600; cursor: pointer;
+        padding: 2px 24px 2px 8px; margin-left: 4px;
+        background-image: url("data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2212%22%20height%3D%2212%22%20viewBox%3D%220%200%2024%2024%22%3E%3Cpath%20fill%3D%22%23666%22%20d%3D%22M7%2010l5%205%205-5z%22%2F%3E%3C%2Fsvg%3E");
+        background-repeat: no-repeat; background-position: right 4px center;
+        transition: all 0.2s;
+    `;
+
+    return `
+        <select onchange="Dashboard.updateMealType(this.value, this.options[this.selectedIndex].text)" style="${style.replace(/\n/g, '')}" title="点击切换餐段">
+            ${options.map(o => `<option value="${o.v}" ${o.v === selected ? 'selected' : ''}>${o.l}</option>`).join('')}
+        </select>
+    `;
   },
 };
 

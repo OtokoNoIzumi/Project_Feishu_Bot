@@ -25,6 +25,14 @@ const DietEditModule = {
         }
     },
 
+    // 更新餐食类型（对应下拉框）
+    updateMealType(newTimeKey, newName) {
+        if (!this.currentDietMeta) return;
+        this.currentDietMeta.mealName = newName; // 存储中文显示名 (e.g. "晚餐")
+        this.currentDietMeta.dietTime = newTimeKey; // 存储枚举 Key (e.g. "dinner")
+        this.markModified();
+    },
+
     updateDish(index, field, value) {
         if (this.currentDishes && this.currentDishes[index]) {
             // AI 菜式：菜式层级不可编辑（只允许编辑 ingredients）
@@ -348,9 +356,20 @@ const DietEditModule = {
         setText('sum-total-sodium', this.currentDietTotals.totalSodiumMg);
         setText('sum-total-weight', this.currentDietTotals.totalWeightG);
 
-        const subtitle = document.getElementById('diet-subtitle');
-        if (subtitle && this.currentDietMeta) {
-            subtitle.textContent = `${dishes.length} 种食物 · ${this.currentDietMeta.dietTime || ''}`;
+        setText('sum-total-weight', this.currentDietTotals.totalWeightG);
+
+        // [Opt] 精细更新副标题，防止覆盖下拉框
+        const countSpan = document.getElementById('diet-dish-count');
+        if (countSpan) {
+            countSpan.textContent = `${dishes.length} 种食物`;
+        } else {
+            // Fallback for legacy structure (or if render hasn't run new logic yet)
+            const subtitle = document.getElementById('diet-subtitle');
+            if (subtitle && this.currentDietMeta) {
+                // 注意：这里可能会覆盖掉 selector，仅作为兜底
+                // 为防止闪烁，尽量在 render 时就生成好结构
+                // subtitle.textContent = ... 
+            }
         }
 
         // 同步更新营养图表

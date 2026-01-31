@@ -215,10 +215,9 @@ const FooterModule = {
         };
         // Simple saved check
         if (session.isSaved) {
-            // Check modified? Keep logic is simpler usually, but let's assume always enabled for now if saved
-            // Or use same isModified logic if feasible.
-            // For now, allow update.
-            saveConfig.text = '更新记录';
+            saveConfig.text = '已保存';
+            saveConfig.icon = 'check';
+            saveConfig.disabled = true;
         }
 
         this._setupButton(this.el.saveBtn, saveConfig);
