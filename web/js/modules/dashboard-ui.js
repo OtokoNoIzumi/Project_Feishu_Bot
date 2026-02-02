@@ -181,12 +181,15 @@ const DashboardUIModule = {
             console.warn('[Dashboard] Auth not ready, but allowing view switch to show status');
         }
 
-        const next = view === 'profile' ? 'profile' : 'analysis';
+        let next = 'analysis';
+        if (view === 'profile') next = 'profile';
+        if (view === 'meals') next = 'meals';
+
         const prev = this.view;
         this.view = next;
 
-        // [Fix] Always refresh Demo Mask text immediately after view change
-        if (Auth.isDemoMode()) {
+        // [Demo Mode] mask update
+        if (Auth.isDemoMode() && this.renderDemoMask) {
             this.renderDemoMask();
         }
 
@@ -200,13 +203,20 @@ const DashboardUIModule = {
             btn.classList.toggle('active', btn.dataset.view === next);
         });
 
-        // 聊天模式切换
         const modeSwitch = document.querySelector('.mode-switch');
+
+        // 1. Exiting Profile: Restore Mode Switch if needed
+        if (prev === 'profile' && next !== 'profile' && modeSwitch && this._savedModeSwitch) {
+            modeSwitch.innerHTML = this._savedModeSwitch;
+            this.bindModeSwitch();
+            this.mode = this._savedMode || 'diet';
+        }
+
+        // 2. Entering Profile
         if (next === 'profile') {
-            // Profile 模式：隐藏 diet/keep 切换，显示"档案沟通"
             if (modeSwitch) {
                 this._savedModeSwitch = modeSwitch.innerHTML;
-                this._savedMode = this.mode; // Save current mode
+                this._savedMode = this.mode;
                 modeSwitch.innerHTML = '<button class="mode-btn active" style="cursor: default; pointer-events: none;">档案沟通</button>';
             }
             this.renderProfileView();
@@ -214,41 +224,40 @@ const DashboardUIModule = {
             return;
         }
 
-        // 切出 Profile 模式：还原聊天窗口状态
-        if (prev === 'profile' && modeSwitch && this._savedModeSwitch) {
-            modeSwitch.innerHTML = this._savedModeSwitch;
-            this.bindModeSwitch(); // 重新绑定事件
-            this.mode = this._savedMode || 'diet'; // Restore mode
+        // 3. Entering Meals
+        if (next === 'meals') {
+            // Clean UI for custom view
+            if (window.FooterModule) window.FooterModule.update(FooterState.HIDDEN);
+            else if (this.el.resultFooter) this.el.resultFooter.classList.add('hidden');
+
+            if (this.el.resultCloseBtn && !this.isMobile()) this.el.resultCloseBtn.style.display = 'none';
+            this.el.resultContent.innerHTML = '';
+            this.el.resultTitle.textContent = '餐食数据';
+
+            if (window.MealsDataModule) {
+                window.MealsDataModule.render(this.el.resultContent);
+            } else {
+                this.el.resultContent.innerHTML = '<div style="padding:24px; text-align:center;">模块加载中...</div>';
+            }
+            if (this.isMobile()) this.setResultPanelOpen(true);
+            return;
         }
 
-        // 回到分析视图
+        // 4. Entering Analysis (default)
         if (this.currentSession && this.currentSession.versions.length > 0) {
             this.renderResult(this.currentSession);
         } else {
-            // 无论是否有 Dialogue ID，只要没有 Session，都先重置分析面板为空状态
-            // 这解决了从 Profile 返回时面板未清理的问题
             this.clearResult();
-
-            // 如果没有 Session 但有 Dialogue ID，尝试重新加载对话 state
             if (this.currentDialogueId && !this.currentSession) {
                 this.loadDialogue(this.currentDialogueId);
             }
         }
-        // 刷新 Sidebar 标题 (确保单位变更实时生效)
-        if (window.SidebarModule) {
-            window.SidebarModule.render();
-        }
-        // 刷新所有会话卡片标题（确保能量单位等设置生效）
-        this.sessions.forEach(s => this.updateSessionCard(s));
-        if (this.isMobile()) this.setResultPanelOpen(true);
 
-        // [Demo Mode] Re-render mask to update text if needed
-        if (Auth.isDemoMode()) {
-            this.renderDemoMask();
-        }
+        if (window.SidebarModule) window.SidebarModule.render();
+        if (this.sessions) this.sessions.forEach(s => this.updateSessionCard(s));
 
-        // 关闭 Sidebar (移动端)
         if (this.isMobile()) {
+            this.setResultPanelOpen(true);
             this.toggleMobileSidebar(false);
         }
     },

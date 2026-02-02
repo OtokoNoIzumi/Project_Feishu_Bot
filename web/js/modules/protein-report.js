@@ -20,7 +20,8 @@ const ProteinReportModule = {
             unit_price: 2.72,
             serving_weight: 314,
             label_macros: { e: 998.1, p: 14.41, f: 3.64 },
-            color: '#55efc4', text: '#00b894'
+            color: '#55efc4', text: '#00b894',
+            isSystem: true
         },
         {
             id: 'chicken_breast',
@@ -30,7 +31,8 @@ const ProteinReportModule = {
             unit_price: 2.45,
             serving_weight: 50,
             label_macros: { e: 450, p: 23.7, f: 1.0 },
-            color: '#a29bfe', text: '#6c5ce7'
+            color: '#a29bfe', text: '#6c5ce7',
+            isSystem: true
         },
         {
             id: 'chicken_leg',
@@ -40,7 +42,8 @@ const ProteinReportModule = {
             unit_price: 4.1,
             serving_weight: 80,
             label_macros: { e: 629, p: 23.6, f: 5.0 },
-            color: '#74b9ff', text: '#0984e3'
+            color: '#74b9ff', text: '#0984e3',
+            isSystem: true
         },
         {
             id: 'beef',
@@ -50,7 +53,8 @@ const ProteinReportModule = {
             unit_price: 6.7,
             serving_weight: 50,
             label_macros: { e: 552, p: 29.4, f: 1.4 },
-            color: '#ff7675', text: '#d63031'
+            color: '#ff7675', text: '#d63031',
+            isSystem: true
         },
         {
             id: 'egg_braised',
@@ -60,9 +64,22 @@ const ProteinReportModule = {
             unit_price: 0.87,
             serving_weight: 33,
             label_macros: { e: 741, p: 15.7, f: 10.8 },
-            color: '#ffd93d', text: '#f39c12'
+            color: '#ffd93d', text: '#f39c12',
+            isSystem: true
         }
     ],
+
+    markPrice(session) {
+        if (window.MealsDataModule && window.MealsDataModule.showPriceInputModal) {
+            window.MealsDataModule.showPriceInputModal(session, (price) => {
+                if (window.ToastUtils) ToastUtils.show(`已标记金额: ${price}`, 'success');
+                // TODO: Save this price to session logic (e.g. session.markedPrice = price; API.save...)
+            });
+        } else {
+            // 无 Modal 模块时，显示提示
+            if (window.ToastUtils) ToastUtils.show('金额标记功能暂不可用', 'info');
+        }
+    },
 
     injectStyles() {
         if (document.getElementById('pr-styles')) return;

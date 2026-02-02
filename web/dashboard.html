@@ -13,6 +13,8 @@
     <link rel="stylesheet" href="css/dashboard.css?v=warm_07">
     <link rel="stylesheet" href="css/sidebar.css?v=warm_07">
     <link rel="stylesheet" href="css/demo.css">
+    <link rel="stylesheet" href="css/components/common-cards.css">
+    <link rel="stylesheet" href="css/modules/meals.css">
     <script type="module" src="js/utils/icons.js"></script>
     <script src="config.js"></script>
     <script>
@@ -40,8 +42,10 @@
             <div class="side-menu" id="side-menu">
                 <button class="side-menu-item active" data-view="analysis"><img src="css/icons/notepad.png"
                         class="icon-stamp" alt="Analysis"> 分析</button>
+                <button class="side-menu-item" data-view="meals"><img src="css/icons/bowl.png" class="icon-stamp"
+                        alt="Meals"> 餐食</button>
                 <button class="side-menu-item" data-view="profile"><img src="css/icons/gear.png" class="icon-stamp"
-                        alt="Profile"> Profile</button>
+                        alt="Profile"> 档案</button>
             </div>
 
             <div class="history-list" id="history-list">
@@ -145,6 +149,8 @@
     <script src="js/utils/text.js" defer></script>
     <script src="js/utils/date_formatter.js" defer></script>
     <script src="js/utils/toast.js" defer></script>
+    <script src="js/utils/ui-components.js" defer></script>
+    <script src="js/utils/card-display.js" defer></script>
     <script src="js/modules/error-handler.js" defer></script>
     <script src="js/modules/parser.js" defer></script>
 
@@ -162,10 +168,13 @@
     <script src="js/modules/footer.js" defer></script>
 
     <script type="module" src="js/modules/sidebar.js"></script>
+    <!-- SortableJS 拖拽排序库 -->
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js" defer></script>
     <!-- ECharts 图表库 -->
     <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js" defer></script>
     <script src="js/modules/nutrition-chart.js" defer></script>
     <script src="js/modules/quick-input.js" defer></script>
+    <script src="js/modules/meals-data.js" defer></script>
 
     <script src="js/modules/demo.js" defer></script>
     <script src="js/modules/chat-ui.js" defer></script>

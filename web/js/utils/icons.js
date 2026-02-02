@@ -7,10 +7,17 @@ const ICONS = {
     // Stickers (Colorful, object-like)
     'logo': { src: 'apple.png', type: 'sticker', defaultClass: 'lg' },
     'save': { src: 'pin.png', type: 'sticker', defaultClass: '' },
-    'add': { src: 'add.png', type: 'sticker', defaultClass: '' }, // Actually this might be a stamp? No, colorful plus is nice.
+    'add': { src: 'add.png', type: 'sticker', defaultClass: '' },
     'meal': { src: 'bowl.png', type: 'sticker', defaultClass: '' },
-    'chart': { src: 'chart.png', type: 'sticker', defaultClass: '' }, // Wait, chart is colored now? Yes.
+    'chart': { src: 'chart.png', type: 'sticker', defaultClass: '' },
     'heart': { src: 'heart.png', type: 'sticker', defaultClass: '' },
+
+    // 侧边栏图标 (Sidebar Icons) - 新增
+    'meal_plate': { src: 'meal_plate.png', type: 'sticker', defaultClass: '' },      // 餐食图标
+    'meal_star': { src: 'meal_star.png', type: 'sticker', defaultClass: '' },        // 快捷/收藏餐食
+    'chat_bubble': { src: 'chat_bubble.png', type: 'sticker', defaultClass: '' },    // 消息图标
+    'body_data_man': { src: 'body_data_man.png', type: 'sticker', defaultClass: '' },    // 身体数据 (男)
+    'body_data_woman': { src: 'body_data_woman.png', type: 'sticker', defaultClass: '' }, // 身体数据 (女)
 
     // Stamps (Monochrome/Ink, functional)
     'analysis': { src: 'notepad.png', type: 'stamp', defaultClass: '' },
@@ -18,14 +25,14 @@ const ICONS = {
     'refresh': { src: 'refresh.png', type: 'stamp', defaultClass: '' },
     'update': { src: 'sparkle.png', type: 'stamp', defaultClass: '' },
     'settings': { src: 'gear.png', type: 'stamp', defaultClass: '' },
-    'empty': { src: 'bowl.png', type: 'stamp', defaultClass: 'xl' }, // Use bowl as stamp for empty state? Or colored? Let's use colored for empty state actually.
+    'empty': { src: 'bowl.png', type: 'stamp', defaultClass: 'xl' },
     'list': { src: 'notepad.png', type: 'stamp', defaultClass: '' },
     'lightbulb': { src: 'lightbulb.png', type: 'stamp', defaultClass: '' },
     'check': { src: 'check.png', type: 'stamp', defaultClass: '' },
     'pencil': { src: 'pencil.png', type: 'stamp', defaultClass: '' },
     'bookmark': { src: 'bookmark.png', type: 'stamp', defaultClass: '' },
-    'profile_woman': { src: 'profile_alt.png', type: 'stamp', defaultClass: '' },
-    'profile_man': { src: 'profile.png', type: 'stamp', defaultClass: '' },
+    'profile_woman': { src: 'profile_woman.png', type: 'stamp', defaultClass: '' },
+    'profile_man': { src: 'profile_man.png', type: 'stamp', defaultClass: '' },
     'notepad': { src: 'notepad.png', type: 'stamp', defaultClass: '' },
 };
 
@@ -95,8 +102,11 @@ const EMOJI_ICONS = {
 
     // 类型标识
     'type-diet': '🍽️',
-    'type-keep': '🏋️',
+    'type-keep': '🏋️', // Fallback
+    'type-keep-male': '👨',
+    'type-keep-female': '👩',
     'type-dialogue': '💬',
+    'type-favorite': '⭐',  // 收藏餐食（临时emoji，后续替换为 meal_star）
 
     // 操作
     'action-expand': '▼',
@@ -112,7 +122,11 @@ const EMOJI_ICONS = {
 const EMOJI_TO_HAND_DRAWN = {
     'status-saved': 'check',
     'status-draft': 'pencil',
-    // ... 后续填充
+    'type-diet': 'meal_plate',        // 餐食 -> 餐盘图标
+    'type-keep-male': 'body_data_man', // 身体数据(男)
+    'type-keep-female': 'body_data_woman', // 身体数据(女)
+    'type-dialogue': 'chat_bubble',   // 对话 -> 聊天气泡
+    'type-favorite': 'meal_star',     // 快捷餐食 -> 带星餐盘
 };
 
 export const EmojiIcon = {

@@ -142,7 +142,8 @@ const SessionManagerModule = {
                     ? `${msg.attachments.length}张图片`
                     : '');
                 const options = {
-                    title: titleHint
+                    title: titleHint,
+                    subtitle: msg.subtitle || ''
                 };
                 const images = resolveMessageImages(msg);
                 if (images.length > 0) {
@@ -182,21 +183,31 @@ const SessionManagerModule = {
     },
 
     updateSessionCard(session) {
-        let title = '';
         const latest = session.versions.length > 0 ? session.versions[session.versions.length - 1] : null;
 
-        if (latest) {
-            if (latest.parsedData.type === 'diet') {
-                const unit = this.getEnergyUnit();
-                const energy = latest.parsedData.summary.totalEnergy;
-                // 强制取整
-                const val = unit === 'kcal' ? Math.round(energy) : Math.round(EnergyUtils.kcalToKJ(energy));
-                title = `${val} ${unit} - ${latest.parsedData.dishes.length}种食物`;
+        let title = '';
+        if (latest && latest.parsedData) {
+            // 优先使用工具函数，否则回退到内联逻辑
+            if (window.CardDisplayUtils?.generateTitle) {
+                title = window.CardDisplayUtils.generateTitle(latest.parsedData);
             } else {
-                const eventCount = latest.parsedData.scaleEvents.length +
-                    latest.parsedData.sleepEvents.length +
-                    latest.parsedData.bodyMeasureEvents.length;
-                title = `Keep - ${eventCount}条记录`;
+                // Fallback: 内联逻辑
+                const pd = latest.parsedData;
+                if (pd.type === 'diet') {
+                    const timeMap = { 'snack': '加餐', 'breakfast': '早餐', 'lunch': '午餐', 'dinner': '晚餐' };
+                    const mealTime = timeMap[pd.summary?.dietTime] || '饮食';
+                    const dishes = pd.dishes || [];
+                    if (dishes.length === 0) {
+                        title = mealTime;
+                    } else if (dishes.length === 1) {
+                        title = `${mealTime} ${dishes[0].name || '未命名'}`;
+                    } else {
+                        title = `${mealTime} ${dishes[0].name || '未命名'}等${dishes.length}个`;
+                    }
+                } else if (pd.type === 'keep') {
+                    const count = (pd.scaleEvents?.length || 0) + (pd.sleepEvents?.length || 0) + (pd.bodyMeasureEvents?.length || 0);
+                    title = `Keep - ${count}条记录`;
+                }
             }
         }
 

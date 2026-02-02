@@ -6,6 +6,7 @@ class DialogueMessage(BaseModel):
     id: str = Field(..., description="Unique message ID")
     role: Literal['user', 'assistant']
     title: Optional[str] = Field(None, description="Short title for message card")
+    subtitle: Optional[str] = Field(None, description="Subtitle with energy/weight info")
     content: str
     timestamp: datetime
     attachments: List[str] = Field(default_factory=list, description="List of file URIs")

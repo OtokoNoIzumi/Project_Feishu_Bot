@@ -44,16 +44,21 @@ const QuickInputModule = {
     ],
 
     templates: [], // Local cache of favorites
+    _loaded: false, // 加载状态标记
 
     async init() {
         try {
             // Load from Backend
             this.templates = await API.getDietTemplates();
+            this._loaded = true;
             if (window.SidebarModule) window.SidebarModule.refreshFavorites();
+            // 刷新 Meals 视图（如果已打开）
+            if (window.MealsDataModule) window.MealsDataModule.renderQuickList();
         } catch (e) {
             console.error('[QuickInput] Failed to load templates:', e);
             // Fallback to empty
             this.templates = [];
+            this._loaded = true;
         }
     },
 
@@ -237,18 +242,11 @@ const QuickInputModule = {
         });
     },
 
-    markProtein(session) {
-        // Placeholder for Protein Efficiency Logic
-        const price = prompt("请输入本餐大致金额 (用于计算蛋白性价比):", "0");
-        if (price !== null) {
-            if (window.ToastUtils) ToastUtils.show(`已标记金额: ${price}`, 'success');
-            // Save logic here...
-        }
-    },
+
 
 
     /**
-     * Tries to handle input as a Quick Input command
+     * Tries to handle layout and logic for the "Quick Record" feature.
      * Returns true if handled, false otherwise.
      */
     async handleQuickInput(text) {
@@ -277,6 +275,9 @@ const QuickInputModule = {
         const favorites = this.getFavorites();
 
         const candidates = favorites.filter(f => {
+            // Filter out inactive templates
+            if (f.isActive === false || (f.templateData && f.templateData.isActive === false)) return false;
+
             let count = 0;
             if (f.templateData && f.templateData.dishes) {
                 // Use helper to count actual input slots
@@ -423,7 +424,7 @@ const QuickInputModule = {
             type: 'diet',
             title: sourceTitle || '快捷记录',
             summary: {
-                mealName: '快捷记录', // Always default to generic name so DietRender uses time
+                mealName: sourceTitle || '快捷记录',
                 dietTime: this.guessDietTime(),
                 totalEnergy: 0, totalProtein: 0, totalCarbs: 0, totalFat: 0,
             },

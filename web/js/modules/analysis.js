@@ -135,18 +135,56 @@ const AnalysisModule = {
                 // 4. 回填 User Message (Attachments + Card Link)
                 if (session.lastUserMessage && session.lastUserMessage.id) {
                     const messageTitle = this._generateMessageTitle(version.parsedData);
+
+                    // 生成副标题（能量 + 重量）- 带 fallback
+                    let messageSubtitle = '';
+                    const pd = version.parsedData;
+                    if (pd && pd.type === 'diet') {
+                        const unit = this.getEnergyUnit?.() || 'kJ';
+                        const energyKJ = pd.summary?.totalEnergyKJ || (pd.summary?.totalEnergy * 4.184) || 0;
+                        const energyVal = unit === 'kcal' ? Math.round(energyKJ / 4.184) : Math.round(energyKJ);
+                        const totalWeight = (pd.dishes || []).reduce((sum, d) => sum + (d.weight || 0), 0);
+
+                        const parts = [];
+                        parts.push(`${energyVal}${unit}`);
+                        if (totalWeight > 0) parts.push(`${Math.round(totalWeight)}g`);
+                        messageSubtitle = parts.join(' · ');
+                    }
+
                     const msgPayload = {
                         ...session.lastUserMessage,
                         title: messageTitle,
+                        subtitle: messageSubtitle,
                         attachments: result.result.image_hashes || [],
                         linked_card_id: cardId
                     };
                     session.lastUserMessage = msgPayload;
-                    API.updateMessage(session.dialogueId, msgPayload).catch(e => console.error("Update user msg failed:", e));
+
+                    // 等待消息更新完成
+                    await API.updateMessage(session.dialogueId, msgPayload).catch(e => console.error("Update user msg failed:", e));
+
+                    // 同步更新当前显示的消息卡片 subtitle
+                    const cardEl = document.querySelector(`.session-card[data-session-id="${session.id}"]`);
+                    if (cardEl) {
+                        let subtitleEl = cardEl.querySelector('.message-subtitle');
+                        if (!subtitleEl && messageSubtitle) {
+                            const titleContainer = cardEl.querySelector('.message-title-container') || cardEl.querySelector('.message-header');
+                            if (titleContainer) {
+                                subtitleEl = document.createElement('div');
+                                subtitleEl.className = 'message-subtitle';
+                                titleContainer.appendChild(subtitleEl);
+                            }
+                        }
+                        if (subtitleEl) {
+                            subtitleEl.textContent = messageSubtitle;
+                        }
+                    }
                 }
 
-                // 5. 刷新侧边栏
-                if (window.SidebarModule) window.SidebarModule.loadDialogues();
+                // 5. 刷新侧边栏 - 延迟确保后端写入完成
+                setTimeout(() => {
+                    if (window.SidebarModule) window.SidebarModule.loadDialogues();
+                }, 100);
             }
             // ==========================================================
 
@@ -541,9 +579,14 @@ const AnalysisModule = {
             v.rawResult.meta.is_quick_record = true;
         }
 
-        // 如果有编辑数据，更新当前版本
-        // 注意：session.currentVersion 是 1-based index
-        if (currentData && updatedVersions.length >= session.currentVersion) {
+        // 如果有编辑数据且数据有效，更新当前版本
+        // 关键判断：只有当 collectEditedData 返回有效数据（有 total_energy_kj > 0 或有 dishes）时才覆盖
+        // 防止在分析刚完成时（UI 尚未渲染）用空数据覆盖 API 原始返回的正确值
+        const hasValidEditData = currentData &&
+            (currentData.meal_summary?.total_energy_kj > 0 ||
+                (currentData.dishes && currentData.dishes.length > 0));
+
+        if (hasValidEditData && updatedVersions.length >= session.currentVersion) {
             const currentVer = updatedVersions[session.currentVersion - 1];
 
             if (session.mode === 'diet') {
@@ -652,18 +695,29 @@ const AnalysisModule = {
     _generateMessageTitle(parsedData) {
         if (!parsedData) return '';
 
-        if (parsedData.type === 'diet') {
-            const unit = (ProfileModule.getCurrentProfile()?.diet?.energy_unit) || 'kJ';
-            const energy = parsedData.summary.totalEnergy || 0;
-            const val = unit === 'kcal' ? Math.round(energy) : Math.round(EnergyUtils.kcalToKJ(energy));
-            const count = parsedData.dishes ? parsedData.dishes.length : 0;
-            return `${val} ${unit} - ${count}种食物`;
+        // 优先使用工具函数
+        if (window.CardDisplayUtils?.generateTitle) {
+            return window.CardDisplayUtils.generateTitle(parsedData);
         }
 
-        const eventCount = (parsedData.scaleEvents?.length || 0) +
-            (parsedData.sleepEvents?.length || 0) +
-            (parsedData.bodyMeasureEvents?.length || 0);
-        return `Keep - ${eventCount}条记录`;
+        // Fallback: 内联逻辑
+        if (parsedData.type === 'diet') {
+            const timeMap = { 'snack': '加餐', 'breakfast': '早餐', 'lunch': '午餐', 'dinner': '晚餐' };
+            const mealTime = timeMap[parsedData.summary?.dietTime] || '饮食';
+            const dishes = parsedData.dishes || [];
+            if (dishes.length === 0) return mealTime;
+            if (dishes.length === 1) return `${mealTime} ${dishes[0].name || '未命名'}`;
+            return `${mealTime} ${dishes[0].name || '未命名'}等${dishes.length}个`;
+        }
+
+        if (parsedData.type === 'keep') {
+            const count = (parsedData.scaleEvents?.length || 0) +
+                (parsedData.sleepEvents?.length || 0) +
+                (parsedData.bodyMeasureEvents?.length || 0);
+            return `Keep - ${count}条记录`;
+        }
+
+        return '';
     },
 
     _setAdviceLoading(version, isLoading) {

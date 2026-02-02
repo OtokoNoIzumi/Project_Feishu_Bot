@@ -60,15 +60,29 @@ const SessionModule = {
 
         // 标题区域 (Header)
         // 只要有 title 或 sessionId，就渲染 Header，保证布局一致
-        if (options.title || options.sessionId || (options.version && options.version > 1)) {
+        if (options.title || options.subtitle || options.sessionId || (options.version && options.version > 1)) {
             const headerEl = document.createElement('div');
             headerEl.className = 'message-header';
+
+            // 标题 + 副标题容器
+            const titleContainer = document.createElement('div');
+            titleContainer.className = 'message-title-container';
 
             // 标题
             const titleEl = document.createElement('div');
             titleEl.className = 'message-title';
             titleEl.textContent = options.title || '';
-            headerEl.appendChild(titleEl);
+            titleContainer.appendChild(titleEl);
+
+            // 副标题（能量、重量等）
+            if (options.subtitle) {
+                const subtitleEl = document.createElement('div');
+                subtitleEl.className = 'message-subtitle';
+                subtitleEl.textContent = options.subtitle;
+                titleContainer.appendChild(subtitleEl);
+            }
+
+            headerEl.appendChild(titleContainer);
 
             // 版本标签
             if (options.version && options.version > 1) {

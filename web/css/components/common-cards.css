@@ -1,0 +1,153 @@
+/**
+ * 通用卡片/面板样式
+ * 从 profile-render.js renderStyles() 提取的公共样式
+ * Profile 和 Meals 页面共用
+ */
+
+/* ========== 容器 ========== */
+.profile-container {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+/* ========== Banner ========== */
+.profile-banner {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 16px;
+    border-radius: 8px;
+    background: var(--color-warning-bg, #fff3cd);
+    border: 1px solid var(--color-warning-border, #ffc107);
+}
+
+.profile-banner-warning {
+    background: #fef3e2;
+    border-color: #f5a623;
+}
+
+.profile-banner-icon {
+    font-size: 1.5rem;
+}
+
+.profile-banner-title {
+    font-weight: 600;
+    color: var(--color-text-primary);
+}
+
+.profile-banner-text {
+    font-size: 0.875rem;
+    color: var(--color-text-secondary);
+    margin-top: 4px;
+}
+
+/* ========== 卡片/Section ========== */
+.profile-section {
+    position: relative;
+    background: var(--color-bg-secondary, #fff);
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    padding: 20px 24px;
+    margin-top: 20px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
+}
+
+/* ========== Tape Sticker 胶带装饰 ========== */
+.tape-sticker {
+    position: absolute;
+    top: -12px;
+    width: 80px;
+    height: 24px;
+    background: rgba(242, 233, 216, 0.9);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    cursor: pointer;
+    transition: transform 0.2s ease;
+    z-index: 10;
+    backdrop-filter: blur(1px);
+}
+
+.tape-sticker:hover {
+    filter: brightness(0.98);
+}
+
+/* ========== Section Header ========== */
+.profile-section-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 2px dashed var(--color-border);
+}
+
+.profile-section-icon {
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.profile-section-title {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--color-accent-primary);
+    font-family: var(--font-handwritten);
+}
+
+.profile-section-subtitle {
+    font-size: 0.85rem;
+    color: var(--color-text-muted);
+    margin-top: 2px;
+}
+
+/* ========== 网格布局 ========== */
+.profile-grid {
+    display: grid;
+    gap: 12px;
+}
+
+.profile-grid-2 {
+    grid-template-columns: repeat(2, 1fr);
+}
+
+.profile-grid-3 {
+    grid-template-columns: repeat(3, 1fr);
+}
+
+.profile-grid-4 {
+    grid-template-columns: repeat(4, 1fr);
+}
+
+.profile-grid-full {
+    grid-column: 1 / -1;
+}
+
+/* ========== 通用按钮 ========== */
+.btn-xs {
+    padding: 4px 8px;
+    font-size: 0.75rem;
+}
+
+.btn-ghost {
+    background: none;
+    border: 1px solid var(--color-border);
+    color: var(--color-text-secondary);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.btn-ghost:hover {
+    background: var(--color-bg-tertiary);
+}
+
+/* ========== 响应式 ========== */
+@media (max-width: 768px) {
+
+    .profile-grid-3,
+    .profile-grid-4 {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}

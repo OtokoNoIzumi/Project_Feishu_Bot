@@ -231,12 +231,29 @@ const SidebarModule = {
     renderRecentSection() {
         // 优先显示 Quick Favorites (快捷收藏)
         let favorites = [];
-        if (window.QuickInputModule && window.QuickInputModule.getFavorites) {
-            favorites = window.QuickInputModule.getFavorites();
+        const qm = window.QuickInputModule;
+        // 检查加载状态：如果模块存在且明确标记为未加载，则认为正在加载
+        // 注意：Demo 模式下不需要加载，直接显示默认提示
+        const isDemo = typeof Auth !== 'undefined' && Auth.isDemoMode && Auth.isDemoMode();
+        const isLoading = !isDemo && qm && typeof qm._loaded !== 'undefined' && !qm._loaded;
+
+        if (isLoading) {
+            return `
+                <div class="recent-cards-section">
+                    <div class="dialogue-section-title">快捷记录</div>
+                    <div style="padding: 24px; text-align: center; color: var(--color-text-muted);">
+                         <div style="display:inline-block; width: 18px; height: 18px; border: 2px solid var(--color-border); border-top-color: var(--color-primary); border-radius: 50%; animation: spin 0.8s linear infinite;"></div>
+                         <div style="font-size: 0.8rem; margin-top: 8px;">加载中...</div>
+                    </div>
+                </div>
+            `;
         }
 
-        // 如果没有收藏，显示提示或空 (根据用户要求“调整位置”，这里显示收藏列表)
-        // 限制显示前 3 个
+        if (qm && qm.getFavorites) {
+            favorites = qm.getFavorites().filter(f => f.isActive !== false && (!f.templateData || f.templateData.isActive !== false));
+        }
+
+        // 如果没有收藏，显示提示或空
         const displayItems = favorites.slice(0, 3);
 
         if (displayItems.length === 0) {
@@ -265,8 +282,22 @@ const SidebarModule = {
 
         displayItems.forEach(item => {
             // Item structure: { id, title, summary: { energy, weight }, addedAt }
-            const typeIcon = EmojiIcon.render('type-diet'); // Assume Diet for templates
+            let itemCount = 0;
+            // 尝试从各种可能的数据结构中获取菜品数量 (计算可调整重量的项目总数)
+            const outputData = item.parsedData || item.templateData || item.savedData;
+
+            if (outputData) {
+                if (Array.isArray(outputData.dishes)) {
+                    // Count leaves (Ingredients or Dish itself if no ingredients) - Consistent with QuickInput logic
+                    itemCount = outputData.dishes.reduce((acc, d) => {
+                        return acc + (d.ingredients && d.ingredients.length > 0 ? d.ingredients.length : 1);
+                    }, 0);
+                } else if (Array.isArray(outputData.ingredients)) {
+                    itemCount = outputData.ingredients.length;
+                }
+            }
             const title = this.escapeHtml(item.title || '未命名模板');
+
 
             let subtitle = '快捷模板';
             if (item.summary) {
@@ -281,15 +312,32 @@ const SidebarModule = {
                 }
 
                 // Format: 模板1200kJ 模板300g
-                subtitle = `模板${displayE}${unit} 模板${wVal}g`;
+                subtitle = `${displayE}${unit} ${wVal}g ${itemCount}种成分`;
             }
+
+            // Style: Handwritten number with white outline (No "Red Dot" background)
+            const badgeStyle = `
+                position: absolute; 
+                bottom: -4px; 
+                right: -4px; 
+                color: #5D4037; 
+                font-family: 'Patrick Hand', cursive; 
+                font-size: 14px; 
+                font-weight: 700; 
+                line-height: 1;
+                text-shadow: 1px 1px 0 #fff, -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff;
+                z-index: 2;
+                pointer-events: none;
+            `;
 
             html += `
                  <div class="card-item-recent quick-template-item" data-id="${item.id}" data-action="quick-template">
                      <div class="card-recent-left">
-                        <span class="card-icon" style="filter: hue-rotate(45deg);">${typeIcon}</span>
+                         <div style="position:relative; margin-right:8px; width:24px; height:24px; display:flex; align-items:center; justify-content:center;" title="包含 ${itemCount} 种成分">
+                            <span class="card-icon" style="margin:0; width:100%; height:100%; display:flex; align-items:center; justify-content:center;">${EmojiIcon.render('type-favorite')}</span>
+                        </div>
                         <div class="card-info">
-                            <span class="card-title"><span class="fav-star">⭐</span> ${title}</span>
+                            <span class="card-title">${title}</span>
                             <span class="card-time">${subtitle}</span>
                         </div>
                      </div>
@@ -524,7 +572,6 @@ const SidebarModule = {
         } catch (e) {
             console.error("Rename failed", e);
             if (window.ToastUtils) ToastUtils.show("重命名失败", "error");
-            else alert("重命名失败");
         }
     },
 
@@ -603,15 +650,34 @@ const SidebarModule = {
         let html = '';
         cards.forEach(card => {
             const statusIcon = this.getStatusIcon(card.status);
-            const typeIcon = card.mode === 'diet' ? EmojiIcon.render('type-diet') : EmojiIcon.render('type-keep');
 
-            // 计算动态标题
-            const dynamicTitle = card.user_title || this._getDynamicCardTitle(card) || card.title;
+            // 判断是否为已收藏的餐食卡片
+            const isFavDiet = card.mode === 'diet' &&
+                window.QuickInputModule &&
+                window.QuickInputModule.isFavorite &&
+                window.QuickInputModule.isFavorite(card.id);
 
-            let timeDisplay = '';
-            if (window.DateFormatter) {
-                timeDisplay = window.DateFormatter.formatSmart(card.updated_at || card.created_at);
+            // 获取用户性别
+            let gender = 'male'; // 默认
+            if (window.ProfileModule) {
+                const p = window.ProfileModule.getCurrentProfile();
+                if (p && p.gender) gender = p.gender;
             }
+
+            // 如果是已收藏的餐食，使用 meal_star 图标；否则使用普通类型图标
+            let typeIcon = '';
+            if (isFavDiet) {
+                typeIcon = EmojiIcon.render('type-favorite');
+            } else if (card.mode === 'diet') {
+                typeIcon = EmojiIcon.render('type-diet');
+            } else {
+                // Keep 类型，区分性别
+                typeIcon = gender === 'female' ? EmojiIcon.render('type-keep-female') : EmojiIcon.render('type-keep-male');
+            }
+
+            // 计算动态标题和副标题
+            const { title: dynamicTitle, subtitle: dynamicSubtitle } = this._getDynamicCardTitleAndSubtitle(card);
+            const finalTitle = card.user_title || dynamicTitle || card.title;
 
             html += `
                 <div class="card-item-nested" data-id="${card.id}" data-dialogue-id="${dialogueId}">
@@ -619,8 +685,8 @@ const SidebarModule = {
                     <div class="card-nested-left">
                         <span class="card-icon">${typeIcon}</span>
                         <div class="card-info">
-                            <span class="card-title">${this._getFavMark(card.id)} ${this.escapeHtml(dynamicTitle)}</span>
-                            <span class="card-time">${timeDisplay}</span>
+                            <span class="card-title">${this.escapeHtml(finalTitle)}</span>
+                            <span class="card-time">${dynamicSubtitle}</span>
                         </div>
                     </div>
                     <div class="card-actions">
@@ -723,19 +789,18 @@ const SidebarModule = {
     },
 
     /**
-     * 根据当前 Profile 配置动态生成标题
-     * (解决后端 title "写死" 单位及转换错误的问题)
-     * 策略：移除时间前缀（由副标题承担），强化核心指标（体重、食物总重）
+     * 根据当前 Profile 配置动态生成标题和副标题
+     * 标题：餐段 + 菜式名称（如 "早餐 燕麦脱脂奶等3个"）
+     * 副标题：时间 + 能量 + 总重（如 "08:30 · 436kJ · 120g"）
      */
-    _getDynamicCardTitle(card) {
-        if (!card) return '';
+    _getDynamicCardTitleAndSubtitle(card) {
+        const fallback = { title: card?.title || '', subtitle: '' };
+        if (!card) return fallback;
 
         const versions = card.versions || [];
-        if (versions.length === 0) return card.title;
+        if (versions.length === 0) return fallback;
 
-        // 取最新版本
         const latestVersion = versions[versions.length - 1];
-
         let rawData = latestVersion.raw_result || {};
 
         // 获取全局单位设置
@@ -745,28 +810,41 @@ const SidebarModule = {
             if (p && p.diet && p.diet.energy_unit === 'kcal') unit = 'kcal';
         }
 
-
+        // 获取时间显示
+        let timeStr = '';
+        if (window.DateFormatter) {
+            timeStr = window.DateFormatter.formatSmart(card.updated_at || card.created_at);
+        }
 
         // 分支 1: Diet 模式
         if (card.mode === 'diet') {
-            // 兼容 raw_result (后端结构) 和 parsedData (前端结构)
             let dietTime = 'unknown';
             let energyKj = 0;
             let dishes = [];
 
             if (rawData.meal_summary) {
-                // Raw Result Structure
                 dietTime = rawData.meal_summary.diet_time;
                 energyKj = rawData.meal_summary.total_energy_kj || 0;
                 dishes = rawData.dishes || [];
             } else {
-                return card.title; // 无法识别的结构
+                return fallback;
             }
 
             const timeMap = {
                 'snack': '加餐', 'breakfast': '早餐', 'lunch': '午餐', 'dinner': '晚餐'
             };
-            const timeDisplay = timeMap[dietTime] || '饮食';
+            const mealTimeDisplay = timeMap[dietTime] || '饮食';
+
+            // 构建标题：餐段 + 菜式名称
+            let titleStr = mealTimeDisplay;
+            if (dishes.length > 0) {
+                const firstName = dishes[0].standard_name || dishes[0].name || '未命名';
+                if (dishes.length === 1) {
+                    titleStr = `${mealTimeDisplay} ${firstName}`;
+                } else {
+                    titleStr = `${mealTimeDisplay} ${firstName}等${dishes.length}个`;
+                }
+            }
 
             // 单位转换
             let energyVal = energyKj;
@@ -774,20 +852,14 @@ const SidebarModule = {
                 energyVal = energyKj / 4.184;
             }
 
-            // 计算总重 (优先取 Summary，否则遍历计算)
+            // 计算总重
             let totalWeight = 0;
-
-            // Strategy 1: Direct from summary
             if (rawData.meal_summary && rawData.meal_summary.net_weight_g) {
                 totalWeight = rawData.meal_summary.net_weight_g;
             }
-
-            // Strategy 2: Sum from dishes if summary failed
             if (!totalWeight && dishes.length > 0) {
                 totalWeight = dishes.reduce((sum, dish) => {
-                    // Case A: Dish has direct weight (simple structure)
                     if (dish.weight_g) return sum + dish.weight_g;
-                    // Case B: Dish has ingredients (nested structure)
                     if (dish.ingredients && Array.isArray(dish.ingredients)) {
                         return sum + dish.ingredients.reduce((iSum, ing) => iSum + (ing.weight_g || 0), 0);
                     }
@@ -795,33 +867,40 @@ const SidebarModule = {
                 }, 0);
             }
 
-            const weightStr = totalWeight > 0 ? `${Math.round(totalWeight)}g` : '';
+            // 构建副标题：时间 · 能量 · 总重
+            const parts = [];
+            if (timeStr) parts.push(timeStr);
+            parts.push(`${Math.round(energyVal)}${unit}`);
+            if (totalWeight > 0) parts.push(`${Math.round(totalWeight)}g`);
+            const subtitleStr = parts.join(' · ');
 
-            // 移除 dateStr 前缀，只显示内容: "{餐段} {能量} {总重}"
-            return `${timeDisplay} ${Math.round(energyVal)}${unit} ${weightStr}`.trim();
+            return { title: titleStr, subtitle: subtitleStr };
         }
 
         // 分支 2: Keep 模式
         if (card.mode === 'keep') {
-            // Keep 的 raw_result 直接包含各事件数组
             const scaleEvents = rawData.scale_events || [];
             const sleepEvents = rawData.sleep_events || [];
             const measureEvents = rawData.body_measure_events || [];
 
-            // 优先显示体重
+            let titleStr = card.title;
             if (scaleEvents.length > 0) {
                 const weight = scaleEvents[0].weight_kg;
-                if (weight) return `体重 ${weight}kg`;
+                if (weight) titleStr = `体重 ${weight}kg`;
+            } else {
+                const count = scaleEvents.length + sleepEvents.length + measureEvents.length;
+                if (count > 0) titleStr = `Keep记录 ${count}项`;
             }
 
-            const count = scaleEvents.length + sleepEvents.length + measureEvents.length;
-            // 如果解析失败或为0，fallback
-            if (count === 0 && !rawData.scale_events) return card.title;
-
-            return `Keep记录 ${count}项`.trim();
+            return { title: titleStr, subtitle: timeStr };
         }
 
-        return card.title;
+        return fallback;
+    },
+
+    // Legacy wrapper for compatibility
+    _getDynamicCardTitle(card) {
+        return this._getDynamicCardTitleAndSubtitle(card).title;
     }
 };
 

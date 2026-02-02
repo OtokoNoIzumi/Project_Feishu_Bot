@@ -98,6 +98,12 @@ class DietTemplateUpdate(BaseModel):
     title: str
 
 
+class DietTemplateReorder(BaseModel):
+    """Request model for reordering diet templates."""
+
+    ordered_ids: List[str]
+
+
 def build_diet_router(settings: BackendSettings) -> APIRouter:
     """Build and return the diet API router."""
     router = APIRouter()
@@ -539,6 +545,18 @@ def build_diet_router(settings: BackendSettings) -> APIRouter:
         DietTemplateService.update_template(
             user_id, template_id, {"title": update.title}
         )
+        return True
+
+    @router.post(
+        "/api/diet/templates/reorder",
+        response_model=bool,
+        dependencies=[Depends(auth_dep)],
+    )
+    async def reorder_diet_templates(
+        reorder: DietTemplateReorder, user_id: str = Depends(get_current_user_id)
+    ):
+        """Reorder diet templates."""
+        DietTemplateService.reorder_templates(user_id, reorder.ordered_ids)
         return True
 
     return router

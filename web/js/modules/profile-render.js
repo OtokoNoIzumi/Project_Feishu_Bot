@@ -372,71 +372,11 @@ const ProfileRenderModule = {
     },
 
     renderStyles() {
+        // 通用样式已移至 css/components/common-cards.css
+        // 此处只保留 Profile 特有的表单样式
         return `
             <style>
-                .profile-container { display: flex; flex-direction: column; gap: 20px; }
-
-                .profile-banner {
-                    display: flex;
-                    align-items: center;
-                    gap: 12px;
-                    padding: 16px;
-                    border-radius: 8px;
-                    background: var(--color-warning-bg, #fff3cd);
-                    border: 1px solid var(--color-warning-border, #ffc107);
-                }
-                .profile-banner-warning { background: #fef3e2; border-color: #f5a623; }
-                .profile-banner-icon { font-size: 1.5rem; }
-                .profile-banner-title { font-weight: 600; color: var(--color-text-primary); }
-                .profile-banner-text { font-size: 0.875rem; color: var(--color-text-secondary); margin-top: 4px; }
-
-                .profile-section {
-                    position: relative;
-                    background: var(--color-bg-secondary, #fff);
-                    border: 1px solid var(--color-border);
-                    border-radius: 4px;
-                    padding: 20px 24px;
-                    margin-top: 20px;
-                    box-shadow: 0 1px 2px rgba(0,0,0,0.02);
-                }
-
-                /* TAPE STICKER (Real Element) */
-                .tape-sticker {
-                    position: absolute;
-                    top: -12px;
-                    width: 80px;
-                    height: 24px;
-                    background: rgba(242, 233, 216, 0.9);
-                    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-                    cursor: pointer;
-                    transition: transform 0.2s ease;
-                    z-index: 10;
-                    backdrop-filter: blur(1px);
-                }
-                /* Default rotations (overridden by inline styles for randomness) */
-                .tape-sticker:hover { filter: brightness(0.98); }
-
-                .profile-section-header {
-                    display: flex;
-                    align-items: center;
-                    gap: 12px;
-                    margin-bottom: 16px;
-                    padding-bottom: 12px;
-                    border-bottom: 2px dashed var(--color-border);
-                }
-                .profile-section-icon { width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; }
-                .profile-section-title { font-size: 1.1rem; font-weight: 600; color: var(--color-accent-primary); font-family: var(--font-handwritten); }
-                .profile-section-subtitle { font-size: 0.85rem; color: var(--color-text-muted); margin-top: 2px; }
-
-                /* 网格布局 */
-                .profile-grid { display: grid; gap: 12px; }
-                .profile-grid-2 { grid-template-columns: repeat(2, 1fr); }
-                .profile-grid-3 { grid-template-columns: repeat(3, 1fr); }
-                .profile-grid-4 { grid-template-columns: repeat(4, 1fr); }
-
-                /* Full width override */
-                .profile-grid-full { grid-column: 1 / -1; }
-
+                /* Profile 特有样式 */
                 .profile-field { display: flex; flex-direction: column; gap: 6px; position: relative; }
                 .profile-field.has-change { background: rgba(59, 130, 246, 0.08); border-radius: 6px; padding: 8px; margin: -8px; }
 
@@ -486,7 +426,7 @@ const ProfileRenderModule = {
                     display: inline-block;
                     font-size: 0.75rem;
                     font-weight: normal;
-                    color: #d97706; /* amber-600 */
+                    color: #d97706;
                     background: #fef3c7;
                     padding: 2px 8px;
                     border-radius: 12px;
@@ -511,41 +451,32 @@ const ProfileRenderModule = {
                     gap: 12px;
                 }
 
-                .btn-xs { padding: 4px 8px; font-size: 0.75rem; }
-                .btn-ghost { background: none; border: 1px solid var(--color-border); color: var(--color-text-secondary); }
-                .btn-ghost:hover { background: var(--color-bg-tertiary); }
-
                 .hidden { display: none !important; }
-
-                @media (max-width: 768px) {
-                    .profile-grid-3, .profile-grid-4 { grid-template-columns: repeat(2, 1fr); }
-                }
             </style>
         `;
     },
 
     /**
-     * 生成随机角度的胶带
+     * 生成随机角度的胶带（委托给 UIComponents）
      */
     renderTape(right = '50px', rotation = null) {
-        // 如果没有指定角度，随机生成 -3 到 3 度
+        if (window.UIComponents) {
+            return window.UIComponents.renderTape(right, rotation);
+        }
+        // Fallback
         const deg = rotation !== null ? rotation : (Math.random() * 6 - 3).toFixed(1);
-        return `<div class="tape-sticker" style="right: ${right}; transform: rotate(${deg}deg);" onclick="ProfileRenderModule.rotateTape(this)"></div>`;
+        return `<div class="tape-sticker" style="right: ${right}; transform: rotate(${deg}deg);"></div>`;
     },
 
     // ========== 档案信息 (Merged User Info) ==========
 
-    renderProfileSection(p, dm, userName, unit) {
-        // User Info Diff Logic
-        const diffResult = ProfileModule.getUserInfoDiff();
-        const userInfo = p.user_info || '';
+    // ========== 拆分后的局部渲染方法 (Header & Body) ==========
 
+    _renderHeader(p, userName) {
         return `
-            <div class="profile-section">
-                ${this.renderTape('60px', 2)}
-                <div class="profile-section-header">
-                    <div class="profile-section-icon">
-                        ${window.Clerk?.user?.imageUrl
+            <div class="profile-section-header">
+                <div class="profile-section-icon">
+                    ${window.Clerk?.user?.imageUrl
                 ? `<img src="${window.Clerk.user.imageUrl}?width=160" class="cl-avatarImage" style="width: 100%; height: 100%; border-radius: 50%; object-fit: cover;" alt="Avatar">`
                 : (() => {
                     const genderValue = p.gender;
@@ -557,11 +488,11 @@ const ProfileRenderModule = {
                     return window.IconManager ? window.IconManager.render(fallbackIcon, 'xl') : '👤';
                 })()
             }
-                    </div>
-                    <div>
-                        <div class="profile-section-title">
-                            ${userName} 的档案
-                            ${(() => {
+                </div>
+                <div>
+                    <div class="profile-section-title">
+                        ${userName} 的档案
+                        ${(() => {
                 if (!p.nid) return '';
                 const nid = Number(p.nid);
                 const isPremium = Number.isFinite(nid) && nid < 10000;
@@ -570,7 +501,7 @@ const ProfileRenderModule = {
                 }
                 return `<span style="font-size:0.8em; margin-left:8px; font-weight:600; color:#d4b36a; background:rgba(212,179,106,0.12); border:1px solid rgba(212,179,106,0.4); padding:1px 6px; border-radius:10px; letter-spacing:0.3px;">id ${p.nid}</span>`;
             })()}
-                            ${(() => {
+                        ${(() => {
                 // 前端计算当前最高有效等级
                 const levels = ['basic', 'pro', 'ultra']; // 低 -> 高
                 const levelNames = {
@@ -683,16 +614,20 @@ const ProfileRenderModule = {
                 // 使用自定义 CSS tooltip
                 return `<span class="level-badge-wrap"><span class="level-badge" style="background:${badgeBg}; color:${badgeColor};">${displayName}</span><span class="level-badge-tooltip">${tooltipLines.join('<br>')}</span></span>`;
             })()}
-                        </div>
-                        <div class="profile-section-subtitle">个人基础信息</div>
                     </div>
+                    <div class="profile-section-subtitle">个人基础信息</div>
                 </div>
+            </div>`;
+    },
+
+    _renderBody(p, dm, unit, diffResult) {
+        return `
                 <div class="profile-grid profile-grid-3">
                     ${this.renderSelectField('gender', '性别', [
-                { value: '', label: '请选择' },
-                { value: 'female', label: '女' },
-                { value: 'male', label: '男' },
-            ], p.gender)}
+            { value: '', label: '请选择' },
+            { value: 'female', label: '女' },
+            { value: 'male', label: '男' },
+        ], p.gender)}
                     ${this.renderSelectField('timezone', '时区', this.getTimezoneOptions(), p.timezone)}
                     ${this.renderEnergyUnitField(unit)}
                 </div>
@@ -703,18 +638,18 @@ const ProfileRenderModule = {
                 </div>
                 <div class="profile-grid profile-grid-3" style="margin-top: 12px;">
                     ${this.renderSelectField('diet.goal', '目标', [
-                { value: 'fat_loss', label: '减脂' },
-                { value: 'maintain', label: '维持' },
-                { value: 'muscle_gain', label: '增肌' },
-                { value: 'health', label: '健康' },
-            ], p.diet?.goal)}
+            { value: 'fat_loss', label: '减脂' },
+            { value: 'maintain', label: '维持' },
+            { value: 'muscle_gain', label: '增肌' },
+            { value: 'health', label: '健康' },
+        ], p.diet?.goal)}
                     ${this.renderSelectField('activity_level', '活动水平', [
-                { value: 'sedentary', label: '久坐' },
-                { value: 'light', label: '轻度活动' },
-                { value: 'moderate', label: '中度活动' },
-                { value: 'active', label: '高度活动' },
-                { value: 'very_active', label: '非常活跃' },
-            ], p.activity_level)}
+            { value: 'sedentary', label: '久坐' },
+            { value: 'light', label: '轻度活动' },
+            { value: 'moderate', label: '中度活动' },
+            { value: 'active', label: '高度活动' },
+            { value: 'very_active', label: '非常活跃' },
+        ], p.activity_level)}
                     ${this.renderNumberField('estimated_months', '预期达成 (月)', p.estimated_months, 1)}
                 </div>
 
@@ -743,13 +678,28 @@ const ProfileRenderModule = {
                                 </div>
                             ` : ''}
                         </label>
-                        ${this.renderTextField('user_info', userInfo, '这里的摘要AI也会更新，但未必完全代表你的意思，请及时维护。')}
+                        ${this.renderTextField('user_info', p.user_info || '', '这里的摘要AI也会更新，但未必完全代表你的意思，请及时维护。')}
                         ${diffResult.hasDiff ? `
                             <div id="user-info-diff" class="user-info-diff hidden">
                                 ${this.renderUserInfoDiffContent(diffResult.diff)}
                             </div>
                         ` : ''}
                     </div>
+                </div>`;
+    },
+
+    renderProfileSection(p, dm, userName, unit) {
+        // User Info Diff Logic
+        const diffResult = ProfileModule.getUserInfoDiff();
+
+        return `
+            <div class="profile-section">
+                ${this.renderTape('60px', 2)}
+                <div id="profile-header-container">
+                    ${this._renderHeader(p, userName)}
+                </div>
+                <div id="profile-body-container">
+                    ${this._renderBody(p, dm, unit, diffResult)}
                 </div>
             </div>
         `;
@@ -847,12 +797,10 @@ const ProfileRenderModule = {
     },
 
     rotateTape(el) {
-        // 随机微调角度 (-6 ~ 6 度)
-        const newDeg = (Math.random() * 12 - 6).toFixed(1);
-        el.style.transform = `rotate(${newDeg}deg) scale(1.1)`;
-        setTimeout(() => {
-            el.style.transform = `rotate(${newDeg}deg) scale(1)`;
-        }, 200);
+        // 委托给 UIComponents
+        if (window.UIComponents) {
+            window.UIComponents.rotateTape(el);
+        }
     },
 
     // ========== 事件处理 ==========
@@ -903,7 +851,6 @@ const ProfileRenderModule = {
         const code = input?.value?.trim();
         if (!code) {
             if (window.ToastUtils) ToastUtils.show('请输入激活码', 'info');
-            else alert('请输入激活码');
             return;
         }
 
@@ -917,7 +864,6 @@ const ProfileRenderModule = {
         try {
             const resp = await API.post('/user/invitation/redeem', { code });
             if (window.ToastUtils) ToastUtils.show('兑换成功！' + (resp.message || '已应用'), 'success');
-            else alert('兑换成功！\n' + (resp.message || '已应用'));
 
             await ProfileModule.loadFromServer();
             Dashboard.renderProfileView();
@@ -932,7 +878,6 @@ const ProfileRenderModule = {
             }
 
             if (window.ToastUtils) ToastUtils.show('兑换失败: ' + msg, 'error');
-            else alert('兑换失败: ' + msg);
         } finally {
             if (btn) {
                 btn.innerText = originalText;
@@ -970,7 +915,38 @@ const ProfileRenderModule = {
 
     refreshView() {
         if (Dashboard.view === 'profile') {
-            Dashboard.renderProfileView();
+            // 尝试局部更新以防止头像闪烁
+            const formContainer = document.getElementById('profile-body-container');
+            const headerContainer = document.getElementById('profile-header-container');
+
+            if (formContainer && headerContainer) {
+                const p = ProfileModule.getCurrentProfile();
+                const dm = ProfileModule.dynamicMetrics || {};
+                const unit = p.diet?.energy_unit || 'kJ';
+                let userName = '用户';
+                if (typeof Auth !== 'undefined' && Auth.user) {
+                    userName = Auth.user.firstName || Auth.user.fullName || Auth.user.username || '用户';
+                } else if (p.name) {
+                    userName = p.name;
+                }
+                const diffResult = ProfileModule.getUserInfoDiff();
+
+                // 1. Update Body (Form) - Always update content
+                formContainer.innerHTML = this._renderBody(p, dm, unit, diffResult);
+
+                // 2. Update Header - Only if content changed (Simple Diff)
+                const newHeader = this._renderHeader(p, userName);
+                if (headerContainer.innerHTML !== newHeader) {
+                    headerContainer.innerHTML = newHeader;
+                }
+            } else {
+                Dashboard.renderProfileView();
+            }
+        }
+
+        // Refresh Sidebar (解决 Sidebar 性别图标不刷新问题)
+        if (window.SidebarModule && window.SidebarModule.render) {
+            window.SidebarModule.render();
         }
     },
 };

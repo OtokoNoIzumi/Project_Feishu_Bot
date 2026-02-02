@@ -84,7 +84,7 @@ const DietRenderModule = {
                 <button class="btn-icon-only" onclick="QuickInputModule.toggleFavorite(Dashboard.currentSession)" title="收藏为快捷模板" style="font-size: 1.1em; cursor: pointer; background: none; border: none; padding: 4px; border-radius: 50%; transition: background 0.1s;">
                    ${window.QuickInputModule && window.QuickInputModule.isFavorite(session.id) ? '⭐' : '☆'}
                 </button>
-                <button class="btn-icon-only" onclick="QuickInputModule.markProtein(Dashboard.currentSession)" title="标记蛋白效力/价格" style="font-size: 1.1em; cursor: pointer; background: none; border: none; padding: 4px; border-radius: 50%; transition: background 0.1s;">
+                <button class="btn-icon-only" onclick="ProteinReportModule.markPrice(Dashboard.currentSession)" title="标记蛋白效力/价格" style="font-size: 1.1em; cursor: pointer; background: none; border: none; padding: 4px; border-radius: 50%; transition: background 0.1s;">
                    💰
                 </button>` : ''}
             </div>

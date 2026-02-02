@@ -6,13 +6,26 @@
  */
 const DemoModule = {
     async runDemoSequence() {
+        // [Fix] Demo 模式下隐藏 "餐食" 侧边栏入口
+        const mealsNav = document.querySelector('[data-view="meals"]');
+        if (mealsNav) mealsNav.style.display = 'none';
+
+        // [Fix] 预加载 Profile 数据，确保侧边栏性别图标正确
+        if (window.ProfileModule && !ProfileModule.serverProfile) {
+            await ProfileModule.loadFromServer();
+        }
+
         const cardId = 'card_20260127_dfe803ab';
 
         // 1. Initial State: Hide Card 3 via Filter
         window._DEMO_HIDDEN_CARD_ID = cardId;
 
         // Init Sidebar (Shows only card 1 & 2 because card 3 is filtered in API)
-        if (window.SidebarModule) SidebarModule.init();
+        if (window.SidebarModule) {
+            SidebarModule.init();
+            // [Fix] 延迟刷新 Sidebar 以确保 Profile 性别数据已就绪
+            setTimeout(() => window.SidebarModule.render(), 200);
+        }
 
         // Load early messages
         const fullMessages = DemoScenario.messages || [];

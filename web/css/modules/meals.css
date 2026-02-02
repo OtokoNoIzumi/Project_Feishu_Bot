@@ -1,0 +1,351 @@
+/**
+ * Meals Tab 特有样式
+ * 依赖 common-cards.css 提供基础容器样式
+ */
+
+/* ========== 列表容器 ========== */
+.meals-list-container {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+/* ========== 列表项 ========== */
+.meals-item {
+    display: flex;
+    align-items: center;
+    background: var(--color-bg-tertiary, #f9fafb);
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    transition: all 0.2s;
+    position: relative;
+    overflow: hidden;
+    min-height: 56px;
+    cursor: grab;
+    user-select: none;
+}
+
+.meals-item:active {
+    cursor: grabbing;
+}
+
+.meals-item:hover {
+    background: #fff;
+    border-color: var(--color-accent-primary);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+/* ========== SortableJS 拖拽状态 ========== */
+/* 选中状态（正在拖动的原始项） */
+.meals-item-chosen {
+    background: #fffbeb !important;
+    border-color: #f59e0b !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+/* 拖动时的样式 */
+.meals-item-drag {
+    opacity: 1 !important;
+    background: #fff !important;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2) !important;
+    transform: scale(1.02);
+}
+
+/* 占位符（ghost）*/
+.meals-item-ghost {
+    opacity: 0.4;
+    background: #fef3c7 !important;
+    border: 2px dashed #f59e0b !important;
+}
+
+/* 系统数据项样式 */
+.meals-item.is-system {
+    background: var(--color-bg-tertiary, #f9fafb);
+    border-style: dashed;
+    cursor: default;
+}
+
+/* 停用状态 */
+.meals-item.inactive {
+    opacity: 0.6;
+    filter: grayscale(1);
+}
+
+/* ========== 图标/序号区域 ========== */
+.meals-item-icon {
+    width: 36px;
+    min-width: 36px;
+    align-self: stretch;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-handwritten);
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--color-text-muted);
+    border-right: 1px solid var(--color-border);
+    background: transparent;
+}
+
+.meals-item.inactive .meals-item-icon {
+    color: #ccc;
+}
+
+/* ========== 内容区域 ========== */
+.meals-item-content {
+    flex: 1;
+    padding: 8px 12px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 2px;
+    overflow: hidden;
+}
+
+.meals-item-title {
+    font-family: var(--font-handwritten);
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--color-text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.meals-item-meta {
+    font-size: 0.75rem;
+    color: var(--color-text-muted);
+    font-family: var(--font-body);
+    display: flex;
+    gap: 8px;
+}
+
+.meals-item-meta span {
+    display: inline-flex;
+    align-items: center;
+}
+
+/* ========== 操作区域 ========== */
+.meals-item-actions {
+    display: flex;
+    align-items: center;
+    padding: 0 4px;
+    gap: 2px;
+}
+
+.meals-item:hover .meals-item-actions {
+    background: rgba(255, 255, 255, 0.6);
+}
+
+@media (max-width: 768px) {
+    .meals-item-actions {
+        opacity: 1;
+        background: transparent;
+    }
+}
+
+/* ========== 操作按钮 ========== */
+.btn-action-icon {
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    cursor: pointer;
+    color: var(--color-text-secondary);
+    transition: all 0.2s;
+    border: 1px solid transparent;
+    background: transparent;
+}
+
+.btn-action-icon:hover {
+    background: #fff;
+    border-color: #ddd;
+    color: var(--color-text-primary);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.btn-action-icon.danger:hover {
+    background: #fee2e2;
+    border-color: #fca5a5;
+    color: #ef4444;
+}
+
+/* ========== 拖动手柄 ========== */
+.drag-handle {
+    width: 24px;
+    align-self: stretch;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: grab;
+    color: #cbd5e1;
+    border-left: 1px solid transparent;
+    margin-left: 4px;
+}
+
+.meals-item:hover .drag-handle {
+    color: #94a3b8;
+}
+
+/* ========== 系统数据区域 ========== */
+.system-data-zone {
+    margin-top: 16px;
+    padding: 16px;
+    background: var(--color-bg-tertiary, #f9fafb);
+    border-radius: 6px;
+    border: 1px dashed var(--color-border);
+}
+
+.system-data-header {
+    font-size: 0.75rem;
+    color: var(--color-text-muted);
+    font-weight: 600;
+    text-transform: uppercase;
+    margin-bottom: 8px;
+    letter-spacing: 0.5px;
+}
+
+/* ========== 空状态 ========== */
+.empty-hint {
+    text-align: center;
+    padding: 32px;
+    color: var(--color-text-tertiary);
+    font-size: 0.9rem;
+    border: 2px dashed var(--color-border);
+    border-radius: 8px;
+    background: var(--color-bg-tertiary, #f9fafb);
+}
+
+/* ========== 加载中状态 ========== */
+.loading-hint {
+    text-align: center;
+    padding: 32px;
+    color: var(--color-text-muted);
+    font-size: 0.9rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+}
+
+.loading-spinner {
+    width: 24px;
+    height: 24px;
+    border: 2px solid var(--color-border);
+    border-top-color: var(--color-primary);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* ========== 图标背景色 ========== */
+.bg-icon-blue {
+    background: #eff6ff;
+    color: #3b82f6;
+}
+
+.bg-icon-gray {
+    background: #f3f4f6;
+    color: #9ca3af;
+}
+
+/* ========== Modal 对话框 ========== */
+.md-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    backdrop-filter: blur(2px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.2s, visibility 0.2s;
+}
+
+.md-modal-overlay.visible {
+    opacity: 1;
+    visibility: visible;
+}
+
+.md-modal {
+    background: #fff;
+    border-radius: 12px;
+    padding: 24px;
+    min-width: 320px;
+    max-width: 480px;
+    width: 90%;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.25);
+    transform: translateY(20px);
+    transition: transform 0.2s;
+}
+
+.md-modal-overlay.visible .md-modal {
+    transform: translateY(0);
+}
+
+/* Modal 表单元素 */
+.md-input-group {
+    margin-bottom: 16px;
+}
+
+.md-input-group label {
+    display: block;
+    font-size: 0.85rem;
+    color: #666;
+    margin-bottom: 6px;
+    font-weight: 500;
+}
+
+.md-input {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    font-size: 0.95rem;
+    transition: border-color 0.2s;
+    box-sizing: border-box;
+}
+
+.md-input:focus {
+    outline: none;
+    border-color: var(--color-primary);
+}
+
+/* 颜色选择器 */
+.md-swatches {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.md-swatch {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    cursor: pointer;
+    border: 2px solid transparent;
+    transition: transform 0.15s, border-color 0.15s;
+}
+
+.md-swatch:hover {
+    transform: scale(1.1);
+}
+
+.md-swatch.selected {
+    border-color: #333;
+}

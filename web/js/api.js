@@ -578,6 +578,9 @@ const API = {
             body: JSON.stringify(updates)
         });
     },
+    async reorderDietTemplates(orderedIds) {
+        return this.post('/diet/templates/reorder', { ordered_ids: orderedIds });
+    },
 };
 
 /**

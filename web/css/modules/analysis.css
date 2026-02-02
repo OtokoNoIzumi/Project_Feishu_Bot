@@ -63,12 +63,27 @@
     gap: 8px;
 }
 
+.message-title-container {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+    /* 允许内容截断 */
+}
+
 .message-title {
     font-weight: 600;
     font-size: 0.875rem;
     margin-bottom: 0;
-    /* 由 header 控制间距 */
-    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.message-subtitle {
+    font-size: 0.75rem;
+    color: var(--color-text-muted);
+    margin-top: 2px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;

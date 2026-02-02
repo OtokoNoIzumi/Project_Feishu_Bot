@@ -65,3 +65,31 @@ class DietTemplateService:
                 # Add other fields if needed
         if modified:
             DietTemplateService.save_templates(user_id, templates)
+
+    @staticmethod
+    def reorder_templates(user_id: str, ordered_ids: List[str]):
+        """Reorder templates based on the provided list of IDs."""
+        templates = DietTemplateService.load_templates(user_id)
+        if not templates:
+            return
+
+        # Create a map for O(1) access
+        template_map = {t.id: t for t in templates}
+        
+        # Build new list based on ordered_ids
+        new_order = []
+        seen_ids = set()
+        
+        # 1. Add items in the specific order
+        for tid in ordered_ids:
+            if tid in template_map:
+                new_order.append(template_map[tid])
+                seen_ids.add(tid)
+        
+        # 2. Append any remaining items (that might have been missed or added concurrently)
+        # to ensure no data loss
+        for t in templates:
+            if t.id not in seen_ids:
+                new_order.append(t)
+        
+        DietTemplateService.save_templates(user_id, new_order)
