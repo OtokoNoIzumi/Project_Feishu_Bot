@@ -91,8 +91,10 @@ const StorageModule = {
                 session.savedData = JSON.parse(JSON.stringify(this.collectEditedData()));
             }
 
-            // 将保存状态回写到 Card，避免重复保存
-            if (session.persistentCardId && typeof this._buildCardData === 'function') {
+            // 确保持久化 (并将 Quick Record 转正)
+            if (typeof this._ensureCardPersisted === 'function') {
+                await this._ensureCardPersisted(session);
+            } else if (session.persistentCardId && typeof this._buildCardData === 'function') {
                 const cardData = this._buildCardData(session);
                 if (cardData) {
                     cardData.status = 'saved';
@@ -105,6 +107,7 @@ const StorageModule = {
             }
 
             this.updateStatus('saved');
+            this.renderResult(session); // Re-render to show Header Buttons (State 2.3)
             this.addMessage(isUpdate ? '✓ 记录已更新' : '✓ 记录已保存', 'assistant');
             this.updateButtonStates(session);
 

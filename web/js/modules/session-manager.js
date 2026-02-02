@@ -81,6 +81,7 @@ const SessionManagerModule = {
                     versions: versions,
                     currentVersion: cardData.current_version || (versions.length > 0 ? versions.length : 0),
                     isSaved: cardData.status === 'saved',
+                    isQuickRecord: versions.some(v => v.rawResult && v.rawResult.meta && v.rawResult.meta.is_quick_record),
                     savedRecordId: cardData.saved_record_id,
                     savedData: null
                 };

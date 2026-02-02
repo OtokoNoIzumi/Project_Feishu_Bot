@@ -99,6 +99,9 @@ const Dashboard = {
       // Phase 2: Use SidebarModule instead of old StorageModule
       if (window.SidebarModule) {
         SidebarModule.init();
+        if (window.QuickInputModule && window.QuickInputModule.init) {
+          window.QuickInputModule.init();
+        }
       } else {
         this.loadHistory();
       }
@@ -253,6 +256,9 @@ const Dashboard = {
    * 快捷输入模式：直接创建一个空的草稿会话
    */
   async startQuickInput() {
+    // Demo 模式下阻断快捷记录功能
+    if (this.checkDemoLimit && this.checkDemoLimit()) return;
+
     // 1. 确保有后端 Dialogue
     if (!this.currentDialogueId) {
       try {
@@ -265,43 +271,13 @@ const Dashboard = {
       }
     }
 
-    // 2. 创建空白 Session
-    const session = this.createSession('', []);
-    session.dialogueId = this.currentDialogueId;
-    session.persistentCardId = window.DateFormatter ? window.DateFormatter.generateId('card') : `card-${Date.now()}`;
-    this.currentSession = session;
-
-    // 3. 初始化为空的 Diet 数据结构
-    const initialData = {
-      type: 'diet',
-      summary: { totalEnergy: 0, totalProtein: 0, totalCarbs: 0, totalFat: 0 },
-      dishes: [], // 空列表，待添加
-      advice: '快捷记录模式：请手动添加餐食。'
-    };
-
-    // 4. 创建版本
-    session.versions.push({
-      number: 1,
-      createdAt: new Date(),
-      userNote: '',
-      rawResult: {}, // Empty raw result
-      parsedData: initialData,
-      advice: initialData.advice,
-      adviceLoading: false
-    });
-    session.currentVersion = 1;
-
-    // 5. 渲染为空结果（此时应该显示“添加餐食”按钮）
-    this.renderResult(session);
-
-    // 6. 自动触发“添加餐食”弹窗或聚焦
-    // 也可以由用户手动点击 renderResult 里渲染出来的 "添加" 按钮
-    // 这里为了体验更好，可以添加这一行提示
-    this.addMessage('已开启快捷记录模式，请手动添加餐食。', 'assistant');
-
-    // 7. 持久化卡片 Draft (可选)
-    // 暂时不先创建后端卡片，等用户实际点保存或添加了菜品再同步可能更好
-    // 但为了一致性，这里也可以先创建一个 empty card
+    // 2. 调用快捷输入模块
+    if (window.QuickInputModule) {
+      window.QuickInputModule.start();
+    } else {
+      console.error('QuickInputModule not loaded');
+      this.addMessage('模块加载失败，请刷新重试', 'assistant');
+    }
   },
 
   /**
@@ -397,6 +373,9 @@ const Dashboard = {
   _setAdviceLoading: AnalysisModule._setAdviceLoading,
   _buildCardData: AnalysisModule._buildCardData,
 
+  // 委托给 DemoModule
+  checkDemoLimit: function () { return window.DemoModule && window.DemoModule.checkDemoLimit ? window.DemoModule.checkDemoLimit() : false; },
+
 
 
   renderResult(session) {
@@ -417,6 +396,11 @@ const Dashboard = {
     this.updateButtonStates(session);
     // Show close button on desktop when result is rendered
     this.showSessionControls();
+
+    // Mobile: Ensure panel is open (e.g. for Quick Input which bypasses selectSession)
+    if (this.isMobile && this.isMobile() && this.setResultPanelOpen) {
+      this.setResultPanelOpen(true);
+    }
   },
 
 

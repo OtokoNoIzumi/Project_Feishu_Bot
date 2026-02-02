@@ -145,6 +145,7 @@ const DemoModule = {
         }
     },
 
+
     // [New] Intercept Demo Action
     checkDemoLimit() {
         if (Auth.isDemoMode()) {
@@ -156,6 +157,7 @@ const DemoModule = {
         }
         return false;
     }
+
 };
 
 window.DemoModule = DemoModule;

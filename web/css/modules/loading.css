@@ -21,8 +21,9 @@
     }
 }
 
-.breathing-icon img {
-    animation: breathing 3s ease-in-out infinite;
+.breathing-icon img,
+.breathing-icon .icon-stamp {
+    animation: breathing 3s ease-in-out infinite !important;
 }
 
 @keyframes breathing {

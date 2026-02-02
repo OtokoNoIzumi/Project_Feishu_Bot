@@ -315,6 +315,16 @@ const API = {
         return this.get('/diet/history', { limit });
     },
 
+    /**
+     * 获取今日累积摄入概览
+     * @param {string} date - 日期 (YYYY-MM-DD), 缺省为今日
+     */
+    async getTodaySummary(date = null) {
+        const params = {};
+        if (date) params.date = date;
+        return this.get('/diet/summary/today', params);
+    },
+
     // ========== Keep API ==========
 
     /**
@@ -550,6 +560,22 @@ const API = {
         return this.request(`/cards/${cardId}`, {
             method: 'PATCH',
             body: JSON.stringify(cardData)
+        });
+    },
+    // ========== Diet Template Methods ==========
+    async getDietTemplates() {
+        return this.get('/diet/templates');
+    },
+    async saveDietTemplate(template) {
+        return this.post('/diet/templates', template);
+    },
+    async deleteDietTemplate(templateId) {
+        return this.request(`/diet/templates/${templateId}`, { method: 'DELETE' });
+    },
+    async updateDietTemplate(templateId, updates) {
+        return this.request(`/diet/templates/${templateId}`, {
+            method: 'PATCH',
+            body: JSON.stringify(updates)
         });
     },
 };

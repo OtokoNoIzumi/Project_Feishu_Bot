@@ -82,7 +82,7 @@ const FooterModule = {
     _renderDietMode(session) {
         // 1. Retry
         this._setupButton(this.el.retryBtn, {
-            visible: true,
+            visible: !session.isQuickRecord, // Hide for Quick Record
             text: '重新分析',
             icon: 'refresh',
             type: 'secondary',
@@ -95,9 +95,15 @@ const FooterModule = {
         });
 
         // 2. Advice
+        let adviceText = '更新建议';
+        if (session.isQuickRecord) {
+            const ver = session.versions ? session.versions[session.currentVersion - 1] : null;
+            if (ver && !ver.advice) adviceText = '生成建议';
+        }
+
         this._setupButton(this.el.adviceBtn, {
             visible: true,
-            text: '更新建议',
+            text: adviceText,
             icon: 'update',
             type: 'secondary',
             disabled: false, // Could add loading state check here

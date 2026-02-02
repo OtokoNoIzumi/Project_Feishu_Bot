@@ -287,11 +287,9 @@ const AnalysisModule = {
                 ProfileModule.refreshLimits();
             }
 
-            // Persistence
-            if (session.persistentCardId) {
-                const cardData = this._buildCardData(session);
-                if (cardData) API.updateCard(session.persistentCardId, cardData).catch(console.warn);
-            }
+            // Persistence (Ensure Card Exists)
+            await this._ensureCardPersisted(session);
+            this.renderResult(session); // Refresh for Advice (State 2.2)
 
         } catch (error) {
             if (loadingMsg) loadingMsg.remove();
@@ -370,11 +368,9 @@ const AnalysisModule = {
                 ProfileModule.refreshLimits();
             }
 
-            // Persistence
-            if (session.persistentCardId) {
-                const cardData = this._buildCardData(session);
-                if (cardData) API.updateCard(session.persistentCardId, cardData).catch(console.warn);
-            }
+            // Persistence (Ensure Card Exists)
+            await this._ensureCardPersisted(session);
+            this.renderResult(session); // Refresh for Advice (State 2.2)
         } catch (error) {
             currentVersion.adviceLoading = false;
             currentVersion.adviceError = error.message;
@@ -479,6 +475,52 @@ const AnalysisModule = {
 
     // ========== Helpers ==========
 
+    async _ensureCardPersisted(session) {
+        if (!session) return;
+
+        // Create Dialogue if missing (Required for Card)
+        if (!session.dialogueId) {
+            const latestVer = session.versions[session.currentVersion - 1];
+            const title = this._generateCardTitle(latestVer?.parsedData) || '饮食记录';
+            try {
+                const dlg = await API.createDialogue(title);
+                session.dialogueId = dlg.id;
+                // Refresh Sidebar Dialogues
+                if (window.SidebarModule) window.SidebarModule.loadDialogues();
+            } catch (e) {
+                console.error('[Analysis] Failed to create dialogue:', e);
+                // Proceeding might fail if backend requires dialogue_id strictly
+            }
+        }
+
+        // Generate Card ID if missing
+        if (!session.persistentCardId) {
+            session.persistentCardId = crypto.randomUUID ? crypto.randomUUID() : `card-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        }
+
+        // Build Data
+        const cardData = this._buildCardData(session);
+        if (!cardData) return;
+
+        // Update or Create
+        if (session.cardCreated) {
+            await API.updateCard(session.persistentCardId, cardData).catch(e => console.warn('[Analysis] Update card failed', e));
+        } else {
+            try {
+                // Ensure status logic: if explicitly saved by saveRecord, status is saved.
+                // If just advice update, it might be draft? 
+                // However, building card takes status from session.isSaved
+                await API.createCard(cardData);
+                session.cardCreated = true;
+                if (window.SidebarModule) window.SidebarModule.loadRecentCards();
+            } catch (e) {
+                console.warn('[Analysis] Create card failed, trying update...', e);
+                await API.updateCard(session.persistentCardId, cardData).catch(e2 => console.error(e2));
+                session.cardCreated = true;
+            }
+        }
+    },
+
     _buildCardData(session) {
         if (!session || !session.persistentCardId) return null;
 
@@ -490,6 +532,14 @@ const AnalysisModule = {
 
         // 深度复制 versions
         const updatedVersions = JSON.parse(JSON.stringify(session.versions));
+
+        // Inject Quick Record Identity for persistence
+        if (session.isQuickRecord && updatedVersions.length >= session.currentVersion) {
+            const v = updatedVersions[session.currentVersion - 1];
+            if (!v.rawResult) v.rawResult = {};
+            if (!v.rawResult.meta) v.rawResult.meta = {};
+            v.rawResult.meta.is_quick_record = true;
+        }
 
         // 如果有编辑数据，更新当前版本
         // 注意：session.currentVersion 是 1-based index

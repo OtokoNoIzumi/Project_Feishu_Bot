@@ -229,27 +229,68 @@ const SidebarModule = {
     },
 
     renderRecentSection() {
-        let cardsHtml = '';
-        this.recentCards.forEach(card => {
-            const statusIcon = this.getStatusIcon(card.status);
-            const typeIcon = card.mode === 'diet' ? EmojiIcon.render('type-diet') : EmojiIcon.render('type-keep');
-            // 使用 DateFormatter 格式化时间
-            let timeDisplay = '';
-            if (window.DateFormatter) {
-                timeDisplay = window.DateFormatter.formatSmart(card.updated_at || card.created_at);
+        // 优先显示 Quick Favorites (快捷收藏)
+        let favorites = [];
+        if (window.QuickInputModule && window.QuickInputModule.getFavorites) {
+            favorites = window.QuickInputModule.getFavorites();
+        }
+
+        // 如果没有收藏，显示提示或空 (根据用户要求“调整位置”，这里显示收藏列表)
+        // 限制显示前 3 个
+        const displayItems = favorites.slice(0, 3);
+
+        if (displayItems.length === 0) {
+            // Optional: fallback to recent cards or show "Add Favorite" hint
+            // render original recent cards if no favorites? 
+            // The user said "Adjust position to Quick Record...". Ill show placeholder if empty.
+            return `
+                <div class="recent-cards-section">
+                    <div class="dialogue-section-title">快捷记录</div>
+                    <div style="padding: 8px 12px; color: var(--color-text-muted); font-size: 0.8rem; font-style: italic;">
+                        ${(typeof Auth !== 'undefined' && Auth.isDemoMode && Auth.isDemoMode())
+                    ? '注册登录后<br>可建立您的专属饮食模板，一键添加'
+                    : '暂无收藏模板<br>在分析结果中点击 ⭐ 收藏'}
+                    </div>
+                </div>
+            `;
+        }
+
+        let html = '';
+        // Get global unit preference
+        let unit = 'kJ';
+        if (window.ProfileModule) {
+            const p = window.ProfileModule.getCurrentProfile();
+            if (p && p.diet && p.diet.energy_unit === 'kcal') unit = 'kcal';
+        }
+
+        displayItems.forEach(item => {
+            // Item structure: { id, title, summary: { energy, weight }, addedAt }
+            const typeIcon = EmojiIcon.render('type-diet'); // Assume Diet for templates
+            const title = this.escapeHtml(item.title || '未命名模板');
+
+            let subtitle = '快捷模板';
+            if (item.summary) {
+                const eVal = Number(item.summary.energy) || 0;
+                const wVal = Math.round(Number(item.summary.weight) || 0);
+
+                let displayE = 0;
+                if (unit === 'kcal') {
+                    displayE = Math.round(eVal);
+                } else {
+                    displayE = Math.round(eVal * 4.184); // Auto convert roughly or use utils if available
+                }
+
+                // Format: 模板1200kJ 模板300g
+                subtitle = `模板${displayE}${unit} 模板${wVal}g`;
             }
 
-            // 计算动态标题
-            const dynamicTitle = card.user_title || this._getDynamicCardTitle(card) || card.title;
-
-            cardsHtml += `
-                 <div class="card-item-recent" data-id="${card.id}" data-dialogue-id="${card.dialogue_id}">
-                     <span class="card-status-indicator ${card.status}"></span>
+            html += `
+                 <div class="card-item-recent quick-template-item" data-id="${item.id}" data-action="quick-template">
                      <div class="card-recent-left">
-                        <span class="card-icon">${typeIcon}</span>
+                        <span class="card-icon" style="filter: hue-rotate(45deg);">${typeIcon}</span>
                         <div class="card-info">
-                            <span class="card-title">${this.escapeHtml(dynamicTitle)}</span>
-                            <span class="card-time">${timeDisplay}</span>
+                            <span class="card-title"><span class="fav-star">⭐</span> ${title}</span>
+                            <span class="card-time">${subtitle}</span>
                         </div>
                      </div>
                      <div class="card-actions">
@@ -261,9 +302,9 @@ const SidebarModule = {
 
         return `
             <div class="recent-cards-section">
-                <div class="dialogue-section-title">最近分析记录</div>
+                <div class="dialogue-section-title">快捷记录 (Top 3)</div>
                 <div class="recent-cards-list">
-                    ${cardsHtml}
+                    ${html}
                 </div>
             </div>
         `;
@@ -313,6 +354,18 @@ const SidebarModule = {
         if (cardMenuBtn) {
             e.stopPropagation();
             const item = cardMenuBtn.closest('.card-item-nested, .card-item-recent');
+
+            if (item.classList.contains('quick-template-item')) {
+                const favId = item.dataset.id;
+                let currentTitle = '';
+                if (window.QuickInputModule && window.QuickInputModule.getFavorites) {
+                    const favs = window.QuickInputModule.getFavorites();
+                    const found = favs.find(f => f.id === favId);
+                    if (found) currentTitle = found.title;
+                }
+                this.showContextMenu(e, 'favorite', { id: favId, user_title: currentTitle, title: currentTitle });
+                return;
+            }
             const cardId = item.dataset.id;
             const dialogueId = item.dataset.dialogueId;
             // Need to find card object. This might be in recentCards OR need to be fetched/found if loaded.
@@ -341,6 +394,17 @@ const SidebarModule = {
                 window.Dashboard.loadDialogue(dialogueId);
             }
             this.render();
+            return;
+        }
+
+        const quickTemplate = e.target.closest('[data-action="quick-template"]');
+        if (quickTemplate) {
+            const cardId = quickTemplate.dataset.id;
+            if (window.QuickInputModule) {
+                window.QuickInputModule.executeFavorite(cardId);
+                // Close mobile sidebar
+                document.body.classList.remove('sidebar-open');
+            }
             return;
         }
 
@@ -396,7 +460,11 @@ const SidebarModule = {
         this.menuState.targetType = type;
         this.menuState.targetObject = object;
 
-        title.textContent = type === 'dialogue' ? '重命名对话' : '重命名分析结果';
+        if (type === 'favorite') {
+            title.textContent = '重命名快捷餐食';
+        } else {
+            title.textContent = type === 'dialogue' ? '重命名对话' : '重命名分析结果';
+        }
         input.value = object.user_title || (type === 'dialogue' ? '' : object.title) || ''; // Prefill logic
         // If it's a proxy object from nested card, user_title might be the full displayed title. 
         // It's acceptable for now to prefill with whatever we have.
@@ -424,6 +492,10 @@ const SidebarModule = {
             if (targetType === 'dialogue') {
                 await API.updateDialogue(targetObject.id, { user_title: newTitle });
                 await this.loadDialogues(); // Refresh sidebar
+            } else if (targetType === 'favorite') {
+                if (window.QuickInputModule && window.QuickInputModule.renameFavorite) {
+                    window.QuickInputModule.renameFavorite(targetObject.id, newTitle);
+                }
             } else {
                 // Card
                 // We need to fetch the full card to update it properly if we use the full update endpoint, 
@@ -491,6 +563,13 @@ const SidebarModule = {
         }
     },
 
+    _getFavMark(cardId) {
+        if (window.QuickInputModule && window.QuickInputModule.isFavorite && window.QuickInputModule.isFavorite(cardId)) {
+            return '<span class="fav-star">⭐</span>';
+        }
+        return '';
+    },
+
     /**
      * 切换对话折叠状态
      */
@@ -540,7 +619,7 @@ const SidebarModule = {
                     <div class="card-nested-left">
                         <span class="card-icon">${typeIcon}</span>
                         <div class="card-info">
-                            <span class="card-title">${this.escapeHtml(dynamicTitle)}</span>
+                            <span class="card-title">${this._getFavMark(card.id)} ${this.escapeHtml(dynamicTitle)}</span>
                             <span class="card-time">${timeDisplay}</span>
                         </div>
                     </div>
@@ -569,6 +648,10 @@ const SidebarModule = {
         if (el) el.classList.add('active');
 
         this.currentDialogueId = dialogueId;
+
+        // Close mobile sidebar
+        document.body.classList.remove('sidebar-open');
+
         // 通知 Dashboard 加载卡片
         if (window.Dashboard && window.Dashboard.loadCard) {
             window.Dashboard.loadCard(cardId);
@@ -599,6 +682,10 @@ const SidebarModule = {
                 <div class="history-item placeholder">暂无记录</div>
             </div>
         `;
+    },
+
+    refreshFavorites() {
+        this.render();
     },
 
     getStatusIcon(status) {

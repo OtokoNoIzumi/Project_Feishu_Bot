@@ -210,6 +210,50 @@ const DietEditModule = {
         }
     },
 
+    // 快捷修改重量 (Quick Record Inline Edit)
+    updateQuickWeight(dishIdx, ingIdx, value) {
+        const dish = this.currentDishes?.[dishIdx];
+        if (!dish || !dish.ingredients) return;
+        const ing = dish.ingredients[ingIdx];
+        if (!ing) return;
+
+        // Force Proportional Mode
+        ing._proportionalScale = true;
+
+        // Ensure density exists
+        if (!ing._density && Number(ing.weight_g) > 0) {
+            const m = ing.macros || {};
+            const w = Number(ing.weight_g);
+            ing._density = {
+                protein_per_g: (Number(m.protein_g) || 0) / w,
+                fat_per_g: (Number(m.fat_g) || 0) / w,
+                carbs_per_g: (Number(m.carbs_g) || 0) / w,
+                sodium_per_g: (Number(m.sodium_mg) || 0) / w,
+                fiber_per_g: (Number(m.fiber_g) || 0) / w,
+                energy_per_g: (Number(ing.energy_kj) || 0) / w
+            };
+        }
+
+        // Call Standard Update (Updates Model + Recalculates Totals)
+        this.updateIngredient(dishIdx, ingIdx, 'weight_g', value);
+
+        // Manual DOM Update for List (to avoid full re-render losing focus)
+        const card = document.querySelector(`.mobile-dish-card[data-dish-index="${dishIdx}"][data-ing-index="${ingIdx}"]`);
+        if (card) {
+            const r = (n) => Math.round(n * 10) / 10;
+            const m = ing.macros || {};
+            const macrosSpan = card.querySelector('.js-mobile-macros');
+            if (macrosSpan) {
+                macrosSpan.textContent = `蛋白:${r(m.protein_g)} 脂肪:${r(m.fat_g)} 碳水:${r(m.carbs_g)}`;
+            }
+            const energySpan = card.querySelector('.js-mobile-energy');
+            if (energySpan) {
+                const unit = this.getEnergyUnit();
+                energySpan.textContent = `${this.formatEnergyFromMacros(m.protein_g, m.fat_g, m.carbs_g)} ${unit}`;
+            }
+        }
+    },
+
     // 委托给 EnergyUtils (为了方便内部调用)
     formatEnergyFromMacros(p, f, c) {
         return EnergyUtils.formatEnergyFromMacros(p, f, c, this.getEnergyUnit());

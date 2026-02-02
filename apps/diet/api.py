@@ -10,7 +10,7 @@ import logging
 import json
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, File, Form, Header, UploadFile, HTTPException
+from fastapi import APIRouter, Depends, File, Form, UploadFile, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -22,17 +22,22 @@ from apps.common.utils import (
     read_upload_files,
 )
 from apps.deps import get_current_user_id, require_auth
-from apps.diet.context_provider import get_context_bundle
+from apps.diet.context_provider import get_context_bundle, _calculate_today_so_far
+from apps.diet.template_service import DietTemplateService, DietTemplate
+
+
 from apps.diet.usecases.advice import DietAdviceUsecase
 from apps.diet.usecases.analyze import DietAnalyzeUsecase
 from apps.llm_runtime import get_global_semaphore, get_model_limiter
 from apps.settings import BackendSettings
 from libs.utils.rate_limiter import AsyncRateLimiter
 from libs.llm_gemini.gemini_client import StreamError
+
 logger = logging.getLogger(__name__)
 
 
 # --- Request Models (user_id 已移除，改用 Header 注入) ---
+
 
 class DietAnalyzeRequest(BaseModel):
     """Request model for diet analysis."""
@@ -57,9 +62,11 @@ class DietAdviceRequest(BaseModel):
 
     facts: Dict[str, Any]
     user_note: str = Field(default="", description="用户输入（可选，用于理解用户意图）")
-    dialogue_id: Optional[str] = Field(default=None, description="当前的对话ID（用于获取上下文历史）")
+    dialogue_id: Optional[str] = Field(
+        default=None, description="当前的对话ID（用于获取上下文历史）"
+    )
     images_b64: List[str] = []
-    
+
 
 class DietAdviceResponse(BaseModel):
     """Response model for diet advice."""
@@ -76,6 +83,19 @@ class DietHistoryResponse(BaseModel):
     success: bool
     records: List[Dict[str, Any]] = []
     error: Optional[str] = None
+
+
+class DietSummaryResponse(BaseModel):
+    """Response model for daily summary."""
+
+    success: bool
+    summary: Dict[str, float]
+
+
+class DietTemplateUpdate(BaseModel):
+    """Request model for updating diet template."""
+
+    title: str
 
 
 def build_diet_router(settings: BackendSettings) -> APIRouter:
@@ -111,7 +131,7 @@ def build_diet_router(settings: BackendSettings) -> APIRouter:
 
         # [Limit Check] Single Batch Size
         if len(images_bytes) > 10:
-             return DietAnalyzeResponse(
+            return DietAnalyzeResponse(
                 success=False, error="单次请求最多支持 10 张图片，请分批上传"
             )
 
@@ -119,26 +139,36 @@ def build_diet_router(settings: BackendSettings) -> APIRouter:
         # [Access Check] - Text/Basic Analyze Limit
         access = Gatekeeper.check_access(user_id, "analyze")
         if not access["allowed"]:
-             raise HTTPException(
-                 status_code=403, 
-                 detail={
-                     "code": access.get("code", "FORBIDDEN"),
-                     "message": access["reason"],
-                     "metadata": {k: v for k, v in access.items() if k not in ["allowed", "reason", "code"]}
-                 }
-             )
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "code": access.get("code", "FORBIDDEN"),
+                    "message": access["reason"],
+                    "metadata": {
+                        k: v
+                        for k, v in access.items()
+                        if k not in ["allowed", "reason", "code"]
+                    },
+                },
+            )
 
         # [Access Check] - Image Analyze Limit
         if images_bytes:
-            img_access = Gatekeeper.check_access(user_id, "image_analyze", amount=len(images_bytes))
+            img_access = Gatekeeper.check_access(
+                user_id, "image_analyze", amount=len(images_bytes)
+            )
             if not img_access["allowed"]:
                 raise HTTPException(
                     status_code=403,
                     detail={
                         "code": img_access.get("code", "DAILY_LIMIT_REACHED"),
                         "message": img_access.get("reason", "图片分析额度已用完"),
-                        "metadata": {k: v for k, v in img_access.items() if k not in ["allowed", "reason", "code"]}
-                    }
+                        "metadata": {
+                            k: v
+                            for k, v in img_access.items()
+                            if k not in ["allowed", "reason", "code"]
+                        },
+                    },
                 )
 
         # [Usage Log] Request Entrance
@@ -153,12 +183,14 @@ def build_diet_router(settings: BackendSettings) -> APIRouter:
             result = await analyze_uc.execute_with_image_bytes_async(
                 user_note=user_note, images_bytes=images_bytes, user_id=user_id
             )
-            
+
             # Record Usage on Success
             if isinstance(result, dict) and not result.get("error"):
-                 Gatekeeper.record_usage(user_id, "analyze")
-                 if images_bytes:
-                     Gatekeeper.record_usage(user_id, "image_analyze", amount=len(images_bytes))
+                Gatekeeper.record_usage(user_id, "analyze")
+                if images_bytes:
+                    Gatekeeper.record_usage(
+                        user_id, "image_analyze", amount=len(images_bytes)
+                    )
 
             if isinstance(result, dict) and result.get("error"):
                 return DietAnalyzeResponse(
@@ -198,16 +230,16 @@ def build_diet_router(settings: BackendSettings) -> APIRouter:
                     target_date_str = dt.strftime("%Y-%m-%d")
 
             context_bundle = get_context_bundle(
-                user_id=user_id, 
+                user_id=user_id,
                 target_date=target_date_str,
-                ignore_record_id=exclude_record_id  # Pass to exclude current record if editing
+                ignore_record_id=exclude_record_id,  # Pass to exclude current record if editing
             )
-            
+
             # [Optimization] 移除 recent_history 以防止 Card Version 数据膨胀
             # 前端展示历史通过 /api/diet/history 独立获取，无需在每次 analyze result 中冗余存储快照
             if "recent_history" in context_bundle:
                 del context_bundle["recent_history"]
-                
+
             result["context"] = context_bundle
 
             return DietAnalyzeResponse(
@@ -283,24 +315,30 @@ def build_diet_router(settings: BackendSettings) -> APIRouter:
         # [Access Check]
         access = Gatekeeper.check_access(user_id, "advice")
         if not access["allowed"]:
-             raise HTTPException(
-                 status_code=403, 
-                 detail={
-                     "code": access.get("code", "FORBIDDEN"),
-                     "message": access["reason"],
-                     "metadata": {k: v for k, v in access.items() if k not in ["allowed", "reason", "code"]}
-                 }
-             )
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "code": access.get("code", "FORBIDDEN"),
+                    "message": access["reason"],
+                    "metadata": {
+                        k: v
+                        for k, v in access.items()
+                        if k not in ["allowed", "reason", "code"]
+                    },
+                },
+            )
 
         # Image Processing & Soft Limit Check
         images_bytes = decode_images_b64(req.images_b64)
         warning_message = None
-        
+
         if len(images_bytes) > 10:
-             return DietAdviceResponse(success=False, error="单次请求最多支持 10 张图片")
+            return DietAdviceResponse(success=False, error="单次请求最多支持 10 张图片")
 
         if images_bytes:
-            img_access = Gatekeeper.check_access(user_id, "image_analyze", amount=len(images_bytes))
+            img_access = Gatekeeper.check_access(
+                user_id, "image_analyze", amount=len(images_bytes)
+            )
             if not img_access["allowed"]:
                 # Soft Limit: Clear images but allow text advice to proceed
                 images_bytes = []
@@ -309,22 +347,26 @@ def build_diet_router(settings: BackendSettings) -> APIRouter:
         async with semaphore:
             await limiter.check_and_wait()
             advice = await advice_uc.execute_async(
-                user_id=user_id, 
-                facts=req.facts, 
+                user_id=user_id,
+                facts=req.facts,
                 user_note=req.user_note,
                 dialogue_id=req.dialogue_id,
                 images=images_bytes,
             )
-            print('test-advice', advice)
+            print("test-advice", advice)
             if isinstance(advice, dict) and advice.get("error"):
                 return DietAdviceResponse(success=False, error=str(advice.get("error")))
-            
+
             Gatekeeper.record_usage(user_id, "advice")
             # Record image usage only if images were actually processed
             if images_bytes:
-                Gatekeeper.record_usage(user_id, "image_analyze", amount=len(images_bytes))
-                
-            return DietAdviceResponse(success=True, result=advice, warning=warning_message)
+                Gatekeeper.record_usage(
+                    user_id, "image_analyze", amount=len(images_bytes)
+                )
+
+            return DietAdviceResponse(
+                success=True, result=advice, warning=warning_message
+            )
 
     @router.get(
         "/api/diet/history",
@@ -354,6 +396,24 @@ def build_diet_router(settings: BackendSettings) -> APIRouter:
 
         return DietHistoryResponse(success=True, records=records)
 
+    @router.get(
+        "/api/diet/summary/today",
+        response_model=DietSummaryResponse,
+        dependencies=[Depends(auth_dep)],
+    )
+    async def diet_summary_today(
+        user_id: str = Depends(get_current_user_id), date: Optional[str] = None
+    ):
+        """
+        获取指定日期（默认今日）的累积摄入概览
+        使用与 ContextProvider 一致的计算逻辑
+        """
+        summary = _calculate_today_so_far(
+            user_id=user_id, target_date=date, ignore_record_id=None
+        )
+
+        return DietSummaryResponse(success=True, summary=summary)
+
     @router.post(
         "/api/diet/advice_stream",
         dependencies=[Depends(auth_dep)],
@@ -368,62 +428,117 @@ def build_diet_router(settings: BackendSettings) -> APIRouter:
         # [Access Check]
         access = Gatekeeper.check_access(user_id, "advice")
         if not access["allowed"]:
-             raise HTTPException(
-                 status_code=403, 
-                 detail={
-                     "code": access.get("code", "FORBIDDEN"),
-                     "message": access["reason"],
-                     "metadata": {k: v for k, v in access.items() if k not in ["allowed", "reason", "code"]}
-                 }
-             )
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "code": access.get("code", "FORBIDDEN"),
+                    "message": access["reason"],
+                    "metadata": {
+                        k: v
+                        for k, v in access.items()
+                        if k not in ["allowed", "reason", "code"]
+                    },
+                },
+            )
 
         # Image Processing & Soft Limit Check
         images_bytes = decode_images_b64(req.images_b64)
-        
+
         if len(images_bytes) > 10:
-             raise HTTPException(status_code=400, detail="单次请求最多支持 10 张图片")
+            raise HTTPException(status_code=400, detail="单次请求最多支持 10 张图片")
 
         if images_bytes:
-            img_access = Gatekeeper.check_access(user_id, "image_analyze", amount=len(images_bytes))
+            img_access = Gatekeeper.check_access(
+                user_id, "image_analyze", amount=len(images_bytes)
+            )
             if not img_access["allowed"]:
                 # Soft Limit: Clear images but allow text advice to proceed
                 images_bytes = []
-                # Streaming doesn't easily support warning headers in mid-stream, 
+                # Streaming doesn't easily support warning headers in mid-stream,
                 # but we can just proceed with text-only.
                 # Ideally we could send a first chunk as meta, but let's keep it simple text stream for now.
 
         async def _stream_generator():
             async with semaphore:
                 await limiter.check_and_wait()
-                
+
                 # Usage Record (start)
                 Gatekeeper.record_usage(user_id, "advice")
                 if images_bytes:
-                    Gatekeeper.record_usage(user_id, "image_analyze", amount=len(images_bytes))
-                
+                    Gatekeeper.record_usage(
+                        user_id, "image_analyze", amount=len(images_bytes)
+                    )
+
                 try:
                     async for chunk in advice_uc.execute_stream_async(
-                        user_id=user_id, 
-                        facts=req.facts, 
+                        user_id=user_id,
+                        facts=req.facts,
                         user_note=req.user_note,
                         images=images_bytes,
                     ):
                         # Wrap chunk in JSON for SSE protocol
                         payload = json.dumps({"text": chunk}, ensure_ascii=False)
                         yield f"data: {payload}\n\n"
-
                 except Exception as e:
                     code = "ERR_STREAM_UNKNOWN"
                     if isinstance(e, StreamError):
                         code = e.code
-                        logger.error(f"Stream advice error (known): {e}")
+                        logger.error("Stream advice error (known): %s", e)
                     else:
-                         logger.error(f"Stream advice error (unknown): {e}")
+                        logger.error("Stream advice error (unknown): %s", e)
 
                     # Standard SSE Error Event (JSON)
                     error_payload = json.dumps({"code": code}, ensure_ascii=False)
                     yield f"event: error\ndata: {error_payload}\n\n"
 
         return StreamingResponse(_stream_generator(), media_type="text/event-stream")
+
+    # --- Template Management Endpoints ---
+    @router.get(
+        "/api/diet/templates",
+        response_model=List[DietTemplate],
+        dependencies=[Depends(auth_dep)],
+    )
+    async def get_diet_templates(user_id: str = Depends(get_current_user_id)):
+        """Get all diet templates for valid user."""
+        return DietTemplateService.load_templates(user_id)
+
+    @router.post(
+        "/api/diet/templates", response_model=bool, dependencies=[Depends(auth_dep)]
+    )
+    async def save_diet_template(
+        template: DietTemplate, user_id: str = Depends(get_current_user_id)
+    ):
+        """Save a new diet template."""
+        DietTemplateService.add_template(user_id, template)
+        return True
+
+    @router.delete(
+        "/api/diet/templates/{template_id}",
+        response_model=bool,
+        dependencies=[Depends(auth_dep)],
+    )
+    async def delete_diet_template(
+        template_id: str, user_id: str = Depends(get_current_user_id)
+    ):
+        """Delete a diet template."""
+        DietTemplateService.remove_template(user_id, template_id)
+        return True
+
+    @router.patch(
+        "/api/diet/templates/{template_id}",
+        response_model=bool,
+        dependencies=[Depends(auth_dep)],
+    )
+    async def update_diet_template(
+        template_id: str,
+        update: DietTemplateUpdate,
+        user_id: str = Depends(get_current_user_id),
+    ):
+        """Update a diet template (e.g. rename)."""
+        DietTemplateService.update_template(
+            user_id, template_id, {"title": update.title}
+        )
+        return True
 
     return router

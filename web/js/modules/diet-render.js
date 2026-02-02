@@ -77,7 +77,17 @@ const DietRenderModule = {
         <div class="result-card-header">
           <div class="result-icon-container">${window.IconManager ? window.IconManager.render('meal') : '<img src="css/icons/bowl.png" class="hand-icon icon-sticker">'}</div>
           <div>
-            <div class="result-card-title">${summary.mealName}</div>
+            <div class="result-card-title" style="display: flex; align-items: center; gap: 8px;">
+                ${summary.mealName}
+                 <!-- Protein Efficiency Mark Button (Demo) -->
+                ${(!session.isQuickRecord || session.isSaved) && typeof Auth !== 'undefined' && !Auth.isDemoMode() ? `
+                <button class="btn-icon-only" onclick="QuickInputModule.toggleFavorite(Dashboard.currentSession)" title="收藏为快捷模板" style="font-size: 1.1em; cursor: pointer; background: none; border: none; padding: 4px; border-radius: 50%; transition: background 0.1s;">
+                   ${window.QuickInputModule && window.QuickInputModule.isFavorite(session.id) ? '⭐' : '☆'}
+                </button>
+                <button class="btn-icon-only" onclick="QuickInputModule.markProtein(Dashboard.currentSession)" title="标记蛋白效力/价格" style="font-size: 1.1em; cursor: pointer; background: none; border: none; padding: 4px; border-radius: 50%; transition: background 0.1s;">
+                   💰
+                </button>` : ''}
+            </div>
             <div class="result-card-subtitle" id="diet-subtitle" style="display:flex; flex-wrap:wrap; align-items:center; column-gap: 8px; row-gap: 6px; margin-top: 4px;">
               <span id="diet-dish-count" style="white-space:nowrap;">${this.currentDishes.length} 种食物</span>
               <span style="color:var(--color-text-muted); opacity: 0.5;">·</span>
@@ -132,6 +142,7 @@ const DietRenderModule = {
         </div>
 
 
+        ${(version.advice || version.adviceLoading || version.adviceError || (version.parsedData && (version.parsedData.advice || version.parsedData.userNoteProcess))) ? `
         <div id="advice-section" class="advice-section">
           <div class="advice-header">
             <div class="dishes-title" style="display: flex; align-items: center; gap: 8px;">
@@ -150,7 +161,7 @@ const DietRenderModule = {
                 </div>
              </div>
           </div>
-        </div>
+        </div>` : ''}
 
         <div class="dishes-section">
           <div class="dishes-title">食物明细</div>
@@ -160,9 +171,9 @@ const DietRenderModule = {
 
         <div class="note-section">
           <div class="dishes-title">文字说明</div>
-          <textarea id="additional-note" class="note-input" placeholder="补充或修正说明...">${currentNote}</textarea>
+          <textarea id="additional-note" class="note-input" placeholder="补充或修正说明..." onfocus="this.select()">${currentNote}</textarea>
         </div>
-
+        
         ${data.capturedLabels && data.capturedLabels.length > 0 ? `
         <div class="labels-section">
           <div class="labels-header" onclick="Dashboard.toggleLabelsSection()">
@@ -175,21 +186,21 @@ const DietRenderModule = {
                 <div class="label-edit-row">
                   <div class="label-edit-field label-edit-primary">
                     <label>产品名称</label>
-                    <input type="text" class="label-input" value="${lb.productName}" placeholder="产品名称" oninput="Dashboard.updateLabel(${idx}, 'productName', this.value)">
+                    <input type="text" class="label-input" value="${lb.productName}" placeholder="产品名称" oninput="Dashboard.updateLabel(${idx}, 'productName', this.value)" onfocus="this.select()">
                   </div>
                   <div class="label-edit-field">
                     <label>品牌</label>
-                    <input type="text" class="label-input" value="${lb.brand}" placeholder="品牌" oninput="Dashboard.updateLabel(${idx}, 'brand', this.value)">
+                    <input type="text" class="label-input" value="${lb.brand}" placeholder="品牌" oninput="Dashboard.updateLabel(${idx}, 'brand', this.value)" onfocus="this.select()">
                   </div>
                 </div>
                 <div class="label-edit-row">
                   <div class="label-edit-field">
                     <label>规格/口味</label>
-                    <input type="text" class="label-input" value="${lb.variant}" placeholder="如：无糖/低脂" oninput="Dashboard.updateLabel(${idx}, 'variant', this.value)">
+                    <input type="text" class="label-input" value="${lb.variant}" placeholder="如：无糖/低脂" oninput="Dashboard.updateLabel(${idx}, 'variant', this.value)" onfocus="this.select()">
                   </div>
                   <div class="label-edit-field">
                     <label>每份</label>
-                    <input type="text" class="label-input label-input-sm" value="${lb.servingSize}" placeholder="100g" oninput="Dashboard.updateLabel(${idx}, 'servingSize', this.value)">
+                    <input type="text" class="label-input label-input-sm" value="${lb.servingSize}" placeholder="100g" oninput="Dashboard.updateLabel(${idx}, 'servingSize', this.value)" onfocus="this.select()">
                   </div>
                 </div>
                 <div class="label-macros-display">
@@ -202,7 +213,7 @@ const DietRenderModule = {
                 </div>
                 <div class="label-edit-field label-edit-full">
                   <label>备注</label>
-                  <input type="text" class="label-input" value="${lb.customNote}" placeholder="如：密度 1.033, 实测数据等" oninput="Dashboard.updateLabel(${idx}, 'customNote', this.value)">
+                  <input type="text" class="label-input" value="${lb.customNote}" placeholder="如：密度 1.033, 实测数据等" oninput="Dashboard.updateLabel(${idx}, 'customNote', this.value)" onfocus="this.select()">
                 </div>
               </div>
             `).join('')}
@@ -290,14 +301,14 @@ const DietRenderModule = {
       const energyText = this.formatEnergyFromMacros(d.protein, d.fat, d.carb);
       return `
                   <tr data-dish-index="${i}">
-                    <td><input type="text" class="cell-input" value="${d.name}" oninput="Dashboard.updateDish(${i}, 'name', this.value)"></td>
+                    <td><input type="text" class="cell-input" value="${d.name}" oninput="Dashboard.updateDish(${i}, 'name', this.value)" onfocus="this.select()"></td>
                     <td><input type="text" class="cell-input num cell-readonly js-energy-display" value="${energyText}" readonly tabindex="-1"></td>
-                    <td><input type="number" class="cell-input num" value="${d.protein ?? 0}" min="0" step="0.1" oninput="Dashboard.updateDish(${i}, 'protein', this.value)"></td>
-                    <td><input type="number" class="cell-input num" value="${d.fat ?? 0}" min="0" step="0.1" oninput="Dashboard.updateDish(${i}, 'fat', this.value)"></td>
-                    <td><input type="number" class="cell-input num" value="${d.carb ?? 0}" min="0" step="0.1" oninput="Dashboard.updateDish(${i}, 'carb', this.value)"></td>
-                    <td><input type="number" class="cell-input num" value="${d.fiber ?? 0}" min="0" step="0.1" oninput="Dashboard.updateDish(${i}, 'fiber', this.value)"></td>
-                    <td><input type="number" class="cell-input num" value="${d.sodium_mg ?? 0}" min="0" step="1" oninput="Dashboard.updateDish(${i}, 'sodium_mg', this.value)"></td>
-                    <td><input type="number" class="cell-input num" value="${d.weight ?? 0}" min="0" step="0.1" oninput="Dashboard.updateDish(${i}, 'weight', this.value)"></td>
+                    <td><input type="number" class="cell-input num" value="${d.protein ?? 0}" min="0" step="0.1" oninput="Dashboard.updateDish(${i}, 'protein', this.value)" onfocus="this.select()"></td>
+                    <td><input type="number" class="cell-input num" value="${d.fat ?? 0}" min="0" step="0.1" oninput="Dashboard.updateDish(${i}, 'fat', this.value)" onfocus="this.select()"></td>
+                    <td><input type="number" class="cell-input num" value="${d.carb ?? 0}" min="0" step="0.1" oninput="Dashboard.updateDish(${i}, 'carb', this.value)" onfocus="this.select()"></td>
+                    <td><input type="number" class="cell-input num" value="${d.fiber ?? 0}" min="0" step="0.1" oninput="Dashboard.updateDish(${i}, 'fiber', this.value)" onfocus="this.select()"></td>
+                    <td><input type="number" class="cell-input num" value="${d.sodium_mg ?? 0}" min="0" step="1" oninput="Dashboard.updateDish(${i}, 'sodium_mg', this.value)" onfocus="this.select()"></td>
+                    <td><input type="number" class="cell-input num" value="${d.weight ?? 0}" min="0" step="0.1" oninput="Dashboard.updateDish(${i}, 'weight', this.value)" onfocus="this.select()"></td>
                     <td><button class="cell-remove" onclick="Dashboard.removeDish(${i})">×</button></td>
                   </tr>
                 `;
@@ -378,12 +389,12 @@ const DietRenderModule = {
                       <tr data-ing-index="${j}">
                         <td><input type="text" class="cell-input cell-readonly" value="${ing.name_zh || ''}" ${ro}></td>
                         <td><input type="text" class="cell-input num cell-readonly js-energy-display" value="${e}" ${ro}></td>
-                        <td><input type="number" class="cell-input num js-ing-field" data-field="protein_g" value="${ing.macros?.protein_g ?? 0}" min="0" step="0.1" ${dis} oninput="Dashboard.updateIngredient(${i}, ${j}, 'protein_g', this.value)"></td>
-                        <td><input type="number" class="cell-input num js-ing-field" data-field="fat_g" value="${ing.macros?.fat_g ?? 0}" min="0" step="0.1" ${dis} oninput="Dashboard.updateIngredient(${i}, ${j}, 'fat_g', this.value)"></td>
-                        <td><input type="number" class="cell-input num js-ing-field" data-field="carbs_g" value="${ing.macros?.carbs_g ?? 0}" min="0" step="0.1" ${dis} oninput="Dashboard.updateIngredient(${i}, ${j}, 'carbs_g', this.value)"></td>
-                        <td><input type="number" class="cell-input num js-ing-field" data-field="fiber_g" value="${ing.macros?.fiber_g ?? 0}" min="0" step="0.1" ${dis} oninput="Dashboard.updateIngredient(${i}, ${j}, 'fiber_g', this.value)"></td>
-                        <td><input type="number" class="cell-input num js-ing-field" data-field="sodium_mg" value="${ing.macros?.sodium_mg ?? 0}" min="0" step="1" ${dis} oninput="Dashboard.updateIngredient(${i}, ${j}, 'sodium_mg', this.value)"></td>
-                        <td><input type="number" class="cell-input num js-ing-field" data-field="weight_g" value="${ing.weight_g ?? 0}" min="0" step="0.1" ${dis} oninput="Dashboard.updateIngredient(${i}, ${j}, 'weight_g', this.value)"></td>
+                        <td><input type="number" class="cell-input num js-ing-field" data-field="protein_g" value="${ing.macros?.protein_g ?? 0}" min="0" step="0.1" ${dis} oninput="Dashboard.updateIngredient(${i}, ${j}, 'protein_g', this.value)" onfocus="this.select()"></td>
+                        <td><input type="number" class="cell-input num js-ing-field" data-field="fat_g" value="${ing.macros?.fat_g ?? 0}" min="0" step="0.1" ${dis} oninput="Dashboard.updateIngredient(${i}, ${j}, 'fat_g', this.value)" onfocus="this.select()"></td>
+                        <td><input type="number" class="cell-input num js-ing-field" data-field="carbs_g" value="${ing.macros?.carbs_g ?? 0}" min="0" step="0.1" ${dis} oninput="Dashboard.updateIngredient(${i}, ${j}, 'carbs_g', this.value)" onfocus="this.select()"></td>
+                        <td><input type="number" class="cell-input num js-ing-field" data-field="fiber_g" value="${ing.macros?.fiber_g ?? 0}" min="0" step="0.1" ${dis} oninput="Dashboard.updateIngredient(${i}, ${j}, 'fiber_g', this.value)" onfocus="this.select()"></td>
+                        <td><input type="number" class="cell-input num js-ing-field" data-field="sodium_mg" value="${ing.macros?.sodium_mg ?? 0}" min="0" step="1" ${dis} oninput="Dashboard.updateIngredient(${i}, ${j}, 'sodium_mg', this.value)" onfocus="this.select()"></td>
+                        <td><input type="number" class="cell-input num js-ing-field" data-field="weight_g" value="${ing.weight_g ?? 0}" min="0" step="0.1" ${dis} oninput="Dashboard.updateIngredient(${i}, ${j}, 'weight_g', this.value)" onfocus="this.select()"></td>
                         <td><button class="scale-toggle-btn ${ing._proportionalScale ? 'active' : ''}" onclick="Dashboard.toggleProportionalScale(${i}, ${j})" title="${ing._proportionalScale ? '比例模式：修改重量会等比调整营养素' : '独立模式：点击开启比例联动'}">${ing._proportionalScale ? '⚖' : '⚖'}</button></td>
                       </tr>
                     `;
@@ -516,15 +527,28 @@ const DietRenderModule = {
         // 中文宏量标签
         const macrosSummary = `蛋白:${r(m.protein_g)} 脂肪:${r(m.fat_g)} 碳水:${r(m.carbs_g)}`;
 
+        // Inline Input Logic
+        const isQuick = true; // Enabled for all AI ingredients on mobile
+        const weightDisplay = isQuick ?
+          `<div class="mobile-input-container" onclick="event.stopPropagation()">
+                <input type="number" value="${ing.weight_g || 0}"
+                       class="quick-weight-input"
+                       style="width: 50px; font-weight: 600; color: var(--color-accent-primary); border: 1px solid var(--color-border); border-radius: 4px; padding: 2px 0; text-align: center; background: rgba(255,255,255,0.9);"
+                       onfocus="this.select()"
+                       onchange="Dashboard.updateQuickWeight(${i}, ${j}, this.value)" />
+                <span style="font-size:0.8em; margin-left:2px; color:var(--color-text-secondary);">g</span>
+             </div>`
+          : `<span style="font-weight:600; color:var(--color-text-primary)">${ing.weight_g || 0}g</span>`;
+
         return `
-                    <div class="mobile-dish-card" onclick="Dashboard.openMobileDishEditor(${i}, ${j})">
+                    <div class="mobile-dish-card" data-dish-index="${i}" data-ing-index="${j}" onclick="Dashboard.openMobileDishEditor(${i}, ${j})">
                         <div class="mobile-dish-row">
                             <span class="mobile-dish-name">${ing.name_zh || '未命名'}</span>
-                            <span class="mobile-dish-energy">${e} ${unit}</span>
+                            <span class="mobile-dish-energy js-mobile-energy">${e} ${unit}</span>
                         </div>
                         <div class="mobile-dish-details">
-                             <span style="font-weight:600; color:var(--color-text-primary)">${ing.weight_g || 0}g</span>
-                             <span class="mobile-dish-macros">${macrosSummary}</span>
+                             ${weightDisplay}
+                             <span class="mobile-dish-macros js-mobile-macros">${macrosSummary}</span>
                              <span class="mobile-edit-icon">
                                 ${window.IconManager ? window.IconManager.render('pencil', '14px') : '✎'}
                                 编辑
@@ -810,12 +834,7 @@ const DietRenderModule = {
       html += `<div class="advice-error">⚠️ 定制建议获取失败：${version.adviceError}</div>`;
     }
 
-    // 5. Empty State
-    if (html.trim()) {
-      return html;
-    }
-
-    return '<div class="advice-empty">暂无建议</div>';
+    return html;
   },
   // 渲染餐食类型选择器 (Stealth Select)
   renderMealTypeSelector(name, timeStr) {

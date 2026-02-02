@@ -291,14 +291,7 @@ const DashboardUIModule = {
                 <p>上传食物图片或输入描述开始分析</p>
                 
 
-                <div style="margin-top: 32px;">
-                    <button class="btn btn-primary" onclick="Dashboard.startQuickInput()" style="box-shadow: 0 4px 12px rgba(217, 119, 87, 0.3);">
-                        ${window.IconManager ? window.IconManager.render('notepad') : '+'} 快捷记录
-                    </button>
-                    <p style="font-size: 0.75rem; color: var(--color-text-muted); margin-top: 12px;">
-                        无需分析，直接手动添加常用餐食
-                    </p>
-                </div>
+
 
                 <div class="loading-tips-container static-tips" style="position: absolute; bottom: 48px; left: 50%; transform: translateX(-50%); width: 100%; max-width: 480px;">
                     <div class="tip-icon breathing-icon">${lightbulbIcon}</div>
