@@ -838,26 +838,27 @@ const DietRenderModule = {
   },
   // 渲染餐食类型选择器 (Stealth Select)
   renderMealTypeSelector(name, timeStr) {
-    const raw = (name || '').toLowerCase().trim();
+    const t = (timeStr || '').toLowerCase().trim();
+    const n = (name || '').toLowerCase().trim();
+
     let selected = 'snack'; // default fallback
 
-    // 1. 尝试映射已知类型
-    if (raw.includes('break') || raw.includes('早')) selected = 'breakfast';
-    else if (raw.includes('lunch') || raw.includes('午')) selected = 'lunch';
-    else if (raw.includes('din') || raw.includes('晚')) selected = 'dinner';
-    else if (raw.includes('snack') || raw.includes('加') || raw.includes('零')) selected = 'snack';
+    // 1. Priority: Explicit Time String (dietTime)
+    // Supports standard keys (breakfast) and Chinese (早餐) and Time format (08:00)
+    if (t === 'breakfast' || t.includes('break') || t.includes('早')) selected = 'breakfast';
+    else if (t === 'lunch' || t.includes('午')) selected = 'lunch';
+    else if (t === 'dinner' || t.includes('din') || t.includes('晚')) selected = 'dinner';
+    else if (t === 'snack' || t.includes('加') || t.includes('零')) selected = 'snack';
     else {
-      // 2. 如果 name 无法识别（可能是空或时间），尝试从 timeStr 推断
-      // 这里简单处理：如果有 name 就保留 name 作为自定义值，否则推断
-      // 为了简化，若无法识别则根据当前时间段推断（暂略，直接默认为午餐或保持原样）
-      if (!name && timeStr) {
-        const h = parseInt(timeStr.split(':')[0]);
-        if (!isNaN(h)) {
-          if (h >= 5 && h < 10) selected = 'breakfast';
-          else if (h >= 10 && h < 16) selected = 'lunch';
-          else if (h >= 16 && h < 22) selected = 'dinner';
-        }
+      // 2. Try parsing HH:MM from Time String
+      const h = parseInt(t.split(':')[0]);
+      if (!isNaN(h)) {
+        if (h >= 5 && h < 10) selected = 'breakfast';
+        else if (h >= 10 && h < 16) selected = 'lunch';
+        else if (h >= 16 && h < 22) selected = 'dinner';
+        else selected = 'snack';
       }
+      // No fallback to Name guessing
     }
 
     const options = [

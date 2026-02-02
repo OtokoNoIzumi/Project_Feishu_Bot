@@ -151,6 +151,15 @@ const Dashboard = {
     const text = this.el.chatInput?.value.trim() || '';
     if (!text && this.pendingImages.length === 0) return;
 
+    // Quick Input Interception
+    if (!this.pendingImages.length && window.QuickInputModule && window.QuickInputModule.handleQuickInput) {
+      const handled = await window.QuickInputModule.handleQuickInput(text);
+      if (handled) {
+        this.el.chatInput.value = '';
+        return;
+      }
+    }
+
     // Profile 模式：调用 ProfileModule.analyze
     if (this.view === 'profile') {
       await this.startProfileAnalysis(text);
@@ -375,8 +384,6 @@ const Dashboard = {
 
   // 委托给 DemoModule
   checkDemoLimit: function () { return window.DemoModule && window.DemoModule.checkDemoLimit ? window.DemoModule.checkDemoLimit() : false; },
-
-
 
   renderResult(session) {
     if (!session || session.versions.length === 0) {

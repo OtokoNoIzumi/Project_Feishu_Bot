@@ -247,12 +247,69 @@ const QuickInputModule = {
     },
 
 
+    /**
+     * Tries to handle input as a Quick Input command
+     * Returns true if handled, false otherwise.
+     */
+    async handleQuickInput(text) {
+        if (!text) return false;
+
+        const parts = text.trim().split(/\s+/);
+        if (parts.length === 0) return false;
+
+        let inputs = [];
+        let targetIndex = 0; // Default to first match (0-indexed)
+
+        // Check for Suffix Selector (e.g., #2 or /2)
+        const lastPart = parts[parts.length - 1];
+        if (parts.length > 1 && (lastPart.startsWith('#') || lastPart.startsWith('/'))) {
+            const idxVal = parseInt(lastPart.substring(1));
+            if (!isNaN(idxVal) && idxVal > 0) {
+                targetIndex = idxVal - 1;
+                parts.pop();
+            }
+        }
+
+        if (parts.some(p => isNaN(parseFloat(p)) || !isFinite(parseFloat(p)))) return false;
+        inputs = parts.map(p => parseFloat(p));
+
+        // 2. Find matching favorites by LEAF count (ingredients or dishes)
+        const favorites = this.getFavorites();
+
+        const candidates = favorites.filter(f => {
+            let count = 0;
+            if (f.templateData && f.templateData.dishes) {
+                // Use helper to count actual input slots
+                const leaves = this._getEditableLeaves(f.templateData.dishes);
+                count = leaves.length;
+            }
+            return count === inputs.length;
+        });
+
+        if (candidates.length === 0) return false;
+
+        // Select specific candidate
+        if (targetIndex >= candidates.length) {
+            if (window.ToastUtils) ToastUtils.show(`未找到第 ${targetIndex + 1} 个匹配模板 (共 ${candidates.length} 个)`, 'warning');
+            return true;
+        }
+
+        const match = candidates[targetIndex];
+        console.log('[QuickInput] Found match:', match.title, 'Inputs:', inputs);
+
+        // 3. Execute with Raw Inputs
+        await this.executeFavorite(match.id, inputs);
+        return true;
+    },
+
     // ================= Execution Logic =================
 
     /**
      * Execute a Favorite Card as a Template
+     * @param {string} favId 
+     * @param {Array<number>} quickInputValues - List of weight values to apply intelligently
      */
-    async executeFavorite(favId) {
+    async executeFavorite(favId, quickInputValues = null) {
         console.log('[QuickInput] executeFavorite called with ID:', favId);
         if (!window.Dashboard) return;
         const d = window.Dashboard;
@@ -262,20 +319,14 @@ const QuickInputModule = {
         // 1. Try to find in local favorites first
         const favorites = this.getFavorites();
         const localFav = favorites.find(f => f.id === favId);
-        console.log('[QuickInput] Found localFav:', localFav);
 
         let templateData = null;
         let sourceTitle = '';
 
         if (localFav && localFav.templateData) {
-            // Use local cached data
             templateData = localFav.templateData;
             sourceTitle = localFav.title;
-            // CHECK LOG: Is templateData valid?
-            console.log('[QuickInput] Using local templateData:', templateData);
         } else {
-            // Fallback: Fetch from API if it was a real card ID
-            console.log('[QuickInput] Fallback to API fetch for ID:', favId);
             try {
                 d.showLoading(true);
                 const card = await API.getCard(favId);
@@ -298,15 +349,47 @@ const QuickInputModule = {
         }
 
         // 2. Prepare new session data
+        // Deep clone first so we can modify freely
         const parsedDishes = templateData.dishes.map(dish => {
-            const newDish = this._normalizeDish(JSON.parse(JSON.stringify(dish)));
+            let newDish = this._normalizeDish(JSON.parse(JSON.stringify(dish)));
             if (newDish.id) delete newDish.id;
+            return newDish;
+        });
 
-            // Ensure ingredients are locked (proportional scale)
+        // 3. Apply Quick Inputs (Smart Mapping)
+        if (quickInputValues && Array.isArray(quickInputValues) && quickInputValues.length > 0) {
+            const leaves = this._getEditableLeaves(parsedDishes);
+
+            if (leaves.length === quickInputValues.length) {
+                // Sort both by weight to match "Small input -> Small item"
+                const labeledLeaves = leaves.map((leaf, idx) => ({ ...leaf, originalIdx: idx }));
+
+                labeledLeaves.sort((a, b) => a.weight - b.weight);
+                const sortedInputs = [...quickInputValues].sort((a, b) => a - b);
+
+                // Apply scaled weights to the *actual objects*
+                labeledLeaves.forEach((leafWrapper, sortIdx) => {
+                    const targetWeight = sortedInputs[sortIdx];
+                    this._scaleItem(leafWrapper.obj, targetWeight);
+                });
+
+                // Post-process: Recalculate Parent Dishes if ingredients were touched
+                parsedDishes.forEach(dish => {
+                    if (dish.ingredients && dish.ingredients.length > 0) {
+                        this._recalculateDishTotals(dish);
+                    }
+                });
+            } else {
+                console.warn('[QuickInput] Leaf count mismatch during execution. Expected:', leaves.length, 'Got:', quickInputValues.length);
+            }
+        }
+
+        // 4. Ensure ingredients are locked (proportional scale)
+        parsedDishes.forEach(newDish => {
             if (newDish.ingredients) {
                 newDish.ingredients.forEach(ing => {
                     ing._proportionalScale = true;
-                    // Calculate density for proportional scaling
+                    // Recalculate density based on CURRENT (possibly scaled) weight
                     const w = Number(ing.weight_g) || 0;
                     if (w > 0 && ing.macros) {
                         ing._density = {
@@ -320,10 +403,9 @@ const QuickInputModule = {
                     }
                 });
             }
-            return newDish;
         });
 
-        // 3. Create Session
+        // ---------------- Same Creation Logic ----------------
         if (!d.currentDialogueId) {
             try {
                 const diag = await API.createDialogue("快捷记录");
@@ -334,15 +416,14 @@ const QuickInputModule = {
         const session = d.createSession('', []);
         session.dialogueId = d.currentDialogueId;
         session.persistentCardId = window.DateFormatter ? window.DateFormatter.generateId('card') : `card-${Date.now()}`;
-        session.isQuickRecord = true; // Mark as Quick Record session
+        session.isQuickRecord = true;
         d.currentSession = session;
 
-        // 4. Construct Data
         const initialData = {
             type: 'diet',
             title: sourceTitle || '快捷记录',
             summary: {
-                mealName: sourceTitle || '快捷记录',
+                mealName: '快捷记录', // Always default to generic name so DietRender uses time
                 dietTime: this.guessDietTime(),
                 totalEnergy: 0, totalProtein: 0, totalCarbs: 0, totalFat: 0,
             },
@@ -350,27 +431,16 @@ const QuickInputModule = {
             advice: '',
             capturedLabels: [],
             context: {
-                today_so_far: {
-                    consumed_energy_kj: 0,
-                    consumed_protein_g: 0,
-                    consumed_fat_g: 0,
-                    consumed_carbs_g: 0,
-                    consumed_sodium_mg: 0,
-                    consumed_fiber_g: 0
-                },
+                today_so_far: { consumed_energy_kj: 0, consumed_protein_g: 0, consumed_fat_g: 0, consumed_carbs_g: 0, consumed_sodium_mg: 0, consumed_fiber_g: 0 },
                 user_target: window.Dashboard.currentUserTarget || {}
             }
         };
 
-        // 5. Version
         session.versions.push({
             number: 1,
             createdAt: new Date(),
             userNote: '',
-            rawResult: {
-                dishes: parsedDishes,
-                context: initialData.context
-            },
+            rawResult: { dishes: parsedDishes, context: initialData.context },
             parsedData: initialData,
             advice: '',
             adviceLoading: false,
@@ -378,30 +448,23 @@ const QuickInputModule = {
         });
         session.currentVersion = 1;
 
-        // 6. Force Expand AI Dishes
         if (!d.dietIngredientsCollapsed) d.dietIngredientsCollapsed = {};
         parsedDishes.forEach((dishItem, idx) => {
             if (!dishItem.id) dishItem.id = Date.now() + idx;
-            if (dishItem.source === 'ai') {
-                d.dietIngredientsCollapsed[dishItem.id] = false;
-            }
+            if (dishItem.source === 'ai') d.dietIngredientsCollapsed[dishItem.id] = false;
         });
 
-        // 7. Render
         d.updateStatus('');
         d.renderResult(session);
 
-        // 8. Fetch Today's Summary
         if (API.getTodaySummary) {
             API.getTodaySummary().then(resp => {
                 if (resp.success && resp.summary) {
-                    // Update context
                     initialData.context.today_so_far = resp.summary;
                     // Sync to rawResult for persistence
                     session.versions[0].rawResult.context = initialData.context;
                     if (d.currentSession === session) {
                         d.renderResult(session);
-
                         setTimeout(() => {
                             const firstInput = document.querySelector('.js-ing-field[data-field="weight_g"], .cell-input[oninput*="weight"]');
                             if (firstInput) firstInput.focus();
@@ -411,7 +474,6 @@ const QuickInputModule = {
             }).catch(e => console.warn('[QuickInput] Failed to fetch summary', e));
         }
 
-        // 9. Restore Input Focus (Immediate)
         setTimeout(() => {
             const firstInput = document.querySelector('.js-ing-field[data-field="weight_g"], .cell-input[oninput*="weight"]');
             if (firstInput) firstInput.focus();
@@ -424,8 +486,6 @@ const QuickInputModule = {
      * Ensures 'source' is set
      */
     _normalizeDish(dish) {
-        // Deep clone first if not already? Assumes input is mutable or clone.
-        // We just modify it.
         if (!dish.name && dish.standard_name) {
             dish.name = dish.standard_name;
         }
@@ -435,6 +495,106 @@ const QuickInputModule = {
             dish.source = (dish.ingredients && dish.ingredients.length > 0) ? 'ai' : 'user';
         }
         return dish;
+    },
+
+    /**
+     * Helper: Flatten dishes into editable leaves (Ingredients OR Dishes)
+     */
+    _getEditableLeaves(dishes) {
+        let leaves = [];
+        dishes.forEach(d => {
+            if (d.ingredients && d.ingredients.length > 0) {
+                d.ingredients.forEach(ing => {
+                    leaves.push({
+                        weight: Number(ing.weight_g) || 0,
+                        obj: ing,
+                        parent: d,
+                        type: 'ingredient'
+                    });
+                });
+            } else {
+                leaves.push({
+                    weight: Number(d.weight_g) || Number(d.weight) || 0,
+                    obj: d,
+                    parent: null,
+                    type: 'dish'
+                });
+            }
+        });
+        return leaves;
+    },
+
+    /**
+     * Scales any item (dish or ingredient)
+     */
+    _scaleItem(item, targetWeight) {
+        // Safe current weight
+        const w = Number(item.weight_g) || Number(item.weight) || 0;
+        if (w <= 0) {
+            item.weight_g = targetWeight;
+            if (item.hasOwnProperty('weight')) item.weight = targetWeight;
+            return;
+        }
+
+        const ratio = targetWeight / w;
+        const r1 = (v) => Math.round(v * 10) / 10;
+        const r0 = (v) => Math.round(v);
+
+        // Update Weight
+        if (item.hasOwnProperty('weight_g')) item.weight_g = r1(targetWeight);
+        if (item.hasOwnProperty('weight')) item.weight = r1(targetWeight); // user dish
+
+        // Update Macros
+        const apply = (obj) => {
+            ['energy_kj', 'sodium_mg', 'energy'].forEach(k => {
+                if (typeof obj[k] === 'number') obj[k] = r0(obj[k] * ratio);
+            });
+            ['protein_g', 'fat_g', 'carbs_g', 'fiber_g', 'protein', 'fat', 'carb', 'fiber'].forEach(k => { // mixed keys
+                if (typeof obj[k] === 'number') obj[k] = r1(obj[k] * ratio);
+            });
+        };
+
+        apply(item);
+        if (item.macros) apply(item.macros);
+    },
+
+    /**
+     * Re-sums dish totals based on ingredients
+     */
+    _recalculateDishTotals(dish) {
+        if (!dish.ingredients) return;
+
+        let e = 0, p = 0, f = 0, c = 0, fib = 0, na = 0, w = 0;
+        dish.ingredients.forEach(ing => {
+            w += Number(ing.weight_g) || 0;
+            e += Number(ing.energy_kj) || 0;
+            if (ing.macros) {
+                p += Number(ing.macros.protein_g) || 0;
+                f += Number(ing.macros.fat_g) || 0;
+                c += Number(ing.macros.carbs_g) || 0;
+                fib += Number(ing.macros.fiber_g) || 0;
+                na += Number(ing.macros.sodium_mg) || 0;
+            }
+        });
+
+        const r1 = (v) => Math.round(v * 10) / 10;
+        const r0 = (v) => Math.round(v);
+
+        dish.weight_g = r1(w);
+        dish.energy_kj = r0(e);
+        dish.protein_g = r1(p);
+        dish.fat_g = r1(f);
+        dish.carbs_g = r1(c);
+        dish.fiber_g = r1(fib);
+        dish.sodium_mg = r0(na);
+
+        if (dish.macros) {
+            dish.macros.protein_g = dish.protein_g;
+            dish.macros.fat_g = dish.fat_g;
+            dish.macros.carbs_g = dish.carbs_g;
+            dish.macros.fiber_g = dish.fiber_g;
+            dish.macros.sodium_mg = dish.sodium_mg;
+        }
     },
 
     // Legacy function for hardcoded template
@@ -477,7 +637,7 @@ const QuickInputModule = {
             type: 'diet',
             title: template.name,
             summary: {
-                mealName: template.name,
+                mealName: '快捷记录', // Always default to generic name so DietRender uses time
                 totalEnergy: 0, totalProtein: 0, totalCarbs: 0, totalFat: 0,
                 dietTime: this.guessDietTime()
             },
