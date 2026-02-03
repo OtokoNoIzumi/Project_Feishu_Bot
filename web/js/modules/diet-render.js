@@ -275,6 +275,17 @@ const DietRenderModule = {
       if (window.EditableNameModule && EditableNameModule.refreshNewBadges) {
         EditableNameModule.refreshNewBadges(wrap);
       }
+
+      // Bind Search for Mobile Inline Inputs
+      if (window.Dashboard && window.Dashboard.bindDishSearch) {
+        wrap.querySelectorAll('.js-mobile-search-input').forEach(input => {
+          const idx = input.dataset.index;
+          window.Dashboard.bindDishSearch(input, idx);
+          if (typeof this.adjustMobileDishNameInput === 'function') {
+            this.adjustMobileDishNameInput(input);
+          }
+        });
+      }
       return;
     }
 
@@ -304,6 +315,15 @@ const DietRenderModule = {
     if (window.EditableNameModule && EditableNameModule.refreshNewBadges) {
       EditableNameModule.refreshNewBadges(wrap);
     }
+  },
+
+  adjustMobileDishNameInput(input) {
+    if (!input) return;
+    input.style.height = 'auto';
+    const lineHeight = parseFloat(getComputedStyle(input).lineHeight) || 16;
+    const maxHeight = lineHeight * 2;
+    const target = Math.min(input.scrollHeight, maxHeight);
+    input.style.height = `${target}px`;
   },
 
   // 用户菜式共享表格渲染
@@ -463,10 +483,13 @@ const DietRenderModule = {
 
   renderDietDishesMobile() {
     // 注入样式
-    if (!document.getElementById('mobile-dish-editor-style')) {
-      const style = document.createElement('style');
-      style.id = 'mobile-dish-editor-style';
-      style.textContent = `
+    // 强制刷新样式 (移除旧的 ID 检查机制，确保最新 CSS 生效)
+    const oldStyle = document.getElementById('mobile-dish-editor-style');
+    if (oldStyle) oldStyle.remove();
+
+    const style = document.createElement('style');
+    style.id = 'mobile-dish-editor-style';
+    style.textContent = `
             .mobile-dish-card {
                 background: var(--color-bg-secondary, #fff);
                 border: 1px solid var(--color-border, #eee);
@@ -479,8 +502,82 @@ const DietRenderModule = {
             }
             .mobile-dish-card:active { transform: scale(0.98); }
             .mobile-dish-row { display: flex; justify-content: space-between; align-items: center; }
-            .mobile-dish-name { font-weight: 600; color: var(--color-text-primary); font-size: 1rem; }
-            .mobile-dish-energy { font-weight: bold; color: var(--color-accent-primary); font-size: 1rem; font-family: 'Patrick Hand', cursive; }
+
+            /* 统一处理长标题换行 (User Dishes & AI Dishes) */
+            .mobile-dish-name,
+            .mobile-dish-name-text,
+            .dishes-title .editable-name-text {
+                font-weight: 600;
+                color: var(--color-text-primary);
+                font-size: 1rem;
+                flex: 1;
+                margin-right: 8px;
+                overflow: hidden;
+                display: -webkit-box;
+                -webkit-line-clamp: 2;
+                -webkit-box-orient: vertical;
+                line-height: 1.35em;
+                word-break: break-word;
+                white-space: normal !important; /* Force wrap */
+                max-width: 100%;
+            }
+
+            /* Mobile Inline Input (User Dish) */
+            .mobile-dish-name-input {
+                font-weight: 600;
+                color: var(--color-text-primary);
+                font-size: 1rem;
+                flex: 1;
+                margin-right: 8px;
+                padding: 4px 0;
+                border: none;
+                border-bottom: 1px dashed var(--color-border);
+                background: transparent;
+                border-radius: 0;
+                width: 100%;
+                min-width: 0; /* Flexbox text overflow fix */
+                line-height: 1.35em;
+                min-height: 1.35em;
+                max-height: calc(1.35em * 2);
+                overflow: hidden;
+                resize: none;
+            }
+            .mobile-dish-name-input:focus {
+                outline: none;
+                border-bottom-color: var(--color-accent-primary, #d97757);
+            }
+
+            /* 修正 AI Dish Title 容器布局 */
+            .dishes-title {
+               display: flex;
+               align-items: center;
+               flex-wrap: wrap;
+               height: auto;
+               padding: 6px 10px;
+               background: var(--color-bg-tertiary, #f7f7f7);
+               border: 1px solid var(--color-border-light, #f0f0f0);
+               border-radius: 8px;
+            }
+            .dishes-title .editable-name {
+               flex: 1;
+               min-width: 0;
+            }
+            .dishes-title .editable-name-text {
+               font-size: 1.05rem;
+            }
+
+            /* AI Ingredient cards: indent + lighter emphasis */
+            .mobile-dish-card.ai-ingredient {
+               margin-left: 10px;
+               border-color: var(--color-border-light, #f0f0f0);
+               background: var(--color-bg-tertiary, #fafafa);
+            }
+            .mobile-dish-card.ai-ingredient .mobile-dish-name {
+               font-size: 0.95rem;
+               color: var(--color-text-secondary);
+            }
+
+            .mobile-dish-energy { font-weight: bold; color: var(--color-accent-primary); font-size: 1rem; font-family: 'Patrick Hand', cursive; white-space: nowrap; }
             .mobile-dish-details { margin-top: 8px; color: var(--color-text-secondary); font-size: 0.85rem; display: flex; gap: 12px; }
             .mobile-dish-macros { color: var(--color-text-muted); font-size: 0.8rem; flex: 1; }
             .mobile-edit-icon { color: var(--color-accent-primary); opacity: 0.8; font-size: 0.9em; display: flex; align-items: center; gap: 4px; }
@@ -503,6 +600,16 @@ const DietRenderModule = {
                 box-shadow: 0 10px 40px rgba(0,0,0,0.2);
                 animation: slideUp 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
             }
+            /* 搜索弹窗样式 - 确保在 Modal 之上 */
+            .diet-mobile-search-popup {
+                z-index: 10005 !important;
+                max-height: 200px;
+                overflow-y: auto;
+                background: var(--color-bg-secondary);
+                border: 1px solid var(--color-border);
+                box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+                border-radius: 8px;
+            }
             .editor-title { font-size: 1.2rem; font-weight: bold; margin-bottom: 20px; color: var(--color-text-primary); text-align: center; }
             .editor-field-group { margin-bottom: 16px; }
             /* Removed uppercase transform */
@@ -524,8 +631,7 @@ const DietRenderModule = {
             @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
             @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
         `;
-      document.head.appendChild(style);
-    }
+    document.head.appendChild(style);
 
     return `
       ${this.currentDishes.map((d, i) => {
@@ -537,11 +643,19 @@ const DietRenderModule = {
         const e = this.formatEnergyFromMacros(d.protein, d.fat, d.carb);
         const macros = `蛋白:${r(d.protein)} 脂肪:${r(d.fat)} 碳水:${r(d.carb)}`;
 
+        // 改用 Input 直接显示，绑定 click stopPropagation
         return `
              <div class="diet-mobile-group">
                  <div class="mobile-dish-card user-dish" onclick="Dashboard.openMobileUserDishEditor(${i})">
                      <div class="mobile-dish-row">
-                          <span class="mobile-dish-name">${d.name || '新添加菜品'}</span>
+                          <textarea class="mobile-dish-name-input js-mobile-search-input"
+                                    rows="1"
+                                    data-index="${i}"
+                                    placeholder="新添加菜品"
+                                    onclick="event.stopPropagation()"
+                                    onfocus="event.stopPropagation()"
+                                    onkeydown="if(event.key==='Enter'){event.preventDefault();}"
+                                    oninput="Dashboard.updateDish(${i}, 'name', this.value); Dashboard.adjustMobileDishNameInput(this);">${d.name || ''}</textarea>
                           <span class="mobile-dish-energy">${e} ${unit}</span>
                      </div>
                      <div class="mobile-dish-details">
@@ -590,7 +704,7 @@ const DietRenderModule = {
           : `<span style="font-weight:600; color:var(--color-text-primary)">${ing.weight_g || 0}g</span>`;
 
         return `
-                    <div class="mobile-dish-card" data-dish-index="${i}" data-ing-index="${j}" onclick="Dashboard.openMobileDishEditor(${i}, ${j})">
+                    <div class="mobile-dish-card ai-ingredient" data-dish-index="${i}" data-ing-index="${j}" onclick="Dashboard.openMobileDishEditor(${i}, ${j})">
                         <div class="mobile-dish-row">
                             <span class="mobile-dish-name">${ing.name_zh || '未命名'}</span>
                             <span class="mobile-dish-energy js-mobile-energy">${e} ${unit}</span>
@@ -685,7 +799,7 @@ const DietRenderModule = {
 
             <div class="editor-field-group">
                 <label class="editor-label">名称</label>
-                <input id="me-name" class="editor-input" value="${data.name || ''}">
+                <input id="me-name" class="editor-input" value="${data.name || ''}" autocomplete="off" placeholder="输入名称或搜索...">
             </div>
 
             <div class="editor-row editor-field-group">
@@ -728,6 +842,52 @@ const DietRenderModule = {
         </div>
       `;
     document.body.appendChild(overlay);
+
+    // --- Bind Search (Mobile) ---
+    setTimeout(() => {
+      const input = document.getElementById('me-name');
+      if (input && window.SearchController) {
+        const popup = document.createElement('div');
+        popup.id = 'mobile-dish-search-popup';
+        popup.className = 'editable-name-suggestions diet-mobile-search-popup';
+        document.body.appendChild(popup);
+
+        const controller = new SearchController({
+          input: input,
+          resultsPanel: popup,
+          mode: 'dish',
+          onSelect: (item) => {
+            if (!this._editingIndices) return;
+            const { dishIdx } = this._editingIndices;
+
+            // Apply to data model
+            if (SearchController.applyAddDishSelection(this, dishIdx, item)) {
+              // Now sync the editor inputs
+              const dish = this.currentDishes[dishIdx];
+              const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+
+              if (dish.name) input.value = dish.name;
+              setVal('me-weight', dish.weight);
+              setVal('me-protein', dish.protein);
+              setVal('me-fat', dish.fat);
+              setVal('me-carbs', dish.carb);
+              setVal('me-fiber', dish.fiber);
+              setVal('me-sodium', dish.sodium_mg);
+
+              if (this._editingIndices.type === 'ai') this._editingIndices.type = 'user';
+            }
+          }
+        });
+        SearchController.register(controller);
+
+        input.addEventListener('focus', () => {
+          const rect = input.getBoundingClientRect();
+          popup.style.top = (rect.bottom + window.scrollY + 2) + 'px';
+          popup.style.left = (rect.left + window.scrollX) + 'px';
+          popup.style.width = (rect.width) + 'px';
+        });
+      }
+    }, 50);
   },
 
   handleMobileWeightChange(val) {
@@ -760,6 +920,8 @@ const DietRenderModule = {
     const el = document.getElementById('diet-mobile-editor');
     if (el) el.remove();
     this._editingIndices = null;
+    const popup = document.getElementById('mobile-dish-search-popup');
+    if (popup) popup.remove();
   },
 
   saveMobileDishEditor() {

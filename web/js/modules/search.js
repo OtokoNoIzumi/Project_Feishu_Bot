@@ -102,6 +102,17 @@ class SearchController {
             }
 
             const data = await window.API.searchGlobal(query);
+            const hasResults = (data?.products?.length || 0) > 0
+                || (this.filterDietCards(data?.cards || []).length > 0)
+                || (data?.dialogues?.length || 0) > 0;
+
+            if (!hasResults) {
+                const fallback = await window.API.searchFood('');
+                const fallbackData = this.buildGlobalFallback(fallback);
+                this.render(fallbackData, false);
+                return;
+            }
+
             this.render(data, false);
         } catch (err) {
             console.error('[Search] Failed:', err);
@@ -162,10 +173,12 @@ class SearchController {
         let filteredDialogues = Array.isArray(dialogues) ? dialogues : [];
         let emptyDishCards = [];
 
+        let extraEmptyProducts = [];
         if (this.mode === 'global' && !this.lastQuery) {
             const limited = this.limitEmptyGlobalResults(filteredProducts, filteredCards);
             filteredProducts = limited.products;
             emptyDishCards = limited.dishCards;
+            extraEmptyProducts = limited.extraProducts;
             filteredCards = [];
             filteredDialogues = [];
         }
@@ -226,6 +239,29 @@ class SearchController {
                         <div class="search-content">
                             <div class="search-title">${this.escapeHtml(info.title)}</div>
                             <div class="search-meta">${this.escapeHtml(info.meta)}</div>
+                        </div>
+                    </div>
+                `;
+            });
+        }
+
+        // 2.1 Other Products (Global empty input)
+        if (this.mode === 'global' && !this.lastQuery && extraEmptyProducts.length > 0) {
+            html += `<div class="search-section-title">其他产品</div>`;
+            extraEmptyProducts.forEach(p => {
+                const name = p.product_name || p.name || '未命名产品';
+                const brand = p.brand || '';
+                const variant = p.variant || '';
+                const extra = [brand, variant].filter(Boolean).join(' · ');
+                const itemData = { type: 'product', data: p };
+                const pStr = this.encodeItem(itemData);
+
+                html += `
+                    <div class="search-result-item js-search-item" data-item="${pStr}">
+                        <div class="search-icon">🥗</div>
+                        <div class="search-content">
+                            <div class="search-title">${this.escapeHtml(name)}</div>
+                            <div class="search-meta">${this.escapeHtml(extra)}</div>
                         </div>
                     </div>
                 `;
@@ -340,8 +376,10 @@ class SearchController {
 
                 html += `
                     <div class="editable-name-suggestion js-search-item" data-item="${dStr}">
-                        🥣 ${title}
-                        <span style="float:right; color:#999;">${this.formatEnergy(totalEnergyKj)} · ${avgWeight}g</span>
+                        <div class="dish-suggest-row">
+                            <span class="dish-suggest-title">🥣 ${title}</span>
+                            <span class="dish-suggest-meta">${this.formatEnergy(totalEnergyKj)} · ${avgWeight}g</span>
+                        </div>
                     </div>
                 `;
             });
@@ -393,6 +431,7 @@ class SearchController {
     limitEmptyGlobalResults(products, cards) {
         const outProducts = [];
         const outDishCards = [];
+        const outExtraProducts = [];
         const productList = Array.isArray(products) ? products : [];
         const cardList = Array.isArray(cards) ? cards : [];
 
@@ -404,7 +443,13 @@ class SearchController {
             outDishCards.push(card);
             total += 1;
         }
-        return { products: outProducts, dishCards: outDishCards };
+
+        if (total < 5) {
+            const remaining = 5 - total;
+            outExtraProducts.push(...productList.slice(3, 3 + remaining));
+        }
+
+        return { products: outProducts, dishCards: outDishCards, extraProducts: outExtraProducts };
     }
 
     getMealTimeLabel(value) {

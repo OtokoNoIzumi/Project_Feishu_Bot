@@ -46,7 +46,7 @@ const EditableNameModule = {
             }
             try {
                 const results = await window.API.searchFood(query);
-                // 去重：对产品和菜品分别取名字段，优先顺序为：product_name > dish_name
+                // 去重：产品和菜式统一按名称去重
                 const dedupMap = new Map();
                 (results || []).forEach(r => {
                     let name = '';
@@ -55,9 +55,10 @@ const EditableNameModule = {
                     } else if (r.type === 'dish') {
                         name = r?.data?.dish_name;
                     }
-                    if (!name) return;
-                    if (!dedupMap.has(name)) {
-                        dedupMap.set(name, r);
+                    const key = (name || '').trim().toLowerCase();
+                    if (!key) return;
+                    if (!dedupMap.has(key)) {
+                        dedupMap.set(key, r);
                     }
                 });
                 this._renderSuggestions(el, Array.from(dedupMap.values()), query);
@@ -123,7 +124,7 @@ const EditableNameModule = {
 
         // 创建编辑器
         element.innerHTML = `
-            <div class="editable-name-editor" onclick="event.stopPropagation()">
+            <div class="editable-name-editor editable-name-editor-${type}" onclick="event.stopPropagation()">
                 <input type="text"
                        class="editable-name-input"
                        value="${this._escapeHtml(currentName)}"
@@ -167,31 +168,36 @@ const EditableNameModule = {
             if (suggestionEl) {
                 e.preventDefault(); // 阻止 blur
 
+                const type = element.dataset.type;
+                const value = suggestionEl.dataset.value;
+
+                // Dish 名称编辑只更新名称，不触发结构性替换
+                if (type === 'dish') {
+                    input.value = value;
+                    this.saveEdit(element);
+                    return;
+                }
+
+                // 其他类型保持原逻辑（必要时解析完整数据）
                 const jsonStr = suggestionEl.dataset.json;
-                // Full Data update
                 if (jsonStr) {
                     try {
                         const item = JSON.parse(decodeURIComponent(jsonStr));
-                        const type = element.dataset.type;
                         const idx = element.dataset.index;
 
-                        // Call Dashboard to update structure if it's a dish edit
-                        if (type === 'dish' && window.Dashboard && window.Dashboard.updateDishFromSearch) {
-                            window.Dashboard.updateDishFromSearch(idx, item);
-                            // Close editor implies re-render, effectively removing it
-                            this._activeEditor = null;
+                        if (type === 'card' && window.Dashboard && window.Dashboard.updateCardTitle) {
+                            input.value = value;
+                            this.saveEdit(element);
                             return;
                         }
 
-                        // Fallback: just name
-                        const val = suggestionEl.dataset.value;
-                        input.value = val;
+                        // 默认：只保存名称
+                        input.value = value;
                         this.saveEdit(element);
                         return;
                     } catch (err) { console.error(err); }
                 }
 
-                const value = suggestionEl.dataset.value;
                 input.value = value;
                 this.saveEdit(element);
             }
@@ -257,11 +263,16 @@ const EditableNameModule = {
 
         suggestionsEl.innerHTML = suggestions.map((s, i) => {
             const data = s.data || {};
-            const name = data.dish_name || data.product_name || '';
+            const isProduct = s.type === 'product';
+            const name = isProduct ? (data.product_name || '') : (data.dish_name || '');
             const avgWeight = Number(data.recorded_weight_g) || 0;
             const energyKj = this._calcDishEnergyKj(data);
-            const extra = avgWeight > 0 ? `${Math.round(energyKj)}kJ · ${avgWeight}g` : '';
-            const icon = s.type === 'product' ? '🥗' : '🥣';
+            const brand = data.brand || '';
+            const variant = data.variant || '';
+            const extra = isProduct
+                ? [brand, variant].filter(Boolean).join(' · ')
+                : (avgWeight > 0 ? `${Math.round(energyKj)}kJ · ${avgWeight}g` : '');
+            const icon = isProduct ? '🥗' : '🥣';
             const json = encodeURIComponent(JSON.stringify(s));
 
             return `

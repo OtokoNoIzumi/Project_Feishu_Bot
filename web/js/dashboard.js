@@ -427,6 +427,7 @@ const Dashboard = {
   renderDietDishBlockDesktop: DietRenderModule.renderDietDishBlockDesktop,
   renderDietDishesMobile: DietRenderModule.renderDietDishesMobile,
   formatEnergyFromMacros: DietRenderModule.formatEnergyFromMacros,
+  adjustMobileDishNameInput: DietRenderModule.adjustMobileDishNameInput,
 
   // 委托给 DietEditModule
   toggleDishEnabled: DietEditModule.toggleDishEnabled,

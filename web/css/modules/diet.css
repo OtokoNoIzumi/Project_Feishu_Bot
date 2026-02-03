@@ -54,6 +54,23 @@
     font-size: 1rem;
     font-weight: 600;
 }
+.result-card-title {
+    flex-wrap: wrap;
+}
+.result-card-title .editable-name {
+    flex: 1;
+    min-width: 0;
+    max-width: 100%;
+}
+
+@media (max-width: 768px) {
+    .result-card-title {
+        align-items: flex-start;
+    }
+    .result-card-title .editable-name {
+        flex-basis: 100%;
+    }
+}
 
 .result-card-subtitle {
     font-size: 0.75rem;
