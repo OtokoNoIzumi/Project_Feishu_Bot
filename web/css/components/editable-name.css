@@ -123,3 +123,19 @@
         background-color: #333;
     }
 }
+
+/* Mobile optimization: make edit icon always visible */
+@media (max-width: 768px) {
+    .editable-name-icon {
+        opacity: 0.6;
+        color: var(--color-primary, #f59e0b);
+        /* 使用主色调 */
+    }
+
+    /* 增加点击区域 */
+    .editable-name {
+        padding: 4px 8px;
+        background-color: var(--color-bg-secondary, rgba(0, 0, 0, 0.03));
+        border: 1px solid var(--color-border, rgba(0, 0, 0, 0.05));
+    }
+}

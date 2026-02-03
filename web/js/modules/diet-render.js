@@ -402,7 +402,7 @@ const DietRenderModule = {
         const dis = disableInputs ? 'disabled' : '';
         return `
                       <tr data-ing-index="${j}">
-                        <td><input type="text" class="cell-input cell-readonly" value="${ing.name_zh || ''}" ${ro}></td>
+                        <td><input type="text" class="cell-input" value="${ing.name_zh || ''}" ${disableInputs ? 'disabled' : ''} oninput="Dashboard.updateIngredient(${i}, ${j}, 'name_zh', this.value)" onfocus="this.select()"></td>
                         <td><input type="text" class="cell-input num cell-readonly js-energy-display" value="${e}" ${ro}></td>
                         <td><input type="number" class="cell-input num js-ing-field" data-field="protein_g" value="${ing.macros?.protein_g ?? 0}" min="0" step="0.1" ${dis} oninput="Dashboard.updateIngredient(${i}, ${j}, 'protein_g', this.value)" onfocus="this.select()"></td>
                         <td><input type="number" class="cell-input num js-ing-field" data-field="fat_g" value="${ing.macros?.fat_g ?? 0}" min="0" step="0.1" ${dis} oninput="Dashboard.updateIngredient(${i}, ${j}, 'fat_g', this.value)" onfocus="this.select()"></td>
@@ -532,10 +532,13 @@ const DietRenderModule = {
 
       // 标题优先使用 name，其次 meal_name
       const title = d.name || d.meal_name || '菜品';
+      const editableName = window.EditableNameModule
+        ? EditableNameModule.renderEditable(title, 'dish', i)
+        : title;
 
       return `
             <div class="diet-mobile-group" style="margin-bottom: 20px;">
-                <div class="dishes-title" style="margin-bottom: 10px; padding-left: 4px;">${title}</div>
+                <div class="dishes-title" style="margin-bottom: 10px; padding-left: 4px;">${editableName}</div>
                 ${ingredients.map((ing, j) => {
         const m = ing.macros || {};
         const e = this.formatEnergyFromMacros(m.protein_g, m.fat_g, m.carbs_g);

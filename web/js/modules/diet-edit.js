@@ -20,8 +20,47 @@ const DietEditModule = {
     // 更新营养标签字段
     updateLabel(index, field, value) {
         if (this.currentLabels && this.currentLabels[index]) {
+            const oldValue = this.currentLabels[index][field];
             this.currentLabels[index][field] = value;
             this.markModified();
+
+            // 联动更新：如果修改的是产品名称，且有 Dish/Ingredient 名称匹配，则一并更新
+            if (field === 'productName' && oldValue && oldValue !== value && this.currentDishes) {
+                this.currentDishes.forEach((dish, dIdx) => {
+                    // 1. 检查 Dish Name
+                    // 注意：dish.name 来自 standard_name
+                    if (dish.name === oldValue) {
+                        dish.name = value;
+                        if (dish.standard_name) dish.standard_name = value;
+
+                        // Update DOM: Editable Name
+                        const dishNameSpan = document.querySelector(`.editable-name[data-type="dish"][data-index="${dIdx}"] .editable-name-text`);
+                        if (dishNameSpan) {
+                            dishNameSpan.textContent = value;
+                        }
+                    } else if (dish.standard_name === oldValue) {
+                        // Fallback check if name and standard_name diverged
+                        dish.standard_name = value;
+                        // 这里如果不更新 dish.name，可能会导致后续不一致，建议保持一致
+                        if (dish.name === oldValue) dish.name = value;
+                    }
+
+                    // 2. 检查 Ingredients
+                    if (dish.ingredients) {
+                        dish.ingredients.forEach((ing, iIdx) => {
+                            if (ing.name_zh === oldValue) {
+                                ing.name_zh = value;
+                                // Update DOM: Ingredient Name Input (Readonly)
+                                // Selector: .diet-dish-block[data-dish-index="..."] tr[data-ing-index="..."] td input
+                                const ingInput = document.querySelector(`.diet-dish-block[data-dish-index="${dIdx}"] tr[data-ing-index="${iIdx}"] td:first-child input`);
+                                if (ingInput) {
+                                    ingInput.value = value;
+                                }
+                            }
+                        });
+                    }
+                });
+            }
         }
     },
 
@@ -82,6 +121,12 @@ const DietEditModule = {
         if (!dish || dish.source !== 'ai') return;
         const ing = dish.ingredients?.[ingIndex];
         if (!ing) return;
+
+        if (field === 'name_zh') {
+            ing.name_zh = value;
+            this.markModified();
+            return;
+        }
 
         if (field === 'weight_g') {
             const newWeight = parseFloat(value) || 0;
