@@ -87,39 +87,52 @@
     display: inline-block;
 }
 
-/* Dish editor: keep suggestions wide enough */
+/* Dish editor: constrained width for input, FIXED width for dropdown */
 .editable-name-editor-dish {
-    min-width: 300px;
-    max-width: 100%;
+    min-width: 120px;
+    max-width: 240px;
+    /* Prevent excessive expansion */
+    width: 100%;
 }
+
 .editable-name-editor-dish .editable-name-input {
     width: 100%;
     box-sizing: border-box;
 }
+
 .editable-name-editor-dish .editable-name-suggestions {
+    width: 300px;
+    /* Fixed width as requested */
     min-width: 300px;
-    max-width: 100%;
+    max-width: 300px;
 }
 
 .editable-name-editor-meal {
-    min-width: 300px;
+    min-width: 150px;
     max-width: 100%;
+    /* Meal titles can be longer, but respect container */
 }
+
 .editable-name-editor-meal .editable-name-input {
     width: 100%;
     box-sizing: border-box;
+    max-width: 320px;
 }
+
 .editable-name-editor-meal .editable-name-suggestions {
+    width: 300px;
+    /* Consistent fixed width */
     min-width: 300px;
-    max-width: 100%;
 }
 
 @media (max-width: 768px) {
+
     .editable-name-editor-dish,
     .editable-name-editor-meal {
         min-width: 0;
         width: 100%;
     }
+
     .editable-name-editor-dish .editable-name-suggestions,
     .editable-name-editor-meal .editable-name-suggestions {
         min-width: 0;
@@ -197,6 +210,7 @@
     flex-wrap: wrap;
     gap: 6px;
 }
+
 .editable-name-suggestion .dish-suggest-title {
     flex: 1;
     min-width: 0;
@@ -209,6 +223,7 @@
     line-clamp: 2;
     overflow: hidden;
 }
+
 .editable-name-suggestion .dish-suggest-meta {
     font-size: 0.8rem;
     color: var(--color-text-tertiary, #999);

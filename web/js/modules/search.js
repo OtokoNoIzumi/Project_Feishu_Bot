@@ -173,13 +173,14 @@ class SearchController {
         let filteredDialogues = Array.isArray(dialogues) ? dialogues : [];
         let emptyDishCards = [];
 
-        let extraEmptyProducts = [];
+        // Logic for Default/Empty Input:
+        // Selection: Top 3 Products -> Dishes -> Remaining Products (Total 5)
+        // Grouping: All Products -> All Dishes -> Dialogues
         if (this.mode === 'global' && !this.lastQuery) {
             const limited = this.limitEmptyGlobalResults(filteredProducts, filteredCards);
             filteredProducts = limited.products;
-            emptyDishCards = limited.dishCards;
-            extraEmptyProducts = limited.extraProducts;
-            filteredCards = [];
+            emptyDishCards = limited.dishCards; // Selected dishes for display
+            filteredCards = []; // Clear standard cards list to avoid dupes/wrong order
             filteredDialogues = [];
         }
         let html = '';
@@ -191,17 +192,17 @@ class SearchController {
 
         if (!hasResults) {
             if (isRecent) {
-                html = '<div class="search-empty-hint">输入关键词搜索...</div>'; // Quiet empty state for new input
+                html = '<div class="search-empty-hint">输入关键词搜索...</div>';
             } else {
                 html = '<div class="search-empty">无匹配结果</div>';
             }
             this.resultsPanel.innerHTML = html;
-            if (isRecent && !html) this.hide(); // Don't show empty panel if really nothing
+            if (isRecent && !html) this.hide();
             else this.show();
             return;
         }
 
-        // 1. Products
+        // 1. Group: Products
         if (filteredProducts && filteredProducts.length > 0) {
             html += `<div class="search-section-title">产品</div>`;
             filteredProducts.forEach(p => {
@@ -225,55 +226,13 @@ class SearchController {
             });
         }
 
-        // 2. Dishes (Global empty input, backed by cards)
-        if (this.mode === 'global' && !this.lastQuery && emptyDishCards.length > 0) {
+        const allDishCards = [...emptyDishCards, ...filteredCards];
+
+        if (allDishCards.length > 0) {
             html += `<div class="search-section-title">菜式</div>`;
-            emptyDishCards.forEach(c => {
-                const info = this.buildDishCardDisplay(c);
-                const itemData = { type: 'card', data: c };
-                const cStr = this.encodeItem(itemData);
-
-                html += `
-                    <div class="search-result-item js-search-item" data-item="${cStr}">
-                        <div class="search-icon">🥣</div>
-                        <div class="search-content">
-                            <div class="search-title">${this.escapeHtml(info.title)}</div>
-                            <div class="search-meta">${this.escapeHtml(info.meta)}</div>
-                        </div>
-                    </div>
-                `;
-            });
-        }
-
-        // 2.1 Other Products (Global empty input)
-        if (this.mode === 'global' && !this.lastQuery && extraEmptyProducts.length > 0) {
-            html += `<div class="search-section-title">其他产品</div>`;
-            extraEmptyProducts.forEach(p => {
-                const name = p.product_name || p.name || '未命名产品';
-                const brand = p.brand || '';
-                const variant = p.variant || '';
-                const extra = [brand, variant].filter(Boolean).join(' · ');
-                const itemData = { type: 'product', data: p };
-                const pStr = this.encodeItem(itemData);
-
-                html += `
-                    <div class="search-result-item js-search-item" data-item="${pStr}">
-                        <div class="search-icon">🥗</div>
-                        <div class="search-content">
-                            <div class="search-title">${this.escapeHtml(name)}</div>
-                            <div class="search-meta">${this.escapeHtml(extra)}</div>
-                        </div>
-                    </div>
-                `;
-            });
-        }
-
-        // 3. Cards (History)
-        if (filteredCards && filteredCards.length > 0) {
-            html += `<div class="search-section-title">${isRecent ? '最近记录' : '历史记录'}</div>`;
-            filteredCards.forEach(c => {
+            allDishCards.forEach(c => {
                 const info = this.buildCardDisplay(c);
-                const itemData = { type: 'card', data: c }; // Align format
+                const itemData = { type: 'card', data: c };
                 const cStr = this.encodeItem(itemData);
                 const title = this.lastQuery ? this.highlightMatch(info.title, this.lastQuery) : this.escapeHtml(info.title);
 
@@ -289,13 +248,11 @@ class SearchController {
             });
         }
 
-        // 4. Dialogues (Global Only usually)
+        // 4. Group: Dialogues
         if (this.mode === 'global' && filteredDialogues && filteredDialogues.length > 0) {
             html += `<div class="search-section-title">对话</div>`;
             filteredDialogues.forEach(d => {
                 const title = d.title || '未命名对话';
-                // const date = new Date(d.updated_at).toLocaleDateString();
-
                 const date = window.DateFormatter?.formatSmart
                     ? window.DateFormatter.formatSmart(d.updated_at)
                     : this.formatTime(d.updated_at);
@@ -429,27 +386,36 @@ class SearchController {
     }
 
     limitEmptyGlobalResults(products, cards) {
+        let pList = Array.isArray(products) ? products.slice() : [];
+        let cList = Array.isArray(cards) ? cards.slice() : [];
+
+        const MAX_TOTAL = 5;
+        let currentCount = 0;
+
         const outProducts = [];
         const outDishCards = [];
-        const outExtraProducts = [];
-        const productList = Array.isArray(products) ? products : [];
-        const cardList = Array.isArray(cards) ? cards : [];
 
-        outProducts.push(...productList.slice(0, 3));
-
-        let total = outProducts.length;
-        for (const card of cardList) {
-            if (total >= 5) break;
-            outDishCards.push(card);
-            total += 1;
+        // 1. Take up to 3 products
+        while (outProducts.length < 3 && pList.length > 0) {
+            outProducts.push(pList.shift());
+            currentCount++;
         }
 
-        if (total < 5) {
-            const remaining = 5 - total;
-            outExtraProducts.push(...productList.slice(3, 3 + remaining));
+        // 2. Take dishes until MAX_TOTAL (fill mechanism)
+        // User Logic: "产品先填3个...然后菜式填入...然后再按照顺序填充(产品)"
+        // This implies priority: Top 3 Products > Dishes > Remaining Products
+        while (currentCount < MAX_TOTAL && cList.length > 0) {
+            outDishCards.push(cList.shift());
+            currentCount++;
         }
 
-        return { products: outProducts, dishCards: outDishCards, extraProducts: outExtraProducts };
+        // 3. Fill remaining limit with remaining Products
+        while (currentCount < MAX_TOTAL && pList.length > 0) {
+            outProducts.push(pList.shift());
+            currentCount++;
+        }
+
+        return { products: outProducts, dishCards: outDishCards };
     }
 
     getMealTimeLabel(value) {
