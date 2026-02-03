@@ -90,11 +90,12 @@ const DietRenderModule = {
       : displayMealName;
 
     this.el.resultContent.innerHTML = `
-      <div class="result-card">
-        <div class="result-card-header">
-          <div class="result-icon-container">${window.IconManager ? window.IconManager.render('meal') : '<img src="css/icons/bowl.png" class="hand-icon icon-sticker">'}</div>
-          <div>
-            <div class="result-card-title" style="display: flex; align-items: center; gap: 8px;">
+      <div class="result-card profile-section">
+        <div class="tape-sticker" onclick="if (window.UIComponents) UIComponents.rotateTape(this); Dashboard.toggleDishEnabled('all', true)" title="全选/恢复默认"></div>
+        <div class="profile-section-header">
+          <div class="profile-section-icon">${window.IconManager ? window.IconManager.render('meal') : '<img src="css/icons/bowl.png" class="hand-icon icon-sticker">'}</div>
+          <div style="flex: 1; min-width: 0;"> <!-- Wrapped content in flex-1 div for layout safety -->
+            <div class="profile-section-title" style="display: flex; align-items: center; gap: 8px;">
                 ${editableMealNameHtml}
                  <!-- Protein Efficiency Mark Button (Demo) -->
                 ${(!session.isQuickRecord || session.isSaved) && typeof Auth !== 'undefined' && !Auth.isDemoMode() ? `
@@ -105,7 +106,7 @@ const DietRenderModule = {
                    💰
                 </button>` : ''}
             </div>
-            <div class="result-card-subtitle" id="diet-subtitle" style="display:flex; flex-wrap:wrap; align-items:center; column-gap: 8px; row-gap: 6px; margin-top: 4px;">
+            <div class="profile-section-subtitle" id="diet-subtitle" style="display:flex; flex-wrap:wrap; align-items:center; column-gap: 8px; row-gap: 6px; margin-top: 4px;">
               <span id="diet-dish-count" style="white-space:nowrap;">${this.currentDishes.length} 种食物</span>
               <span style="color:var(--color-text-muted); opacity: 0.5;">·</span>
               ${this.renderMealTypeSelector(summary.mealName, summary.dietTime)}
@@ -115,7 +116,7 @@ const DietRenderModule = {
             </div>
           </div>
           ${session.versions.length > 1 ? `
-            <div class="version-nav">
+            <div class="version-nav" style="margin-left: auto;">
               <button class="version-btn" onclick="Dashboard.switchVersion(-1)" ${session.currentVersion <= 1 ? 'disabled' : ''}>◀</button>
               <span class="version-label">v${version.number || '?'}/${session.versions.length}</span>
               <button class="version-btn" onclick="Dashboard.switchVersion(1)" ${session.currentVersion >= session.versions.length ? 'disabled' : ''}>▶</button>
