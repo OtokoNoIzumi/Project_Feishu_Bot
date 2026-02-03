@@ -49,26 +49,26 @@
                         alt="Profile"> 档案</button>
             </div>
 
-            <div class="history-list" id="history-list">
-                <!-- 顶部工具栏 (Phase 2) -->
-                <div class="sidebar-tools"
-                    style="padding: 8px 12px; display: flex; gap: 8px; border-bottom: 1px solid var(--color-border);">
-                    <!-- 搜索框占位 -->
-                    <div class="sidebar-search" style="flex:1; position: relative; margin-right: 8px;">
-                        <input type="text" id="global-search-input" placeholder="搜索..."
-                            autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false"
-                            style="width:100%; padding:4px 8px; border-radius:12px; border:1px solid var(--color-border); font-size:0.85rem; background: rgba(255,255,255,0.6); transition: all 0.2s;"
-                            onfocus="this.style.background='white'; this.style.boxShadow='0 2px 8px rgba(0,0,0,0.05)'"
-                            onblur="this.style.background='rgba(255,255,255,0.6)'; this.style.boxShadow='none'">
-                        <div id="global-search-results" class="search-dropdown editable-name-suggestions"
-                            style="position:absolute; top:110%; left:0; right:-40px; background:white; border:1px solid var(--color-border); box-shadow:0 4px 16px rgba(0,0,0,0.1); z-index:1000; max-height:400px; overflow-y:auto; border-radius:8px;">
-                        </div>
+            <!-- 顶部工具栏 (Phase 2) -->
+            <div class="sidebar-tools"
+                style="padding: 8px 12px; display: flex; gap: 8px; border-bottom: 1px solid var(--color-border); flex-shrink: 0;">
+                <!-- 搜索框占位 -->
+                <div class="sidebar-search" style="flex:1; position: relative; margin-right: 8px;">
+                    <input type="text" id="global-search-input" placeholder="搜索..." autocomplete="off"
+                        autocapitalize="off" autocorrect="off" spellcheck="false"
+                        style="width:100%; padding:4px 8px; border-radius:12px; border:1px solid var(--color-border); font-size:0.85rem; background: rgba(255,255,255,0.6); transition: all 0.2s;"
+                        onfocus="this.style.background='white'; this.style.boxShadow='0 2px 8px rgba(0,0,0,0.05)'"
+                        onblur="this.style.background='rgba(255,255,255,0.6)'; this.style.boxShadow='none'">
+                    <div id="global-search-results" class="search-dropdown editable-name-suggestions"
+                        style="position:absolute; top:110%; left:0; right:-40px; background:white; border:1px solid var(--color-border); box-shadow:0 4px 16px rgba(0,0,0,0.1); z-index:1000; max-height:400px; overflow-y:auto; border-radius:8px;">
                     </div>
-                    <!-- 新对话按钮 -->
-                    <button id="new-dialogue-btn" title="新对话"
-                        style="background:transparent; border:none; cursor:pointer; font-size:1.2rem; color:var(--color-accent-primary);">+</button>
                 </div>
+                <!-- 新对话按钮 -->
+                <button id="new-dialogue-btn" title="新对话"
+                    style="background:transparent; border:none; cursor:pointer; font-size:1.2rem; color:var(--color-accent-primary);">+</button>
+            </div>
 
+            <div class="history-list" id="history-list">
                 <div id="dialogue-list-container">
                     <div class="history-section-title">今天</div>
                     <!-- 历史记录会动态填充 -->
