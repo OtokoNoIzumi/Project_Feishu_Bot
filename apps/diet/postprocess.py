@@ -134,9 +134,29 @@ def finalize_record(llm_result: Dict[str, Any]) -> Dict[str, Any]:
     meal_summary_in = llm_result.get("meal_summary") or {}
     advice = str(meal_summary_in.get("advice") or "")
     diet_time = str(meal_summary_in.get("diet_time") or "snack")
+    
+    # 生成 meal_name：采用"餐时 菜名等N个"格式
+    # 这个默认值会用于搜索匹配和显示
+    meal_time_map = {
+        "snack": "加餐",
+        "breakfast": "早餐",
+        "lunch": "午餐",
+        "dinner": "晚餐",
+    }
+    meal_time_label = meal_time_map.get(diet_time, "饮食")
+    
+    if dishes_out:
+        first_dish_name = dishes_out[0].get("standard_name") or "未命名"
+        if len(dishes_out) == 1:
+            meal_name = f"{meal_time_label} {first_dish_name}"
+        else:
+            meal_name = f"{meal_time_label} {first_dish_name}等{len(dishes_out)}个"
+    else:
+        meal_name = meal_time_label
 
     result = {
         "meal_summary": {
+            "meal_name": meal_name,
             "total_energy_kj": round(total_energy_kj, 4),
             "net_weight_g": round(total_weight_g, 4),
             "advice": advice,

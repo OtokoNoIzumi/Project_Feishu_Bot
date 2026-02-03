@@ -332,8 +332,9 @@ const QuickInputModule = {
                 d.showLoading(true);
                 const card = await API.getCard(favId);
                 if (card) {
-                    sourceTitle = card.user_title || card.title;
                     const ver = card.versions[card.versions.length - 1];
+                    // 优先使用 user_title，其次 meal_name
+                    sourceTitle = card.user_title || ver?.raw_result?.meal_summary?.meal_name || '快捷餐食';
                     if (ver && ver.raw_result && ver.raw_result.dishes) {
                         templateData = { dishes: ver.raw_result.dishes };
                     }

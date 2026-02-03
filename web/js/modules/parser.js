@@ -127,6 +127,7 @@ const ParserModule = {
             type: 'diet',
             summary: {
                 mealName: summary.meal_name || '饮食记录',
+                userMealName: summary.user_meal_name || null,
                 dietTime: summary.diet_time || '',
                 // 返回计算出的总 Kcal (保留一定精度，避免过早取整)
                 // 前端如果需要 KJ，应该使用 EnergyUtils.kcalToKJ(totalEnergy) 或直接显示

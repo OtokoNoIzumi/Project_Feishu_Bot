@@ -617,7 +617,6 @@ const AnalysisModule = {
             id: session.persistentCardId,
             dialogue_id: session.dialogueId,
             mode: session.mode,
-            title: this._generateCardTitle(latestVersion?.parsedData),
             user_id: 'placeholder',
             source_user_note: session.sourceUserNote || session.text || '',
             image_uris: (session.imageUrls || []).filter(url => url && !url.startsWith('blob:') && !url.startsWith('data:')),
@@ -637,41 +636,7 @@ const AnalysisModule = {
         };
     },
 
-    _generateCardTitle(parsedData) {
-        if (!parsedData) return '未命名分析结果';
 
-        // Helper to get helper methods from Dashboard context if valid
-        const getUnit = () => (this.getEnergyUnit ? this.getEnergyUnit() : 'kJ');
-        const toKcal = (v) => (this.kJToKcal ? this.kJToKcal(v) : v / 4.184);
-
-        const dateStr = window.DateFormatter ? window.DateFormatter.formatSmart(new Date()) : '';
-
-        if (parsedData.type === 'diet') {
-            const timeMap = {
-                'snack': '加餐', 'breakfast': '早餐', 'lunch': '午餐', 'dinner': '晚餐'
-            };
-            const time = timeMap[parsedData.summary.dietTime] || '饮食';
-            const unit = getUnit();
-
-            // Energy
-            let energy = parsedData.summary.totalEnergy || 0;
-            if (unit === 'kcal') {
-                energy = toKcal(energy);
-            }
-            const energyStr = `${Math.round(energy)}${unit}`;
-
-            // Weight
-            const totalWeight = (parsedData.dishes || []).reduce((sum, d) => sum + (d.weight_g || 0), 0);
-            const weightStr = totalWeight > 0 ? `${totalWeight}g` : '';
-
-            return `${dateStr} ${time} ${energyStr} ${weightStr}`.trim();
-        } else {
-            const count = (parsedData.scaleEvents?.length || 0) +
-                (parsedData.sleepEvents?.length || 0) +
-                (parsedData.bodyMeasureEvents?.length || 0);
-            return `${dateStr} Keep记录 ${count}项`.trim();
-        }
-    },
 
     _generateCardSummary(parsedData) {
         if (!parsedData) return '分析完成';

@@ -16,6 +16,7 @@ const DietRenderModule = {
     this.currentLabels = [...(data.capturedLabels || [])];  // 缓存营养标签用于编辑
     this.currentDietMeta = {
       mealName: summary.mealName || '饮食记录',
+      userMealName: summary.userMealName || null,  // 用户自定义的 meal 名称
       dietTime: summary.dietTime || '',
       occurredAt: (() => {
         // 1. 优先使用 Card 数据，其次回退到 Session 创建时间
@@ -72,13 +73,22 @@ const DietRenderModule = {
       ? Math.round(Number(this.currentDietTotals.totalEnergy) || 0)
       : Math.round(EnergyUtils.kcalToKJ(Number(this.currentDietTotals.totalEnergy) || 0));
 
+    // meal_name 优先级：userMealName (用户自定义) > mealName (后端生成的默认值)
+    // 后端现已生成格式为"餐时 菜名等N个"的默认 meal_name
+    const displayMealName = this.currentDietMeta.userMealName || summary.mealName || '饮食记录';
+
+    // 可编辑 meal_name 组件
+    const editableMealNameHtml = window.EditableNameModule
+      ? EditableNameModule.renderEditable(displayMealName, 'meal', 'current')
+      : displayMealName;
+
     this.el.resultContent.innerHTML = `
       <div class="result-card">
         <div class="result-card-header">
           <div class="result-icon-container">${window.IconManager ? window.IconManager.render('meal') : '<img src="css/icons/bowl.png" class="hand-icon icon-sticker">'}</div>
           <div>
             <div class="result-card-title" style="display: flex; align-items: center; gap: 8px;">
-                ${summary.mealName}
+                ${editableMealNameHtml}
                  <!-- Protein Efficiency Mark Button (Demo) -->
                 ${(!session.isQuickRecord || session.isSaved) && typeof Auth !== 'undefined' && !Auth.isDemoMode() ? `
                 <button class="btn-icon-only" onclick="QuickInputModule.toggleFavorite(Dashboard.currentSession)" title="收藏为快捷模板" style="font-size: 1.1em; cursor: pointer; background: none; border: none; padding: 4px; border-radius: 50%; transition: background 0.1s;">
@@ -342,10 +352,15 @@ const DietRenderModule = {
       : '';
 
     // 合并为单行：checkbox + 菜式名称 + 汇总统计 + P/F/C 比例 + 展开按钮
+    // 使用可编辑名称组件
+    const editableNameHtml = window.EditableNameModule
+      ? EditableNameModule.renderEditable(d.name, 'dish', i)
+      : `<div class="diet-dish-name">${d.name}</div>`;
+
     const dishHeaderHtml = `
       <div class="diet-dish-header-combined">
         <input type="checkbox" ${enabled ? 'checked' : ''} onchange="Dashboard.toggleDishEnabled(${i}, this.checked)">
-        <div class="diet-dish-name">${d.name}</div>
+        ${editableNameHtml}
         <span class="diet-stat" data-stat-type="energy"><span class="k">能量</span><span class="v">${energyText} ${unit}</span></span>
         <span class="diet-stat" data-stat-type="protein"><span class="k">蛋白</span><span class="v">${r1(totals.protein)}g</span></span>
         <span class="diet-stat" data-stat-type="fat"><span class="k">脂肪</span><span class="v">${r1(totals.fat)}g</span></span>

@@ -559,4 +559,36 @@ def build_diet_router(settings: BackendSettings) -> APIRouter:
         DietTemplateService.reorder_templates(user_id, reorder.ordered_ids)
         return True
 
+    # --- Dish Library Endpoint ---
+    @router.get(
+        "/api/diet/dish-library",
+        response_model=List[Dict[str, Any]],
+        dependencies=[Depends(auth_dep)],
+    )
+    async def get_dish_library(
+        limit: int = 200,
+        user_id: str = Depends(get_current_user_id)
+    ):
+        """Get dish library for autocomplete suggestions."""
+        from libs.storage_lib import global_storage
+        
+        dishes = global_storage.read_dataset(
+            user_id, "diet", "dish_library.jsonl", limit=limit
+        )
+        
+        # 去重，只保留最新的每个菜名
+        seen = set()
+        unique_dishes = []
+        for dish in dishes:
+            name = dish.get("dish_name", "")
+            if name and name not in seen:
+                seen.add(name)
+                unique_dishes.append({
+                    "dish_name": name,
+                    "recorded_weight_g": dish.get("recorded_weight_g"),
+                    "macros_per_100g": dish.get("macros_per_100g"),
+                })
+        
+        return unique_dishes
+
     return router

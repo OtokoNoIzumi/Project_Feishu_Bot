@@ -513,9 +513,22 @@ const SidebarModule = {
         } else {
             title.textContent = type === 'dialogue' ? '重命名对话' : '重命名分析结果';
         }
-        input.value = object.user_title || (type === 'dialogue' ? '' : object.title) || ''; // Prefill logic
-        // If it's a proxy object from nested card, user_title might be the full displayed title. 
-        // It's acceptable for now to prefill with whatever we have.
+
+        // Prefill logic: 
+        // - 优先使用 user_title
+        // - 对于 Card，如果没有 user_title，使用 "餐时 菜名等N个" 格式
+        // - 对于 Dialogue，没有 user_title 时留空
+        let prefillValue = object.user_title || '';
+        if (!prefillValue && type === 'card') {
+            const versions = object.versions || [];
+            const latestVersion = versions[versions.length - 1];
+            const rawData = latestVersion?.raw_result;
+            if (rawData) {
+                prefillValue = this._generateSidebarDisplayTitle(rawData);
+            }
+        }
+
+        input.value = prefillValue;
 
         modal.classList.add('visible');
         setTimeout(() => input.focus(), 50);
@@ -677,7 +690,7 @@ const SidebarModule = {
 
             // 计算动态标题和副标题
             const { title: dynamicTitle, subtitle: dynamicSubtitle } = this._getDynamicCardTitleAndSubtitle(card);
-            const finalTitle = card.user_title || dynamicTitle || card.title;
+            const finalTitle = card.user_title || dynamicTitle || '未命名';
 
             html += `
                 <div class="card-item-nested" data-id="${card.id}" data-dialogue-id="${dialogueId}">
@@ -830,21 +843,7 @@ const SidebarModule = {
                 return fallback;
             }
 
-            const timeMap = {
-                'snack': '加餐', 'breakfast': '早餐', 'lunch': '午餐', 'dinner': '晚餐'
-            };
-            const mealTimeDisplay = timeMap[dietTime] || '饮食';
-
-            // 构建标题：餐段 + 菜式名称
-            let titleStr = mealTimeDisplay;
-            if (dishes.length > 0) {
-                const firstName = dishes[0].standard_name || dishes[0].name || '未命名';
-                if (dishes.length === 1) {
-                    titleStr = `${mealTimeDisplay} ${firstName}`;
-                } else {
-                    titleStr = `${mealTimeDisplay} ${firstName}等${dishes.length}个`;
-                }
-            }
+            const titleStr = this._generateSidebarDisplayTitle(rawData);
 
             // 单位转换
             let energyVal = energyKj;
@@ -883,7 +882,7 @@ const SidebarModule = {
             const sleepEvents = rawData.sleep_events || [];
             const measureEvents = rawData.body_measure_events || [];
 
-            let titleStr = card.title;
+            let titleStr = 'Keep记录';
             if (scaleEvents.length > 0) {
                 const weight = scaleEvents[0].weight_kg;
                 if (weight) titleStr = `体重 ${weight}kg`;
@@ -901,6 +900,32 @@ const SidebarModule = {
     // Legacy wrapper for compatibility
     _getDynamicCardTitle(card) {
         return this._getDynamicCardTitleAndSubtitle(card).title;
+    },
+
+    /**
+     * 生成 Sidebar 显示用的 Diet 标题
+     * 格式："餐时 菜名等N个"
+     */
+    _generateSidebarDisplayTitle(rawData) {
+        if (!rawData || !rawData.meal_summary) return '';
+
+        const dietTime = rawData.meal_summary.diet_time;
+        const dishes = rawData.dishes || [];
+
+        const timeMap = {
+            'snack': '加餐', 'breakfast': '早餐', 'lunch': '午餐', 'dinner': '晚餐'
+        };
+        const mealTimeDisplay = timeMap[dietTime] || '饮食';
+
+        if (dishes.length === 0) {
+            return mealTimeDisplay;
+        }
+
+        const firstName = dishes[0].standard_name || dishes[0].name || '未命名';
+        if (dishes.length === 1) {
+            return `${mealTimeDisplay} ${firstName}`;
+        }
+        return `${mealTimeDisplay} ${firstName}等${dishes.length}个`;
     }
 };
 

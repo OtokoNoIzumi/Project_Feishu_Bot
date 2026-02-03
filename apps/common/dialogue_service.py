@@ -114,8 +114,7 @@ class DialogueService:
                 self.card_index.append({
                     "id": data["id"],
                     "updated_at": data.get("updated_at", data["created_at"]),
-                    "status": data.get("status", "draft"),
-                    "title": data.get("title", "")
+                    "status": data.get("status", "draft")
                 })
             except Exception:
                 pass
@@ -132,8 +131,7 @@ class DialogueService:
         self.card_index.append({
             "id": card.id,
             "updated_at": card.updated_at.isoformat(),
-            "status": card.status,
-            "title": card.title
+            "status": card.status
         })
         self._save_card_index()
 

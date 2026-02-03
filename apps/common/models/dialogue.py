@@ -27,7 +27,6 @@ class ResultCard(BaseModel):
     dialogue_id: str
     user_id: Optional[str] = None
     mode: Literal['diet', 'keep']
-    title: str
     user_title: Optional[str] = Field(None, description="Custom user-defined title")
     source_user_note: Optional[str] = Field(None, description="Original user input for analysis")
     image_uris: List[str] = Field(default_factory=list, description="Original image file URIs")

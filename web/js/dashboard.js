@@ -102,6 +102,10 @@ const Dashboard = {
         if (window.QuickInputModule && window.QuickInputModule.init) {
           window.QuickInputModule.init();
         }
+        // 加载 dish library 用于名称自动补全
+        if (window.EditableNameModule && window.EditableNameModule.init) {
+          window.EditableNameModule.init();
+        }
       } else {
         this.loadHistory();
       }
@@ -215,12 +219,10 @@ const Dashboard = {
     if (this.currentDialogueId) {
       try {
         const nowIso = new Date().toISOString();
-        const initialTitle = text ? text.slice(0, 15) : (this.pendingImages.length ? `${this.pendingImages.length}张图片` : '分析中');
         const cardData = {
           id: session.persistentCardId,
           dialogue_id: session.dialogueId,
           mode: session.mode,
-          title: initialTitle,
           user_id: 'placeholder',
           source_user_note: text || '',
           image_uris: [],
@@ -427,6 +429,8 @@ const Dashboard = {
 
   // 委托给 DietEditModule
   toggleDishEnabled: DietEditModule.toggleDishEnabled,
+  updateDishName: DietEditModule.updateDishName.bind(DietEditModule),
+  updateMealName: DietEditModule.updateMealName.bind(DietEditModule),
 
   renderAdvice(adviceText, isLoading = false) {
     const contentEl = document.getElementById('advice-content');

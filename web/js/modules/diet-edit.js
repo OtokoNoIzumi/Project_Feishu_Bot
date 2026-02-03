@@ -47,6 +47,36 @@ const DietEditModule = {
         }
     },
 
+    /**
+     * 更新菜式名称（支持 AI 和用户菜式）
+     * 由 EditableNameModule 调用
+     */
+    updateDishName(index, newName) {
+        if (!this.currentDishes || !this.currentDishes[index]) return;
+
+        const dish = this.currentDishes[index];
+        dish.name = newName;
+
+        // 标记已修改
+        this.markModified();
+
+        // 重新渲染菜式列表
+        this.renderDietDishes();
+    },
+
+    /**
+     * 更新 Meal 名称（卡片顶部标题）
+     * 由 EditableNameModule 调用
+     */
+    updateMealName(newName) {
+        if (!this.currentDietMeta) return;
+
+        this.currentDietMeta.userMealName = newName;
+
+        // 标记已修改
+        this.markModified();
+    },
+
     updateIngredient(dishIndex, ingIndex, field, value) {
         const dish = this.currentDishes?.[dishIndex];
         if (!dish || dish.source !== 'ai') return;
@@ -528,6 +558,7 @@ const DietEditModule = {
             saved_record_id: savedRecordId, // <--- 新增核心字段
             meal_summary: {
                 meal_name: mealName,
+                user_meal_name: this.currentDietMeta?.userMealName || null,
                 diet_time: dietTime,
                 // 这里按标准输出：保留一位小数的 KJ
                 total_energy_kj: Math.round(totals.totalEnergyKJ * 10) / 10,

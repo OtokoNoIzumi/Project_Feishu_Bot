@@ -1,0 +1,125 @@
+/**
+ * Editable Name Component Styles
+ */
+
+/* 可编辑名称容器 */
+.editable-name {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 4px;
+    transition: background-color 0.15s ease;
+    min-width: 60px;
+}
+
+.editable-name:hover {
+    background-color: var(--color-hover, rgba(0, 0, 0, 0.05));
+}
+
+.editable-name-text {
+    font-weight: 500;
+}
+
+.editable-name-icon {
+    font-size: 0.75em;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+}
+
+.editable-name:hover .editable-name-icon {
+    opacity: 0.6;
+}
+
+/* 编辑器容器 */
+.editable-name-editor {
+    position: relative;
+    display: inline-block;
+}
+
+.editable-name-input {
+    padding: 4px 8px;
+    border: 1px solid var(--color-primary, #f59e0b);
+    border-radius: 4px;
+    font-size: inherit;
+    font-weight: 500;
+    min-width: 150px;
+    outline: none;
+    background: var(--color-bg, #fff);
+}
+
+.editable-name-input:focus {
+    box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.2);
+}
+
+/* 建议下拉列表 */
+.editable-name-suggestions {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    min-width: 200px;
+    max-height: 240px;
+    overflow-y: auto;
+    background: var(--color-bg, #fff);
+    border: 1px solid var(--color-border, #e5e5e5);
+    border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    z-index: 1000;
+    margin-top: 4px;
+    display: none;
+}
+
+.editable-name-suggestions.visible {
+    display: block;
+}
+
+.editable-name-suggestion {
+    padding: 8px 12px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    border-bottom: 1px solid var(--color-border-light, #f0f0f0);
+    transition: background-color 0.1s ease;
+}
+
+.editable-name-suggestion:last-child {
+    border-bottom: none;
+}
+
+.editable-name-suggestion:hover,
+.editable-name-suggestion.selected {
+    background-color: var(--color-primary-light, #fffbeb);
+}
+
+.editable-name-suggestion.selected {
+    border-left: 3px solid var(--color-primary, #f59e0b);
+    padding-left: 9px;
+}
+
+.editable-name-suggestion strong {
+    color: var(--color-primary, #f59e0b);
+}
+
+/* 深色模式支持 */
+@media (prefers-color-scheme: dark) {
+    .editable-name:hover {
+        background-color: rgba(255, 255, 255, 0.1);
+    }
+
+    .editable-name-input {
+        background: #2a2a2a;
+        color: #fff;
+        border-color: var(--color-primary, #f59e0b);
+    }
+
+    .editable-name-suggestions {
+        background: #2a2a2a;
+        border-color: #444;
+    }
+
+    .editable-name-suggestion:hover,
+    .editable-name-suggestion.selected {
+        background-color: #333;
+    }
+}
