@@ -116,6 +116,11 @@ class DialogueService:
             self._rebuild_card_index()
 
     def _extract_card_search_info(self, data: dict) -> dict:
+        def _normalize_dt(val):
+            if isinstance(val, datetime):
+                return val.isoformat()
+            return val
+
         info = {
             "user_title": data.get("user_title"),
             "meal_name": "",
@@ -126,8 +131,8 @@ class DialogueService:
             "diet_time": "",
             "total_energy_kj": 0,
             "total_weight_g": 0,
-            "occurred_at": data.get("occurred_at"),
-            "created_at": data.get("created_at"),
+            "occurred_at": _normalize_dt(data.get("occurred_at")),
+            "created_at": _normalize_dt(data.get("created_at")),
         }
 
         # Extract from latest version

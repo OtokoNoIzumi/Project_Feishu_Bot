@@ -303,6 +303,7 @@ const API = {
             image_hashes: data.image_hashes || [],
             record_id: data.record_id || null,
             occurred_at: data.occurred_at || null,
+            is_quick_record: !!data.is_quick_record,
         });
     },
 
@@ -431,7 +432,7 @@ const API = {
 
     /**
      * 创建新对话
-     * @param {string} title 
+     * @param {string} title
      */
     async createDialogue(title) {
         if (Auth.isDemoMode()) return { id: 'new-demo', title };

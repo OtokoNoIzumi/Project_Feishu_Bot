@@ -94,6 +94,7 @@ class RecordService:
         image_hashes: List[str] = None,
         occurred_at: datetime = None,
         record_id: str = None,
+        is_quick_record: bool = False,
     ):
         """
         保存饮食记录。包含智能去重逻辑：
@@ -205,7 +206,8 @@ class RecordService:
 
         # 5. 保存菜式库 (Personal Dish Library) - For UI Quick Add, not for LLM Context
         # Automatically calculate per-100g normalization
-        RecordService._archive_dishes_to_library(user_id, dishes)
+        if not is_quick_record:
+            RecordService._archive_dishes_to_library(user_id, dishes)
 
         return {
             "status": "success",
@@ -333,7 +335,6 @@ class RecordService:
 
             # Removed redundant try-except: stored data format is reliable.
             t = datetime.fromisoformat(t_str)
-            # Ensure TZ-naive comparison if needed
             if t.tzinfo is not None:
                 t = t.replace(tzinfo=None)
 
@@ -449,8 +450,6 @@ class RecordService:
 
             # Removed redundant try-except: stored data format is reliable.
             dt = datetime.fromisoformat(t_str)
-
-            # Filter range (Normalize TZ for strict comparison)
             check_dt = dt.replace(tzinfo=None) if dt.tzinfo else dt
 
             if start <= check_dt <= end:

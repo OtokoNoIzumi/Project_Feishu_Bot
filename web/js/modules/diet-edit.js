@@ -601,6 +601,7 @@ const DietEditModule = {
         return {
             // isSaved: saved, // Removed: API logic relies on saved_record_id, no need to send UI state
             saved_record_id: savedRecordId, // <--- 新增核心字段
+            is_quick_record: !!this.currentSession?.isQuickRecord,
             meal_summary: {
                 meal_name: mealName,
                 user_meal_name: this.currentDietMeta?.userMealName || null,

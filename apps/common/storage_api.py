@@ -48,13 +48,13 @@ def build_storage_router(settings: BackendSettings) -> APIRouter:
             if d.get("occurred_at"):
                 dt = parse_occurred_at(d["occurred_at"])
                 if dt: return dt
-            
+
             # Priority 2: measured_at_local (Scale)
             if d.get("measured_at_local"):
                 # Usually "YYYY-MM-DD HH:MM"
                 dt = parse_occurred_at(d["measured_at_local"])
                 if dt: return dt
-            
+
             # Priority 3: date_str (Sleep)
             if d.get("date_str"):
                 ds = d["date_str"]
@@ -62,14 +62,14 @@ def build_storage_router(settings: BackendSettings) -> APIRouter:
                 if d.get("sleep_end_time"):
                     return parse_occurred_at(f"{ds} {d['sleep_end_time']}")
                 return parse_occurred_at(f"{ds} 00:00")
-            
+
             return None
 
         try:
             if req.event_type == "unified":
                 # Unified 模式：拆包分别保存
                 saved_count = 0
-                
+
                 # 1. Scale
                 for item in req.event_data.get("scale_events", []):
                     dt = _extract_keep_event_time(item)
@@ -93,7 +93,7 @@ def build_storage_router(settings: BackendSettings) -> APIRouter:
                         occurred_at=dt,
                     )
                     saved_count += 1
-                
+
                 # 3. Dimensions
                 for item in req.event_data.get("body_measure_events", []):
                     dt = _extract_keep_event_time(item)
@@ -105,10 +105,10 @@ def build_storage_router(settings: BackendSettings) -> APIRouter:
                         occurred_at=dt,
                     )
                     saved_count += 1
-                
+
                 return SaveResponse(
-                    success=True, 
-                    detail=f"Saved {saved_count} unified events", 
+                    success=True,
+                    detail=f"Saved {saved_count} unified events",
                     saved_record={"record_id": req.record_id} # 返回主 ID (如果有)
                 )
 
@@ -136,6 +136,7 @@ def build_storage_router(settings: BackendSettings) -> APIRouter:
         image_hashes: List[str] = []
         record_id: Optional[str] = None
         occurred_at: Optional[str] = Field(default=None, description="ISO format datetime string")
+        is_quick_record: bool = False
 
     @router.post(
         "/api/storage/diet/save",
@@ -164,6 +165,7 @@ def build_storage_router(settings: BackendSettings) -> APIRouter:
                 image_hashes=req.image_hashes,
                 record_id=req.record_id,
                 occurred_at=occurred_dt,
+                is_quick_record=req.is_quick_record,
             )
             return SaveResponse(success=True, detail="Saved to ledger and library", saved_record=result)
         except Exception as e:

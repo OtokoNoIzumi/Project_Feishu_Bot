@@ -26,7 +26,14 @@ const DietRenderModule = {
         }
         if (!val) return null;
 
-        // 2. 格式清洗：如果是 UTC 格式 (Z 或 +00:00)，转为本地时间字符串
+        // 2. Date 对象转换为本地 ISO 字符串（无 Z），避免被序列化为 UTC 导致跨天
+        if (val instanceof Date) {
+          const offset = val.getTimezoneOffset() * 60000;
+          const local = new Date(val.getTime() - offset);
+          return local.toISOString().slice(0, -1);
+        }
+
+        // 3. 格式清洗：如果是 UTC 格式 (Z 或 +00:00)，转为本地时间字符串
         // 这能修复旧数据被污染为 UTC 格式的问题，也能处理 session.createdAt 是 UTC 的情况
         if (typeof val === 'string' && (val.endsWith('Z') || val.includes('+00:00'))) {
           try {
