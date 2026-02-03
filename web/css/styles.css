@@ -91,10 +91,7 @@ html {
 body {
   font-family: 'Lora', 'Georgia', 'Microsoft YaHei', '微软雅黑', sans-serif;
   background: var(--color-bg-primary);
-  background-image: url('bg_paper.png');
-  background-repeat: repeat;
-  background-size: 512px;
-  /* Adjustable scale */
+
   color: var(--color-text-primary);
   line-height: 1.6;
   min-height: 100vh;
