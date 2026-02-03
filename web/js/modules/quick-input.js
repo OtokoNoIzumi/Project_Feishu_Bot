@@ -1,7 +1,7 @@
 /**
  * Quick Input Module
  * Ref: web/js/modules/quick-input.js
- * 
+ *
  * Handles layout and logic for the "Quick Record" feature.
  * Now supports managing "Favorite" cards and executing them as templates.
  */
@@ -307,7 +307,7 @@ const QuickInputModule = {
 
     /**
      * Execute a Favorite Card as a Template
-     * @param {string} favId 
+     * @param {string} favId
      * @param {Array<number>} quickInputValues - List of weight values to apply intelligently
      */
     async executeFavorite(favId, quickInputValues = null) {
@@ -481,6 +481,162 @@ const QuickInputModule = {
             if (firstInput) firstInput.focus();
         }, 100);
     },
+
+    /**
+     * Copy of executeFavorite logic adapted for a single Product object.
+     * Ensures consistent behavior (Draft, QuickRecord, Session Structure).
+     */
+    async executeProduct(product) {
+        if (!window.Dashboard) return;
+        const d = window.Dashboard;
+
+        console.log('[QuickInput] executeProduct', product);
+
+        // 1. Normalize Product to Dish
+        const name = product.product_name || product.name || product.title || '快捷记录';
+        // Strategy: Intelligent Macro Extraction
+        // Support:
+        // 1. Nested: product.macros_per_100g (standard API)
+        // 2. Flat: product.energy_kj_per_100g (search API variant 1)
+        // 3. Flat: product.energy_kj_per_serving (search API variant 2, verify serving size)
+
+        let p, f, c, fib, na, kj;
+
+        // Helper to parse any of keys
+        const getVal = (obj, keys) => {
+            for (const k of keys) {
+                if (obj[k] !== undefined && obj[k] !== null && obj[k] !== '') return parseFloat(obj[k]);
+            }
+            return 0;
+        };
+
+        if (product.macros_per_100g) {
+            // Standard nested format
+            const m = product.macros_per_100g;
+            p = getVal(m, ['protein_g', 'protein']);
+            f = getVal(m, ['fat_g', 'fat']);
+            c = getVal(m, ['carbs_g', 'carbs']);
+            fib = getVal(m, ['fiber_g', 'fiber']);
+            na = getVal(m, ['sodium_mg', 'sodium']);
+            kj = getVal(m, ['energy_kj', 'energy']);
+        } else {
+            // Flat format (Search API commonly returns this)
+            // Check if serving size is standard
+            const serving = product.serving_size || '100g';
+            // const isStandard = serving === '100g' || serving === '100ml';
+
+            p = getVal(product, ['protein_g_per_100g', 'protein_per_100g', 'protein_g_per_serving']);
+            f = getVal(product, ['fat_g_per_100g', 'fat_per_100g', 'fat_g_per_serving']);
+            c = getVal(product, ['carbs_g_per_100g', 'carbs_per_100g', 'carbs_g_per_serving']);
+            fib = getVal(product, ['fiber_g_per_100g', 'fiber_per_100g', 'fiber_g_per_serving']);
+            na = getVal(product, ['sodium_mg_per_100g', 'sodium_mg_per_serving']);
+            kj = getVal(product, ['energy_kj_per_100g', 'energy_kj_per_serving']);
+        }
+
+        console.log('[QuickInput] Extracted Macros ->', { kj, p, f, c, na, fib });
+
+        // Calculate Density for 100g base
+        const density = {
+            protein_per_g: p / 100,
+            fat_per_g: f / 100,
+            carbs_per_g: c / 100,
+            fiber_per_g: fib / 100,
+            sodium_per_g: na / 100,
+            energy_per_g: kj / 100
+        };
+
+        const ingredient = {
+            name_zh: name,
+            weight_g: 100, // Default 100g
+            macros: {
+                energy_kj: kj,
+                protein_g: p,
+                fat_g: f,
+                carbs_g: c,
+                sodium_mg: na,
+                fiber_g: fib
+            },
+            _density: density,
+            _proportionalScale: true
+        };
+
+        const dish = {
+            id: Date.now(),
+            name: name, // Critical: Backend uses dish_name, Frontend Render uses name
+            dish_name: name,
+            source: 'ai', // Mark as AI/System so it creates ingredients view
+            ingredients: [ingredient],
+            total_energy_kj: kj,
+            total_macros: ingredient.macros,
+            _from_product: true
+        };
+
+        // 2. Standard Session Creation (Copied from executeFavorite/Legacy)
+        if (!d.currentDialogueId) {
+            try {
+                const diag = await API.createDialogue("快捷记录");
+                d.currentDialogueId = diag.id;
+            } catch (e) { /* ignore */ }
+        }
+
+        const session = d.createSession('', []);
+        session.dialogueId = d.currentDialogueId;
+        session.persistentCardId = window.DateFormatter ? window.DateFormatter.generateId('card') : `card-${Date.now()}`;
+        session.isQuickRecord = true;
+        d.currentSession = session;
+
+        const initialData = {
+            type: 'diet',
+            title: name,
+            summary: {
+                mealName: name, // For single-product record, the meal IS the product
+                dietTime: this.guessDietTime(),
+                totalEnergy: kj,
+                totalProtein: p,
+                totalCarbs: c,
+                totalFat: f
+            },
+            dishes: [dish],
+            advice: '',
+            capturedLabels: [],
+            context: {
+                today_so_far: { consumed_energy_kj: 0, consumed_protein_g: 0, consumed_fat_g: 0, consumed_carbs_g: 0, consumed_sodium_mg: 0, consumed_fiber_g: 0 },
+                user_target: window.Dashboard.currentUserTarget || {}
+            }
+        };
+
+        session.versions.push({
+            number: 1,
+            createdAt: new Date(),
+            userNote: name,
+            rawResult: { dishes: [dish], context: initialData.context, meta: { is_quick_record: true } },
+            parsedData: initialData,
+            advice: '',
+            adviceLoading: false,
+            isDraft: true
+        });
+        session.currentVersion = 1;
+
+        if (!d.dietIngredientsCollapsed) d.dietIngredientsCollapsed = {};
+        d.dietIngredientsCollapsed[dish.id] = false; // Expand by default
+
+        d.updateStatus('');
+        d.renderResult(session);
+
+        // Fetch Context (Today's summary)
+        if (API.getTodaySummary) {
+            API.getTodaySummary().then(resp => {
+                if (resp.success && resp.summary) {
+                    initialData.context.today_so_far = resp.summary;
+                    session.versions[0].rawResult.context = initialData.context;
+                    if (d.currentSession === session) {
+                        d.renderResult(session);
+                    }
+                }
+            }).catch(e => console.warn('[QuickInput] Failed to fetch summary', e));
+        }
+    },
+
 
     /**
      * Helper to normalize dish structure

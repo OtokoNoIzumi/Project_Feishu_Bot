@@ -58,6 +58,7 @@ const Dashboard = {
     }
 
     // 初始化 UI 状态 (Empty State with Tips)
+    if (window.GlobalSearchManager) window.GlobalSearchManager.init();
     this.clearResult();
 
     // 初始化 Auth（非阻塞）
@@ -746,6 +747,26 @@ const Dashboard = {
   // 委托给 StorageModule
   loadHistory: StorageModule.loadHistory,
   addHistoryItem: StorageModule.addHistoryItem, // 恢复这一行委托
+
+  // ========== Global Search Actions ==========
+
+  async createRecordFromProduct(product) {
+    console.log('[Dashboard] Delegating createRecordFromProduct to QuickInputModule');
+    if (window.QuickInputModule && window.QuickInputModule.executeProduct) {
+      await window.QuickInputModule.executeProduct(product);
+    } else {
+      console.error('QuickInputModule.executeProduct not available');
+    }
+  },
+
+  async createRecordFromHistory(cardId) {
+    console.log('[Dashboard] Delegating createRecordFromHistory to QuickInputModule');
+    if (window.QuickInputModule && window.QuickInputModule.executeFavorite) {
+      await window.QuickInputModule.executeFavorite(cardId);
+    } else {
+      console.error('QuickInputModule.executeFavorite not available');
+    }
+  },
 };
 
 // Mixin Modules

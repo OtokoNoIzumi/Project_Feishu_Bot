@@ -39,6 +39,48 @@ const SessionManagerModule = {
     },
 
     /**
+     * 将后端卡片数据转换为前端 Session 对象
+     */
+    createSessionFromCard(cardData) {
+        if (!cardData) return null;
+
+        const versions = (cardData.versions || []).map((v, i) => ({
+            number: i + 1,
+            createdAt: new Date(v.created_at || new Date()),
+            userNote: v.user_note || '',
+            rawResult: v.raw_result || {},
+            parsedData: ParserModule.parseResult(v.raw_result || {}, cardData.mode),
+            advice: v.advice,
+            adviceError: v.adviceError,
+            adviceLoading: false
+        }));
+
+        const sourceUserNote = cardData.source_user_note || versions[0]?.userNote || '';
+        const imageUrls = cardData.image_uris || [];
+
+        return {
+            id: cardData.id,
+            persistentCardId: cardData.id,
+            dialogueId: cardData.dialogue_id,
+            mode: cardData.mode,
+            createdAt: new Date(cardData.created_at || Date.now()),
+            text: sourceUserNote,
+            sourceUserNote: sourceUserNote,
+            sourceImagesB64: [],
+            cardCreated: true,
+            images: [],
+            imageUrls: imageUrls,
+            imageHashes: cardData.image_hashes || [],
+            versions: versions,
+            currentVersion: cardData.current_version || (versions.length > 0 ? versions.length : 0),
+            isSaved: cardData.status === 'saved',
+            isQuickRecord: versions.some(v => v.rawResult && v.rawResult.meta && v.rawResult.meta.is_quick_record),
+            savedRecordId: cardData.saved_record_id,
+            savedData: null
+        };
+    },
+
+    /**
      * 加载后端卡片 (Phase 2)
      */
     async loadCard(cardId) {
@@ -51,40 +93,8 @@ const SessionManagerModule = {
             let session = this.sessions.find(s => s.id === cardData.id);
 
             if (!session) {
-                // 构造 Session 对象
-                const versions = (cardData.versions || []).map((v, i) => ({
-                    number: i + 1,
-                    createdAt: new Date(v.created_at || new Date()),
-                    userNote: v.user_note || '',
-                    rawResult: v.raw_result || {},
-                    parsedData: ParserModule.parseResult(v.raw_result || {}, cardData.mode),
-                    advice: v.advice,
-                    adviceError: v.adviceError,
-                    adviceLoading: false
-                }));
-                const sourceUserNote = cardData.source_user_note || versions[0]?.userNote || '';
-                const imageUrls = cardData.image_uris || [];
-
-                session = {
-                    id: cardData.id,
-                    persistentCardId: cardData.id,
-                    dialogueId: cardData.dialogue_id,
-                    mode: cardData.mode,
-                    createdAt: new Date(cardData.created_at),
-                    text: sourceUserNote,
-                    sourceUserNote: sourceUserNote,
-                    sourceImagesB64: [],
-                    cardCreated: true,
-                    images: [],
-                    imageUrls: imageUrls,
-                    imageHashes: cardData.image_hashes || [],
-                    versions: versions,
-                    currentVersion: cardData.current_version || (versions.length > 0 ? versions.length : 0),
-                    isSaved: cardData.status === 'saved',
-                    isQuickRecord: versions.some(v => v.rawResult && v.rawResult.meta && v.rawResult.meta.is_quick_record),
-                    savedRecordId: cardData.saved_record_id,
-                    savedData: null
-                };
+                // 使用提取的方法构造 Session
+                session = this.createSessionFromCard(cardData);
                 this.sessions.push(session);
             }
 

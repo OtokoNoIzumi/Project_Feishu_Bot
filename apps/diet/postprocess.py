@@ -10,7 +10,7 @@ Why this exists?
 
 from typing import Any, Dict, List
 
-from libs.utils.energy_units import kcal_to_kj
+from libs.utils.energy_units import kcal_to_kj, macro_energy_kj
 
 
 def normalize_captured_labels(llm_result: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -39,10 +39,6 @@ def normalize_captured_labels(llm_result: Dict[str, Any]) -> List[Dict[str, Any]
         )
     return labels
 
-
-def _macro_energy_kj(protein_g: float, fat_g: float, carbs_g: float) -> float:
-    """Calculate energy from macros (4-9-4 rule in KJ)."""
-    return (protein_g * 4 + carbs_g * 4 + fat_g * 9) * 4.184
 
 
 def _match_label_for_ingredient(
@@ -89,7 +85,7 @@ def finalize_record(llm_result: Dict[str, Any]) -> Dict[str, Any]:
             fiber_g = float((macros.get("fiber_g") or 0.0))
 
             data_source = str(ing.get("data_source") or "generic_estimate")
-            energy_kj = _macro_energy_kj(protein_g, fat_g, carbs_g)
+            energy_kj = macro_energy_kj(protein_g, fat_g, carbs_g)
 
             if data_source == "label_ocr":
                 lb = _match_label_for_ingredient(labels, name_zh)
@@ -99,7 +95,7 @@ def finalize_record(llm_result: Dict[str, Any]) -> Dict[str, Any]:
                     if serving in ("100g", "100ml") and weight_g > 0:
                         energy_kj = (per / 100.0) * weight_g
                     elif serving == "per_pack":
-                        energy_kj = _macro_energy_kj(protein_g, fat_g, carbs_g)
+                        energy_kj = macro_energy_kj(protein_g, fat_g, carbs_g)
 
             energy_kj = float(energy_kj)
             total_energy_kj += energy_kj

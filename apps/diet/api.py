@@ -10,6 +10,8 @@ import logging
 import json
 from typing import Any, Dict, List, Optional
 
+from collections import defaultdict
+
 from fastapi import APIRouter, Depends, File, Form, UploadFile, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
@@ -32,6 +34,8 @@ from apps.llm_runtime import get_global_semaphore, get_model_limiter
 from apps.settings import BackendSettings
 from libs.utils.rate_limiter import AsyncRateLimiter
 from libs.llm_gemini.gemini_client import StreamError
+from libs.storage_lib import global_storage
+from libs.utils.energy_units import macro_energy_kj
 
 logger = logging.getLogger(__name__)
 
@@ -566,29 +570,195 @@ def build_diet_router(settings: BackendSettings) -> APIRouter:
         dependencies=[Depends(auth_dep)],
     )
     async def get_dish_library(
-        limit: int = 200,
-        user_id: str = Depends(get_current_user_id)
+        limit: int = 1000, user_id: str = Depends(get_current_user_id)
     ):
-        """Get dish library for autocomplete suggestions."""
-        from libs.storage_lib import global_storage
-        
+        """
+        Get dish library for autocomplete suggestions.
+        Aggregates historical data to provide average energy and weight.
+        """
+
         dishes = global_storage.read_dataset(
             user_id, "diet", "dish_library.jsonl", limit=limit
         )
-        
-        # 去重，只保留最新的每个菜名
-        seen = set()
-        unique_dishes = []
+
+        # Aggregation: Name -> Stats
+        aggregated = defaultdict(
+            lambda: {
+                "count": 0,
+                "total_weight": 0.0,
+                "sum_p": 0.0,
+                "sum_f": 0.0,
+                "sum_c": 0.0,
+                "sum_na": 0.0,
+                "sum_fib": 0.0,
+                "latest_record": None,
+            }
+        )
+
         for dish in dishes:
             name = dish.get("dish_name", "")
-            if name and name not in seen:
-                seen.add(name)
-                unique_dishes.append({
+            if not name:
+                continue
+
+            # Exclude zero weights as requested
+            w = float(dish.get("recorded_weight_g") or 0)
+            if w <= 0:
+                continue
+
+            agg = aggregated[name]
+            agg["count"] += 1
+            agg["total_weight"] += w
+
+            macros = dish.get("macros_per_100g") or {}
+            agg["sum_p"] += float(macros.get("protein_g") or 0)
+            agg["sum_f"] += float(macros.get("fat_g") or 0)
+            agg["sum_c"] += float(macros.get("carbs_g") or 0)
+            agg["sum_na"] += float(macros.get("sodium_mg") or 0)
+            agg["sum_fib"] += float(macros.get("fiber_g") or 0)
+
+            if agg["latest_record"] is None:
+                agg["latest_record"] = dish
+
+        result = []
+        for name, data in aggregated.items():
+            count = data["count"]
+            if count == 0:
+                continue
+
+            avg_weight = round(data["total_weight"] / count, 1)
+
+            # Avg Densities (per 100g)
+            d_p = data["sum_p"] / count
+            d_f = data["sum_f"] / count
+            d_c = data["sum_c"] / count
+            d_na = data["sum_na"] / count
+            d_fib = data["sum_fib"] / count
+
+            # Recalculate Energy Density (kJ/100g)
+            d_e = macro_energy_kj(d_p, d_f, d_c)
+
+            latest = data["latest_record"]
+
+            result.append(
+                {
                     "dish_name": name,
-                    "recorded_weight_g": dish.get("recorded_weight_g"),
-                    "macros_per_100g": dish.get("macros_per_100g"),
-                })
-        
-        return unique_dishes
+                    "recorded_weight_g": avg_weight,  # Average Weight
+                    "macros_per_100g": {
+                        "energy_kj": round(d_e, 2),
+                        "protein_g": round(d_p, 2),
+                        "fat_g": round(d_f, 2),
+                        "carbs_g": round(d_c, 2),
+                        "sodium_mg": round(d_na, 2),
+                        "fiber_g": round(d_fib, 2),
+                    },
+                    "ingredients_snapshot": latest.get("ingredients_snapshot", []),
+                    "count": count,
+                }
+            )
+
+        return result
+
+    @router.get("/api/search/food", dependencies=[Depends(auth_dep)])
+    async def search_food(q: str, user_id: str = Depends(get_current_user_id)):
+        """
+        Unified search for Add Dish:
+        1. Product Library (exact match or partial)
+        2. Dish Library (Aggregated averages)
+        Returns mixed list with type='product' or 'dish'.
+        """
+        q = q.lower().strip()
+        has_query = len(q) > 0
+
+        results = []
+
+        # 1. Product Library
+        products = global_storage.read_dataset(
+            user_id, "diet", "product_library.jsonl", limit=2000
+        )
+        # Assuming Oldest->Newest, we want Latest versions.
+        # But Product Library is upserted? No, record_service appends.
+        # record_service L166 rewrites the whole file with dedup logic.
+        # So product_library is already unique by key.
+        for p in products:
+            pname = str(p.get("product_name", "")).lower()
+            if (not has_query) or (q in pname):
+                results.append({"type": "product", "data": p})
+                if len(results) >= 5:
+                    break
+
+        # 2. Dish Library (On-demand Aggregation)
+
+        dishes = global_storage.read_dataset(
+            user_id, "diet", "dish_library.jsonl", limit=1000
+        )
+
+        relevant_groups = defaultdict(list)
+        for d in dishes:
+            dname = str(d.get("dish_name", "")).lower()
+            if (not has_query) or (q in dname):
+                w = float(d.get("recorded_weight_g") or 0)
+                if w > 0:
+                    relevant_groups[d["dish_name"]].append(d)
+
+        # Aggregate found groups
+        for name, records in relevant_groups.items():
+            count = len(records)
+            total_w = sum(float(x.get("recorded_weight_g") or 0) for x in records)
+            avg_weight = round(total_w / count, 1)
+
+            # Sum densities
+            sum_p = sum(
+                float((x.get("macros_per_100g") or {}).get("protein_g") or 0)
+                for x in records
+            )
+            sum_f = sum(
+                float((x.get("macros_per_100g") or {}).get("fat_g") or 0)
+                for x in records
+            )
+            sum_c = sum(
+                float((x.get("macros_per_100g") or {}).get("carbs_g") or 0)
+                for x in records
+            )
+            sum_na = sum(
+                float((x.get("macros_per_100g") or {}).get("sodium_mg") or 0)
+                for x in records
+            )
+            sum_fib = sum(
+                float((x.get("macros_per_100g") or {}).get("fiber_g") or 0)
+                for x in records
+            )
+
+            d_p = sum_p / count
+            d_f = sum_f / count
+            d_c = sum_c / count
+            d_na = sum_na / count
+            d_fib = sum_fib / count
+
+            # Recalculate Energy Density (kJ/100g)
+            d_e = macro_energy_kj(d_p, d_f, d_c)
+
+            # Latest is last in list (Append order)
+            latest = records[-1]
+
+            dish_data = {
+                "dish_name": name,
+                "recorded_weight_g": avg_weight,
+                "macros_per_100g": {
+                    "energy_kj": round(d_e, 2),
+                    "protein_g": round(d_p, 2),
+                    "fat_g": round(d_f, 2),
+                    "carbs_g": round(d_c, 2),
+                    "sodium_mg": round(d_na, 2),
+                    "fiber_g": round(d_fib, 2),
+                },
+                "ingredients_snapshot": latest.get("ingredients_snapshot", []),
+                "count": count,
+                "source": "history",
+            }
+            results.append({"type": "dish", "data": dish_data})
+            if len(results) >= 20:
+                break
+
+        return results
 
     return router

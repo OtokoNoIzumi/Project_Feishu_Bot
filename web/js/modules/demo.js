@@ -1,6 +1,6 @@
 /**
  * Demo 演示模块
- * 
+ *
  * 负责处理演示模式的引导、遮罩和限制逻辑
  * 挂载到 Dashboard 实例运行 (Object.assign)
  */
@@ -9,6 +9,28 @@ const DemoModule = {
         // [Fix] Demo 模式下隐藏 "餐食" 侧边栏入口
         const mealsNav = document.querySelector('[data-view="meals"]');
         if (mealsNav) mealsNav.style.display = 'none';
+
+        // [Demo] 禁用侧边栏搜索与新增
+        const searchInput = document.getElementById('global-search-input');
+        if (searchInput) {
+            searchInput.value = '';
+            searchInput.setAttribute('disabled', 'disabled');
+            searchInput.setAttribute('title', '注册登录后\n可在此搜索并快速添加已记录的数据');
+            searchInput.style.cursor = 'not-allowed';
+            searchInput.style.background = 'rgba(255,255,255,0.4)';
+        }
+        const searchResults = document.getElementById('global-search-results');
+        if (searchResults) {
+            searchResults.innerHTML = '';
+            searchResults.classList.remove('visible');
+            searchResults.classList.add('hidden');
+        }
+        const newBtn = document.getElementById('new-dialogue-btn');
+        if (newBtn) {
+            newBtn.setAttribute('disabled', 'disabled');
+            newBtn.style.cursor = 'not-allowed';
+            newBtn.style.opacity = '0.4';
+        }
 
         // [Fix] 预加载 Profile 数据，确保侧边栏性别图标正确
         if (window.ProfileModule && !ProfileModule.serverProfile) {

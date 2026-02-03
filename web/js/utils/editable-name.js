@@ -1,12 +1,12 @@
 /**
  * Editable Name Component
- * 
+ *
  * 可编辑名称组件，支持：
  * 1. 点击显示编辑框
  * 2. 模糊匹配建议（基于 dish_library.jsonl）
  * 3. 键盘上下键导航建议列表
  * 4. 回车确认 / Escape 取消
- * 
+ *
  * 设计原则：
  * - 所有匹配都在本地进行，不请求后端
  * - 仅在保存时触发一次后端请求
@@ -20,23 +20,57 @@ const EditableNameModule = {
     // dish_library 缓存
     _dishLibrary: null,
     _dishLibraryLoaded: false,
+    _nameMatchCache: new Map(),
+    _nameMatchPromiseCache: new Map(),
 
     /**
      * 初始化：加载 dish_library 数据
      */
-    async init() {
-        if (this._dishLibraryLoaded) return;
+    // Search debounce
+    _debouncedSearch: null,
 
-        try {
-            const response = await API.get('/diet/dish-library');
-            this._dishLibrary = response || [];
-            this._dishLibraryLoaded = true;
-            console.log(`[EditableName] Loaded ${this._dishLibrary.length} dishes from library`);
-        } catch (e) {
-            console.error('[EditableName] Failed to load dish library:', e);
-            this._dishLibrary = [];
-            this._dishLibraryLoaded = true;
-        }
+    /**
+     * 初始化
+     */
+    init() {
+        this._debouncedSearch = this._debounce(async (query, el) => {
+            if (typeof Auth !== 'undefined' && Auth.isDemoMode && Auth.isDemoMode()) {
+                el.innerHTML = '';
+                el.classList.remove('visible');
+                return;
+            }
+            if (!query) {
+                el.innerHTML = '';
+                el.classList.remove('visible');
+                return;
+            }
+            try {
+                const results = await window.API.searchFood(query);
+                // 去重：对产品和菜品分别取名字段，优先顺序为：product_name > dish_name
+                const dedupMap = new Map();
+                (results || []).forEach(r => {
+                    let name = '';
+                    if (r.type === 'product') {
+                        name = r?.data?.product_name || r?.data?.name;
+                    } else if (r.type === 'dish') {
+                        name = r?.data?.dish_name;
+                    }
+                    if (!name) return;
+                    if (!dedupMap.has(name)) {
+                        dedupMap.set(name, r);
+                    }
+                });
+                this._renderSuggestions(el, Array.from(dedupMap.values()), query);
+            } catch (e) { console.error(e); }
+        }, 300);
+    },
+
+    _debounce(func, wait) {
+        let timeout;
+        return function (...args) {
+            clearTimeout(timeout);
+            timeout = setTimeout(() => func.apply(this, args), wait);
+        };
     },
 
     /**
@@ -49,11 +83,12 @@ const EditableNameModule = {
     renderEditable(name, type, index) {
         const escapedName = this._escapeHtml(name || '未命名');
         return `
-            <span class="editable-name" 
-                  data-type="${type}" 
+            <span class="editable-name"
+                  data-type="${type}"
                   data-index="${index}"
                   onclick="EditableNameModule.startEdit(this, event)">
                 <span class="editable-name-text">${escapedName}</span>
+                <span class="editable-name-badge">new</span>
                 <span class="editable-name-icon">✏️</span>
             </span>
         `;
@@ -89,8 +124,8 @@ const EditableNameModule = {
         // 创建编辑器
         element.innerHTML = `
             <div class="editable-name-editor" onclick="event.stopPropagation()">
-                <input type="text" 
-                       class="editable-name-input" 
+                <input type="text"
+                       class="editable-name-input"
                        value="${this._escapeHtml(currentName)}"
                        data-type="${type}"
                        data-index="${index}"
@@ -131,6 +166,31 @@ const EditableNameModule = {
             const suggestionEl = e.target.closest('.editable-name-suggestion');
             if (suggestionEl) {
                 e.preventDefault(); // 阻止 blur
+
+                const jsonStr = suggestionEl.dataset.json;
+                // Full Data update
+                if (jsonStr) {
+                    try {
+                        const item = JSON.parse(decodeURIComponent(jsonStr));
+                        const type = element.dataset.type;
+                        const idx = element.dataset.index;
+
+                        // Call Dashboard to update structure if it's a dish edit
+                        if (type === 'dish' && window.Dashboard && window.Dashboard.updateDishFromSearch) {
+                            window.Dashboard.updateDishFromSearch(idx, item);
+                            // Close editor implies re-render, effectively removing it
+                            this._activeEditor = null;
+                            return;
+                        }
+
+                        // Fallback: just name
+                        const val = suggestionEl.dataset.value;
+                        input.value = val;
+                        this.saveEdit(element);
+                        return;
+                    } catch (err) { console.error(err); }
+                }
+
                 const value = suggestionEl.dataset.value;
                 input.value = value;
                 this.saveEdit(element);
@@ -147,65 +207,88 @@ const EditableNameModule = {
      * 进入编辑模式时立即显示建议
      */
     _showInitialSuggestions(currentName, suggestionsEl) {
-        const query = currentName.trim().toLowerCase();
-
-        // 获取匹配建议
-        const suggestions = this._getMatchingSuggestions(query);
-
-        if (suggestions.length === 0) {
+        if (!this._debouncedSearch) this.init();
+        const query = currentName.trim();
+        if (!query) {
             suggestionsEl.innerHTML = '';
             suggestionsEl.classList.remove('visible');
             return;
         }
-
-        // 渲染建议列表
-        this._renderSuggestions(suggestionsEl, suggestions, query);
+        if (this._debouncedSearch) {
+            this._debouncedSearch(query, suggestionsEl);
+        }
     },
 
     /**
      * 输入事件：显示模糊匹配建议
      */
+    /**
+     * 输入事件：显示模糊匹配建议
+     */
     _onInput(e, suggestionsEl) {
-        const query = e.target.value.trim().toLowerCase();
+        if (!this._debouncedSearch) this.init();
+        const query = e.target.value.trim();
         this._selectedIndex = -1; // 重置选中
 
         if (query.length < 1) {
-            // 空输入时显示所有建议（最多8个）
-            const allSuggestions = this._getMatchingSuggestions('');
-            if (allSuggestions.length > 0) {
-                this._renderSuggestions(suggestionsEl, allSuggestions, '');
-            } else {
-                suggestionsEl.innerHTML = '';
-                suggestionsEl.classList.remove('visible');
-            }
-            return;
-        }
-
-        // 获取本地模板数据进行匹配
-        const suggestions = this._getMatchingSuggestions(query);
-
-        if (suggestions.length === 0) {
             suggestionsEl.innerHTML = '';
             suggestionsEl.classList.remove('visible');
             return;
         }
 
-        // 渲染建议列表
-        this._renderSuggestions(suggestionsEl, suggestions, query);
+        // Call Debounced API Search
+        if (this._debouncedSearch) {
+            this._debouncedSearch(query, suggestionsEl);
+        }
     },
 
     /**
      * 渲染建议列表
      */
+    /**
+     * 渲染建议列表
+     */
     _renderSuggestions(suggestionsEl, suggestions, query) {
-        suggestionsEl.innerHTML = suggestions.slice(0, 8).map((s, i) => `
-            <div class="editable-name-suggestion${i === this._selectedIndex ? ' selected' : ''}" 
-                 data-value="${this._escapeHtml(s.name)}"
+        if (!suggestions || suggestions.length === 0) {
+            suggestionsEl.innerHTML = '';
+            suggestionsEl.classList.remove('visible');
+            return;
+        }
+
+        suggestionsEl.innerHTML = suggestions.map((s, i) => {
+            const data = s.data || {};
+            const name = data.dish_name || data.product_name || '';
+            const avgWeight = Number(data.recorded_weight_g) || 0;
+            const energyKj = this._calcDishEnergyKj(data);
+            const extra = avgWeight > 0 ? `${Math.round(energyKj)}kJ · ${avgWeight}g` : '';
+            const icon = s.type === 'product' ? '🥗' : '🥣';
+            const json = encodeURIComponent(JSON.stringify(s));
+
+            return `
+            <div class="editable-name-suggestion${i === this._selectedIndex ? ' selected' : ''}"
+                 data-value="${this._escapeHtml(name)}"
+                 data-json="${json}"
                  data-index="${i}">
-                ${query ? this._highlightMatch(s.name, query) : this._escapeHtml(s.name)}
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <span>${icon} ${this._highlightMatch(name, query)}</span>
+                    <span style="font-size:0.75em; color:#aaa; margin-left:8px;">${extra}</span>
+                </div>
             </div>
-        `).join('');
+            `;
+        }).join('');
         suggestionsEl.classList.add('visible');
+    },
+
+    _calcDishEnergyKj(data) {
+        const macros = data.macros_per_100g || {};
+        const p = Number(macros.protein_g) || 0;
+        const f = Number(macros.fat_g) || 0;
+        const c = Number(macros.carbs_g) || 0;
+        const kcal100 = EnergyUtils.macrosToKcal(p, f, c);
+        const kj100 = EnergyUtils.kcalToKJ(kcal100);
+        const avgWeight = Number(data.recorded_weight_g) || 0;
+        if (avgWeight <= 0) return 0;
+        return (kj100 * avgWeight) / 100;
     },
 
     /**
@@ -399,6 +482,82 @@ const EditableNameModule = {
                 Dashboard.updateCardTitle(index, newName);
             }
         }
+    },
+
+    refreshNewBadges(container = document) {
+        const elements = container.querySelectorAll('.editable-name[data-type="dish"]');
+        elements.forEach(el => this._updateNewBadgeForElement(el));
+    },
+
+    _updateNewBadgeForElement(element) {
+        const textEl = element.querySelector('.editable-name-text');
+        if (!textEl) return;
+
+        const name = (textEl.textContent || '').trim();
+        if (!name) {
+            this._applyNewBadgeState(element, false);
+            return;
+        }
+
+        if (typeof Auth !== 'undefined' && Auth.isDemoMode && Auth.isDemoMode()) {
+            this._applyNewBadgeState(element, false);
+            return;
+        }
+
+        const key = this._normalizeName(name);
+        if (this._nameMatchCache.has(key)) {
+            const hasMatch = this._nameMatchCache.get(key);
+            this._applyNewBadgeState(element, !hasMatch);
+            return;
+        }
+
+        if (this._nameMatchPromiseCache.has(key)) {
+            return;
+        }
+
+        if (!window.API || !window.API.searchFood) {
+            return;
+        }
+
+        const promise = window.API.searchFood(name)
+            .then(results => {
+                const hasMatch = this._hasExactMatch(name, results);
+                this._nameMatchCache.set(key, hasMatch);
+                this._applyNewBadgeState(element, !hasMatch);
+            })
+            .catch(() => {
+                this._applyNewBadgeState(element, false);
+            })
+            .finally(() => {
+                this._nameMatchPromiseCache.delete(key);
+            });
+
+        this._nameMatchPromiseCache.set(key, promise);
+    },
+
+    _hasExactMatch(name, results) {
+        const key = this._normalizeName(name);
+        const list = Array.isArray(results) ? results : [];
+        for (const item of list) {
+            if (item?.type === 'dish') {
+                const dishName = item?.data?.dish_name || '';
+                if (this._normalizeName(dishName) === key) return true;
+            }
+            if (item?.type === 'product') {
+                const productName = item?.data?.product_name || item?.data?.name || '';
+                if (this._normalizeName(productName) === key) return true;
+            }
+        }
+        return false;
+    },
+
+    _normalizeName(value) {
+        return String(value || '').trim().toLowerCase();
+    },
+
+    _applyNewBadgeState(element, isNew) {
+        if (isNew) element.classList.add('is-new');
+        else element.classList.remove('is-new');
     },
 
     _escapeHtml(str) {

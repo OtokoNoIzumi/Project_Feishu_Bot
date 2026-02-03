@@ -23,6 +23,7 @@ from libs.api_keys.api_key_manager import APIKeyManager
 
 logger = logging.getLogger(__name__)
 
+
 # --- Stats Logger Setup ---
 def setup_stats_logger():
     """配置专门的统计日志记录器 (JSONL)"""
@@ -35,13 +36,15 @@ def setup_stats_logger():
     s_logger.propagate = False  # 不传给 root logger，避免重复
 
     if not s_logger.handlers:
-        file_handler = logging.FileHandler(stats_log_file, encoding='utf-8')
-        file_handler.setFormatter(logging.Formatter('%(message)s'))
+        file_handler = logging.FileHandler(stats_log_file, encoding="utf-8")
+        file_handler.setFormatter(logging.Formatter("%(message)s"))
         s_logger.addHandler(file_handler)
 
     return s_logger
 
+
 stats_logger = setup_stats_logger()
+
 
 def log_stat(data: Dict[str, Any]):
     """记录一条统计数据"""
@@ -49,10 +52,14 @@ def log_stat(data: Dict[str, Any]):
     # 同时输出到控制台 (方便实时看) 和 文件 (方便持久化)
     logger.info(f"[GeminiStats] {json.dumps(data, ensure_ascii=False)}")
     stats_logger.info(json.dumps(data, ensure_ascii=False))
+
+
 # --------------------------
+
 
 class StreamError(Exception):
     """Custom exception for streaming errors with error code."""
+
     def __init__(self, code: str, message: str):
         self.code = code
         self.message = message
@@ -234,7 +241,11 @@ class GeminiStructuredClient:
                     pass
 
     async def _prepare_contents_with_metrics(
-        self, prompt: str, images: List[bytes], scene: str = "unknown", user_id: str = "unknown"
+        self,
+        prompt: str,
+        images: List[bytes],
+        scene: str = "unknown",
+        user_id: str = "unknown",
     ) -> tuple[List[Any], Dict[str, Any]]:
         """
         统一处理内容准备：并发上传图片（含 Metrics）+ 组装 Prompt。
@@ -246,20 +257,19 @@ class GeminiStructuredClient:
             "image_count": 0,
             "upload_duration_ms": 0,
             "cache_hits": 0,
-            "new_uploads": 0
+            "new_uploads": 0,
         }
 
         if not images:
             return contents, metrics
 
         metrics["image_count"] = len(images)
-        
+
         # Calculate sizes for logs and timeout
         sizes = [len(img) for img in images]
         max_size_bytes = max(sizes) if sizes else 0
         total_size_bytes = sum(sizes)
         max_size_mb = max_size_bytes / (1024 * 1024)
-        total_size_mb = total_size_bytes / (1024 * 1024)
 
         start_time = time.time()
 
@@ -280,12 +290,15 @@ class GeminiStructuredClient:
                 cached = self.file_cache.get(file_hash, key_suffix)
                 if cached:
                     file_obj = types.File(
-                        name=cached["name"], uri=cached["uri"], mime_type=cached["mime_type"]
+                        name=cached["name"],
+                        uri=cached["uri"],
+                        mime_type=cached["mime_type"],
                     )
                     # 标记为 False (New Upload)，因为如果在第一步check cache时没拿到，说明这是本次上传的
                     pending_images[idx] = (img_bytes, (file_obj, False))
                     logger.info(
-                        "[GeminiStats] Recovered upload from cache for image %d (New Upload)", idx
+                        "[GeminiStats] Recovered upload from cache for image %d (New Upload)",
+                        idx,
                     )
 
         # 跟踪每个图片的上传状态: (image_bytes, success_result)
@@ -294,10 +307,12 @@ class GeminiStructuredClient:
 
         for attempt in range(1, max_retries + 1):
             actual_attempt = attempt
-            
+
             # 1. 识别当前还需要处理的图片索引
-            pending_indices = [i for i, (_, result) in enumerate(pending_images) if result is None]
-            
+            pending_indices = [
+                i for i, (_, result) in enumerate(pending_images) if result is None
+            ]
+
             if not pending_indices:
                 break
 
@@ -311,20 +326,29 @@ class GeminiStructuredClient:
                 if cached:
                     logger.info("Using cached Gemini file: %s", cached["name"])
                     file_obj = types.File(
-                        name=cached["name"], uri=cached["uri"], mime_type=cached["mime_type"]
+                        name=cached["name"],
+                        uri=cached["uri"],
+                        mime_type=cached["mime_type"],
                     )
-                    pending_images[idx] = (img_bytes, (file_obj, True)) # True = Cache Hit
+                    pending_images[idx] = (
+                        img_bytes,
+                        (file_obj, True),
+                    )  # True = Cache Hit
 
             # 再次检查还需要上传的
-            upload_indices = [i for i, (_, result) in enumerate(pending_images) if result is None]
+            upload_indices = [
+                i for i, (_, result) in enumerate(pending_images) if result is None
+            ]
             if not upload_indices:
                 break
 
             # 3. 准备上传任务 (New Uploads)
-            
+
             # 计算动态超时时间：基础时间 + (总大小MB * 5秒)
             # 例如 3MB 图片 -> 6 + 15 = 21s
-            current_upload_size_mb = sum(len(pending_images[i][0]) for i in upload_indices) / (1024 * 1024)
+            current_upload_size_mb = sum(
+                len(pending_images[i][0]) for i in upload_indices
+            ) / (1024 * 1024)
             dynamic_timeout = base_upload_timeout + (current_upload_size_mb * 5)
             # 确保至少有 base_timeout
             dynamic_timeout = max(dynamic_timeout, base_upload_timeout)
@@ -332,9 +356,11 @@ class GeminiStructuredClient:
             use_timeout = dynamic_timeout
             if attempt == max_retries and self.config.enable_final_upload_timeout_boost:
                 # 最后一次尝试给予更多时间，取较大值
-                use_timeout = max(self.config.final_upload_timeout_seconds, dynamic_timeout * 1.5)
-            
-            use_timeout = round(use_timeout, 2) # 保留两位小数日志好看点
+                use_timeout = max(
+                    self.config.final_upload_timeout_seconds, dynamic_timeout * 1.5
+                )
+
+            use_timeout = round(use_timeout, 2)  # 保留两位小数日志好看点
 
             try:
                 # 定义单个上传函数 (不含缓存检查，因为前面查过了)
@@ -342,17 +368,17 @@ class GeminiStructuredClient:
                     file_hash = hashlib.sha256(img_bytes).hexdigest()
                     key_suffix = self._get_api_key_suffix()
                     logger.info("Uploading new file to Gemini: hash=%s", file_hash[:8])
-                    
+
                     tmp_fd, tmp_path = tempfile.mkstemp(suffix=".png")
                     try:
                         with os.fdopen(tmp_fd, "wb") as tmp:
                             tmp.write(img_bytes)
-                        
+
                         def _sync_upload():
                             return self.client.files.upload(
                                 file=tmp_path, config={"mime_type": "image/png"}
                             )
-                        
+
                         uploaded_file = await asyncio.to_thread(_sync_upload)
                         # 更新缓存
                         self.file_cache.set(file_hash, key_suffix, uploaded_file)
@@ -364,11 +390,13 @@ class GeminiStructuredClient:
                             except OSError:
                                 pass
 
-                upload_tasks = [_single_upload(i, pending_images[i][0]) for i in upload_indices]
+                upload_tasks = [
+                    _single_upload(i, pending_images[i][0]) for i in upload_indices
+                ]
 
                 results = await asyncio.wait_for(
                     asyncio.gather(*upload_tasks, return_exceptions=True),
-                    timeout=use_timeout
+                    timeout=use_timeout,
                 )
 
                 # 更新结果
@@ -377,12 +405,18 @@ class GeminiStructuredClient:
                         if not isinstance(upload_result, asyncio.CancelledError):
                             logger.warning(
                                 "[GeminiStats] Upload attempt %d/%d failed for image %d: %s",
-                                attempt, max_retries, idx, str(upload_result)
+                                attempt,
+                                max_retries,
+                                idx,
+                                str(upload_result),
                             )
                         # 失败了，会在后续 recover 或下一次重试处理
                     else:
                         # 成功，标记为 False (New Upload)
-                        pending_images[idx] = (pending_images[idx][0], (upload_result, False))
+                        pending_images[idx] = (
+                            pending_images[idx][0],
+                            (upload_result, False),
+                        )
 
                 # 检查是否全部成功
                 if all(result is not None for _, result in pending_images):
@@ -406,7 +440,9 @@ class GeminiStructuredClient:
                 error_msg = str(e)
                 logger.warning(
                     "[GeminiStats] Upload attempt %d/%d error: %s",
-                    attempt, max_retries, error_msg
+                    attempt,
+                    max_retries,
+                    error_msg,
                 )
 
                 _recover_from_cache(upload_indices)
@@ -419,16 +455,16 @@ class GeminiStructuredClient:
         # 检查最终结果
         final_results = [result for _, result in pending_images if result is not None]
         failed_count = len(images) - len(final_results)
-        
+
         metrics["upload_duration_ms"] = (time.time() - start_time) * 1000
-        
+
         # 统计结果
         hits = sum(1 for r in final_results if r[1])
-        misses = sum(1 for r in final_results if not r[1]) # False = New Upload
+        misses = sum(1 for r in final_results if not r[1])  # False = New Upload
 
         metrics["cache_hits"] = hits
         metrics["new_uploads"] = misses
-        
+
         log_payload = {
             "type": "Upload",
             "scene": scene,
@@ -449,11 +485,15 @@ class GeminiStructuredClient:
             elif last_error:
                 reason = str(last_error)
             error_msg = (
-                f"Upload failed after {max_retries} attempts; {reason}; "
-                f"{failed_count} image(s) not uploaded"
-            ) if reason else f"Upload failed; {failed_count} image(s) not uploaded"
+                (
+                    f"Upload failed after {max_retries} attempts; {reason}; "
+                    f"{failed_count} image(s) not uploaded"
+                )
+                if reason
+                else f"Upload failed; {failed_count} image(s) not uploaded"
+            )
             logger.error(f"[GeminiStats] {error_msg}")
-            
+
             log_payload["status"] = "Failed"
             log_stat(log_payload)
             raise Exception(error_msg)
@@ -482,8 +522,12 @@ class GeminiStructuredClient:
             self._init_client()
 
     async def generate_json_async(
-        self, prompt: str, images: List[bytes], schema: Dict[str, Any],
-        scene: str = "unknown", user_id: str = "unknown"
+        self,
+        prompt: str,
+        images: List[bytes],
+        schema: Dict[str, Any],
+        scene: str = "unknown",
+        user_id: str = "unknown",
     ) -> Dict[str, Any]:
         """
         Async generation with decoupled Upload and Generation phases.
@@ -496,7 +540,9 @@ class GeminiStructuredClient:
         # Phase 1: Upload (Once)
         upload_start = time.time()
         try:
-            contents, _ = await self._prepare_contents_with_metrics(prompt, images, scene, user_id)
+            contents, _ = await self._prepare_contents_with_metrics(
+                prompt, images, scene, user_id
+            )
         except Exception as e:
             return {"error": f"图片上传失败: {e}"}
         upload_duration = (time.time() - upload_start) * 1000
@@ -504,8 +550,7 @@ class GeminiStructuredClient:
         # Phase 2: Generation (Retry Loop)
         max_retries = 3
         last_error = None
-        retry_timeout = max(40, round((145-upload_duration)/max_retries))
-
+        retry_timeout = max(40, round((145 - upload_duration) / max_retries))
 
         for attempt in range(1, max_retries + 1):
             try:
@@ -521,30 +566,45 @@ class GeminiStructuredClient:
                             "temperature": self.config.temperature,
                         },
                     ),
-                    timeout=retry_timeout
+                    timeout=retry_timeout,
                 )
                 gen_duration = (time.time() - gen_start) * 1000
 
                 # Extract Token Usage
-                usage_str = "N/A"
                 if hasattr(response, "usage_metadata"):
-                    in_tokens = getattr(response.usage_metadata, "prompt_token_count", 0)
-                    out_tokens = getattr(response.usage_metadata, "candidates_token_count", 0)
+                    in_tokens = getattr(
+                        response.usage_metadata, "prompt_token_count", 0
+                    )
+                    out_tokens = getattr(
+                        response.usage_metadata, "candidates_token_count", 0
+                    )
                     usage_str = f"In:{in_tokens}|Out:{out_tokens}"
 
-                log_stat({
-                    "type": "Generate",
-                    "scene": scene,
-                    "user_id": user_id,
-                    "model": self.config.model_name,
-                    "duration_ms": gen_duration,
-                    "attempt": attempt,
-                    "max_retries": max_retries,
-                    "tokens_in": getattr(response.usage_metadata, "prompt_token_count", 0) if hasattr(response, "usage_metadata") else 0,
-                    "tokens_out": getattr(response.usage_metadata, "candidates_token_count", 0) if hasattr(response, "usage_metadata") else 0,
-                    "image_count": len(images),
-                    "status": "Success"
-                })
+                log_stat(
+                    {
+                        "type": "Generate",
+                        "scene": scene,
+                        "user_id": user_id,
+                        "model": self.config.model_name,
+                        "duration_ms": gen_duration,
+                        "attempt": attempt,
+                        "max_retries": max_retries,
+                        "tokens_in": (
+                            getattr(response.usage_metadata, "prompt_token_count", 0)
+                            if hasattr(response, "usage_metadata")
+                            else 0
+                        ),
+                        "tokens_out": (
+                            getattr(
+                                response.usage_metadata, "candidates_token_count", 0
+                            )
+                            if hasattr(response, "usage_metadata")
+                            else 0
+                        ),
+                        "image_count": len(images),
+                        "status": "Success",
+                    }
+                )
 
                 # Parse and Validate
                 if hasattr(response, "parsed") and response.parsed:
@@ -578,17 +638,27 @@ class GeminiStructuredClient:
                 if attempt < max_retries:
                     logger.warning(
                         "[GeminiStats] Retry generate (attempt %d/%d) error: %s",
-                        attempt, max_retries, error_msg
+                        attempt,
+                        max_retries,
+                        error_msg,
                     )
                     await asyncio.sleep(1)
                 else:
-                    logger.error("[GeminiStats] Generate failed after %d attempts: %s", max_retries, error_msg)
+                    logger.error(
+                        "[GeminiStats] Generate failed after %d attempts: %s",
+                        max_retries,
+                        error_msg,
+                    )
 
         return {"error": f"Gemini 调用失败: {last_error}"}
 
     async def generate_text_async(
-        self, prompt: str, system_instruction: Optional[str] = None, images: List[bytes] = None,
-        scene: str = "unknown", user_id: str = "unknown"
+        self,
+        prompt: str,
+        system_instruction: Optional[str] = None,
+        images: List[bytes] = None,
+        scene: str = "unknown",
+        user_id: str = "unknown",
     ) -> str:
         """
         生成纯文本（非结构化 JSON）。用于 Advice 或 Report 场景。
@@ -600,7 +670,9 @@ class GeminiStructuredClient:
 
         # Phase 1: Upload (Once)
         try:
-            contents, _ = await self._prepare_contents_with_metrics(prompt, images, scene, user_id)
+            contents, _ = await self._prepare_contents_with_metrics(
+                prompt, images, scene, user_id
+            )
         except Exception as e:
             return f"图片上传失败: {e}"
 
@@ -612,7 +684,9 @@ class GeminiStructuredClient:
             "temperature": self.config.advice_temperature,
         }
         if system_instruction:
-            gen_config["system_instruction"] = [types.Part.from_text(text=system_instruction)]
+            gen_config["system_instruction"] = [
+                types.Part.from_text(text=system_instruction)
+            ]
 
         for attempt in range(1, max_retries + 1):
             try:
@@ -623,30 +697,45 @@ class GeminiStructuredClient:
                         contents=contents,
                         config=gen_config,
                     ),
-                    timeout=40
+                    timeout=40,
                 )
                 gen_duration = (time.time() - gen_start) * 1000
 
                 # Extract Token Usage
-                usage_str = "N/A"
                 if hasattr(response, "usage_metadata"):
-                    in_tokens = getattr(response.usage_metadata, "prompt_token_count", 0)
-                    out_tokens = getattr(response.usage_metadata, "candidates_token_count", 0)
+                    in_tokens = getattr(
+                        response.usage_metadata, "prompt_token_count", 0
+                    )
+                    out_tokens = getattr(
+                        response.usage_metadata, "candidates_token_count", 0
+                    )
                     usage_str = f"In:{in_tokens}|Out:{out_tokens}"
 
-                log_stat({
-                    "type": "GenerateText",
-                    "scene": scene,
-                    "user_id": user_id,
-                    "model": self.config.model_name,
-                    "duration_ms": gen_duration,
-                    "attempt": attempt,
-                    "max_retries": max_retries,
-                    "tokens_in": getattr(response.usage_metadata, "prompt_token_count", 0) if hasattr(response, "usage_metadata") else 0,
-                    "tokens_out": getattr(response.usage_metadata, "candidates_token_count", 0) if hasattr(response, "usage_metadata") else 0,
-                    "image_count": len(images) if images else 0,
-                    "status": "Success"
-                })
+                log_stat(
+                    {
+                        "type": "GenerateText",
+                        "scene": scene,
+                        "user_id": user_id,
+                        "model": self.config.model_name,
+                        "duration_ms": gen_duration,
+                        "attempt": attempt,
+                        "max_retries": max_retries,
+                        "tokens_in": (
+                            getattr(response.usage_metadata, "prompt_token_count", 0)
+                            if hasattr(response, "usage_metadata")
+                            else 0
+                        ),
+                        "tokens_out": (
+                            getattr(
+                                response.usage_metadata, "candidates_token_count", 0
+                            )
+                            if hasattr(response, "usage_metadata")
+                            else 0
+                        ),
+                        "image_count": len(images) if images else 0,
+                        "status": "Success",
+                    }
+                )
 
                 text_content = getattr(response, "text", "")
                 if not text_content:
@@ -670,17 +759,27 @@ class GeminiStructuredClient:
                 if attempt < max_retries:
                     logger.warning(
                         "[GeminiStats] Retry text generate (attempt %d/%d) error: %s",
-                        attempt, max_retries, error_msg
+                        attempt,
+                        max_retries,
+                        error_msg,
                     )
                     await asyncio.sleep(1)
                 else:
-                    logger.error("[GeminiStats] Text generate failed after %d attempts: %s", max_retries, error_msg)
+                    logger.error(
+                        "[GeminiStats] Text generate failed after %d attempts: %s",
+                        max_retries,
+                        error_msg,
+                    )
 
         return f"生成失败: {str(last_error)}"
 
     async def generate_text_stream_async(
-        self, prompt: str, system_instruction: Optional[str] = None, images: List[bytes] = None,
-        scene: str = "unknown", user_id: str = "unknown"
+        self,
+        prompt: str,
+        system_instruction: Optional[str] = None,
+        images: List[bytes] = None,
+        scene: str = "unknown",
+        user_id: str = "unknown",
     ):
         """
         生成纯文本流式响应 (Async Generator) with Auto-Retry.
@@ -688,12 +787,14 @@ class GeminiStructuredClient:
         if not self.client_ready:
             self._init_client()
             if not self.client_ready:
-                yield f"系统错误：Gemini 客户端无法初始化"
+                yield "系统错误：Gemini 客户端无法初始化"
                 return
 
         # Phase 1: Upload (Once)
         try:
-            contents, _ = await self._prepare_contents_with_metrics(prompt, images, scene, user_id)
+            contents, _ = await self._prepare_contents_with_metrics(
+                prompt, images, scene, user_id
+            )
         except Exception as e:
             yield f"图片上传失败: {e}"
             return
@@ -703,41 +804,40 @@ class GeminiStructuredClient:
             "temperature": self.config.advice_temperature,
         }
         if system_instruction:
-            gen_config["system_instruction"] = [types.Part.from_text(text=system_instruction)]
+            gen_config["system_instruction"] = [
+                types.Part.from_text(text=system_instruction)
+            ]
 
         max_retries = 3
         has_yielded_any = False
-        
+
         for attempt in range(1, max_retries + 1):
             try:
-                # Note: The SDK's generate_content_stream is sync/blocking iterator by default in v0, 
-                # but v1 (google.genai) has async support via client.aio
-                
                 stream = await self.client.aio.models.generate_content_stream(
                     model=self.config.model_name,
                     contents=contents,
                     config=gen_config,
                 )
-                
+
                 async for chunk in stream:
                     # Check explicitly for text content
                     if chunk.text:
                         has_yielded_any = True
                         yield chunk.text
-                
+
                 # If we complete the stream successfully, break the retry loop
                 return
-                    
+
             except Exception as e:
                 err_str = str(e)
                 logger.warning(f"[GeminiStream] Attempt {attempt} failed: {err_str}")
-                
+
                 # 判断是否可以重试
                 # 如果已经输出过内容，简单的重试会导致内容重复(Frontend receives: "PartA" + "PartA...PartB")
                 # 除非我们能实现 "Continue" 逻辑
-                
-                is_retryable = (attempt < max_retries)
-                
+
+                is_retryable = attempt < max_retries
+
                 # Error code mapping
                 error_code = "ERR_STREAM_UNKNOWN"
                 if "503" in err_str or "Overloaded" in err_str:
@@ -746,14 +846,18 @@ class GeminiStructuredClient:
                     error_code = "ERR_QUOTA_EXCEEDED"
                 elif "Safety" in err_str or "blocked" in err_str:
                     error_code = "ERR_SAFETY_BLOCK"
-                
+
                 if is_retryable and not has_yielded_any:
                     # Case A: Failed at start. Retry seamlessly.
                     wait_time = attempt * 1.5
-                    logger.info(f"[GeminiStream] Retrying from start in {wait_time}s...")
+                    logger.info(
+                        f"[GeminiStream] Retrying from start in {wait_time}s..."
+                    )
                     await asyncio.sleep(wait_time)
                     continue
-                
+
                 # Case B (Mid-stream) or Final Failure
-                logger.error(f"[GeminiStream] Stream failed (yielded={has_yielded_any}): {error_code}")
+                logger.error(
+                    f"[GeminiStream] Stream failed (yielded={has_yielded_any}): {error_code}"
+                )
                 raise StreamError(error_code, err_str)

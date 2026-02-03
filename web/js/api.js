@@ -562,6 +562,15 @@ const API = {
             body: JSON.stringify(cardData)
         });
     },
+    // ========== Search API ==========
+    async searchGlobal(q) {
+        return this.get('/search/global', { q });
+    },
+
+    async searchFood(q) {
+        return this.get('/search/food', { q });
+    },
+
     // ========== Diet Template Methods ==========
     async getDietTemplates() {
         return this.get('/diet/templates');
@@ -594,3 +603,5 @@ class APIError extends Error {
         this.data = data;
     }
 }
+
+window.API = API;

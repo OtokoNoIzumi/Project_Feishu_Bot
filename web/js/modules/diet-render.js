@@ -183,7 +183,7 @@ const DietRenderModule = {
           <div class="dishes-title">文字说明</div>
           <textarea id="additional-note" class="note-input" placeholder="补充或修正说明..." onfocus="this.select()">${currentNote}</textarea>
         </div>
-        
+
         ${data.capturedLabels && data.capturedLabels.length > 0 ? `
         <div class="labels-section">
           <div class="labels-header" onclick="Dashboard.toggleLabelsSection()">
@@ -265,6 +265,9 @@ const DietRenderModule = {
 
     if (this.isMobile()) {
       wrap.innerHTML = this.renderDietDishesMobile();
+      if (window.EditableNameModule && EditableNameModule.refreshNewBadges) {
+        EditableNameModule.refreshNewBadges(wrap);
+      }
       return;
     }
 
@@ -283,6 +286,17 @@ const DietRenderModule = {
     }
 
     wrap.innerHTML = html;
+
+    // Bind Search to Inputs
+    if (!this.isMobile() && window.Dashboard && window.Dashboard.bindDishSearch) {
+      wrap.querySelectorAll('.js-dish-search-input').forEach(input => {
+        const idx = input.dataset.index;
+        window.Dashboard.bindDishSearch(input, idx);
+      });
+    }
+    if (window.EditableNameModule && EditableNameModule.refreshNewBadges) {
+      EditableNameModule.refreshNewBadges(wrap);
+    }
   },
 
   // 用户菜式共享表格渲染
@@ -294,7 +308,7 @@ const DietRenderModule = {
           <table class="dish-table ingredients-table" style="min-width: 0; table-layout: fixed;">
             <thead>
               <tr>
-                <th>菜式名称</th>
+                <th style="width: 25%;">菜式名称</th>
                 <th class="num">能量(${unit})</th>
                 <th class="num">蛋白(g)</th>
                 <th class="num">脂肪(g)</th>
@@ -302,16 +316,26 @@ const DietRenderModule = {
                 <th class="num">纤维(g)</th>
                 <th class="num">钠(mg)</th>
                 <th class="num">重量(g)</th>
-                <th style="width: 36px;"></th>
+                <th style="width: 40px;"></th>
               </tr>
             </thead>
             <tbody>
               ${userDishes.map(d => {
       const i = d.originalIndex;
       const energyText = this.formatEnergyFromMacros(d.protein, d.fat, d.carb);
+
+      const isDemo = (typeof Auth !== 'undefined' && Auth.isDemoMode && Auth.isDemoMode());
+      const namePlaceholder = isDemo ? '新菜式' : '搜索或输入...';
       return `
                   <tr data-dish-index="${i}">
-                    <td><input type="text" class="cell-input" value="${d.name}" oninput="Dashboard.updateDish(${i}, 'name', this.value)" onfocus="this.select()"></td>
+                    <td>
+                        <input type="text" class="cell-input js-dish-search-input"
+                               value="${d.name || ''}"
+                               placeholder="${namePlaceholder}"
+                               data-index="${i}"
+                               oninput="Dashboard.updateDish(${i}, 'name', this.value)"
+                               onfocus="this.select()">
+                    </td>
                     <td><input type="text" class="cell-input num cell-readonly js-energy-display" value="${energyText}" readonly tabindex="-1"></td>
                     <td><input type="number" class="cell-input num" value="${d.protein ?? 0}" min="0" step="0.1" oninput="Dashboard.updateDish(${i}, 'protein', this.value)" onfocus="this.select()"></td>
                     <td><input type="number" class="cell-input num" value="${d.fat ?? 0}" min="0" step="0.1" oninput="Dashboard.updateDish(${i}, 'fat', this.value)" onfocus="this.select()"></td>
@@ -453,10 +477,10 @@ const DietRenderModule = {
             .mobile-dish-details { margin-top: 8px; color: var(--color-text-secondary); font-size: 0.85rem; display: flex; gap: 12px; }
             .mobile-dish-macros { color: var(--color-text-muted); font-size: 0.8rem; flex: 1; }
             .mobile-edit-icon { color: var(--color-accent-primary); opacity: 0.8; font-size: 0.9em; display: flex; align-items: center; gap: 4px; }
-            
+
             .user-dish-controls { display:flex; justify-content:flex-end; padding:0 4px 12px 4px; }
             .btn-text-remove { color: var(--color-text-tertiary); font-size: 0.85rem; background:none; border:none; padding:4px 8px; }
-            
+
             .diet-mobile-editor-overlay {
                 position: fixed; top: 0; left: 0; right: 0; bottom: 0;
                 background: rgba(0,0,0,0.6); z-index: 10000;
@@ -476,20 +500,20 @@ const DietRenderModule = {
             .editor-field-group { margin-bottom: 16px; }
             /* Removed uppercase transform */
             .editor-label { display: block; font-size: 0.8rem; color: var(--color-text-muted); margin-bottom: 6px; letter-spacing: 0.5px; }
-            .editor-input { 
-                width: 100%; padding: 12px; font-size: 1rem; 
-                border: 1px solid var(--color-border); border-radius: 12px; 
+            .editor-input {
+                width: 100%; padding: 12px; font-size: 1rem;
+                border: 1px solid var(--color-border); border-radius: 12px;
                 background: var(--color-bg-tertiary); color: var(--color-text-primary);
-                box-sizing: border-box; 
+                box-sizing: border-box;
             }
             .editor-input:focus { border-color: var(--color-accent-primary); outline: none; background: var(--color-bg-secondary); }
             .editor-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-            
+
             .editor-btn-row { display: flex; gap: 12px; margin-top: 24px; }
             .editor-btn { flex: 1; padding: 14px; border-radius: 12px; border: none; font-weight: 600; cursor: pointer; font-size: 1rem; }
             .btn-save { background: var(--color-accent-primary, #d97757); color: white; box-shadow: 0 4px 12px rgba(217, 119, 87, 0.3); }
             .btn-cancel { background: var(--color-bg-tertiary, #f5f5f5); color: var(--color-text-secondary); }
-            
+
             @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
             @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
         `;
@@ -651,18 +675,18 @@ const DietRenderModule = {
     overlay.innerHTML = `
         <div class="diet-mobile-editor" data-uid="${randomId}">
             <div class="editor-title">${data.title}</div>
-            
+
             <div class="editor-field-group">
                 <label class="editor-label">名称</label>
                 <input id="me-name" class="editor-input" value="${data.name || ''}">
             </div>
-            
-             <div class="editor-row editor-field-group">
+
+            <div class="editor-row editor-field-group">
                 <div>
                      <label class="editor-label">总重量 (g)</label>
                      <input id="me-weight" type="number" class="editor-input" value="${data.weight || 0}" ${onWeightInput}>
                 </div>
-                 <div>
+                <div>
                      <label class="editor-label">钠 (mg)</label>
                      <input id="me-sodium" type="number" class="editor-input" value="${data.sodium || 0}">
                 </div>
@@ -673,18 +697,18 @@ const DietRenderModule = {
                      <label class="editor-label">蛋白质 (g)</label>
                      <input id="me-protein" type="number" class="editor-input" value="${data.protein || 0}">
                 </div>
-                 <div>
+                <div>
                      <label class="editor-label">脂肪 (g)</label>
                      <input id="me-fat" type="number" class="editor-input" value="${data.fat || 0}">
                 </div>
             </div>
-            
+
             <div class="editor-row editor-field-group">
                 <div>
                      <label class="editor-label">碳水 (g)</label>
                      <input id="me-carbs" type="number" class="editor-input" value="${data.carbs || 0}">
                 </div>
-                 <div>
+                <div>
                      <label class="editor-label">膳食纤维 (g)</label>
                      <input id="me-fiber" type="number" class="editor-input" value="${data.fiber || 0}">
                 </div>

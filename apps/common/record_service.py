@@ -1,12 +1,13 @@
+"""记录服务，处理 Keep 和饮食记录的增删改查"""
 import hashlib
 from datetime import datetime, timedelta, date
 from typing import Any, Dict, List
-from pydantic import BaseModel, Field
 
 from libs.storage_lib import global_storage
 
 
 class RecordService:
+    """记录服务，处理 Keep 和饮食记录的增删改查"""
     @staticmethod
     async def save_keep_event(
         user_id: str,
@@ -78,11 +79,11 @@ class RecordService:
             existing[replaced_index] = event_data
             global_storage.write_dataset(user_id, "keep", filename, existing)
             return {"saved_to": filename, "status": "updated", "record_id": record_id}
-        else:
-            global_storage.append(
-                user_id=user_id, category="keep", filename=filename, data=event_data
-            )
-            return {"saved_to": filename, "status": "appended", "record_id": record_id}
+
+        global_storage.append(
+            user_id=user_id, category="keep", filename=filename, data=event_data
+        )
+        return {"saved_to": filename, "status": "appended", "record_id": record_id}
 
     @staticmethod
     async def save_diet_record(
@@ -103,7 +104,7 @@ class RecordService:
 
         同时对 product_library 进行 Upsert（基于 Brand+Name+Variant），确保同一产品只保留最新数据。
         """
-        
+
         now = datetime.now()
         business_time = occurred_at if occurred_at else now
 
@@ -245,7 +246,6 @@ class RecordService:
             d_na = 0.0
             d_fib = 0.0
 
-            valid_calc = True
             for ing in dish.get("ingredients", []):
                 w = float(ing.get("weight_g") or 0)
                 d_weight += w
@@ -470,45 +470,46 @@ class RecordService:
         - height_cm: from latest body_measure_event (via keep/metrics_YYYY_MM)
         """
         today = date.today()
-        # Look back up to 30 days for efficient searching? 
+        # Look back up to 30 days for efficient searching?
         # Or just read the latest months?
         # Since files are monthly, we check current and previous month.
         months_to_check = [today]
         if today.month == 1:
-             months_to_check.append(today.replace(year=today.year-1, month=12, day=1))
+            months_to_check.append(today.replace(year=today.year - 1, month=12, day=1))
         else:
-             months_to_check.append(today.replace(month=today.month-1, day=1))
-        
+            months_to_check.append(today.replace(month=today.month - 1, day=1))
+
         latest_weight = None
         latest_height = None
-        
+
         # Helper to scan files
         def scan_category(category, filenames):
             data = []
             for fname in filenames:
-                recs = global_storage.read_dataset(user_id, category, fname, limit=50) # newest first
+                recs = global_storage.read_dataset(
+                    user_id, category, fname, limit=50
+                )  # newest first
                 data.extend(recs)
             return sorted(data, key=lambda x: x.get("occurred_at", ""), reverse=True)
 
         # 1. Scan Weight (latest first)
         scale_files = [f"scale_{d.strftime('%Y_%m')}.jsonl" for d in months_to_check]
         scale_recs = scan_category("keep", scale_files)
-        
+
         for r in scale_recs:
             if r.get("weight_kg"):
                 latest_weight = r.get("weight_kg")
                 break
 
         # 2. Scan Height (latest first)
-        dimensions_files = [f"dimensions_{d.strftime('%Y_%m')}.jsonl" for d in months_to_check]
+        dimensions_files = [
+            f"dimensions_{d.strftime('%Y_%m')}.jsonl" for d in months_to_check
+        ]
         dimensions_recs = scan_category("keep", dimensions_files)
-        
+
         for r in dimensions_recs:
             if r.get("height"):
                 latest_height = r.get("height")
                 break
-        
-        return {
-            "weight_kg": latest_weight,
-            "height_cm": latest_height
-        }
+
+        return {"weight_kg": latest_weight, "height_cm": latest_height}

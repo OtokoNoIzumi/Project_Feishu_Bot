@@ -377,7 +377,7 @@ const DietEditModule = {
     addDish() {
         if (!this.currentDishes) this.currentDishes = [];
         this.currentDishes.push({
-            name: '新菜品',
+            name: '',
             weight: 100,
             protein: 0,
             fat: 0,
@@ -487,7 +487,7 @@ const DietEditModule = {
             if (subtitle && this.currentDietMeta) {
                 // 注意：这里可能会覆盖掉 selector，仅作为兜底
                 // 为防止闪烁，尽量在 render 时就生成好结构
-                // subtitle.textContent = ... 
+                // subtitle.textContent = ...
             }
         }
 
@@ -620,6 +620,43 @@ const DietEditModule = {
         };
     },
 
+    // --- Search Integration ---
+
+    bindDishSearch(inputElement, index) {
+        if (!inputElement || inputElement.dataset.searchBound) return;
+
+        // Dynamic Popup Container
+        let resultsPanel = document.getElementById('diet-dish-search-popup');
+        if (!resultsPanel) {
+            resultsPanel = document.createElement('div');
+            resultsPanel.id = 'diet-dish-search-popup';
+            resultsPanel.className = 'editable-name-suggestions';
+            document.body.appendChild(resultsPanel);
+        }
+
+        const controller = new SearchController({
+            input: inputElement,
+            resultsPanel: resultsPanel,
+            mode: 'dish',
+            onSelect: (item) => {
+                console.log('[AddDish_debug] select', { index, item });
+                this.updateDishFromSearch(index, item);
+            }
+        });
+        SearchController.register(controller);
+
+        // Logic to position the popup
+        inputElement.addEventListener('focus', () => {
+            const rect = inputElement.getBoundingClientRect();
+            resultsPanel.style.top = `${rect.bottom + window.scrollY + 5}px`;
+            resultsPanel.style.left = `${rect.left + window.scrollX}px`;
+            resultsPanel.style.width = `${Math.max(rect.width, 300)}px`; // Min width
+            resultsPanel.style.right = 'auto';
+        });
+
+        inputElement.dataset.searchBound = "true";
+    },
+
     getDishTotals(dish) {
         // AI：按 ingredients 加总
         if (dish?.source === 'ai') {
@@ -682,6 +719,15 @@ const DietEditModule = {
             sodium_mg: Number(dish?.sodium_mg) || 0,
             energy_kj: e_struct_kj,
         };
+    },
+
+    updateDishFromSearch(index, item) {
+        if (!window.SearchController) return;
+        const updated = SearchController.applyAddDishSelection(this, index, item);
+        if (!updated) return;
+        this.recalculateDietSummary(true);
+        this.renderDietDishes();
+        this.markModified();
     },
 
     toggleDishEnabled(index, enabled) {

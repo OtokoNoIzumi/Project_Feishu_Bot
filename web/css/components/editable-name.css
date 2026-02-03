@@ -12,6 +12,7 @@
     border-radius: 4px;
     transition: background-color 0.15s ease;
     min-width: 60px;
+    position: relative;
 }
 
 .editable-name:hover {
@@ -20,6 +21,54 @@
 
 .editable-name-text {
     font-weight: 500;
+    max-width: 240px;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow: hidden;
+    white-space: normal;
+    word-break: break-word;
+}
+
+.editable-name-badge {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    font-size: 10px;
+    font-family: 'Patrick Hand', 'Comic Sans MS', cursive;
+    color: #d97757;
+    background: rgba(217, 119, 87, 0.15);
+    border: 1px solid rgba(217, 119, 87, 0.35);
+    padding: 0 4px;
+    border-radius: 8px;
+    transform: rotate(-8deg);
+    display: none;
+    pointer-events: none;
+}
+
+.editable-name.is-new .editable-name-badge {
+    display: inline-block;
+}
+
+.editable-name-badge {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    font-size: 10px;
+    font-family: 'Patrick Hand', 'Comic Sans MS', cursive;
+    color: #d97757;
+    background: rgba(217, 119, 87, 0.15);
+    border: 1px solid rgba(217, 119, 87, 0.35);
+    padding: 0 4px;
+    border-radius: 8px;
+    transform: rotate(-8deg);
+    display: none;
+    pointer-events: none;
+}
+
+.editable-name.is-new .editable-name-badge {
+    display: inline-block;
 }
 
 .editable-name-icon {
