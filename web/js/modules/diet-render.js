@@ -91,7 +91,7 @@ const DietRenderModule = {
 
     this.el.resultContent.innerHTML = `
       <div class="result-card profile-section">
-        <div class="tape-sticker" onclick="if (window.UIComponents) UIComponents.rotateTape(this); Dashboard.toggleDishEnabled('all', true)" title="全选/恢复默认"></div>
+        <div class="tape-sticker" onclick="if (window.UIComponents) UIComponents.rotateTape(this); Dashboard.toggleDishEnabled('all', true)" title="噢，你发现了这里！"></div>
         <div class="profile-section-header">
           <div class="profile-section-icon">${window.IconManager ? window.IconManager.render('meal') : '<img src="css/icons/bowl.png" class="hand-icon icon-sticker">'}</div>
           <div style="flex: 1; min-width: 0;"> <!-- Wrapped content in flex-1 div for layout safety -->

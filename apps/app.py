@@ -17,6 +17,7 @@ from apps.common.storage_api import build_storage_router
 from apps.weekly_analysis.api import build_weekly_analysis_router
 from apps.profile.api import build_profile_router
 from apps.common.api_dialogue import build_dialogue_router
+from apps.common.api_search import build_search_router
 
 
 def create_app() -> FastAPI:
@@ -67,6 +68,7 @@ def create_app() -> FastAPI:
     fastapi_app.include_router(build_weekly_analysis_router(settings))
     fastapi_app.include_router(build_profile_router(settings))
     fastapi_app.include_router(build_dialogue_router(settings))
+    fastapi_app.include_router(build_search_router(settings))
     return fastapi_app
 
 
