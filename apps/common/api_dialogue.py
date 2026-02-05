@@ -133,15 +133,6 @@ def build_dialogue_router(settings: BackendSettings) -> APIRouter:
         """List result cards, optionally filtered by dialogue ID."""
         return service.list_cards(dialogue_id)
 
-    @router.get(
-        "/api/cards/recent",
-        response_model=List[ResultCard],
-        dependencies=[Depends(auth_dep)],
-    )
-    async def get_recent_cards(service: DialogueService = Depends(get_service)):
-        """Get recent cards for sidebar display."""
-        return service.get_sidebar_recent_cards()
-
     @router.post(
         "/api/cards", response_model=ResultCard, dependencies=[Depends(auth_dep)]
     )

@@ -98,7 +98,7 @@ const DemoModule = {
                 if (this.currentDialogueId) {
                     SidebarModule.currentDialogueId = this.currentDialogueId;
                 }
-                SidebarModule.loadRecentCards();
+                SidebarModule.render();
                 SidebarModule.loadDialogues();
             }
 

@@ -45,21 +45,32 @@ const EditableNameModule = {
                 return;
             }
             try {
+                console.log('test-searchFood-editable-name', query);
                 const results = await window.API.searchFood(query);
-                // 去重：产品和菜式统一按名称去重
+
+                console.log('test-searchFood-editable-name-results', results);
+                // 去重：优先保留 'dish'，覆盖 'product'
                 const dedupMap = new Map();
                 (results || []).forEach(r => {
                     let name = '';
                     if (r.type === 'product') {
-                        name = r?.data?.product_name || r?.data?.name;
+                        name = r?.data?.product_name;
                     } else if (r.type === 'dish') {
                         name = r?.data?.dish_name;
                     }
+
                     const key = (name || '').trim().toLowerCase();
                     if (!key) return;
-                    if (!dedupMap.has(key)) {
+
+                    const existing = dedupMap.get(key);
+                    if (!existing) {
+                        // 如果没存过，直接存
+                        dedupMap.set(key, r);
+                    } else if (existing.type === 'product' && r.type === 'dish') {
+                        // 如果已存的是 product，新来的是 dish -> 覆盖它 (Upgrade to dish)
                         dedupMap.set(key, r);
                     }
+                    // 其他情况（已存的是 dish，新来的是 product/dish）-> 忽略，保留原有的 higher priority item
                 });
                 this._renderSuggestions(el, Array.from(dedupMap.values()), query);
             } catch (e) { console.error(e); }

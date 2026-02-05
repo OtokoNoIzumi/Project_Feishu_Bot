@@ -550,7 +550,6 @@ const AnalysisModule = {
                 // However, building card takes status from session.isSaved
                 await API.createCard(cardData);
                 session.cardCreated = true;
-                if (window.SidebarModule) window.SidebarModule.loadRecentCards();
             } catch (e) {
                 console.warn('[Analysis] Create card failed, trying update...', e);
                 await API.updateCard(session.persistentCardId, cardData).catch(e2 => console.error(e2));

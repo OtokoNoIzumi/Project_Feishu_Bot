@@ -68,26 +68,10 @@ const SidebarModule = {
             newBtn.addEventListener('click', () => window.Dashboard.createNewDialogue());
         }
 
-        // 初始加载: 同时加载对话和最近卡片
-        this.loadRecentCards();
         this.loadDialogues();
     },
 
-    /**
-     * 加载最近卡片
-     */
-    async loadRecentCards() {
-        try {
-            const cards = await API.getRecentCards();
-            this.recentCards = cards;
-            // 如果对话已经加载完，就重绘。如果没加载完，loadDialogues会处理重绘
-            if (this.dialogues.length > 0) {
-                this.render();
-            }
-        } catch (error) {
-            console.error('Failed to load recent cards:', error);
-        }
-    },
+
 
     /**
      * 加载对话列表
@@ -165,10 +149,8 @@ const SidebarModule = {
 
         let html = '';
 
-        // 1. 渲染最近卡片区 (Recent Cards)
-        if (this.recentCards && this.recentCards.length > 0) {
-            html += this.renderRecentSection();
-        }
+        // 1. 渲染快捷输入区 (Quick Input)
+        html += this.renderQuickInputSection();
 
         // 2. 渲染对话列表 (按日期分组)
         // 使用 DateFormatter 分组更好，但这里可以保持按 Day 分组
@@ -228,7 +210,7 @@ const SidebarModule = {
         }
     },
 
-    renderRecentSection() {
+    renderQuickInputSection() {
         // 优先显示 Quick Favorites (快捷收藏)
         let favorites = [];
         const qm = window.QuickInputModule;
@@ -255,6 +237,7 @@ const SidebarModule = {
 
         // 如果没有收藏，显示提示或空
         const displayItems = favorites.slice(0, 3);
+        console.log('test-search-displayItems', displayItems);
 
         if (displayItems.length === 0) {
             // Optional: fallback to recent cards or show "Add Favorite" hint
@@ -284,7 +267,8 @@ const SidebarModule = {
             // Item structure: { id, title, summary: { energy, weight }, addedAt }
             let itemCount = 0;
             // 尝试从各种可能的数据结构中获取菜品数量 (计算可调整重量的项目总数)
-            const outputData = item.parsedData || item.templateData || item.savedData;
+            // const outputData = item.parsedData || item.templateData || item.savedData;
+            const outputData = item.templateData;
 
             if (outputData) {
                 if (Array.isArray(outputData.dishes)) {
@@ -292,14 +276,12 @@ const SidebarModule = {
                     itemCount = outputData.dishes.reduce((acc, d) => {
                         return acc + (d.ingredients && d.ingredients.length > 0 ? d.ingredients.length : 1);
                     }, 0);
-                } else if (Array.isArray(outputData.ingredients)) {
-                    itemCount = outputData.ingredients.length;
                 }
             }
             const title = this.escapeHtml(item.title || '未命名模板');
 
 
-            let subtitle = '快捷模板';
+            let subtitle = `${itemCount}种成分`;
             if (item.summary) {
                 const eVal = Number(item.summary.energy) || 0;
                 const wVal = Math.round(Number(item.summary.weight) || 0);
@@ -416,15 +398,8 @@ const SidebarModule = {
             }
             const cardId = item.dataset.id;
             const dialogueId = item.dataset.dialogueId;
-            // Need to find card object. This might be in recentCards OR need to be fetched/found if loaded.
-            // Simplified: we try to find in recentCards first, or if expanded, we don't track all loaded cards globally in this module easily.
-            // For Sidebar, we usually only have full data for 'recentCards' or 'dialogues'.
-            // For nested cards, we load them on fly. We might need to store them or just carry minimal data.
-            // Let's rely on finding it or creating a proxy object if we only need ID for rename.
-            let card = this.recentCards ? this.recentCards.find(c => c.id === cardId) : null;
+            let card = null;
             if (!card) {
-                // If not in recent, maybe we can fetch it or just use ID. 
-                // For rename, we need current title to prefill.
                 const titleEl = item.querySelector('.card-title');
                 card = { id: cardId, user_title: titleEl ? titleEl.textContent : '', dialogue_id: dialogueId };
             }
@@ -571,10 +546,6 @@ const SidebarModule = {
                 await API.updateCard(targetObject.id, fullCard);
 
                 // Refresh logic
-                if (this.recentCards.find(c => c.id === targetObject.id)) {
-                    await this.loadRecentCards();
-                }
-                // Also refresh current dialogue view if open
                 if (this.currentDialogueId) {
                     // Force re-render of sidebar for nested Items
                     const dId = targetObject.dialogue_id || (fullCard ? fullCard.dialogue_id : null);

@@ -111,14 +111,6 @@ const StorageModule = {
             this.addMessage(isUpdate ? '✓ 记录已更新' : '✓ 记录已保存', 'assistant');
             this.updateButtonStates(session);
 
-            // 刷新 Sidebar 以显示新保存的记录
-            if (window.SidebarModule) {
-                // 重新加载最近卡片 (包括刚保存的)
-                window.SidebarModule.loadRecentCards();
-                // 如果是新创建的 Record 且关联了 Dialogue，可能需要刷新 Dialogue List 或 Sidebar 状态
-                // 但通常 loadRecentCards 足够刷新顶部 "最近分析记录"
-            }
-
         } catch (error) {
             console.error('Save error:', error);
             this.addMessage(`${isUpdate ? '更新' : '保存'}失败: ${error.message}`, 'assistant');

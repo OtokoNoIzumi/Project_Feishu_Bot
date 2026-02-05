@@ -79,6 +79,7 @@ class SearchController {
         }
         // Mode 1: Empty Query
         if (query.length === 0) {
+            console.log('test-searchmode-empty', this.mode)
             if (this.mode === 'dish') {
                 try {
                     const results = await window.API.searchFood('');
@@ -95,23 +96,16 @@ class SearchController {
 
         // Mode 2: Search Query
         try {
+            console.log('test-searchmode', this.mode, query)
             if (this.mode === 'dish') {
+                console.log('test-searchfood', query)
                 const results = await window.API.searchFood(query);
                 this.renderDishResults(results, query);
                 return;
             }
 
+            console.log('test-searchglobal', query)
             const data = await window.API.searchGlobal(query);
-            const hasResults = (data?.products?.length || 0) > 0
-                || (this.filterDietCards(data?.cards || []).length > 0)
-                || (data?.dialogues?.length || 0) > 0;
-
-            if (!hasResults) {
-                const fallback = await window.API.searchFood('');
-                const fallbackData = this.buildGlobalFallback(fallback);
-                this.render(fallbackData, false);
-                return;
-            }
 
             this.render(data, false);
         } catch (err) {
@@ -123,32 +117,22 @@ class SearchController {
     async loadRecents() {
         try {
             if (this.mode === 'global') {
-                if (typeof Auth !== 'undefined' && Auth.isDemoMode && Auth.isDemoMode()) {
-                    if (this.resultsPanel) {
-                        this.resultsPanel.innerHTML = '';
-                        this.hide();
-                    }
-                    return;
-                }
-                const foodResults = await window.API.searchFood('');
-                const items = Array.isArray(foodResults) ? foodResults : [];
-                const products = items
-                    .filter(i => i.type === 'product')
-                    .map(i => i.data || i);
+                // Unified API call for Global Empty State
+                const data = await window.API.searchGlobal('');
+                console.log('test-searchGlobal-empty', data);
 
-                let cards = await window.API.getRecentCards();
-                cards = this.filterDietCards(cards);
-
-                const data = {
-                    cards: cards || [],
-                    products: products || [],
-                    dialogues: []
+                // Ensure data structure safety
+                const safeData = {
+                    cards: data.cards || [],
+                    products: data.products || [],
+                    dialogues: data.dialogues || []
                 };
 
-                this.render(data, true);
+                this.render(safeData, true);
                 return;
             }
 
+            // Dish mode: Keep legacy behavior (only cards) or unify if API supports
             let cards = await window.API.getRecentCards();
             cards = this.filterDietCards(cards);
 
@@ -214,12 +198,14 @@ class SearchController {
                 const pStr = this.encodeItem(itemData);
                 const title = this.lastQuery ? this.highlightMatch(name, this.lastQuery) : this.escapeHtml(name);
 
+                const metaHtml = this.lastQuery ? this.highlightMatch(extra, this.lastQuery) : this.escapeHtml(extra);
+
                 html += `
                     <div class="search-result-item js-search-item" data-item="${pStr}">
                         <div class="search-icon">🥗</div>
                         <div class="search-content">
                             <div class="search-title">${title}</div>
-                            <div class="search-meta">${this.escapeHtml(extra)}</div>
+                            <div class="search-meta">${metaHtml}</div>
                         </div>
                     </div>
                 `;
@@ -310,10 +296,11 @@ class SearchController {
                 const pStr = this.encodeItem(p);
                 const title = hasQuery ? this.highlightMatch(name, query) : this.escapeHtml(name);
 
+                const metaHtml = hasQuery ? this.highlightMatch(extra, query) : this.escapeHtml(extra);
                 html += `
                     <div class="editable-name-suggestion js-search-item" data-item="${pStr}">
                         🥗 ${title}
-                        <span style="float:right; color:#999;">${this.escapeHtml(extra)}</span>
+                        <span style="float:right; color:#999;">${metaHtml}</span>
                     </div>
                 `;
             });

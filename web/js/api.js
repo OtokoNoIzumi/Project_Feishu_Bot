@@ -532,7 +532,7 @@ const API = {
             }
             return cards.sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
         }
-        return this.get('/cards/recent');
+        return this.get('/search/recent_saved_card');
     },
 
     /**
