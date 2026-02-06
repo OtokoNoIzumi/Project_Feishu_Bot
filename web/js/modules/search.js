@@ -553,7 +553,8 @@ class SearchController {
             : (Number(data.recorded_weight_g) || 0);
 
         const macros = SearchController.extractMacrosPer100g(data);
-        const energyKj100 = SearchController.extractEnergyPer100g(data, macros);
+
+        const energyKj100 = parseFloat(macros.energy_kj || 0);
         const p100 = parseFloat(macros.protein_g || 0);
         const f100 = parseFloat(macros.fat_g || 0);
         const c100 = parseFloat(macros.carbs_g || 0);
@@ -651,6 +652,7 @@ class SearchController {
 
         // Fallback to macro-based calculation
         const useMacros = macros || SearchController.extractMacrosPer100g(data);
+        console.log('test-extractEnergyPer100g-useMacros', useMacros);
         return SearchController.calcEnergyKJ(useMacros);
     }
 

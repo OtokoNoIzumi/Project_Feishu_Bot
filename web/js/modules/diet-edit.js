@@ -99,7 +99,7 @@ const DietEditModule = {
                 dish.sodium_mg = Math.round(m.sodium_mg * ratio);
                 // Force update DOM for these fields
                 this.updateDishRowDOM(index); // This only does energy, need full update?
-                // renderDietDishes might be too heavy? 
+                // renderDietDishes might be too heavy?
                 // updateDishRowDOM only updates energy. I need to update inputs values too.
                 // Let's do a full re-render for now or manual update.
                 // Manual update is better for focus.
@@ -694,12 +694,12 @@ const DietEditModule = {
 
         // If sessionMode is not diet, but we have data, we should allow collection.
         if (sessionMode !== 'diet' && !hasData) return {};
-        // But wait, if mode is 'advice', we shouldn't be collecting diet data for saving as a "diet_log" record 
+        // But wait, if mode is 'advice', we shouldn't be collecting diet data for saving as a "diet_log" record
         // unless we implicitly converted it?
         // The error 'Input should be diet or keep' comes from backend schema validation for `mode`.
         // The API call uses `this.currentSession.mode` as the mode field in payload (via api.js/dashboard.js logic).
         // If currentSession.mode is "advice", the backend rejects it because record creation must be 'diet' or 'keep'.
-        // 
+        //
         // Fix: Force mode to 'diet' for the collected data payload if we are saving diet data.
         // The actual session object in memory can stay as 'advice' if needed, but the PAYLOAD sent to API must be compliant.
 
@@ -1123,7 +1123,7 @@ const DietEditModule = {
             dish._weightBound = true;
             const data = item.data || {};
             dish._macrosPer100g = SearchController.extractMacrosPer100g(data);
-            dish._energyPer100g = SearchController.extractEnergyPer100g(data, dish._macrosPer100g);
+            dish._energyPer100g = parseFloat(dish._macrosPer100g.energy_kj || 0);
 
             dish._productMeta = {
                 product_name: data.product_name || data.name || dish.name,
