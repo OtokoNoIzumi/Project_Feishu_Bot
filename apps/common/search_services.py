@@ -10,6 +10,7 @@ from typing import Any, Dict, List
 from apps.diet.data_source import ProductSource, DishSource
 from apps.common.dialogue_service import DialogueService
 from libs.utils.energy_units import macro_energy_kj
+from libs.utils.text_utils.pinyin_util import extract_phonetics
 
 
 class Matcher:
@@ -55,7 +56,7 @@ class ProductSearchService:
         seen_keys = set()
         results = []
 
-        for p in raw_list:
+        for p in reversed(raw_list):
             # Construct deduplication key
             p_name = p.get("product_name", "") or p.get("name", "")
             brand = p.get("brand", "")
@@ -69,7 +70,18 @@ class ProductSearchService:
             # Match Logic
             # Combine fields for matching: "Brand Name Variant"
             full_text = f"{brand} {p_name} {variant}"
-            if Matcher.match(full_text, query):
+            
+            # Check Text Match OR Pinyin Match
+            is_match = Matcher.match(full_text, query)
+            if not is_match:
+                # Try pinyin matching
+                pinyin_initials = p.get("pinyin_initials", [])
+                for pi in pinyin_initials:
+                    if Matcher.match(pi, query):
+                        is_match = True
+                        break
+            
+            if is_match:
                 results.append(p)
                 if len(results) >= limit:
                     break
@@ -109,8 +121,18 @@ class DishSearchService:
                 continue
             # Filter first (efficiency optimization for typed search)
             # If query exists, only group items that match.
-            if query and not Matcher.match(name, query):
-                continue
+            if query:
+                # Text Match
+                is_match = Matcher.match(name, query)
+                if not is_match:
+                     # Pinyin Match
+                     pinyin_initials = d.get("pinyin_initials", [])
+                     for pi in pinyin_initials:
+                         if Matcher.match(pi, query):
+                             is_match = True
+                             break
+                if not is_match:
+                    continue
             grouped[name].append(d)
 
         # Aggregation
@@ -219,8 +241,22 @@ class CardSearchService:
 
             if Matcher.match(full_text, query):
                 candidates.append(card)
-                if len(candidates) >= limit:
-                    break
+            else:
+                 # Pinyin Match (Lazy Cache)
+                 if "_pinyin_initials" not in card:
+                      # Generate pinyin for the search text
+                      # We use the same full_text or regenerate from specific fields?
+                      # Using full_text is accurate enough.
+                      phonetics = extract_phonetics(full_text)
+                      card["_pinyin_initials"] = phonetics.get("pinyin_initials", [])
+                 
+                 for pi in card["_pinyin_initials"]:
+                      if Matcher.match(pi, query):
+                           candidates.append(card)
+                           break
+
+            if len(candidates) >= limit:
+                break
 
         return candidates
 

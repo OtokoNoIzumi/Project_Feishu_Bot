@@ -51,6 +51,47 @@ const EnergyUtils = {
             c_pct: Math.round((c / t) * 100),
         };
     },
+
+    /**
+     * Standardized rounding logic for different fields.
+     */
+    round(value, precision) {
+        if (typeof value !== 'number') return value;
+        const scale = Math.pow(10, precision);
+        return Math.round(value * scale) / scale;
+    },
+
+    safeRound(value, precision) {
+        return this.round(Number(value) || 0, precision);
+    },
+
+    // Apply standard precision rules based on field name
+    // Enforces: 
+    // - Energy/Sodium: 0 or 1 decimal (context dependent, usually 1 for KJ)
+    // - Macros (P/F/C/Fib): 1 decimal (standard) -> Updated to 2 for High Precision calculation 
+    // - Weight: 1 decimal
+    applyRoundingTo(obj, fieldMap) {
+        if (!obj) return;
+        // Standard Precision Map (Default)
+        // Can be overridden by fieldMap
+        const defaultMap = {
+            'weight_g': 1, 'weight': 1,
+            'energy_kj': 1, 'energy': 1,
+            'protein_g': 2, 'protein': 2,
+            'fat_g': 2, 'fat': 2,
+            'carbs_g': 2, 'carb': 2, 'carbs': 2,
+            'fiber_g': 2, 'fiber': 2,
+            'sodium_mg': 1, 'sodium': 1,
+        };
+
+        const map = { ...defaultMap, ...fieldMap };
+
+        for (const key in obj) {
+            if (map.hasOwnProperty(key)) {
+                obj[key] = this.round(obj[key], map[key]);
+            }
+        }
+    }
 };
 
 // 挂载到全局，供其他模块使用

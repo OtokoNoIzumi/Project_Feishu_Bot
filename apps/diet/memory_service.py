@@ -53,7 +53,9 @@ def get_product_memories(user_id: str, limit: int = 50) -> List[str]:
         if variant:
             info += f" ({variant})"
 
-        serving = rec.get("serving_size", "100g")
+        t_amt = rec.get("table_amount", 100)
+        t_unit = rec.get("table_unit", "g")
+        serving = f"{t_amt}{t_unit}"
         info += f" Energy:{energy_kj}KJ/{serving}"
 
         if any([p, f, c, na, fib]):

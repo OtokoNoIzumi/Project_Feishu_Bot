@@ -550,6 +550,7 @@
     display: none;
 }
 
+/* 营养标签编辑区域 */
 .label-card {
     padding: var(--spacing-md);
     background: var(--color-bg-tertiary);
@@ -562,9 +563,6 @@
     margin-bottom: 0;
 }
 
-
-
-/* 营养标签编辑区域 */
 .label-edit-row {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -581,7 +579,7 @@
 .label-edit-field label {
     font-size: 0.7rem;
     color: var(--color-text-muted);
-    text-transform: uppercase;
+    color: var(--color-text-muted);
     letter-spacing: 0.5px;
 }
 
@@ -591,6 +589,35 @@
 
 .label-edit-field.label-edit-full {
     margin-top: var(--spacing-sm);
+}
+
+.label-section-title {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--color-text-secondary);
+    margin: var(--spacing-md) 0 var(--spacing-sm);
+    padding-bottom: 4px;
+    border-bottom: 1px dashed var(--color-border);
+}
+
+.label-with-tooltip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.info-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--color-text-muted);
+    color: var(--color-bg-secondary);
+    font-size: 10px;
+    font-weight: bold;
+    cursor: help;
 }
 
 .label-input {

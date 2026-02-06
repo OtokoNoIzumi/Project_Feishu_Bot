@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, date
 from typing import Any, Dict, List
 
 from libs.storage_lib import global_storage
+from libs.utils.text_utils.pinyin_util import extract_phonetics
 
 
 class RecordService:
@@ -187,18 +188,52 @@ class RecordService:
 
             final_lib = []
 
-            # 保留不冲突的旧数据
+            # 4.1 Index existing items by Key for attribute preservation
+            existing_map = {}
             for old in existing_lib:
                 k_old = (
                     str(old.get("brand", "")).strip(),
                     str(old.get("product_name", "")).strip(),
                     str(old.get("variant", "")).strip(),
                 )
-                # 如果旧数据的 Key 在本次新标签中存在，则丢弃旧数据（用新的替代）
+                if k_old not in existing_map:
+                    existing_map[k_old] = old
+
+            final_lib = []
+
+            # 4.2 Filter out old items that are being updated (Upsert Logic)
+            for old in existing_lib:
+                k_old = (
+                    str(old.get("brand", "")).strip(),
+                    str(old.get("product_name", "")).strip(),
+                    str(old.get("variant", "")).strip(),
+                )
                 if k_old not in new_keys:
                     final_lib.append(old)
 
-            # 追加新数据
+            # 4.3 Add new items, preserving created_at
+            for label in captured_labels:
+                k = (
+                    str(label.get("brand", "")).strip(),
+                    str(label.get("product_name", "")).strip(),
+                    str(label.get("variant", "")).strip(),
+                )
+                
+                # Pinyin
+                p_name = label.get("product_name", "")
+                if p_name:
+                     phonetics = extract_phonetics(p_name)
+                     label["pinyin_initials"] = phonetics.get("pinyin_initials", [])
+                
+                # Time Handling
+                label["updated_at"] = now.isoformat()
+                
+                # Preserve created_at from existing record if available
+                if k in existing_map and existing_map[k].get("created_at"):
+                    label["created_at"] = existing_map[k]["created_at"]
+                elif "created_at" not in label:
+                    label["created_at"] = now.isoformat()
+            
             final_lib.extend(captured_labels)
 
             # 覆写文件
@@ -278,6 +313,7 @@ class RecordService:
                     "sodium_mg": round(d_na * ratio, 2),
                     "fiber_g": round(d_fib * ratio, 2),
                 },
+                "pinyin_initials": extract_phonetics(name).get("pinyin_initials", []),
                 "ingredients_snapshot": [
                     i.get("name_zh") for i in dish.get("ingredients", [])
                 ],

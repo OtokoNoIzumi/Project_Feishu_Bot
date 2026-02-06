@@ -200,38 +200,70 @@ const DietRenderModule = {
           </div>
           <div id="labels-content" class="labels-content collapsed">
             ${data.capturedLabels.map((lb, idx) => `
-              <div class="label-card" data-label-index="${idx}">
+              <div class="label-card label-input-row" data-label-index="${idx}">
                 <div class="label-edit-row">
                   <div class="label-edit-field label-edit-primary">
                     <label>产品名称</label>
-                    <input type="text" class="label-input" value="${lb.productName}" placeholder="产品名称" oninput="Dashboard.updateLabel(${idx}, 'productName', this.value)" onfocus="this.select()">
+                    <input type="text" class="label-input label-name" value="${lb.productName || ''}" placeholder="产品名称" oninput="Dashboard.updateLabel(${idx}, 'productName', this.value)" onfocus="this.select()">
                   </div>
                   <div class="label-edit-field">
                     <label>品牌</label>
-                    <input type="text" class="label-input" value="${lb.brand}" placeholder="品牌" oninput="Dashboard.updateLabel(${idx}, 'brand', this.value)" onfocus="this.select()">
+                    <input type="text" class="label-input label-brand" value="${lb.brand || ''}" placeholder="品牌" oninput="Dashboard.updateLabel(${idx}, 'brand', this.value)" onfocus="this.select()">
                   </div>
                 </div>
                 <div class="label-edit-row">
                   <div class="label-edit-field">
                     <label>规格/口味</label>
-                    <input type="text" class="label-input" value="${lb.variant}" placeholder="如：无糖/低脂" oninput="Dashboard.updateLabel(${idx}, 'variant', this.value)" onfocus="this.select()">
+                    <input type="text" class="label-input label-variant" value="${lb.variant || ''}" placeholder="如：无糖/低脂" oninput="Dashboard.updateLabel(${idx}, 'variant', this.value)" onfocus="this.select()">
                   </div>
                   <div class="label-edit-field">
                     <label>每份</label>
-                    <input type="text" class="label-input label-input-sm" value="${lb.servingSize}" placeholder="100g" oninput="Dashboard.updateLabel(${idx}, 'servingSize', this.value)" onfocus="this.select()">
+                    <input type="text" class="label-input label-table-unit" value="${lb.tableUnit || lb.table_unit || 'g'}" placeholder="如 g/ml/份" oninput="Dashboard.updateLabel(${idx}, 'tableUnit', this.value)" onfocus="this.select()">
                   </div>
                 </div>
-                <div class="label-macros-display">
-                  <span class="label-macro"><span class="k">能量</span><span class="v">${Math.round(lb.energyKjPerServing)} kJ</span></span>
-                  <span class="label-macro"><span class="k">蛋白</span><span class="v">${lb.proteinGPerServing}g</span></span>
-                  <span class="label-macro"><span class="k">脂肪</span><span class="v">${lb.fatGPerServing}g</span></span>
-                  <span class="label-macro"><span class="k">碳水</span><span class="v">${lb.carbsGPerServing}g</span></span>
-                  <span class="label-macro"><span class="k">钠</span><span class="v">${lb.sodiumMgPerServing}mg</span></span>
-                  ${lb.fiberGPerServing > 0 ? `<span class="label-macro"><span class="k">纤维</span><span class="v">${lb.fiberGPerServing}g</span></span>` : ''}
+                <div class="label-edit-row">
+                  <div class="label-edit-field">
+                    <label>每份数值</label>
+                    <input type="number" class="label-input label-input-sm label-table-amount" value="${lb.tableAmount ?? lb.table_amount ?? 100}" min="0" step="0.1" oninput="Dashboard.updateLabel(${idx}, 'tableAmount', this.value)" onfocus="this.select()">
+                  </div>
+                  <div class="label-edit-field">
+                    <label>换算系数</label>
+                    <input type="number" class="label-input label-input-sm label-density" value="${lb.densityFactor ?? lb.density_factor ?? 1.0}" min="0" step="0.001" oninput="Dashboard.updateLabel(${idx}, 'densityFactor', this.value)" onfocus="this.select()">
+                  </div>
+                </div>
+                <div class="label-edit-row">
+                  <div class="label-edit-field">
+                    <label>能量(kJ)</label>
+                    <input type="number" class="label-input label-energy" value="${lb.energyKjPerServing || lb.energy_value || 0}" oninput="Dashboard.updateLabel(${idx}, 'energyKjPerServing', this.value)" onfocus="this.select()">
+                  </div>
+                  <div class="label-edit-field">
+                    <label>蛋白(g)</label>
+                    <input type="number" class="label-input label-protein" value="${lb.proteinGPerServing || lb.protein_g || 0}" oninput="Dashboard.updateLabel(${idx}, 'proteinGPerServing', this.value)" onfocus="this.select()">
+                  </div>
+                </div>
+                <div class="label-edit-row">
+                  <div class="label-edit-field">
+                    <label>脂肪(g)</label>
+                    <input type="number" class="label-input label-fat" value="${lb.fatGPerServing || lb.fat_g || 0}" oninput="Dashboard.updateLabel(${idx}, 'fatGPerServing', this.value)" onfocus="this.select()">
+                  </div>
+                  <div class="label-edit-field">
+                    <label>碳水(g)</label>
+                    <input type="number" class="label-input label-carbs" value="${lb.carbsGPerServing || lb.carbs_g || 0}" oninput="Dashboard.updateLabel(${idx}, 'carbsGPerServing', this.value)" onfocus="this.select()">
+                  </div>
+                </div>
+                <div class="label-edit-row">
+                  <div class="label-edit-field">
+                    <label>钠(mg)</label>
+                    <input type="number" class="label-input label-sodium" value="${lb.sodiumMgPerServing || lb.sodium_mg || 0}" oninput="Dashboard.updateLabel(${idx}, 'sodiumMgPerServing', this.value)" onfocus="this.select()">
+                  </div>
+                  <div class="label-edit-field">
+                    <label>纤维(g)</label>
+                    <input type="number" class="label-input label-fiber" value="${lb.fiberGPerServing || lb.fiber_g || 0}" oninput="Dashboard.updateLabel(${idx}, 'fiberGPerServing', this.value)" onfocus="this.select()">
+                  </div>
                 </div>
                 <div class="label-edit-field label-edit-full">
                   <label>备注</label>
-                  <input type="text" class="label-input" value="${lb.customNote}" placeholder="如：密度 1.033, 实测数据等" oninput="Dashboard.updateLabel(${idx}, 'customNote', this.value)" onfocus="this.select()">
+                  <input type="text" class="label-input label-note" value="${lb.customNote || lb.custom_note || ''}" placeholder="如：产地/版本/渠道等" oninput="Dashboard.updateLabel(${idx}, 'customNote', this.value)" onfocus="this.select()">
                 </div>
               </div>
             `).join('')}
@@ -312,6 +344,14 @@ const DietRenderModule = {
         const idx = input.dataset.index;
         window.Dashboard.bindDishSearch(input, idx);
       });
+      // Bind Ingredient Search
+      if (window.Dashboard.bindIngredientSearch) {
+        wrap.querySelectorAll('.js-ingredient-search-input').forEach(input => {
+          const di = input.dataset.dishIndex;
+          const ii = input.dataset.ingIndex;
+          window.Dashboard.bindIngredientSearch(input, di, ii);
+        });
+      }
     }
     if (window.EditableNameModule && EditableNameModule.refreshNewBadges) {
       EditableNameModule.refreshNewBadges(wrap);
@@ -454,7 +494,7 @@ const DietRenderModule = {
         const dis = disableInputs ? 'disabled' : '';
         return `
                       <tr data-ing-index="${j}">
-                        <td><input type="text" class="cell-input" value="${ing.name_zh || ''}" ${disableInputs ? 'disabled' : ''} oninput="Dashboard.updateIngredient(${i}, ${j}, 'name_zh', this.value)" onfocus="this.select()"></td>
+                        <td><input type="text" class="cell-input js-ingredient-search-input" value="${ing.name_zh || ''}" ${disableInputs ? 'disabled' : ''} data-dish-index="${i}" data-ing-index="${j}" oninput="Dashboard.updateIngredient(${i}, ${j}, 'name_zh', this.value)" onfocus="this.select()"></td>
                         <td><input type="text" class="cell-input num cell-readonly js-energy-display" value="${e}" ${ro}></td>
                         <td><input type="number" class="cell-input num js-ing-field" data-field="protein_g" value="${ing.macros?.protein_g ?? 0}" min="0" step="0.1" ${dis} oninput="Dashboard.updateIngredient(${i}, ${j}, 'protein_g', this.value)" onfocus="this.select()"></td>
                         <td><input type="number" class="cell-input num js-ing-field" data-field="fat_g" value="${ing.macros?.fat_g ?? 0}" min="0" step="0.1" ${dis} oninput="Dashboard.updateIngredient(${i}, ${j}, 'fat_g', this.value)" onfocus="this.select()"></td>

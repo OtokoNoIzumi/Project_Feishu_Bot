@@ -5,8 +5,9 @@
  * 挂载到 Dashboard 实例运行
  */
 const SessionManagerModule = {
-    createSession(text, images) {
-        const session = SessionModule.createSession(this.mode, text, images);
+    createSession(text, images, mode = null) {
+        const targetMode = mode || this.mode;
+        const session = SessionModule.createSession(targetMode, text, images);
 
         // 异步计算 SHA-256 哈希
         this.calculateImageHashes(images).then(hashes => {

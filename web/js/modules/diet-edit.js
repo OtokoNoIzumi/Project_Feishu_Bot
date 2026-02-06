@@ -14,6 +14,9 @@ const DietEditModule = {
             const isCollapsed = content.classList.contains('collapsed');
             content.classList.toggle('collapsed');
             icon.textContent = isCollapsed ? '▲' : '▼';
+            if (isCollapsed) {
+                this.renderLabelsSection();
+            }
         }
     },
 
@@ -22,6 +25,8 @@ const DietEditModule = {
         if (this.currentLabels && this.currentLabels[index]) {
             const oldValue = this.currentLabels[index][field];
             this.currentLabels[index][field] = value;
+
+
             this.markModified();
 
             // 联动更新：如果修改的是产品名称，且有 Dish/Ingredient 名称匹配，则一并更新
@@ -74,16 +79,74 @@ const DietEditModule = {
 
     updateDish(index, field, value) {
         if (this.currentDishes && this.currentDishes[index]) {
+            const dish = this.currentDishes[index];
             // AI 菜式：菜式层级不可编辑（只允许编辑 ingredients）
-            if (this.currentDishes[index].source === 'ai') {
+            if (dish.source === 'ai') {
                 return;
             }
-            this.currentDishes[index][field] = field === 'name' ? value : (parseFloat(value) || 0);
+
+            const numVal = parseFloat(value) || 0;
+            dish[field] = field === 'name' ? value : numVal;
+
+            // Weight-Bound Logic (Search Result Mode)
+            if (dish._weightBound && dish._macrosPer100g && field === 'weight') {
+                const ratio = numVal / 100;
+                const m = dish._macrosPer100g;
+                dish.protein = Math.round(m.protein_g * ratio * 10) / 10;
+                dish.fat = Math.round(m.fat_g * ratio * 10) / 10;
+                dish.carb = Math.round(m.carbs_g * ratio * 10) / 10;
+                dish.fiber = Math.round(m.fiber_g * ratio * 10) / 10;
+                dish.sodium_mg = Math.round(m.sodium_mg * ratio);
+                // Force update DOM for these fields
+                this.updateDishRowDOM(index); // This only does energy, need full update?
+                // renderDietDishes might be too heavy? 
+                // updateDishRowDOM only updates energy. I need to update inputs values too.
+                // Let's do a full re-render for now or manual update.
+                // Manual update is better for focus.
+                setTimeout(() => this.syncDishRowInputs(index), 0);
+            } else if (dish._weightBound && field !== 'name' && field !== 'weight') {
+                // User manually edited a macro => Update density (re-bind to new density)
+                // or just keep it bound?
+                // Let's update _macrosPer100g to reflect new density if weight > 0
+                if (dish.weight > 0) {
+                    const factor = 100 / dish.weight;
+                    dish._macrosPer100g = dish._macrosPer100g || {};
+                    // Map field 'carb' -> 'carbs_g' etc.
+                    const map = { 'protein': 'protein_g', 'fat': 'fat_g', 'carb': 'carbs_g', 'fiber': 'fiber_g', 'sodium_mg': 'sodium_mg' };
+                    if (map[field]) {
+                        dish._macrosPer100g[map[field]] = numVal * factor;
+                    }
+                }
+            }
+
             this.recalculateDietSummary(true);
 
-            // 优化：仅更新当前行 DOM，不重绘整个列表以保持焦点
-            this.updateDishRowDOM(index);
+            // 优化：仅更新当前行 DOM，不重绘整个列表以保持焦点 (except if bound update happened)
+            if (!dish._weightBound || field !== 'weight') {
+                this.updateDishRowDOM(index);
+            }
         }
+    },
+
+    syncDishRowInputs(index) {
+        const dish = this.currentDishes[index];
+        const row = document.querySelector(`tr[data-dish-index="${index}"]`);
+        if (!row || !dish) return;
+
+        const setVal = (f, v) => {
+            const el = row.querySelector(`input[oninput*="'${f}'"]`);
+            if (el) el.value = v;
+        }
+        setVal('protein', dish.protein);
+        setVal('fat', dish.fat);
+        setVal('carb', dish.carb);
+        setVal('fiber', dish.fiber);
+        setVal('sodium_mg', dish.sodium_mg);
+
+        // Update energy display
+        const energyText = this.formatEnergyFromMacros(dish.protein, dish.fat, dish.carb);
+        const energyInput = row.querySelector('.js-energy-display');
+        if (energyInput) energyInput.value = energyText;
     },
 
     /**
@@ -385,7 +448,8 @@ const DietEditModule = {
             fiber: 0,
             sodium_mg: 0,
             source: 'user', // 标记为用户手动添加
-            enabled: true
+            enabled: true,
+            _weightBound: false // Default to custom mode
         });
         this.renderDietDishes();
         this.recalculateDietSummary(true);
@@ -507,8 +571,113 @@ const DietEditModule = {
         if (this.currentSession) {
             this.currentSession.isSaved = false;
         }
-        this.updateStatus('modified');
-        this.updateButtonStates(this.currentSession);
+        const ctx = (this && typeof this.updateStatus === 'function') ? this : window.Dashboard;
+        if (ctx && typeof ctx.updateStatus === 'function') {
+            ctx.updateStatus('modified');
+        }
+        if (ctx && typeof ctx.updateButtonStates === 'function') {
+            ctx.updateButtonStates(ctx.currentSession || this.currentSession);
+        }
+    },
+
+    renderLabelsSection() {
+        const container = document.getElementById('labels-content');
+        if (!container) return;
+
+        this.currentLabels = this.currentLabels || [];
+        if (this.currentLabels.length === 0) {
+            container.innerHTML = '<div class="empty-hint">无营养标签数据</div>';
+            return;
+        }
+
+        const safe = (v) => (v === undefined || v === null) ? '' : v;
+
+        container.innerHTML = this.currentLabels.map((lb, idx) => {
+            // Map legacy fields to new structure if needed
+            const tableUnit = lb.tableUnit || lb.table_unit || 'g';
+            const tableAmount = Number(lb.tableAmount || lb.table_amount) || 100;
+            const unitWeightG = Number(lb.unitWeightG || lb.unit_weight_g) || '';
+            const densityFactor = (lb.densityFactor ?? lb.density_factor ?? 1.0);
+
+            return `
+              <div class="label-card label-input-row" data-label-index="${idx}">
+                <div class="label-edit-row">
+                  <div class="label-edit-field label-edit-primary">
+                    <label>产品名称</label>
+                    <input type="text" class="label-input label-name" value="${safe(lb.productName || lb.product_name)}" placeholder="产品名称" oninput="Dashboard.updateLabel(${idx}, 'productName', this.value)" onfocus="this.select()">
+                  </div>
+                  <div class="label-edit-field">
+                    <label>品牌</label>
+                    <input type="text" class="label-input label-brand" value="${safe(lb.brand)}" placeholder="品牌" oninput="Dashboard.updateLabel(${idx}, 'brand', this.value)" onfocus="this.select()">
+                  </div>
+                </div>
+                <div class="label-edit-row">
+                  <div class="label-edit-field">
+                    <label>规格/口味</label>
+                    <input type="text" class="label-input label-variant" value="${safe(lb.variant)}" placeholder="如：无糖/低脂" oninput="Dashboard.updateLabel(${idx}, 'variant', this.value)" onfocus="this.select()">
+                  </div>
+                  <div class="label-edit-field">
+                    <label>单件重量(g)</label>
+                    <input type="number" class="label-input label-unit-weight" value="${unitWeightG}" placeholder="非必填" oninput="Dashboard.updateLabel(${idx}, 'unitWeightG', this.value)" onfocus="this.select()">
+                  </div>
+                </div>
+
+                <div class="label-section-title">营养成分表</div>
+
+                <div class="label-edit-row">
+                  <div class="label-edit-field">
+                    <label>单位</label>
+                    <input type="text" class="label-input label-table-unit" value="${safe(tableUnit)}" placeholder="如 g, ml, 份" oninput="Dashboard.updateLabel(${idx}, 'tableUnit', this.value)" onfocus="this.select()">
+                  </div>
+                  <div class="label-edit-field">
+                    <label>计量</label>
+                    <input type="number" class="label-input label-input-sm label-table-amount" value="${tableAmount}" min="0" step="0.1" oninput="Dashboard.updateLabel(${idx}, 'tableAmount', this.value)" onfocus="this.select()">
+                  </div>
+                  <div class="label-edit-field">
+                    <label class="label-with-tooltip">
+                        换算系数
+                        <span class="info-icon" title="用来把单位换算到重量的系数&#10;例如密度1.023g/ml 填 1.023">?</span>
+                    </label>
+                    <input type="number" class="label-input label-input-sm label-density" value="${safe(densityFactor)}" min="0" step="0.001" oninput="Dashboard.updateLabel(${idx}, 'densityFactor', this.value)" onfocus="this.select()">
+                  </div>
+                </div>
+                <div class="label-edit-row">
+                  <div class="label-edit-field">
+                    <label>能量(kJ)</label>
+                    <input type="number" class="label-input label-energy" value="${safe(lb.energyKjPerServing || lb.energy_value || 0)}" oninput="Dashboard.updateLabel(${idx}, 'energyKjPerServing', this.value)" onfocus="this.select()">
+                  </div>
+                  <div class="label-edit-field">
+                    <label>蛋白(g)</label>
+                    <input type="number" class="label-input label-protein" value="${safe(lb.proteinGPerServing || lb.protein_g || 0)}" step="0.1" oninput="Dashboard.updateLabel(${idx}, 'proteinGPerServing', this.value)" onfocus="this.select()">
+                  </div>
+                </div>
+                <div class="label-edit-row">
+                  <div class="label-edit-field">
+                    <label>脂肪(g)</label>
+                    <input type="number" class="label-input label-fat" value="${safe(lb.fatGPerServing || lb.fat_g || 0)}" step="0.1" oninput="Dashboard.updateLabel(${idx}, 'fatGPerServing', this.value)" onfocus="this.select()">
+                  </div>
+                  <div class="label-edit-field">
+                    <label>碳水(g)</label>
+                    <input type="number" class="label-input label-carbs" value="${safe(lb.carbsGPerServing || lb.carbs_g || 0)}" step="0.1" oninput="Dashboard.updateLabel(${idx}, 'carbsGPerServing', this.value)" onfocus="this.select()">
+                  </div>
+                </div>
+                <div class="label-edit-row">
+                  <div class="label-edit-field">
+                    <label>钠(mg)</label>
+                    <input type="number" class="label-input label-sodium" value="${safe(lb.sodiumMgPerServing || lb.sodium_mg || 0)}" oninput="Dashboard.updateLabel(${idx}, 'sodiumMgPerServing', this.value)" onfocus="this.select()">
+                  </div>
+                  <div class="label-edit-field">
+                    <label>纤维(g)</label>
+                    <input type="number" class="label-input label-fiber" value="${safe(lb.fiberGPerServing || lb.fiber_g || 0)}" step="0.1" oninput="Dashboard.updateLabel(${idx}, 'fiberGPerServing', this.value)" onfocus="this.select()">
+                  </div>
+                </div>
+                <div class="label-edit-field label-edit-full">
+                  <label>备注</label>
+                  <input type="text" class="label-input label-note" value="${safe(lb.customNote || lb.custom_note)}" placeholder="如：产地/版本/渠道等" oninput="Dashboard.updateLabel(${idx}, 'customNote', this.value)" onfocus="this.select()">
+                </div>
+              </div>
+            `;
+        }).join('');
     },
 
     collectEditedData() {
@@ -518,7 +687,21 @@ const DietEditModule = {
         // 只要是 diet 或者拥有有效 diet 数据（dishes 不为空），就应该允许收集，防止 Input Mode 切换（Advice Mode）导致数据丢失
         const hasData = this.currentDishes && this.currentDishes.length > 0;
 
+        // Logic check: Allow 'diet' mode OR if it has effective data (e.g. implicitly editing diet in advice mode)
+        // However, if we are in 'advice' mode, we usually don't trigger collectEditedData unless we are "Saving to Diet Log".
+        // The problem reported is "Input should be 'diet' or 'keep'". This logic here just collects data.
+        // The requester (save logic) uses this data.
+
+        // If sessionMode is not diet, but we have data, we should allow collection.
         if (sessionMode !== 'diet' && !hasData) return {};
+        // But wait, if mode is 'advice', we shouldn't be collecting diet data for saving as a "diet_log" record 
+        // unless we implicitly converted it?
+        // The error 'Input should be diet or keep' comes from backend schema validation for `mode`.
+        // The API call uses `this.currentSession.mode` as the mode field in payload (via api.js/dashboard.js logic).
+        // If currentSession.mode is "advice", the backend rejects it because record creation must be 'diet' or 'keep'.
+        // 
+        // Fix: Force mode to 'diet' for the collected data payload if we are saving diet data.
+        // The actual session object in memory can stay as 'advice' if needed, but the PAYLOAD sent to API must be compliant.
 
         if (!this.currentDietTotals) {
             this.recalculateDietSummary(false);
@@ -565,10 +748,10 @@ const DietEditModule = {
                     {
                         name_zh: d.name,
                         weight_g: Number(d.weight) || 0,
-                        weight_method: "user_edit",
-                        data_source: "user_edit",
-                        // 用户菜式没有 energy_kj，需计算
-                        energy_kj: Math.round(EnergyUtils.kcalToKJ(EnergyUtils.macrosToKcal(d.protein, d.fat, d.carb)) * 10) / 10,
+                        weight_method: 'user_edit',
+                        data_source: 'user_edit',
+                        // Calculate energy for user dish from macros
+                        energy_kj: this.getDishTotals(d).energy_kj,
                         macros: {
                             protein_g: Number(d.protein) || 0,
                             fat_g: Number(d.fat) || 0,
@@ -581,20 +764,118 @@ const DietEditModule = {
             };
         });
 
-        // 收集编辑后的营养标签
-        const editedLabels = (this.currentLabels || []).map(lb => ({
-            product_name: lb.productName || '',
-            brand: lb.brand || '',
-            variant: lb.variant || '',
-            serving_size: lb.servingSize || '100g',
-            energy_kj_per_serving: lb.energyKjPerServing || 0,
-            protein_g_per_serving: lb.proteinGPerServing || 0,
-            fat_g_per_serving: lb.fatGPerServing || 0,
-            carbs_g_per_serving: lb.carbsGPerServing || 0,
-            sodium_mg_per_serving: lb.sodiumMgPerServing || 0,
-            fiber_g_per_serving: lb.fiberGPerServing || 0,
-            custom_note: lb.customNote || '',
-        }));
+        // 收集编辑后的营养标签 (UI Visible)
+        // [Refactor] Read directly from Input DOMs if available to support full editing
+        const editedLabels = [];
+        const labelRows = document.querySelectorAll('.label-input-row');
+
+        if (labelRows.length > 0) {
+            // Priority: Read from DOM
+            labelRows.forEach(row => {
+                const getVal = (cls) => row.querySelector(`.${cls}`)?.value;
+                const getNum = (cls) => parseFloat(getVal(cls)) || 0;
+                // Read new structure
+                const tableUnit = getVal('label-table-unit') || 'g';
+                const tableAmount = getNum('label-table-amount') || 100;
+                const unitWeightG = getNum('label-unit-weight') || 0;
+
+                editedLabels.push({
+                    product_name: getVal('label-name') || '',
+                    brand: getVal('label-brand') || '',
+                    variant: getVal('label-variant') || '',
+                    unit_weight_g: unitWeightG, // New field matches backend
+                    table_unit: tableUnit,       // New field
+                    table_amount: tableAmount,   // New field
+
+                    density_factor: getNum('label-density') || 1.0,
+                    energy_kj_per_serving: getNum('label-energy'),
+                    protein_g_per_serving: getNum('label-protein'),
+                    fat_g_per_serving: getNum('label-fat'),
+                    carbs_g_per_serving: getNum('label-carbs'),
+                    sodium_mg_per_serving: getNum('label-sodium'),
+                    fiber_g_per_serving: getNum('label-fiber'),
+                    custom_note: getVal('label-note') || '',
+                });
+            });
+        } else {
+            // Fallback: Read from memory if UI not rendered
+            (this.currentLabels || []).forEach(lb => {
+                const tableUnit = lb.tableUnit || lb.table_unit || 'g';
+                const tableAmount = Number(lb.tableAmount || lb.table_amount) || 100;
+
+                editedLabels.push({
+                    product_name: lb.productName || lb.product_name || '',
+                    brand: lb.brand || '',
+                    variant: lb.variant || '',
+                    unit_weight_g: Number(lb.unitWeightG || lb.unit_weight_g) || 0,
+                    table_unit: tableUnit,
+                    table_amount: tableAmount,
+                    density_factor: Number(lb.densityFactor ?? lb.density_factor ?? 1.0),
+                    energy_kj_per_serving: Number(lb.energyKjPerServing || lb.energy_value || 0),
+                    protein_g_per_serving: Number(lb.proteinGPerServing || lb.protein_g || 0),
+                    fat_g_per_serving: Number(lb.fatGPerServing || lb.fat_g || 0),
+                    carbs_g_per_serving: Number(lb.carbsGPerServing || lb.carbs_g || 0),
+                    sodium_mg_per_serving: Number(lb.sodiumMgPerServing || lb.sodium_mg || 0),
+                    fiber_g_per_serving: Number(lb.fiberGPerServing || lb.fiber_g || 0),
+                    custom_note: lb.customNote || lb.custom_note || ''
+                });
+            });
+        }
+
+        // [New] Collect Implicitly Used Products for Reordering/Upsert (Smart Deduplication)
+        // We use a Map to keep unique products by key, ensuring valid product data.
+
+        const implicitProductsMap = new Map();
+
+        const addImplicit = (prod) => {
+            if (!prod || !prod.product_name) return; // Basic validation
+            const key = `${prod.brand || ''}|${prod.product_name}|${prod.variant || ''}`;
+            implicitProductsMap.set(key, prod);
+        };
+
+        (this.currentDishes || []).forEach(d => {
+            if (d.enabled === false) return;
+
+            // 1. Dish itself (e.g. Added via "Add Dish" -> "Product Search")
+            if (d._productMeta && d._productMeta.raw_data) {
+                addImplicit(d._productMeta.raw_data);
+            }
+
+            // 2. Ingredients (e.g. Edited via "Ingredient" -> "Product Search")
+            if (d.ingredients) {
+                d.ingredients.forEach(ing => {
+                    if (ing._productMeta && ing._productMeta.raw_data) {
+                        addImplicit(ing._productMeta.raw_data);
+                    }
+                });
+            }
+        });
+
+        // Merge into editedLabels
+        const existingKeys = new Set(editedLabels.map(l => `${l.brand || ''}|${l.product_name || l.name || ''}|${l.variant || ''}`));
+
+        implicitProductsMap.forEach((prod, key) => {
+            if (!existingKeys.has(key)) {
+                const normalized = {
+                    product_name: prod.product_name || prod.name || '',
+                    brand: prod.brand || '',
+                    variant: prod.variant || '',
+                    table_unit: prod.table_unit || 'g',
+                    table_amount: Number(prod.table_amount) || 100,
+                    density_factor: Number(prod.density_factor || prod.density) || 1.0,
+                    energy_kj_per_serving: Number(prod.energy_kj_per_serving || prod.energy_kj) || 0,
+                    protein_g_per_serving: Number(prod.protein_g_per_serving || prod.protein_g) || 0,
+                    fat_g_per_serving: Number(prod.fat_g_per_serving || prod.fat_g) || 0,
+                    carbs_g_per_serving: Number(prod.carbs_g_per_serving || prod.carbs_g) || 0,
+                    sodium_mg_per_serving: Number(prod.sodium_mg_per_serving || prod.sodium_mg) || 0,
+                    fiber_g_per_serving: Number(prod.fiber_g_per_serving || prod.fiber_g) || 0,
+                    custom_note: prod.custom_note || '',
+                };
+
+                editedLabels.push(normalized);
+                existingKeys.add(key);
+            }
+        });
 
         // 2. 构造并合并返回对象
         // 优先级：编辑后的数据 > 原始数据
@@ -615,7 +896,7 @@ const DietEditModule = {
                 total_sodium_mg: Number(totals.totalSodiumMg) || 0,
             },
             dishes: editedDishes,
-            captured_labels: editedLabels,
+            captured_labels: editedLabels, // Now includes implicit products too
             extra_image_summary: ExtraImageSummary,
             occurred_at: this.currentDietMeta?.occurredAt || null,
         };
@@ -648,14 +929,123 @@ const DietEditModule = {
 
         // Logic to position the popup
         inputElement.addEventListener('focus', () => {
-            const rect = inputElement.getBoundingClientRect();
-            resultsPanel.style.top = `${rect.bottom + window.scrollY + 5}px`;
-            resultsPanel.style.left = `${rect.left + window.scrollX}px`;
-            resultsPanel.style.width = `${Math.max(rect.width, 300)}px`; // Min width
-            resultsPanel.style.right = 'auto';
+            // ... logic same as existing ...
+            this.repositionPopup(inputElement, resultsPanel);
         });
 
+        // Debounced reposition recalculation on window resize? Not strictly needed for now.
+
         inputElement.dataset.searchBound = "true";
+    },
+
+    bindIngredientSearch(inputElement, dishIndex, ingIndex) {
+        if (!inputElement || inputElement.dataset.searchBound) return;
+
+        let resultsPanel = document.getElementById('diet-dish-search-popup'); // Reuse same popup
+        if (!resultsPanel) {
+            resultsPanel = document.createElement('div');
+            resultsPanel.id = 'diet-dish-search-popup';
+            resultsPanel.className = 'editable-name-suggestions';
+            document.body.appendChild(resultsPanel);
+        }
+
+        const controller = new SearchController({
+            input: inputElement,
+            resultsPanel: resultsPanel,
+            mode: 'product', // Filter by product for ingredients
+            onSelect: (item) => {
+                this.updateIngredientFromSearch(dishIndex, ingIndex, item);
+            }
+        });
+        SearchController.register(controller);
+
+        inputElement.addEventListener('focus', () => {
+            this.repositionPopup(inputElement, resultsPanel);
+        });
+        inputElement.dataset.searchBound = "true";
+    },
+
+    repositionPopup(input, panel) {
+        const rect = input.getBoundingClientRect();
+        panel.style.top = `${rect.bottom + window.scrollY + 5}px`;
+        panel.style.left = `${rect.left + window.scrollX}px`;
+        panel.style.width = `${Math.max(rect.width, 300)}px`;
+        panel.style.right = 'auto';
+    },
+
+    updateIngredientFromSearch(dishIdx, ingIdx, item) {
+        if (!window.SearchController || !item) return;
+        const dish = this.currentDishes?.[dishIdx];
+        if (!dish || !dish.ingredients) return;
+        const ing = dish.ingredients[ingIdx];
+        if (!ing) return;
+
+        const data = item.data || {};
+        // Only Products supported
+        if (item.type !== 'product') return;
+
+        const name = data.product_name || data.name || ing.name_zh;
+
+        // Keep current weight, but update macros based on product density
+        const currentWeight = Number(ing.weight_g) || 100;
+        const macros = SearchController.extractMacrosPer100g(data);
+
+        // Consistent rounding helpers
+        const r1 = (v) => Math.round((Number(v) || 0) * 10) / 10;
+        const r0 = (v) => Math.round(Number(v) || 0);
+
+        const calculate = (val100) => (Number(val100) * currentWeight / 100);
+
+        ing.name_zh = name;
+        // Apply consistent rounding (1 decimal for macros, 0 for sodium/energy usually? Or consistent r1/r0)
+        // SearchController uses r1 for P/F/C/Fib and r0 for Sodium.
+        ing.macros.protein_g = r1(calculate(macros.protein_g));
+        ing.macros.fat_g = r1(calculate(macros.fat_g));
+        ing.macros.carbs_g = r1(calculate(macros.carbs_g));
+        ing.macros.fiber_g = r1(calculate(macros.fiber_g));
+        ing.macros.sodium_mg = r0(calculate(macros.sodium_mg));
+
+        // Recalc energy (prefer label energy if present)
+        const energyKj100 = SearchController.extractEnergyPer100g(data, macros);
+        ing.energy_kj = r0(energyKj100 * currentWeight / 100);
+
+        // Update density for proportional scaling
+        // Density uses raw precision for internal scaling calculation
+        ing._density = {
+            protein_per_g: macros.protein_g / 100,
+            fat_per_g: macros.fat_g / 100,
+            carbs_per_g: macros.carbs_g / 100,
+            sodium_per_g: macros.sodium_mg / 100,
+            fiber_per_g: macros.fiber_g / 100,
+            energy_per_g: (energyKj100 / 100)
+        };
+
+        // Store Product Meta for Recency/Upsert
+        ing._productMeta = {
+            product_name: data.product_name || data.name || ing.name_zh,
+            brand: data.brand || '',
+            variant: data.variant || '',
+            table_unit: data.table_unit || 'g',
+            // Store original macros per serving if available, or just rely on what we have?
+            // Ideally we want the exact product object.
+            // Let's store a snapshot or just the keys needed for upsert?
+            // Backend Upsert needs: brand, product_name, variant, + all macro fields.
+            // Let's store the raw data simply to replay it.
+            raw_data: data
+        };
+
+        this.recalculateDietSummary(true);
+        this.renderDietDishes(); // Re-render to update all fields
+        this.markModified();
+    },
+
+    // Helper reused
+    calcEnergyKJ(macros) {
+        const p = parseFloat(macros.protein_g || 0);
+        const f = parseFloat(macros.fat_g || 0);
+        const c = parseFloat(macros.carbs_g || 0);
+        const kcal = (p * 4) + (f * 9) + (c * 4);
+        return kcal * 4.184;
     },
 
     getDishTotals(dish) {
@@ -726,6 +1116,24 @@ const DietEditModule = {
         if (!window.SearchController) return;
         const updated = SearchController.applyAddDishSelection(this, index, item);
         if (!updated) return;
+
+        // Enable Weight Bound Mode
+        const dish = this.currentDishes && this.currentDishes[index];
+        if (dish) {
+            dish._weightBound = true;
+            const data = item.data || {};
+            dish._macrosPer100g = SearchController.extractMacrosPer100g(data);
+            dish._energyPer100g = SearchController.extractEnergyPer100g(data, dish._macrosPer100g);
+
+            dish._productMeta = {
+                product_name: data.product_name || data.name || dish.name,
+                brand: data.brand || '',
+                variant: data.variant || '',
+                table_unit: data.table_unit || 'g',
+                raw_data: data
+            };
+        }
+
         this.recalculateDietSummary(true);
         this.renderDietDishes();
         this.markModified();

@@ -388,6 +388,7 @@ const QuickInputModule = {
 
         // 4. Ensure ingredients are locked (proportional scale)
         parsedDishes.forEach(newDish => {
+            console.log('[QuickInput] newDish', newDish);
             if (newDish.ingredients) {
                 newDish.ingredients.forEach(ing => {
                     ing._proportionalScale = true;
@@ -415,7 +416,7 @@ const QuickInputModule = {
             } catch (e) { /* ignore */ }
         }
 
-        const session = d.createSession('', []);
+        const session = d.createSession('', [], 'diet');
         session.dialogueId = d.currentDialogueId;
         session.persistentCardId = window.DateFormatter ? window.DateFormatter.generateId('card') : `card-${Date.now()}`;
         session.isQuickRecord = true;
@@ -510,32 +511,57 @@ const QuickInputModule = {
             return 0;
         };
 
-        if (product.macros_per_100g) {
-            // Standard nested format
-            const m = product.macros_per_100g;
-            p = getVal(m, ['protein_g', 'protein']);
-            f = getVal(m, ['fat_g', 'fat']);
-            c = getVal(m, ['carbs_g', 'carbs']);
-            fib = getVal(m, ['fiber_g', 'fiber']);
-            na = getVal(m, ['sodium_mg', 'sodium']);
-            kj = getVal(m, ['energy_kj', 'energy']);
-        } else {
-            // Flat format (Search API commonly returns this)
-            // Check if serving size is standard
-            const serving = product.serving_size || '100g';
-            // const isStandard = serving === '100g' || serving === '100ml';
+        // Flat format: Serving based (Default fallback)
+        p = getVal(product, ['protein_g_per_serving']);
+        f = getVal(product, ['fat_g_per_serving']);
+        c = getVal(product, ['carbs_g_per_serving']);
+        fib = getVal(product, ['fiber_g_per_serving']);
+        na = getVal(product, ['sodium_mg_per_serving']);
+        kj = getVal(product, ['energy_kj_per_serving']);
 
-            p = getVal(product, ['protein_g_per_100g', 'protein_per_100g', 'protein_g_per_serving']);
-            f = getVal(product, ['fat_g_per_100g', 'fat_per_100g', 'fat_g_per_serving']);
-            c = getVal(product, ['carbs_g_per_100g', 'carbs_per_100g', 'carbs_g_per_serving']);
-            fib = getVal(product, ['fiber_g_per_100g', 'fiber_per_100g', 'fiber_g_per_serving']);
-            na = getVal(product, ['sodium_mg_per_100g', 'sodium_mg_per_serving']);
-            kj = getVal(product, ['energy_kj_per_100g', 'energy_kj_per_serving']);
+        // Calculate base weight from serving info
+        const amount = parseFloat(product.table_amount);
+        const densityFactor = parseFloat(product.density_factor);
+        const sVal = !isNaN(amount) && amount > 0 ? amount : 100;
+        const dVal = !isNaN(densityFactor) && densityFactor > 0 ? densityFactor : 1;
+        const baseWeight = sVal * dVal;
+
+        // Normalize extracted values to 100g basis
+        if (baseWeight > 0 && Math.abs(baseWeight - 100) > 0.01) {
+            const ratio = 100 / baseWeight;
+            // Apply ratio first
+            p *= ratio;
+            f *= ratio;
+            c *= ratio;
+            fib *= ratio;
+            na *= ratio;
+            kj *= ratio;
         }
 
-        console.log('[QuickInput] Extracted Macros ->', { kj, p, f, c, na, fib });
+        // Apply standardized rounding BEFORE constructing density
+        // (This ensures stored macros match user visible precision)
+        // Creating temp object to leverage applyRoundingTo
+        const tempMacros = {
+            protein_g: p, fat_g: f, carbs_g: c, fiber_g: fib, sodium_mg: na, energy_kj: kj
+        };
 
-        // Calculate Density for 100g base
+        if (window.EnergyUtils) {
+            EnergyUtils.applyRoundingTo(tempMacros);
+            p = tempMacros.protein_g;
+            f = tempMacros.fat_g;
+            c = tempMacros.carbs_g;
+            fib = tempMacros.fiber_g;
+            na = tempMacros.sodium_mg;
+            kj = tempMacros.energy_kj;
+        } else {
+            const r2 = (v) => Math.round(v * 100) / 100;
+            const r1 = (v) => Math.round(v * 10) / 10;
+            p = r2(p); f = r2(f); c = r2(c); fib = r2(fib); na = r1(na); kj = r2(kj);
+        }
+
+        console.log('[QuickInput] Extracted Macros (normalized to 100g) ->', { kj, p, f, c, na, fib });
+
+        // Calculate Density for 100g base (since p, f, c are now per 100g)
         const density = {
             protein_per_g: p / 100,
             fat_per_g: f / 100,
@@ -545,9 +571,12 @@ const QuickInputModule = {
             energy_per_g: kj / 100
         };
 
+        const unitWeight = parseFloat(product.unit_weight_g);
+        const defaultWeight = (!isNaN(unitWeight) && unitWeight > 0) ? unitWeight : 100;
+
         const ingredient = {
             name_zh: name,
-            weight_g: 100, // Default 100g
+            weight_g: defaultWeight,
             macros: {
                 energy_kj: kj,
                 protein_g: p,
@@ -557,7 +586,17 @@ const QuickInputModule = {
                 fiber_g: fib
             },
             _density: density,
-            _proportionalScale: true
+            _proportionalScale: true,
+            // [Fix] Bind Product Key Group ID (Meta) for Implicit Upsert
+            _productMeta: {
+                product_name: product.product_name || product.name || name,
+                brand: product.brand || '',
+                variant: product.variant || '',
+                unit_weight_g: product.unit_weight_g,
+                table_unit: product.table_unit || 'g',
+                table_amount: product.table_amount || 100,
+                raw_data: product
+            }
         };
 
         const dish = {
@@ -579,7 +618,7 @@ const QuickInputModule = {
             } catch (e) { /* ignore */ }
         }
 
-        const session = d.createSession('', []);
+        const session = d.createSession('', [], 'diet');
         session.dialogueId = d.currentDialogueId;
         session.persistentCardId = window.DateFormatter ? window.DateFormatter.generateId('card') : `card-${Date.now()}`;
         session.isQuickRecord = true;
@@ -687,29 +726,29 @@ const QuickInputModule = {
      */
     _scaleItem(item, targetWeight) {
         // Safe current weight
-        const w = Number(item.weight_g) || Number(item.weight) || 0;
+        console.log('[QuickInput] _scaleItem', item, targetWeight);
+        const w = Number(item.weight_g) || 0;
         if (w <= 0) {
             item.weight_g = targetWeight;
-            if (item.hasOwnProperty('weight')) item.weight = targetWeight;
             return;
         }
 
         const ratio = targetWeight / w;
-        const r1 = (v) => Math.round(v * 10) / 10;
-        const r0 = (v) => Math.round(v);
 
         // Update Weight
-        if (item.hasOwnProperty('weight_g')) item.weight_g = r1(targetWeight);
-        if (item.hasOwnProperty('weight')) item.weight = r1(targetWeight); // user dish
+        item.weight_g = EnergyUtils.safeRound(targetWeight, 1);
 
         // Update Macros
         const apply = (obj) => {
-            ['energy_kj', 'sodium_mg', 'energy'].forEach(k => {
-                if (typeof obj[k] === 'number') obj[k] = r0(obj[k] * ratio);
+            // Apply raw ratio first
+            ['energy_kj', 'sodium_mg', 'protein_g', 'fat_g', 'carbs_g', 'fiber_g'].forEach(k => {
+                if (typeof obj[k] === 'number') obj[k] = obj[k] * ratio;
             });
-            ['protein_g', 'fat_g', 'carbs_g', 'fiber_g', 'protein', 'fat', 'carb', 'fiber'].forEach(k => { // mixed keys
-                if (typeof obj[k] === 'number') obj[k] = r1(obj[k] * ratio);
-            });
+
+            // Then round standardized
+            if (window.EnergyUtils) {
+                EnergyUtils.applyRoundingTo(obj);
+            }
         };
 
         apply(item);
@@ -735,16 +774,17 @@ const QuickInputModule = {
             }
         });
 
-        const r1 = (v) => Math.round(v * 10) / 10;
-        const r0 = (v) => Math.round(v);
+        dish.weight_g = w;
+        dish.energy_kj = e;
+        dish.protein_g = p;
+        dish.fat_g = f;
+        dish.carbs_g = c;
+        dish.fiber_g = fib;
+        dish.sodium_mg = na;
 
-        dish.weight_g = r1(w);
-        dish.energy_kj = r0(e);
-        dish.protein_g = r1(p);
-        dish.fat_g = r1(f);
-        dish.carbs_g = r1(c);
-        dish.fiber_g = r1(fib);
-        dish.sodium_mg = r0(na);
+        if (window.EnergyUtils) {
+            EnergyUtils.applyRoundingTo(dish);
+        }
 
         if (dish.macros) {
             dish.macros.protein_g = dish.protein_g;
@@ -764,7 +804,7 @@ const QuickInputModule = {
         if (!window.Dashboard) return;
         const d = window.Dashboard;
         // 1. Create Session
-        const session = d.createSession('', []);
+        const session = d.createSession('', [], 'diet');
         session.dialogueId = d.currentDialogueId;
         session.persistentCardId = window.DateFormatter ? window.DateFormatter.generateId('card') : `card-${Date.now()}`;
         d.currentSession = session;

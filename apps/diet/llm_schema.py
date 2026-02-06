@@ -30,9 +30,21 @@ DIET_LLM_SCHEMA = {
                     "product_name": {"type": "string"},
                     "brand": {"type": "string", "description": "不可见则为空字符串"},
                     "variant": {"type": "string", "description": "不可见则为空字符串"},
-                    "serving_size": {
+                    "unit_weight_g": {
+                        "type": "number",
+                        "description": "单份/单包的实际重量（g）。例如用户备注'每份80g'，或者包装显示'净含量80g'。此字段用于预填用户的单次食用量，不影响营养成分表的计算基准。",
+                    },
+                    "table_unit": {
                         "type": "string",
-                        "enum": ["100g", "100ml", "per_pack"],
+                        "description": "营养成分表的表头单位。如 g, ml, 份。注意：仅提取单位字符串。",
+                    },
+                    "table_amount": {
+                        "type": "number",
+                        "description": "营养成分表的表头数值。例如 '100ml'->100, '1份'->1。不可为0。",
+                    },
+                    "density_factor": {
+                        "type": "number",
+                        "description": "换算系数。默认1.0。若serving为100ml且密度1.03，则填1.03（表示100ml=103g）。若serving为1勺且勺重25g，则填25（表示1勺=25g）,也就是用来把单位换算到重量的系数。",
                     },
                     "energy_value": {
                         "type": "number",
@@ -46,14 +58,14 @@ DIET_LLM_SCHEMA = {
                     "fiber_g": {"type": "number"},
                     "custom_note": {
                         "type": "string",
-                        "description": "用户对该产品的特殊备注（如密度、购买渠道等）",
+                        "description": "用户对该产品的特殊备注（如购买渠道等）",
                     },
                 },
                 "required": [
                     "product_name",
                     "brand",
                     "variant",
-                    "serving_size",
+                    "table_unit",
                     "energy_value",
                     "energy_unit",
                     "protein_g",
@@ -61,6 +73,8 @@ DIET_LLM_SCHEMA = {
                     "carbs_g",
                     "sodium_mg",
                     "fiber_g",
+                    "density_factor",
+                    "table_amount",
                 ],
             },
         },

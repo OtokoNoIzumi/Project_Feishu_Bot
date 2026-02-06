@@ -2,6 +2,7 @@
 Diet Advice Usecase.
 """
 
+from datetime import datetime
 from typing import Any, Dict, Optional
 
 from libs.api_keys.api_key_manager import get_default_api_key_manager
@@ -13,6 +14,7 @@ from apps.diet.prompt_builder_advice import build_diet_advice_prompt, build_inde
 from apps.diet.llm_schema import ADVISOR_CHAT_SCHEMA
 from apps.common.dialogue_service import DialogueService
 from apps.common.user_bio_service import UserBioService
+from apps.common.globalization import TimezoneManager
 
 class DietAdviceUsecase:
     """
@@ -116,10 +118,17 @@ class DietAdviceUsecase:
             if last_msg_time:
                 try:
                     cutoff_dt = last_msg_time
+                    # print('test-cutoff_dt', cutoff_dt)
                     if isinstance(cutoff_dt, str):
                         cutoff_dt = datetime.fromisoformat(cutoff_dt)
-                    if cutoff_dt.tzinfo:
-                         cutoff_dt = cutoff_dt.replace(tzinfo=None)
+                    
+                    profile = UserBioService.get_bio(user_id) or {}
+                    tz_name = profile.get("timezone", "Asia/Shanghai")
+                    
+                    tz_mgr = TimezoneManager(tz_name)
+                    cutoff_dt_local = tz_mgr.to_user_local(cutoff_dt)
+                    
+                    # print('test-cutoff_dt_local', cutoff_dt_local)
                     
                     for item in recent_history:
                         occurred = item.get("occurred_at")
@@ -130,7 +139,9 @@ class DietAdviceUsecase:
                         if rec_dt.tzinfo:
                              rec_dt = rec_dt.replace(tzinfo=None)
                         
-                        if rec_dt > cutoff_dt:
+                        # Comparison: both are now naive user local time
+                        if rec_dt > cutoff_dt_local:
+                            # print('test-rec_dt', rec_dt, item.get("line_str"))
                             incremental_records.append(line)
                         else:
                             base_history_lines.append(line)

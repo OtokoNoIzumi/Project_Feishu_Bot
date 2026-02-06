@@ -90,6 +90,16 @@ class SearchController {
                 }
                 return;
             }
+            if (this.mode === 'product') {
+                try {
+                    const results = await window.API.searchFood('');
+                    const products = results.filter(r => r.type === 'product');
+                    this.renderDishResults(products, '');
+                } catch (err) {
+                    this.renderError();
+                }
+                return;
+            }
             await this.loadRecents();
             return;
         }
@@ -101,6 +111,12 @@ class SearchController {
                 console.log('test-searchfood', query)
                 const results = await window.API.searchFood(query);
                 this.renderDishResults(results, query);
+                return;
+            }
+            if (this.mode === 'product') {
+                const results = await window.API.searchFood(query);
+                const products = results.filter(r => r.type === 'product');
+                this.renderDishResults(products, query);
                 return;
             }
 
@@ -537,6 +553,7 @@ class SearchController {
             : (Number(data.recorded_weight_g) || 0);
 
         const macros = SearchController.extractMacrosPer100g(data);
+        const energyKj100 = SearchController.extractEnergyPer100g(data, macros);
         const p100 = parseFloat(macros.protein_g || 0);
         const f100 = parseFloat(macros.fat_g || 0);
         const c100 = parseFloat(macros.carbs_g || 0);
@@ -560,24 +577,25 @@ class SearchController {
         dish.carb = r1(c100 * ratio);
         dish.fiber = r1(fib100 * ratio);
         dish.sodium_mg = r0(na100 * ratio);
+        dish.energy_kj = r0(energyKj100 * ratio);
+        dish._energyPer100g = energyKj100;
         dish.source = 'user';
         dish.ingredients = [];
-
-        console.log('[AddDish_debug] apply', {
-            name, useWeight, p100, f100, c100, fib100, na100
-        });
 
         return true;
     }
 
+    static parseServingWeightG(tableUnitStr, density) {
+        const servingStr = String(tableUnitStr || '100g').toLowerCase();
+        const match = servingStr.match(/([\d.]+)/);
+        let servingNumeric = match ? parseFloat(match[1]) : 100;
+        if (!servingNumeric || isNaN(servingNumeric)) servingNumeric = 100;
+        const factor = Number(density) || 1.0;
+        return servingNumeric * factor;
+    }
+
     static extractMacrosPer100g(data) {
         if (data.macros_per_100g) return data.macros_per_100g;
-
-        const servingSize = String(data.serving_size || '').toLowerCase();
-        let servingGrams = 0;
-        const match = servingSize.match(/([\d.]+)\s*g/);
-        if (match) servingGrams = parseFloat(match[1]);
-        if (!servingGrams || isNaN(servingGrams)) servingGrams = 100;
 
         const getVal = (obj, keys) => {
             for (const k of keys) {
@@ -586,20 +604,54 @@ class SearchController {
             return 0;
         };
 
-        const p = getVal(data, ['protein_g_per_serving', 'protein_g_per_100g', 'protein_per_100g']);
-        const f = getVal(data, ['fat_g_per_serving', 'fat_g_per_100g', 'fat_per_100g']);
-        const c = getVal(data, ['carbs_g_per_serving', 'carbs_g_per_100g', 'carbs_per_100g']);
-        const fib = getVal(data, ['fiber_g_per_serving', 'fiber_g_per_100g', 'fiber_per_100g']);
-        const na = getVal(data, ['sodium_mg_per_serving', 'sodium_mg_per_100g', 'sodium_per_100g']);
+        // Strict priority: Explicit 100g flat keys OR Serving calculation
+        let p, f, c, fib, na, scaleTo100g = 1;
 
-        const factor = servingGrams > 0 ? (100 / servingGrams) : 1;
+        // Serving Mode
+        const density = Number(data.density_factor) || Number(data.density) || 1.0;
+        const servingAmount = Number(data.table_amount) || 0;
+        const servingWeightG = servingAmount > 0
+            ? (servingAmount * density)
+            : SearchController.parseServingWeightG(data.table_unit, density);
+
+        scaleTo100g = servingWeightG > 0 ? (100 / servingWeightG) : 1;
+
+        p = getVal(data, ['protein_g_per_serving']);
+        f = getVal(data, ['fat_g_per_serving']);
+        c = getVal(data, ['carbs_g_per_serving']);
+        fib = getVal(data, ['fiber_g_per_serving']);
+        na = getVal(data, ['sodium_mg_per_serving']);
+
         return {
-            protein_g: p * factor,
-            fat_g: f * factor,
-            carbs_g: c * factor,
-            fiber_g: fib * factor,
-            sodium_mg: na * factor
+            protein_g: p * scaleTo100g,
+            fat_g: f * scaleTo100g,
+            carbs_g: c * scaleTo100g,
+            fiber_g: fib * scaleTo100g,
+            sodium_mg: na * scaleTo100g
         };
+    }
+
+    static extractEnergyPer100g(data, macros) {
+        // 1. Explicit 100g key (Priority 1)
+        console.log('test-extractEnergyPer100g', data);
+
+        // 2. Serving calculation
+        const density = Number(data.density_factor) || 1.0;
+        const servingAmount = Number(data.table_amount) || 0;
+
+        // Calculate Serving Weight
+        const servingWeightG = servingAmount * density;
+
+        // Check for Serving Energy Value
+        let energyKjServing = Number(data.energy_kj_per_serving) || 0;
+
+        if (energyKjServing > 0 && servingWeightG > 0) {
+            return energyKjServing * (100 / servingWeightG);
+        }
+
+        // Fallback to macro-based calculation
+        const useMacros = macros || SearchController.extractMacrosPer100g(data);
+        return SearchController.calcEnergyKJ(useMacros);
     }
 
     calcEnergyKJ(macros) {

@@ -40,6 +40,9 @@ def build_diet_prompt(user_note: str = "", recent_products_str: str = "") -> str
 - 产品名称（product_name）
 - 品牌（brand，可见则必须提取，不可见输出空字符串）
 - 款式/型号（variant，可见则必须提取，不可见输出空字符串）
+- 营养成分表头单位（table_unit，如 g/ml/份/勺/包，严禁包含数字）
+- 营养成分表头数值（table_amount，如 100/1，即标称的数字部分）
+- 换算系数（density_factor，默认 1.0；如“100ml=103g”则填 1.03；如“1份=25g”则填 25）
 - 能量数值（energy_value）与单位（energy_unit：Kcal 或 KJ）
 - 蛋白质/脂肪/碳水/钠（按成分表的同一基准）
 
@@ -66,6 +69,7 @@ Step B：营养密度来源
 4) **名称清洗**：product_name 严禁包含 brand。正确示范：brand="荷高", product_name="脱脂纯牛奶"。错误示范：product_name="荷高脱脂纯牛奶"。
 5) **防止重复输出**：如果识别出的产品与【用户常吃产品库】中的条目完全一致（Brand/Name/Variant/Nutrients都匹配），且没有新的 custom_note 需要添加，则**不要**将其输出到 `captured_labels` 中。仅在发现新产品、数据修正或需要补充 custom_note 时才输出。
 6) **特殊备注**：如果用户 Note 包含通过图片无法获取但需长期记忆的属性（如“密度1.03”、“需冷藏”），请存入 `captured_labels.custom_note`。
+7) **密度/换算系数**：若用户 Note 明确给出密度或“1份=xxg”等换算，请优先写入 `captured_labels.density_factor`。
 
 【输出要求】
 1) 严格按提供的 JSON Schema 输出

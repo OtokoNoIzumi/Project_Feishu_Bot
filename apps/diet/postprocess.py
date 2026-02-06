@@ -8,9 +8,13 @@ Why this exists?
 3. 字段清洗：确保 None 变成 0.0 或空字符串，防止下游报错。
 """
 
-from typing import Any, Dict, List
+
+from typing import Any, Dict, List, Optional
 
 from libs.utils.energy_units import kcal_to_kj, macro_energy_kj
+
+
+
 
 
 def normalize_captured_labels(llm_result: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -22,19 +26,29 @@ def normalize_captured_labels(llm_result: Dict[str, Any]) -> List[Dict[str, Any]
         unit = (raw.get("energy_unit") or "KJ").strip()
         value = float(raw.get("energy_value") or 0.0)
         energy_kj = kcal_to_kj(value) if unit == "Kcal" else value
+        custom_note = str(raw.get("custom_note") or "")
+        density_factor = raw.get("density_factor")
+        try:
+            density_factor = float(density_factor) if density_factor and density_factor > 0 else 1.0
+        except (ValueError, TypeError):
+            density_factor = 1.0
         labels.append(
             {
                 "product_name": str(raw.get("product_name") or ""),
                 "brand": str(raw.get("brand") or ""),
                 "variant": str(raw.get("variant") or ""),
-                "serving_size": str(raw.get("serving_size") or "100g"),
+                "unit_weight_g": float(raw.get("unit_weight_g") or 0.0),
+                "table_unit": str(raw.get("table_unit") or "g"),
+                "table_amount": float(raw.get("table_amount") or 100.0),
+                
+                "density_factor": density_factor,
                 "energy_kj_per_serving": energy_kj,
                 "protein_g_per_serving": float(raw.get("protein_g") or 0.0),
                 "fat_g_per_serving": float(raw.get("fat_g") or 0.0),
                 "carbs_g_per_serving": float(raw.get("carbs_g") or 0.0),
                 "sodium_mg_per_serving": float(raw.get("sodium_mg") or 0.0),
                 "fiber_g_per_serving": float(raw.get("fiber_g") or 0.0),
-                "custom_note": str(raw.get("custom_note") or ""),
+                "custom_note": custom_note,
             }
         )
     return labels
@@ -90,13 +104,34 @@ def finalize_record(llm_result: Dict[str, Any]) -> Dict[str, Any]:
             if data_source == "label_ocr":
                 lb = _match_label_for_ingredient(labels, name_zh)
                 if lb:
-                    serving = lb.get("serving_size") or "100g"
-                    per = float(lb.get("energy_kj_per_serving") or 0.0)
-                    if serving in ("100g", "100ml") and weight_g > 0:
-                        energy_kj = (per / 100.0) * weight_g
-                    elif serving == "per_pack":
-                        energy_kj = macro_energy_kj(protein_g, fat_g, carbs_g)
+                    # 1. 确定基准重量 (Ref Weight)
+                    # strict reference from label (e.g. 100g -> 100)
+                    ref_amount = float(lb.get("table_amount") or 100.0)
+                    # density: 100ml -> 103g or 1 scoop -> 25g
+                    density = float(lb.get("density_factor") or 1.0)
+                    ref_weight_g = ref_amount * density
 
+                    # 2. 计算换算比例 (Ratio)
+                    # weight_g 是用户实际摄入量 / 菜品重量
+                    ratio = 0.0
+                    if ref_weight_g > 0:
+                        ratio = weight_g / ref_weight_g
+
+                    # 3. 覆盖 Macros (P/F/C etc)
+                    # 按照比例从未经加工的 Label 原文中缩放
+                    protein_g = float(lb.get("protein_g_per_serving") or 0.0) * ratio
+                    fat_g = float(lb.get("fat_g_per_serving") or 0.0) * ratio
+                    carbs_g = float(lb.get("carbs_g_per_serving") or 0.0) * ratio
+                    sodium_mg = float(lb.get("sodium_mg_per_serving") or 0.0) * ratio
+                    fiber_g = float(lb.get("fiber_g_per_serving") or 0.0) * ratio
+
+                    # 4. 重新计算能量 (Energy) from correct macros
+                    # 强一致性：Energy 必须由 P/F/C 算出，忽略 Label OCR 的 Energy 字段
+                    # (Label Energy 仅用于 Schema 提取和可能的校验，不直接参与最终计算)
+                    energy_kj = macro_energy_kj(protein_g, fat_g, carbs_g)
+
+            # Fallback / Generic: energy_kj is already calculated at start of loop if not label_ocr
+            # But if label_ocr, we just overwrote it above.
             energy_kj = float(energy_kj)
             total_energy_kj += energy_kj
             total_weight_g += weight_g
